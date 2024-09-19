@@ -12,7 +12,7 @@ const fs = require("fs");
 const path = require("path");
 const { exiftool } = require("exiftool-vendored");
 const { isImage } = require("./isImage");
-const { stringToTimestamp } = require("./stringToTimestamp");
+const { stringToTimestamp } = require("./formatTime");
 const IMG_EXTENSION = process.env.CONVERT_IMAGE_EXTENSION;
 
 // 转换大图目录
