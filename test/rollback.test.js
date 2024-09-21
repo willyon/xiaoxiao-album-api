@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-17 22:24:29
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-17 23:53:13
+ * @LastEditTime: 2024-09-20 08:29:22
  * @Description: File description
  */
 require("dotenv").config();
@@ -80,8 +80,11 @@ function copyFiles(sourceDir, destDir, numFiles) {
   const files = fs.readdirSync(sourceDir);
 
   // 只选择前 numFiles 个文件
-  let filesToCopy = files.slice(0, numFiles);
-  filesToCopy = filesToCopy.filter(isImage);
+  let filesToCopy = null;
+  if (numFiles) {
+    filesToCopy = files.slice(0, numFiles);
+  }
+  filesToCopy = files;
 
   filesToCopy.forEach((file) => {
     const srcPath = path.join(sourceDir, file);
@@ -94,4 +97,4 @@ function copyFiles(sourceDir, destDir, numFiles) {
 }
 
 // 执行文件复制
-copyFiles(sourceFolder, destinationFolder, 20);
+copyFiles(sourceFolder, destinationFolder);

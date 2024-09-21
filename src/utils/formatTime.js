@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-08-30 15:07:02
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-19 00:12:32
+ * @LastEditTime: 2024-09-22 02:49:51
  * @Description: File description
  */
 const { DateTime } = require("luxon");
@@ -18,14 +18,14 @@ function stringToTimestamp(str) {
   }
 }
 
-function getStartOrEndOfMonth(timestamp, type) {
+function getStartOrEndOfTime(timestamp, type, rangeType) {
   // 转为Datetime对象
   const date = DateTime.fromMillis(+timestamp);
-  const typeOfMonth = date[`${type}Of`]("month");
-  return typeOfMonth.toMillis();
+  const dateResult = date[`${type}Of`](rangeType);
+  return dateResult.toMillis();
 }
 
 module.exports = {
   stringToTimestamp,
-  getStartOrEndOfMonth,
+  getStartOrEndOfTime,
 };

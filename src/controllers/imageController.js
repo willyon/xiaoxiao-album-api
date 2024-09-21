@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:00:14
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-18 23:42:07
+ * @LastEditTime: 2024-09-22 02:56:31
  * @Description: File description
  */
 // 后面删掉这个
@@ -10,7 +10,15 @@ require("dotenv").config();
 const path = require("path");
 const fsExtra = require("fs-extra");
 const { readFile } = require("../services/fileService");
-const { createTableImages, getAllImageInfo, getAllImageInfoByPage, getCertainMonthImageInfoByPage, saveImageInfo } = require("../models/imageModel");
+const {
+  createTableImages,
+  saveImageInfo,
+  getAllImageInfo,
+  getAllImageInfoByPage,
+  getCertainTimeRangeImageInfoByPage,
+  getYearCatalogInfoByPage,
+  getMonthCatalogInfoByPage,
+} = require("../models/imageModel");
 const { stringToTimestamp } = require("../utils/formatTime");
 const { isImage, isDuplicate, formatImage, rollbackOperation, calculateImageHash, extractImageMetadata } = require("../services/imageService");
 
@@ -82,9 +90,9 @@ async function processAndSaveImage() {
         const exifData = await extractImageMetadata(sourceFilePath);
         // console.log("元数据：", exifData.CreateDate);
         let imageData = {
-          bigPath: path.join(`/${process.env.PROCESSED_BIG_IMAGE_DIR}`, `${fileName}.${imgExtension}`),
-          smallPath: path.join(`/${process.env.PROCESSED_SMALL_IMAGE_DIR}`, `${fileName}.${imgExtension}`),
-          creationDate: exifData.CreateDate ? stringToTimestamp(exifData.CreateDate.rawValue) : "",
+          bigImageUrl: path.join(`/${process.env.PROCESSED_BIG_IMAGE_DIR}`, `${fileName}.${imgExtension}`),
+          smallImageUrl: path.join(`/${process.env.PROCESSED_SMALL_IMAGE_DIR}`, `${fileName}.${imgExtension}`),
+          creationDate: exifData.CreateDate ? stringToTimestamp(exifData.CreateDate.rawValue) : null,
         };
         console.log("imageData:", imageData);
         // 获取图片哈希值
@@ -118,22 +126,17 @@ function getAllImages(req, res) {
   try {
     // 获取数据库中所有已存储图片信息
     const images = getAllImageInfo();
-    // 将 imagesWithBaseUrl 数组转换成 JSON 格式，并将其发送给客户端
-    // res.json(images);
 
     // 为每张图片添加服务器基本路径
     const imagesWithBaseUrl = images.map((image) => {
       return {
         ...image,
-        bigPath: `${baseUrl}${image.bigPath}`,
-        smallPath: `${baseUrl}${image.smallPath}`,
+        bigImageUrl: `${baseUrl}${image.bigImageUrl}`,
+        smallImageUrl: `${baseUrl}${image.smallImageUrl}`,
       };
     });
+    // 将 imagesWithBaseUrl 数组转换成 JSON 格式，并将其发送给客户端
     res.json(imagesWithBaseUrl);
-    // res.json({
-    //     success:true,
-    //     data:imagesWithBaseUrl
-    // })
   } catch (err) {
     console.log("查询全部图片信息表出错：", err);
     res.status(500).json({ error: "internal server error" });
@@ -148,54 +151,88 @@ function getAllImagesByPage(req, res) {
   try {
     // 分页获取数据库中所有已存储图片信息
     const queryResult = getAllImageInfoByPage({ pageSize, pageNo });
-    // 将 imagesWithBaseUrl 数组转换成 JSON 格式，并将其发送给客户端
-    // res.json(images);
 
     // 为每张图片添加服务器基本路径
     const imagesWithBaseUrl = queryResult.data.map((image) => {
       return {
         ...image,
-        bigPath: `${baseUrl}${image.bigPath}`,
-        smallPath: `${baseUrl}${image.smallPath}`,
+        bigImageUrl: `${baseUrl}${image.bigImageUrl}`,
+        smallImageUrl: `${baseUrl}${image.smallImageUrl}`,
       };
     });
     res.json({ data: imagesWithBaseUrl, total: queryResult.total });
-    // res.json({
-    //     success:true,
-    //     data:imagesWithBaseUrl
-    // })
   } catch (err) {
-    console.log("分野查询图片信息表出错：", err);
+    console.log("分页查询图片信息表出错：", err);
     res.status(500).json({ error: "internal server error" });
   }
 }
 
 //分页获取具体某个月图片信息
-function getCertainMonthImagesByPage(req, res) {
-  const { pageSize, pageNo, month: creationDate } = req.body;
+function getCertainTimeRangeImagesByPage(req, res) {
+  const { pageSize, pageNo, creationDate, dataRange } = req.body;
   // 资源地址 用于图片访问地址拼接
   const baseUrl = `${req.protocol}://${req.get("host")}`;
   try {
     // 分页获取数据库中具体某个月已存储图片信息
-    const queryResult = getCertainMonthImageInfoByPage({ pageSize, pageNo, creationDate });
-    // 将 imagesWithBaseUrl 数组转换成 JSON 格式，并将其发送给客户端
-    // res.json(images);
+    const queryResult = getCertainTimeRangeImageInfoByPage({ pageSize, pageNo, creationDate, dataRange });
 
     // 为每张图片添加服务器基本路径
     const imagesWithBaseUrl = queryResult.data.map((image) => {
       return {
         ...image,
-        bigPath: `${baseUrl}${image.bigPath}`,
-        smallPath: `${baseUrl}${image.smallPath}`,
+        bigImageUrl: `${baseUrl}${image.bigImageUrl}`,
+        smallImageUrl: `${baseUrl}${image.smallImageUrl}`,
       };
     });
     res.json({ data: imagesWithBaseUrl, total: queryResult.total });
-    // res.json({
-    //     success:true,
-    //     data:imagesWithBaseUrl
-    // })
   } catch (err) {
-    console.log("分野查询图片信息表出错：", err);
+    console.log("分页查询图片信息表出错：", err);
+    res.status(500).json({ error: "internal server error" });
+  }
+}
+
+// 分页获取按年份分组数据
+function getGroupedImagesByYearAndPage(req, res) {
+  const { pageSize, pageNo } = req.body;
+  // 资源地址 用于图片访问地址拼接
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  try {
+    // 分页获取数据
+    const queryResult = getYearCatalogInfoByPage({ pageSize, pageNo });
+
+    // 为每张图片添加服务器基本路径
+    const imagesWithBaseUrl = queryResult.data.map((image) => {
+      return {
+        ...image,
+        latestImageUrl: `${baseUrl}${image.latestImageUrl}`,
+      };
+    });
+    res.json({ data: imagesWithBaseUrl, total: queryResult.total });
+  } catch (err) {
+    console.log("分页查询图片信息表出错：", err);
+    res.status(500).json({ error: "internal server error" });
+  }
+}
+
+// 分页获取按月份分组数据
+function getGroupedImagesByMonthAndPage(req, res) {
+  const { pageSize, pageNo } = req.body;
+  // 资源地址 用于图片访问地址拼接
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  try {
+    // 分页获取数据
+    const queryResult = getMonthCatalogInfoByPage({ pageSize, pageNo });
+
+    // 为每张图片添加服务器基本路径
+    const imagesWithBaseUrl = queryResult.data.map((image) => {
+      return {
+        ...image,
+        latestImageUrl: `${baseUrl}${image.latestImageUrl}`,
+      };
+    });
+    res.json({ data: imagesWithBaseUrl, total: queryResult.total });
+  } catch (err) {
+    console.log("分页查询图片信息表出错：", err);
     res.status(500).json({ error: "internal server error" });
   }
 }
@@ -204,5 +241,7 @@ module.exports = {
   processAndSaveImage,
   getAllImages,
   getAllImagesByPage,
-  getCertainMonthImagesByPage,
+  getCertainTimeRangeImagesByPage,
+  getGroupedImagesByYearAndPage,
+  getGroupedImagesByMonthAndPage,
 };
