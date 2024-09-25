@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:01:09
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-22 02:54:07
+ * @LastEditTime: 2024-09-25 21:59:58
  * @Description: File description
  */
 const { db } = require("../services/dbService");
@@ -24,8 +24,6 @@ function createTableImages() {
 
 //保存图片信息到数据库
 const saveImageInfo = (() => {
-  // 测试可用
-  // createTableImages();
   const stmt = db.prepare(`INSERT INTO images (bigImageUrl, smallImageUrl, creationDate, hash) VALUES (?, ?, ?, ?)`);
   return ({ bigImageUrl, smallImageUrl, creationDate, hash }) => {
     return new Promise((resolve, reject) => {
@@ -85,16 +83,16 @@ function getAllImageInfoByPage({ pageNo = 1, pageSize = 10 }) {
 }
 
 // 分页获取具体某个时间段(某月、某年)图片信息
-let cachedCertainTimeRangeTotal = null;
-function getCertainTimeRangeImageInfoByPage({ pageNo = 1, pageSize = 10, creationDate = 0, dataRange = "" }) {
+let certainTimeRangeTotal = { year: null, month: null };
+function getCertainTimeRangeImageInfoByPage({ pageNo = 1, pageSize = 10, creationDate = null, timeRange = "" }) {
   if (pageNo === 1) {
-    cachedCertainTimeRangeTotal = null;
+    certainTimeRangeTotal[timeRange] = null;
   }
   const offset = (pageNo - 1) * pageSize;
   // 有时间戳
   if (creationDate) {
-    const startTime = getStartOrEndOfTime(creationDate, "start", dataRange);
-    const endTime = getStartOrEndOfTime(creationDate, "end", dataRange);
+    const startTime = getStartOrEndOfTime(creationDate, "start", timeRange);
+    const endTime = getStartOrEndOfTime(creationDate, "end", timeRange);
     console.log("相册时间戳：", startTime, endTime);
     const dataQuery = db.prepare(`
       SELECT * FROM images
@@ -105,17 +103,17 @@ function getCertainTimeRangeImageInfoByPage({ pageNo = 1, pageSize = 10, creatio
     try {
       const pageData = dataQuery.all(startTime, endTime, pageSize, offset);
       // 如果缓存为空，则计算总条数并缓存
-      if (!cachedCertainTimeRangeTotal) {
+      if (!certainTimeRangeTotal[timeRange]) {
         const countQuery = db.prepare(`
           SELECT COUNT(*) AS total 
           FROM images
           WHERE creationDate >= ? AND creationDate < ? 
       `);
-        cachedCertainTimeRangeTotal = countQuery.get(startTime, endTime).total;
+        certainTimeRangeTotal[timeRange] = countQuery.get(startTime, endTime).total;
       }
       return {
         data: pageData,
-        total: cachedCertainTimeRangeTotal,
+        total: certainTimeRangeTotal[timeRange],
       };
     } catch (err) {
       console.log("分页获取图片信息发生错误：", err);
@@ -131,17 +129,17 @@ function getCertainTimeRangeImageInfoByPage({ pageNo = 1, pageSize = 10, creatio
     try {
       const pageData = dataQuery.all(pageSize, offset);
       // 如果缓存为空，则计算总条数并缓存
-      if (!cachedCertainTimeRangeTotal) {
+      if (!certainTimeRangeTotal[timeRange]) {
         const countQuery = db.prepare(`
           SELECT COUNT(*) AS total 
           FROM images
           WHERE (creationDate IS NULL OR creationDate = '') 
       `);
-        cachedCertainTimeRangeTotal = countQuery.get().total;
+        certainTimeRangeTotal[timeRange] = countQuery.get().total;
       }
       return {
         data: pageData,
-        total: cachedCertainTimeRangeTotal,
+        total: certainTimeRangeTotal[timeRange],
       };
     } catch (err) {
       console.log("分页获取图片信息发生错误：", err);
@@ -156,19 +154,19 @@ function getYearCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
   const dataQuery = db.prepare(`
     SELECT
       CASE
-        WHEN creationDate IS NULL OR creationDate = '' THEN 'unknown'
-        ELSE strftime('%Y', creationDate / 1000, 'unixepoch')
+        WHEN creationDate IS NULL THEN 'unknown'
+        ELSE strftime('%Y', creationDate / 1000, 'unixepoch', 'localtime')
       END AS timeOfGroup,
 
       (SELECT smallImageUrl FROM images AS i2
-        WHERE (strftime('%Y', i2.creationDate / 1000, 'unixepoch') = strftime('%Y', i1.creationDate / 1000, 'unixepoch')
-        OR (i2.creationDate IS NULL OR i2.creationDate = ''))
+        WHERE (strftime('%Y', i2.creationDate / 1000, 'unixepoch', 'localtime') = strftime('%Y', i1.creationDate / 1000, 'unixepoch', 'localtime')
+        OR (i2.creationDate IS NULL))
       ORDER BY i2.creationDate DESC LIMIT 1
       ) AS latestImageUrl,
 
       (SELECT creationDate FROM images AS i2
-        WHERE (strftime('%Y', i2.creationDate / 1000, 'unixepoch') = strftime('%Y', i1.creationDate / 1000, 'unixepoch')
-        OR (i2.creationDate IS NULL OR i2.creationDate = ''))
+        WHERE (strftime('%Y', i2.creationDate / 1000, 'unixepoch', 'localtime') = strftime('%Y', i1.creationDate / 1000, 'unixepoch', 'localtime')
+        OR (i2.creationDate IS NULL))
       ORDER BY i2.creationDate DESC LIMIT 1
       ) AS creationDate,
 
@@ -190,8 +188,8 @@ function getYearCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
     if (cachedYearCatalogTotal === null) {
       const countQuery = db.prepare(`
         SELECT COUNT(DISTINCT CASE 
-          WHEN creationDate IS NULL OR creationDate = '' THEN 'unknown' 
-          ELSE strftime('%Y', creationDate / 1000, 'unixepoch')
+          WHEN creationDate IS NULL THEN 'unknown' 
+          ELSE strftime('%Y', creationDate / 1000, 'unixepoch', 'localtime')
         END) AS groupCount
         FROM images;
       `);
@@ -206,6 +204,19 @@ function getYearCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
   }
 }
 
+function sqlTest() {
+  // const dataQuery = db.prepare(`
+  //   SELECT strftime('%Y-%m', creationDate / 1000, 'unixepoch', 'localtime') AS dateGroup
+  //   FROM images
+  //   WHERE strftime('%Y-%m', creationDate / 1000, 'unixepoch', 'localtime') = '2024-07';
+  // `);
+  const dataQuery = db.prepare(`
+    SELECT * FROM images WHERE creationDate = 1722451224000;
+  `);
+  let result = dataQuery.all();
+  console.log("调试结果:", result);
+}
+
 // 分页获取按月份分组图片目录数据
 let cachedMonthCatalogTotal = null;
 function getMonthCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
@@ -213,19 +224,19 @@ function getMonthCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
   const dataQuery = db.prepare(`
     SELECT
       CASE
-        WHEN creationDate IS NULL OR creationDate = '' THEN 'unknown'
-        ELSE strftime('%Y-%m', creationDate / 1000, 'unixepoch')
+        WHEN creationDate IS NULL THEN 'unknown'
+        ELSE strftime('%Y-%m', creationDate / 1000, 'unixepoch', 'localtime')
       END AS timeOfGroup,
 
       (SELECT smallImageUrl FROM images AS i2
-        WHERE (strftime('%Y-%m', i2.creationDate / 1000, 'unixepoch') = strftime('%Y-%m', i1.creationDate / 1000, 'unixepoch')
-        OR (i2.creationDate IS NULL OR i2.creationDate = ''))
+      WHERE (strftime('%Y-%m', i2.creationDate / 1000, 'unixepoch', 'localtime') = strftime('%Y-%m', i1.creationDate / 1000, 'unixepoch', 'localtime')
+        OR (i2.creationDate IS NULL))
       ORDER BY i2.creationDate DESC LIMIT 1
       ) AS latestImageUrl,
 
       (SELECT creationDate FROM images AS i2
-        WHERE (strftime('%Y-%m', i2.creationDate / 1000, 'unixepoch') = strftime('%Y-%m', i1.creationDate / 1000, 'unixepoch')
-        OR (i2.creationDate IS NULL OR i2.creationDate = ''))
+      WHERE (strftime('%Y-%m', i2.creationDate / 1000, 'unixepoch', 'localtime') = strftime('%Y-%m', i1.creationDate / 1000, 'unixepoch', 'localtime')
+        OR (i2.creationDate IS NULL))
       ORDER BY i2.creationDate DESC LIMIT 1
       ) AS creationDate,
 
@@ -247,8 +258,8 @@ function getMonthCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
     if (cachedMonthCatalogTotal === null) {
       const countQuery = db.prepare(`
         SELECT COUNT(DISTINCT CASE 
-          WHEN creationDate IS NULL OR creationDate = '' THEN 'unknown' 
-          ELSE strftime('%Y-%m', creationDate / 1000, 'unixepoch')
+          WHEN creationDate IS NULL THEN 'unknown' 
+          ELSE strftime('%Y-%m', creationDate / 1000, 'unixepoch', 'localtime')
         END) AS groupCount
         FROM images;
       `);
@@ -272,4 +283,5 @@ module.exports = {
   getCertainTimeRangeImageInfoByPage,
   getYearCatalogInfoByPage,
   getMonthCatalogInfoByPage,
+  sqlTest,
 };

@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-17 22:24:29
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-20 08:29:22
+ * @LastEditTime: 2024-09-25 22:55:14
  * @Description: File description
  */
 require("dotenv").config();
@@ -25,14 +25,16 @@ function deleteFolderSync(folderPath) {
     // fs.rmdirSync(folderPath); // 删除空文件夹
   }
 }
-const bigImageFolder = path.join(__dirname, "..", process.env.PROCESSED_BIG_IMAGE_DIR);
-const smallImageFolder = path.join(__dirname, "..", process.env.PROCESSED_SMALL_IMAGE_DIR);
-const duplicateFolder = path.join(__dirname, "..", process.env.DUPLICATE_IMAGE_DIR);
-const originalFolder = path.join(__dirname, "..", process.env.PROCESSED_ORIGINAL_IMAGE_DIR);
-deleteFolderSync(bigImageFolder);
-deleteFolderSync(smallImageFolder);
-deleteFolderSync(duplicateFolder);
-deleteFolderSync(originalFolder);
+const clearFolders = {
+  uploadFolder: path.join(__dirname, "..", process.env.UPLOADS_DIR),
+  bigImageFolder: path.join(__dirname, "..", process.env.PROCESSED_BIG_IMAGE_DIR),
+  smallImageFolder: path.join(__dirname, "..", process.env.PROCESSED_SMALL_IMAGE_DIR),
+  duplicateFolder: path.join(__dirname, "..", process.env.DUPLICATE_IMAGE_DIR),
+  originalFolder: path.join(__dirname, "..", process.env.PROCESSED_ORIGINAL_IMAGE_DIR),
+};
+for (let key in clearFolders) {
+  deleteFolderSync(clearFolders[key]);
+}
 
 // 清空数据表内容
 function resetTable() {
@@ -62,12 +64,10 @@ db.close();
 
 // 给uploadedFiles文件夹添加测试图片
 // 源文件夹路径
-const sourceFolder = path.join(__dirname, "..", "uploadedFilesTest");
-console.log("sourceFolder:", sourceFolder);
+const sourceFolder = path.join(__dirname, "..", "..", "..", "..", "family media");
 
 // 目标文件夹路径
 const destinationFolder = path.join(__dirname, "..", process.env.UPLOADS_DIR);
-console.log("destinationFolder:", destinationFolder);
 
 // 确保目标文件夹存在
 if (!fs.existsSync(destinationFolder)) {
@@ -75,24 +75,17 @@ if (!fs.existsSync(destinationFolder)) {
 }
 
 // 复制文件的函数
-function copyFiles(sourceDir, destDir, numFiles) {
-  // 读取源文件夹中的文件
-  const files = fs.readdirSync(sourceDir);
-
-  // 只选择前 numFiles 个文件
-  let filesToCopy = null;
-  if (numFiles) {
-    filesToCopy = files.slice(0, numFiles);
-  }
-  filesToCopy = files;
-
-  filesToCopy.forEach((file) => {
+function copyFiles(sourceDir, destDir) {
+  fs.readdirSync(sourceDir).forEach((file) => {
     const srcPath = path.join(sourceDir, file);
     const destPath = path.join(destDir, file);
-
-    // 复制文件
-    fs.copyFileSync(srcPath, destPath);
-    console.log(`Copied ${file} to ${destDir}`);
+    if (fs.statSync(srcPath).isDirectory()) {
+      copyFiles(srcPath, destDir);
+    } else if (isImage(srcPath)) {
+      // 复制文件
+      fs.copyFileSync(srcPath, destPath);
+      console.log(`Copied ${file} to ${destDir}`);
+    }
   });
 }
 

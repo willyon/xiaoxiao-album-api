@@ -2,13 +2,14 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:00:14
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-22 02:56:31
+ * @LastEditTime: 2024-09-25 23:30:09
  * @Description: File description
  */
 // 后面删掉这个
 require("dotenv").config();
 const path = require("path");
 const fsExtra = require("fs-extra");
+const async = require("async");
 const { readFile } = require("../services/fileService");
 const {
   createTableImages,
@@ -58,7 +59,7 @@ async function processAndSaveImage() {
     // 获取数据库中所有已存储图片信息
     const existingImages = getAllImageInfo();
     // 进行图片文件处理
-    for (const file of imageFiles) {
+    async function processImage(file) {
       //  原文件路径
       const sourceFilePath = path.join(uploadFolder, file);
       // 判断数据库中是否已存在相同图片信息(在这之前应该对文件夹内部进行一次去重 这个逻辑后面补上)
@@ -75,16 +76,16 @@ async function processAndSaveImage() {
         try {
           //  格式化大图
           var bigFilePath = path.join(bigImageFolder, `${fileName}.${imgExtension}`);
-          await formatImage([sourceFilePath, "-quality", "60", bigFilePath]);
+          await formatImage([sourceFilePath, "-quality", "40", bigFilePath]);
           // 格式化小图
           var smallFilePath = path.join(smallImageFolder, `${fileName}.${imgExtension}`);
-          await formatImage([sourceFilePath, "-quality", "50", "-resize", "800x", smallFilePath]);
+          await formatImage([sourceFilePath, "-quality", "40", "-resize", "800x", smallFilePath]);
         } catch (err) {
           console.log(`图片文件 ${file} 格式转换失败: ${err}`);
           //将可能已转化成功的图片文件删除并跳出当前循环
           rollbackOperation(bigFilePath);
           rollbackOperation(smallFilePath);
-          continue;
+          return;
         }
         // 获取图片元数据
         const exifData = await extractImageMetadata(sourceFilePath);
@@ -112,10 +113,17 @@ async function processAndSaveImage() {
         }
       }
     }
+    // 使用 async.eachLimit 限制并发数量
+    async.eachLimit(imageFiles, 4, processImage, (err) => {
+      if (err) {
+        console.error("并发处理出错:", err);
+      } else {
+        console.log(`并发任务完成，成功处理${processCount}/${imageFiles.length}张`);
+      }
+    });
   } catch (err) {
     console.log("图片处理出错：", err);
   } finally {
-    console.log(`图片操作结束，成功处理${processCount}张`);
   }
 }
 
@@ -169,12 +177,12 @@ function getAllImagesByPage(req, res) {
 
 //分页获取具体某个月图片信息
 function getCertainTimeRangeImagesByPage(req, res) {
-  const { pageSize, pageNo, creationDate, dataRange } = req.body;
+  const { pageSize, pageNo, creationDate, timeRange } = req.body;
   // 资源地址 用于图片访问地址拼接
   const baseUrl = `${req.protocol}://${req.get("host")}`;
   try {
     // 分页获取数据库中具体某个月已存储图片信息
-    const queryResult = getCertainTimeRangeImageInfoByPage({ pageSize, pageNo, creationDate, dataRange });
+    const queryResult = getCertainTimeRangeImageInfoByPage({ pageSize, pageNo, creationDate, timeRange });
 
     // 为每张图片添加服务器基本路径
     const imagesWithBaseUrl = queryResult.data.map((image) => {

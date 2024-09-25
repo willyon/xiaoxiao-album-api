@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-08-30 16:46:37
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-18 00:02:11
+ * @LastEditTime: 2024-09-25 00:06:13
  * @Description: File description
  */
 // 服务器入口
@@ -25,8 +25,7 @@ app.use(express.json());
 
 // 引入路由
 const imagesRouter = require("./src/routes/images");
-
-//使用路由
+//使用路由 e.g. 接收post请求 /images/queryAllByPage
 app.use("/images", imagesRouter);
 
 app.listen(port, () => {
