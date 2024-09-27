@@ -2,19 +2,29 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:01:09
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-25 21:59:58
+ * @LastEditTime: 2024-09-27 14:48:35
  * @Description: File description
  */
 const { db } = require("../services/dbService");
 const { getStartOrEndOfTime } = require("../utils/formatTime");
+
+//删除表格
+function deleteTableImages() {
+  const createtablestmt = `
+    DROP TABLE iamges
+  `;
+  db.prepare(createtablestmt).run();
+}
 
 // 创建表格
 function createTableImages() {
   const createtablestmt = `
       CREATE TABLE IF NOT EXISTS images (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        bigImageUrl TEXT,
-        smallImageUrl TEXT,
+        originalImageUrl TEXT,
+        bigHighQualityImageUrl TEXT,
+        bigLowQualityImageUrl TEXT,
+        previewImageUrl TEXT,
         creationDate INTEGER,
         hash TEXT
       );
@@ -24,11 +34,14 @@ function createTableImages() {
 
 //保存图片信息到数据库
 const saveImageInfo = (() => {
-  const stmt = db.prepare(`INSERT INTO images (bigImageUrl, smallImageUrl, creationDate, hash) VALUES (?, ?, ?, ?)`);
-  return ({ bigImageUrl, smallImageUrl, creationDate, hash }) => {
+  // createTableImages()
+  const stmt = db.prepare(
+    `INSERT INTO images (bigHighQualityImageUrl,bigLowQualityImageUrl,previewImageUrl, creationDate, hash) VALUES (?, ?, ?, ?, ?)`,
+  );
+  return ({ bigHighQualityImageUrl, bigLowQualityImageUrl, previewImageUrl, creationDate, hash }) => {
     return new Promise((resolve, reject) => {
       try {
-        stmt.run(bigImageUrl, smallImageUrl, creationDate, hash);
+        stmt.run(bigHighQualityImageUrl, bigLowQualityImageUrl, previewImageUrl, creationDate, hash);
         resolve();
       } catch (err) {
         reject(err);
@@ -158,7 +171,7 @@ function getYearCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
         ELSE strftime('%Y', creationDate / 1000, 'unixepoch', 'localtime')
       END AS timeOfGroup,
 
-      (SELECT smallImageUrl FROM images AS i2
+      (SELECT previewImageUrl FROM images AS i2
         WHERE (strftime('%Y', i2.creationDate / 1000, 'unixepoch', 'localtime') = strftime('%Y', i1.creationDate / 1000, 'unixepoch', 'localtime')
         OR (i2.creationDate IS NULL))
       ORDER BY i2.creationDate DESC LIMIT 1
@@ -204,19 +217,6 @@ function getYearCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
   }
 }
 
-function sqlTest() {
-  // const dataQuery = db.prepare(`
-  //   SELECT strftime('%Y-%m', creationDate / 1000, 'unixepoch', 'localtime') AS dateGroup
-  //   FROM images
-  //   WHERE strftime('%Y-%m', creationDate / 1000, 'unixepoch', 'localtime') = '2024-07';
-  // `);
-  const dataQuery = db.prepare(`
-    SELECT * FROM images WHERE creationDate = 1722451224000;
-  `);
-  let result = dataQuery.all();
-  console.log("调试结果:", result);
-}
-
 // 分页获取按月份分组图片目录数据
 let cachedMonthCatalogTotal = null;
 function getMonthCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
@@ -228,7 +228,7 @@ function getMonthCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
         ELSE strftime('%Y-%m', creationDate / 1000, 'unixepoch', 'localtime')
       END AS timeOfGroup,
 
-      (SELECT smallImageUrl FROM images AS i2
+      (SELECT previewImageUrl FROM images AS i2
       WHERE (strftime('%Y-%m', i2.creationDate / 1000, 'unixepoch', 'localtime') = strftime('%Y-%m', i1.creationDate / 1000, 'unixepoch', 'localtime')
         OR (i2.creationDate IS NULL))
       ORDER BY i2.creationDate DESC LIMIT 1
@@ -275,6 +275,7 @@ function getMonthCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
 }
 
 module.exports = {
+  deleteTableImages,
   createTableImages,
   saveImageInfo,
   findImageInfoById,
@@ -283,5 +284,4 @@ module.exports = {
   getCertainTimeRangeImageInfoByPage,
   getYearCatalogInfoByPage,
   getMonthCatalogInfoByPage,
-  sqlTest,
 };

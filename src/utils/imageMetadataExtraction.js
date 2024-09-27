@@ -16,14 +16,14 @@ const { stringToTimestamp } = require("./formatTime");
 const IMG_EXTENSION = process.env.CONVERT_IMAGE_EXTENSION;
 
 // 转换大图目录
-const bigImageFolder = path.join(__dirname, "..", "..", process.env.BIG_IMAGES_DIR);
+const bigHighImageFolder = path.join(__dirname, "..", "..", process.env.BIG_IMAGES_DIR);
 // 转换小图目录
 const smallImageFolder = path.join(__dirname, "..", "..", process.env.SMALL_IMAGES_DIR);
 // 日志文件目录
 const logFile = path.join(__dirname, "..", "..", process.env.CONVERSION_LOG_FILE);
 
 // 确保目标文件夹存在 若不存在 会自动创建
-fsExtra.ensureDirSync(bigImageFolder);
+fsExtra.ensureDirSync(bigHighImageFolder);
 fsExtra.ensureDirSync(smallImageFolder);
 
 // 创建日志流 a表示 新内容是在原来内容基础新增 而不是覆盖
@@ -42,7 +42,7 @@ const logError = (message) => {
 // 读取成功格式化大图文件夹中的所有图片文件
 const getImageMetadata = () => {
   return fsPromise
-    .readdir(bigImageFolder)
+    .readdir(bigHighImageFolder)
     .then((files) => {
       return Promise.allSettled(files.map(getPictureMetadata));
     })
@@ -59,7 +59,7 @@ const getImageMetadata = () => {
 
 const getPictureMetadata = (file) => {
   if (isImage(file)) {
-    const filePath = path.join(bigImageFolder, file);
+    const filePath = path.join(bigHighImageFolder, file);
     const baseName = path.parse(file).name;
     return exiftool
       .read(filePath)

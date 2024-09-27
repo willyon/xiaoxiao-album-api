@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-17 22:24:29
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-25 22:55:14
+ * @LastEditTime: 2024-09-27 14:41:19
  * @Description: File description
  */
 require("dotenv").config();
@@ -27,8 +27,9 @@ function deleteFolderSync(folderPath) {
 }
 const clearFolders = {
   uploadFolder: path.join(__dirname, "..", process.env.UPLOADS_DIR),
-  bigImageFolder: path.join(__dirname, "..", process.env.PROCESSED_BIG_IMAGE_DIR),
-  smallImageFolder: path.join(__dirname, "..", process.env.PROCESSED_SMALL_IMAGE_DIR),
+  bigHighImageFolder: path.join(__dirname, "..", process.env.PROCESSED_BIG_HIGH_IMAGE_DIR),
+  bigLowImageFolder: path.join(__dirname, "..", process.env.PROCESSED_BIG_LOW_IMAGE_DIR),
+  previewImageFolder: path.join(__dirname, "..", process.env.PROCESSED_PREVIEW_IMAGE_DIR),
   duplicateFolder: path.join(__dirname, "..", process.env.DUPLICATE_IMAGE_DIR),
   originalFolder: path.join(__dirname, "..", process.env.PROCESSED_ORIGINAL_IMAGE_DIR),
 };

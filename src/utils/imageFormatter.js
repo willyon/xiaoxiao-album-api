@@ -21,7 +21,7 @@ const succeededArchive = path.join(__dirname, "..", "..", process.env.CONVERT_IM
 // 转换失败源图片存档目录
 const failedArchive = path.join(__dirname, "..", "..", process.env.CONVERT_IMAGES_FAILED_DIR);
 // 转换大图目录
-const bigImageFolder = path.join(__dirname, "..", "..", process.env.BIG_IMAGES_DIR);
+const bigHighImageFolder = path.join(__dirname, "..", "..", process.env.BIG_IMAGES_DIR);
 // 转换小图目录
 const smallImageFolder = path.join(__dirname, "..", "..", process.env.SMALL_IMAGES_DIR);
 // 日志文件目录
@@ -30,7 +30,7 @@ const logFile = path.join(__dirname, "..", "..", process.env.CONVERSION_LOG_FILE
 // 确保目标文件夹存在 若不存在 会自动创建
 fsExtra.ensureDirSync(succeededArchive);
 fsExtra.ensureDirSync(failedArchive);
-fsExtra.ensureDirSync(bigImageFolder);
+fsExtra.ensureDirSync(bigHighImageFolder);
 fsExtra.ensureDirSync(smallImageFolder);
 
 // 创建日志流 a表示 新内容是在原来内容基础新增 而不是覆盖
@@ -72,7 +72,7 @@ const startFormatting = (file) => {
     // 文件名
     const baseName = path.parse(file).name;
     //  大图路径
-    const bigFile = path.join(bigImageFolder, `${baseName}.${IMG_EXTENSION}`);
+    const bigFile = path.join(bigHighImageFolder, `${baseName}.${IMG_EXTENSION}`);
     // 小图路径
     const smallFile = path.join(smallImageFolder, `${baseName}.${IMG_EXTENSION}`);
     // 格式化成功原图存档路径

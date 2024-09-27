@@ -11,40 +11,15 @@ const path = require("path");
 const sharp = require("sharp");
 
 // 配置文件夹路径
-const sourceFolder = path.join(
-  __dirname,
-  "..",
-  "..",
-  process.env.ORIGINAL_IMAGES_DIR
-);
-const archiveFolder = path.join(
-  __dirname,
-  "..",
-  "..",
-  process.env.ORIGINAL_IMAGES_ARCHIVE_DIR
-);
-const bigImageFolder = path.join(
-  __dirname,
-  "..",
-  "..",
-  process.env.BIG_IMAGES_DIR
-);
-const smallImageFolder = path.join(
-  __dirname,
-  "..",
-  "..",
-  process.env.SMALL_IMAGES_DIR
-);
-const logFile = path.join(
-  __dirname,
-  "..",
-  "..",
-  process.env.CONVERSION_LOG_FILE
-);
+const sourceFolder = path.join(__dirname, "..", "..", process.env.ORIGINAL_IMAGES_DIR);
+const archiveFolder = path.join(__dirname, "..", "..", process.env.ORIGINAL_IMAGES_ARCHIVE_DIR);
+const bigHighImageFolder = path.join(__dirname, "..", "..", process.env.BIG_IMAGES_DIR);
+const smallImageFolder = path.join(__dirname, "..", "..", process.env.SMALL_IMAGES_DIR);
+const logFile = path.join(__dirname, "..", "..", process.env.CONVERSION_LOG_FILE);
 
 // 确保目标文件夹存在
-if (!fs.existsSync(bigImageFolder)) {
-  fs.mkdirSync(bigImageFolder);
+if (!fs.existsSync(bigHighImageFolder)) {
+  fs.mkdirSync(bigHighImageFolder);
 }
 if (!fs.existsSync(smallImageFolder)) {
   fs.mkdirSync(smallImageFolder);
@@ -66,20 +41,12 @@ function convertImage(file) {
   // 只处理图片文件
   if (
     //  sharp库使用有问题 解决了半天没搞成 暂不支持".heic" 其它没问题 已测试
-    [".jpg", ".jpeg", ".png", ".avif", ".webp", ".gif"].includes(
-      path.extname(file).toLowerCase()
-    )
+    [".jpg", ".jpeg", ".png", ".avif", ".webp", ".gif"].includes(path.extname(file).toLowerCase())
   ) {
     const filePath = path.join(sourceFolder, file);
-    const bigFilePath = path.join(
-      bigImageFolder,
-      path.parse(file).name + ".avif"
-    );
-    console.log("大图路径:", bigFilePath);
-    const smallFilePath = path.join(
-      smallImageFolder,
-      path.parse(file).name + "_small.avif"
-    );
+    const bigHighFilePath = path.join(bigHighImageFolder, path.parse(file).name + ".avif");
+    console.log("大图路径:", bigHighFilePath);
+    const smallFilePath = path.join(smallImageFolder, path.parse(file).name + "_small.avif");
     console.log("小图路径:", smallFilePath);
     const archiveFilePath = path.join(archiveFolder, file);
     console.log("存档路径:", archiveFilePath);
@@ -89,12 +56,8 @@ function convertImage(file) {
 
     // 转换为 AVIF 和缩小图像
     Promise.all([
-      image.clone().toFormat("avif", { quality: 60 }).toFile(bigFilePath),
-      image
-        .clone()
-        .resize(800)
-        .toFormat("avif", { quality: 80 })
-        .toFile(smallFilePath),
+      image.clone().toFormat("avif", { quality: 60 }).toFile(bigHighFilePath),
+      image.clone().resize(800).toFormat("avif", { quality: 80 }).toFile(smallFilePath),
     ])
       .then(() => {
         console.log(`成功将图片文件 ${file} 转为avif格式及其缩略图`);
@@ -111,16 +74,14 @@ function convertImage(file) {
       .catch((err) => {
         logError(`图片文件 ${file} 格式转换失败: ${err.message}`);
         // 回退操作：删除已转换的文件
-        fs.unlink(bigFilePath, (unlinkErr) => {
+        fs.unlink(bigHighFilePath, (unlinkErr) => {
           if (unlinkErr) {
-            logError(`删除avif文件 ${bigFilePath} 失败: ${unlinkErr.message}`);
+            logError(`删除avif文件 ${bigHighFilePath} 失败: ${unlinkErr.message}`);
           }
         });
         fs.unlink(smallFilePath, (unlinkErr) => {
           if (unlinkErr) {
-            logError(
-              `删除avif缩略图文件 ${smallFilePath} 失败: ${unlinkErr.message}`
-            );
+            logError(`删除avif缩略图文件 ${smallFilePath} 失败: ${unlinkErr.message}`);
           }
         });
       });
