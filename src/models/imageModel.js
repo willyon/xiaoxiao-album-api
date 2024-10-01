@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:01:09
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-27 14:48:35
+ * @LastEditTime: 2024-09-29 15:46:10
  * @Description: File description
  */
 const { db } = require("../services/dbService");
@@ -36,12 +36,12 @@ function createTableImages() {
 const saveImageInfo = (() => {
   // createTableImages()
   const stmt = db.prepare(
-    `INSERT INTO images (bigHighQualityImageUrl,bigLowQualityImageUrl,previewImageUrl, creationDate, hash) VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO images (originalImageUrl,bigHighQualityImageUrl,bigLowQualityImageUrl,previewImageUrl, creationDate, hash) VALUES (?, ?, ?, ?, ?, ?)`,
   );
-  return ({ bigHighQualityImageUrl, bigLowQualityImageUrl, previewImageUrl, creationDate, hash }) => {
+  return ({ originalImageUrl, bigHighQualityImageUrl, bigLowQualityImageUrl, previewImageUrl, creationDate, hash }) => {
     return new Promise((resolve, reject) => {
       try {
-        stmt.run(bigHighQualityImageUrl, bigLowQualityImageUrl, previewImageUrl, creationDate, hash);
+        stmt.run(originalImageUrl, bigHighQualityImageUrl, bigLowQualityImageUrl, previewImageUrl, creationDate, hash);
         resolve();
       } catch (err) {
         reject(err);

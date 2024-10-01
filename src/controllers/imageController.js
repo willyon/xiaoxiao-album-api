@@ -2,13 +2,14 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:00:14
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-27 23:43:00
+ * @LastEditTime: 2024-10-01 10:05:59
  * @Description: File description
  */
 // 后面删掉这个
 require("dotenv").config();
 const path = require("path");
 const fsExtra = require("fs-extra");
+const fs = require("fs");
 const async = require("async");
 const { readFile } = require("../services/fileService");
 const {
@@ -22,6 +23,16 @@ const {
 } = require("../models/imageModel");
 const { stringToTimestamp } = require("../utils/formatTime");
 const { isImage, isDuplicate, formatImage, rollbackOperation, calculateImageHash, extractImageMetadata } = require("../services/imageService");
+const { error } = require("console");
+const logFile = path.join(__dirname, "..", "..", process.env.PROCESSED_IMAGE_LOG_FILE);
+
+// 创建日志流
+const logStream = fs.createWriteStream(logFile, { flags: "a" });
+
+function logError(message) {
+  // console.error(message);
+  logStream.write(message + "\n");
+}
 
 //源文件目录
 const uploadFolder = path.join(__dirname, "..", "..", process.env.UPLOADS_DIR);
@@ -44,6 +55,10 @@ fsExtra.ensureDirSync(bigLowImageFolder);
 fsExtra.ensureDirSync(previewImageFolder);
 fsExtra.ensureDirSync(duplicateFolder);
 
+function removeLeadingDigits(str) {
+  return str.replace(/^\d+/, "").replace(/\./g, "dot");
+}
+
 // 图片压缩处理入库
 async function processAndSaveImage() {
   let processCount = 0;
@@ -65,49 +80,51 @@ async function processAndSaveImage() {
     async function processImage(file) {
       //  原文件路径
       const sourceFilePath = path.join(uploadFolder, file);
+      // 获取图片哈希值
+      const imageHash = await calculateImageHash(sourceFilePath);
       // 判断数据库中是否已存在相同图片信息(在这之前应该对文件夹内部进行一次去重 这个逻辑后面补上)
-      const isAlreadyExist = await isDuplicate(sourceFilePath, existingImages);
+      const isAlreadyExist = await isDuplicate(imageHash, existingImages);
       //   已存在 则不再进行图片处理 并将其移至重复图片文件夹存放
       if (isAlreadyExist) {
         const duplicateFilePath = path.join(duplicateFolder, path.basename(sourceFilePath));
         await fsExtra.move(sourceFilePath, duplicateFilePath, { overwrite: true });
         console.log(`重复图片已移动至：${duplicateFilePath}`);
       } else {
-        // 获取文件名(不带后缀)
-        const fileName = path.parse(sourceFilePath).name;
         // 图片格式化
         try {
           //  格式化高质量大图
-          var bigHighFilePath = path.join(bigHighImageFolder, `${fileName}.${imgExtension}`);
-          await formatImage([sourceFilePath, "-quality", "50", bigHighFilePath]);
+          var bigHighFilePath = path.join(bigHighImageFolder, `${imageHash}.${imgExtension}`);
           //  格式化低质量大图
-          var bigLowFilePath = path.join(bigLowImageFolder, `${fileName}.${imgExtension}`);
-          await formatImage([sourceFilePath, "-quality", "1", bigLowFilePath]);
+          var bigLowFilePath = path.join(bigLowImageFolder, `${imageHash}.${imgExtension}`);
           // 格式化小图
-          var previewFilePath = path.join(previewImageFolder, `${fileName}.${imgExtension}`);
-          await formatImage([sourceFilePath, "-quality", "50", "-resize", "600x", previewFilePath]);
+          var previewFilePath = path.join(previewImageFolder, `${imageHash}.${imgExtension}`);
+          await Promise.all([
+            formatImage([sourceFilePath, "-quality", "50", bigHighFilePath]),
+            formatImage([sourceFilePath, "-quality", "10", bigLowFilePath]),
+            formatImage([sourceFilePath, "-quality", "50", "-resize", "600x", previewFilePath]),
+          ]);
         } catch (err) {
           console.log(`图片文件 ${file} 格式转换失败: ${err}`);
           //将可能已转化成功的图片文件删除并跳出当前循环
-          rollbackOperation(bigHighFilePath);
-          rollbackOperation(bigLowFilePath);
-          rollbackOperation(previewFilePath);
+          await rollbackOperation(bigHighFilePath);
+          await rollbackOperation(bigLowFilePath);
+          await rollbackOperation(previewFilePath);
           return;
         }
         // 获取图片元数据
         const exifData = await extractImageMetadata(sourceFilePath);
-        // console.log("元数据：", exifData.CreateDate);
         let imageData = {
           originalImageUrl: path.join(`/${process.env.PROCESSED_ORIGINAL_IMAGE_DIR}`, `${file}`),
-          bigHighQualityImageUrl: path.join(`/${process.env.PROCESSED_BIG_HIGH_IMAGE_DIR}`, `${fileName}.${imgExtension}`),
-          bigLowQualityImageUrl: path.join(`/${process.env.PROCESSED_BIG_LOW_IMAGE_DIR}`, `${fileName}.${imgExtension}`),
-          previewImageUrl: path.join(`/${process.env.PROCESSED_PREVIEW_IMAGE_DIR}`, `${fileName}.${imgExtension}`),
-          creationDate: exifData.CreateDate ? stringToTimestamp(exifData.CreateDate.rawValue) : null,
+          bigHighQualityImageUrl: path.join(`/${process.env.PROCESSED_BIG_HIGH_IMAGE_DIR}`, `${imageHash}.${imgExtension}`),
+          bigLowQualityImageUrl: path.join(`/${process.env.PROCESSED_BIG_LOW_IMAGE_DIR}`, `${imageHash}.${imgExtension}`),
+          previewImageUrl: path.join(`/${process.env.PROCESSED_PREVIEW_IMAGE_DIR}`, `${imageHash}.${imgExtension}`),
+          creationDate: exifData.DateTimeOriginal ? stringToTimestamp(exifData.DateTimeOriginal.rawValue) : null,
+          hash: imageHash,
         };
-        // 获取图片哈希值
-        const imageHash = await calculateImageHash(sourceFilePath);
-        imageData.hash = imageHash;
         console.log("imageData:", imageData);
+        if (!imageData.creationDate) {
+          logError(`var ${removeLeadingDigits(file)} = ${JSON.stringify(exifData)}`);
+        }
         //将图片数据插入数据表
         try {
           await saveImageInfo(imageData);
@@ -117,7 +134,12 @@ async function processAndSaveImage() {
           // console.log(`上传图片已移动至：${originalFilePath}`);
           processCount++;
         } catch (err) {
-          console.log(`图片信息插入数据表发生错误`, err);
+          console.log(`图片信息插入数据表发生错误`, imageData, err);
+          //将可能已转化成功的图片文件删除并跳出当前循环
+          await rollbackOperation(bigHighFilePath);
+          await rollbackOperation(bigLowFilePath);
+          await rollbackOperation(previewFilePath);
+          return;
         }
       }
     }

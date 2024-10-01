@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-17 22:24:29
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-27 14:41:19
+ * @LastEditTime: 2024-10-01 10:06:51
  * @Description: File description
  */
 require("dotenv").config();
@@ -66,6 +66,8 @@ db.close();
 // 给uploadedFiles文件夹添加测试图片
 // 源文件夹路径
 const sourceFolder = path.join(__dirname, "..", "..", "..", "..", "family media");
+
+// const sourceFolder = path.join(__dirname, "..", process.env.PROCESSED_ORIGINAL_IMAGE_DIR);
 
 // 目标文件夹路径
 const destinationFolder = path.join(__dirname, "..", process.env.UPLOADS_DIR);

@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-08-29 02:08:10
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-17 23:29:09
+ * @LastEditTime: 2024-09-30 16:29:13
  * @Description: File description
  */
 const fsExtra = require("fs-extra");
@@ -21,8 +21,7 @@ function isImage(file) {
 }
 
 // 判断图片是否重复
-async function isDuplicate(imagePath, existingImages) {
-  const currentHash = await calculateImageHash(imagePath);
+async function isDuplicate(currentHash, existingImages) {
   return !!existingImages.find((image) => image.hash === currentHash);
 }
 
@@ -41,9 +40,18 @@ function formatImage(convertParams) {
 
 // 回退操作：图片处理过程中出错时，删除出错步骤对应的可能已处理成功的图片
 function rollbackOperation(filePath) {
-  if (fsExtra.existsSync(filePath)) {
-    fsExtra.unlinkSync(filePath);
-  }
+  return fsExtra
+    .pathExists(filePath) // 返回 Promise
+    .then((exists) => {
+      if (exists) {
+        return fsExtra.unlink(filePath); // 返回异步 unlink 的 Promise
+      } else {
+        console.log("文件或目录不存在");
+      }
+    })
+    .catch((err) => {
+      console.error("检查路径时发生错误:", err);
+    });
 }
 
 // 图片元数据提取
