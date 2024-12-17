@@ -2,9 +2,10 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:00:14
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-10-01 10:05:59
+ * @LastEditTime: 2024-12-13 16:52:04
  * @Description: File description
  */
+//这个文件后面要优化下 不要在controller中直接调用model的方法 而是统一调用service的 然后service调用model的
 // 后面删掉这个
 require("dotenv").config();
 const path = require("path");
