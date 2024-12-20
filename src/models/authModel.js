@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-12-13 16:41:24
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-12-17 00:58:32
+ * @LastEditTime: 2024-12-21 01:12:54
  * @Description: File description
  */
 const { db } = require("../services/dbService");
@@ -22,11 +22,11 @@ const findUserByToken = (token) => {
   return stmt.get(token);
 };
 
-const createUser = (email, password) => {
-  const stmt = db.prepare("INSERT INTO users (email, password) VALUES (?, ?)");
-  const result = stmt.run(email, password); // 执行插入操作
+const createUser = (email, password, language) => {
+  const stmt = db.prepare("INSERT INTO users (email, password, language) VALUES (?, ?, ?)");
+  const result = stmt.run(email, password, language); // 执行插入操作
   const userId = result.lastInsertRowid; // 获取插入的用户ID
-  return { id: userId, email, password }; // 返回新创建用户的信息
+  return { id: userId, email, password, language }; // 返回新创建用户的信息
 };
 
 const verifyUserEmail = (id) => {

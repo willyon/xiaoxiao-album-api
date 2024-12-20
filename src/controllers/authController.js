@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-12-13 16:31:24
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-12-17 22:37:33
+ * @LastEditTime: 2024-12-21 01:40:32
  * @Description: File description
  */
 const authService = require("../services/authService");
@@ -10,7 +10,7 @@ const authService = require("../services/authService");
 const handleErrorResponse = require("../errors/errorResponseHandler");
 
 const loginOrRegister = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, language } = req.body;
 
   if (!email) {
     return res.status(400).json({ messageCode: "EMAIL_REQUIRED", message: "Email is required", messageType: "warning" });
@@ -25,8 +25,8 @@ const loginOrRegister = async (req, res) => {
 
     if (!existingUser) {
       // 如果用户不存在，创建新账户
-      const newUser = await authService.createNewUser(email, password);
-      await authService.sendVerificationEmail(email, newUser.verificationJWTToken);
+      const newUser = await authService.createNewUser(email, password, language);
+      await authService.sendVerificationEmail(email, newUser.verificationJWTToken, newUser.language);
 
       return res.status(201).json({
         messageCode: "ACCOUNT_PENDING_ACTIVATION",
@@ -56,10 +56,11 @@ const loginOrRegister = async (req, res) => {
     } else if (verifiedStatus === "active") {
       // 账户已激活，登录成功
       const token = authService.generateJWTToken(existingUser.id);
+      let { id } = existingUser;
       return res.status(200).json({
         messageCode: "LOGIN_SUCCESS",
         message: "Login successful",
-        data: { token, user: existingUser },
+        data: { token, user: { id } },
         messageType: "success",
       });
     }

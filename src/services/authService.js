@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-12-13 16:41:10
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-12-17 03:30:49
+ * @LastEditTime: 2024-12-21 01:24:40
  * @Description: File description
  */
 const authModel = require("../models/authModel");
@@ -62,12 +62,12 @@ const hashPassword = async (password) => {
 //   return crypto.randomBytes(32).toString("hex");
 // };
 
-const createNewUser = async (email, password) => {
+const createNewUser = async (email, password, language) => {
   // 加密密码
   const hashedPassword = await hashPassword(password);
 
   // 在数据库中创建用户
-  const newUser = await authModel.createUser(email, hashedPassword);
+  const newUser = await authModel.createUser(email, hashedPassword, language);
 
   // 生成 JWT Token (用户激活时用的验证链接)
   const verificationJWTToken = generateJWTToken(newUser.id);
@@ -76,7 +76,8 @@ const createNewUser = async (email, password) => {
   await authModel.updateUserVerificationToken(newUser.id, verificationJWTToken);
 
   // 返回创建的用户和生成的 JWT Token
-  return { user: newUser, token: verificationJWTToken };
+  newUser.verificationJWTToken = verificationJWTToken;
+  return newUser;
 };
 
 const verifyJWTToken = (token) => {
@@ -168,7 +169,7 @@ const resendVerificationEmail = async (email) => {
   await authModel.updateUserVerificationToken(user.id, newVerificationJWTToken);
 
   // 重新发送验证邮件
-  await sendVerificationEmail(email, newVerificationJWTToken);
+  await sendVerificationEmail(email, newVerificationJWTToken, user.language);
 
   // 在 Redis 中设置冷却时间
   try {
@@ -187,7 +188,13 @@ const resendVerificationEmail = async (email) => {
   return { email };
 };
 
-const sendVerificationEmail = async (email, JWTToken) => {
+const sendVerificationEmail = async (email, JWTToken, language) => {
+  // 获取用户的语言，默认值为 'zh'
+  const userLanguage = language || "zh";
+
+  // 动态生成邮件内容
+  const emailContent = getEmailContent(userLanguage, JWTToken);
+
   const transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
     port: process.env.EMAIL_PORT,
@@ -199,10 +206,10 @@ const sendVerificationEmail = async (email, JWTToken) => {
   });
 
   const mailOptions = {
-    from: `"xiao album" <${process.env.EMAIL_USER}>`,
+    from: `${emailContent.mailName} <${process.env.EMAIL_USER}>`,
     to: email,
-    subject: "请激活您的笑笑相册账户",
-    html: `<a href="http://localhost:5173/verifyEmail?token=${JWTToken}">点击此处激活您的账户</a>`,
+    subject: emailContent.subject, // 使用根据语言生成的标题
+    html: emailContent.html, // 使用根据语言生成的HTML
   };
 
   await transporter.sendMail(mailOptions, (error, info) => {
@@ -212,6 +219,41 @@ const sendVerificationEmail = async (email, JWTToken) => {
       console.log("邮件已发送:", info.response);
     }
   });
+};
+
+const getEmailContent = (language, JWTToken) => {
+  // 这里定义多语言的标题和正文内容
+  const content = {
+    en: {
+      mailName: "Xiao Album",
+      subject: "Activate Your Account for Xiao Album",
+      html: `
+        <h1>Welcome to Xiao Album!</h1>
+        <p>Click the button below to activate your account:</p>
+        <a href="http://localhost:5173/verifyEmail?token=${JWTToken}&lang=en" 
+          style="display:inline-block;padding:10px 20px;background-color:#409eff;color:#fff;text-decoration:none;border-radius:4px;">
+          Activate Account
+        </a>
+        <p>If you did not register for this account, please ignore this email.</p>
+      `,
+    },
+    zh: {
+      mailName: "笑笑相册",
+      subject: "激活您的笑笑相册账户",
+      html: `
+        <h1>欢迎来到 笑笑相册！</h1>
+        <p>点击下面的按钮以激活您的账户：</p>
+        <a href="http://localhost:5173/verifyEmail?token=${JWTToken}&lang=zh" 
+          style="display:inline-block;padding:10px 20px;background-color:#409eff;color:#fff;text-decoration:none;border-radius:4px;">
+          激活账户
+        </a>
+        <p>如果您未注册过此账户，请忽略此邮件。</p>
+      `,
+    },
+  };
+
+  // 如果语言不存在，使用默认的 `zh`
+  return content[language] || content.zh;
 };
 
 const findUserByToken = async (token) => {
