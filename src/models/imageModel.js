@@ -2,13 +2,13 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:01:09
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-29 15:46:10
+ * @LastEditTime: 2024-12-31 10:50:13
  * @Description: File description
  */
 const { db } = require("../services/dbService");
 const { getStartOrEndOfTime } = require("../utils/formatTime");
 
-//删除表格
+//删除表格 用于开发测试
 function deleteTableImages() {
   const createtablestmt = `
     DROP TABLE iamges
@@ -16,7 +16,7 @@ function deleteTableImages() {
   db.prepare(createtablestmt).run();
 }
 
-// 创建表格
+// 创建表格 执行成功不会返回任何值
 function createTableImages() {
   const createtablestmt = `
       CREATE TABLE IF NOT EXISTS images (
@@ -33,46 +33,48 @@ function createTableImages() {
 }
 
 //保存图片信息到数据库
-const saveImageInfo = (() => {
+const insertImage = (() => {
   // createTableImages()
   const stmt = db.prepare(
     `INSERT INTO images (originalImageUrl,bigHighQualityImageUrl,bigLowQualityImageUrl,previewImageUrl, creationDate, hash) VALUES (?, ?, ?, ?, ?, ?)`,
   );
   return ({ originalImageUrl, bigHighQualityImageUrl, bigLowQualityImageUrl, previewImageUrl, creationDate, hash }) => {
-    return new Promise((resolve, reject) => {
-      try {
-        stmt.run(originalImageUrl, bigHighQualityImageUrl, bigLowQualityImageUrl, previewImageUrl, creationDate, hash);
-        resolve();
-      } catch (err) {
-        reject(err);
-      }
-    });
+    const result = stmt.run(originalImageUrl, bigHighQualityImageUrl, bigLowQualityImageUrl, previewImageUrl, creationDate, hash);
+    return { affectedRows: result.changes };
   };
 })();
 
 // 根据 ID 查找图片
-function findImageInfoById(id) {
-  const stmt = db.prepare(`SELECT * FROM images WHERE id = ?`);
-  try {
-    stat.run(id);
-  } catch (err) {
-    console.log("通过图片ID获取图片信息发生错误：", err);
-  }
-}
+// function findImageInfoById(id) {
+//   const stmt = db.prepare(`SELECT * FROM images WHERE id = ?`);
+//   try {
+//     stmt.run(id);
+//   } catch (error) {
+//     console.log("通过图片ID获取图片信息发生错误：", error);
+//   }
+// }
 
 // 获取所有图片信息
-function getAllImageInfo() {
+function selectAllImages() {
   const stmt = db.prepare(`SELECT * FROM images`);
-  try {
-    return stmt.all();
-  } catch (err) {
-    console.log("获取全部图片信息发生错误：", err);
-  }
+  return stmt.all();
 }
 
-// 分页获取全部图片信息
+// 分页获取全部图片
 let cachedAllTotal = null;
-function getAllImageInfoByPage({ pageNo = 1, pageSize = 10 }) {
+function _countAllImages() {
+  if (cachedAllTotal === null) {
+    const countQuery = db.prepare(`SELECT COUNT(*) AS total FROM images`);
+    try {
+      cachedAllTotal = countQuery.get().total;
+    } catch (error) {
+      console.error("Error fetching total image count:", error);
+      throw error;
+    }
+  }
+  return cachedAllTotal;
+}
+function selectImagesByPage({ pageNo, pageSize }) {
   const offset = (pageNo - 1) * pageSize;
   const dataQuery = db.prepare(`
     SELECT * FROM images
@@ -80,29 +82,28 @@ function getAllImageInfoByPage({ pageNo = 1, pageSize = 10 }) {
     LIMIT ? OFFSET ?
   `);
   try {
+    // 查询分页数据
     const pageData = dataQuery.all(pageSize, offset);
-    // 如果缓存为空，则计算总条数并缓存
-    if (cachedAllTotal === null) {
-      const countQuery = db.prepare(`SELECT COUNT(*) AS total FROM images`);
-      cachedAllTotal = countQuery.get().total;
-    }
+    // 获取总数
+    const total = _countAllImages();
     return {
       data: pageData,
-      total: cachedAllTotal,
+      total,
     };
-  } catch (err) {
-    console.log("分页获取图片信息发生错误：", err);
+  } catch (error) {
+    console.error("Error fetching images by page:", error);
+    throw error;
   }
 }
 
 // 分页获取具体某个时间段(某月、某年)图片信息
 let certainTimeRangeTotal = { year: null, month: null };
-function getCertainTimeRangeImageInfoByPage({ pageNo = 1, pageSize = 10, creationDate = null, timeRange = "" }) {
+function selectImagesByTimeRange({ pageNo, pageSize, creationDate, timeRange }) {
   if (pageNo === 1) {
     certainTimeRangeTotal[timeRange] = null;
   }
   const offset = (pageNo - 1) * pageSize;
-  // 有时间戳
+  // 有照片拍摄时间戳
   if (creationDate) {
     const startTime = getStartOrEndOfTime(creationDate, "start", timeRange);
     const endTime = getStartOrEndOfTime(creationDate, "end", timeRange);
@@ -128,8 +129,9 @@ function getCertainTimeRangeImageInfoByPage({ pageNo = 1, pageSize = 10, creatio
         data: pageData,
         total: certainTimeRangeTotal[timeRange],
       };
-    } catch (err) {
-      console.log("分页获取图片信息发生错误：", err);
+    } catch (error) {
+      console.error("有照片拍摄时间戳 Error fetching images by time range:", error);
+      throw error;
     }
   } else {
     // 没有时间戳
@@ -154,15 +156,34 @@ function getCertainTimeRangeImageInfoByPage({ pageNo = 1, pageSize = 10, creatio
         data: pageData,
         total: certainTimeRangeTotal[timeRange],
       };
-    } catch (err) {
-      console.log("分页获取图片信息发生错误：", err);
+    } catch (error) {
+      console.error("没有照片拍摄时间戳 Error fetching images by time range:", error);
+      throw error;
     }
   }
 }
 
 // 分页获取按年份分组图片目录数据
 let cachedYearCatalogTotal = null;
-function getYearCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
+function _countGroupsByYear() {
+  if (cachedYearCatalogTotal === null) {
+    const countQuery = db.prepare(`
+        SELECT COUNT(DISTINCT CASE 
+          WHEN creationDate IS NULL THEN 'unknown' 
+          ELSE strftime('%Y', creationDate / 1000, 'unixepoch', 'localtime')
+        END) AS groupCount
+        FROM images;
+      `);
+    try {
+      cachedYearCatalogTotal = countQuery.get().groupCount;
+    } catch (error) {
+      console.error("Error fetching total groups count by year:", error);
+      throw error;
+    }
+  }
+  return cachedYearCatalogTotal;
+}
+function selectGroupsByYear({ pageNo, pageSize }) {
   const offset = (pageNo - 1) * pageSize;
   const dataQuery = db.prepare(`
     SELECT
@@ -197,29 +218,38 @@ function getYearCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
   `);
   try {
     const pageData = dataQuery.all(pageSize, offset);
-    // 如果缓存为空，则计算总条数并缓存
-    if (cachedYearCatalogTotal === null) {
-      const countQuery = db.prepare(`
-        SELECT COUNT(DISTINCT CASE 
-          WHEN creationDate IS NULL THEN 'unknown' 
-          ELSE strftime('%Y', creationDate / 1000, 'unixepoch', 'localtime')
-        END) AS groupCount
-        FROM images;
-      `);
-      cachedYearCatalogTotal = countQuery.get().groupCount;
-    }
+    const total = _countGroupsByYear();
     return {
       data: pageData,
-      total: cachedYearCatalogTotal,
+      total,
     };
-  } catch (err) {
-    console.log("分页获取图片信息发生错误：", err);
+  } catch (error) {
+    console.error("Error fetching groups by year:", error);
+    throw error;
   }
 }
 
 // 分页获取按月份分组图片目录数据
 let cachedMonthCatalogTotal = null;
-function getMonthCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
+function _countGroupsByMonth() {
+  if (cachedMonthCatalogTotal === null) {
+    const countQuery = db.prepare(`
+        SELECT COUNT(DISTINCT CASE 
+          WHEN creationDate IS NULL THEN 'unknown' 
+          ELSE strftime('%Y-%m', creationDate / 1000, 'unixepoch', 'localtime')
+        END) AS groupCount
+        FROM images;
+      `);
+    try {
+      cachedMonthCatalogTotal = countQuery.get().groupCount;
+    } catch (error) {
+      console.error("Error fetching total groups count by month:", error);
+      throw error;
+    }
+  }
+  return cachedMonthCatalogTotal;
+}
+function selectGroupsByMonth({ pageNo, pageSize }) {
   const offset = (pageNo - 1) * pageSize;
   const dataQuery = db.prepare(`
     SELECT
@@ -254,34 +284,25 @@ function getMonthCatalogInfoByPage({ pageNo = 1, pageSize = 10 }) {
   `);
   try {
     const pageData = dataQuery.all(pageSize, offset);
-    // 如果缓存为空，则计算总条数并缓存
-    if (cachedMonthCatalogTotal === null) {
-      const countQuery = db.prepare(`
-        SELECT COUNT(DISTINCT CASE 
-          WHEN creationDate IS NULL THEN 'unknown' 
-          ELSE strftime('%Y-%m', creationDate / 1000, 'unixepoch', 'localtime')
-        END) AS groupCount
-        FROM images;
-      `);
-      cachedMonthCatalogTotal = countQuery.get().groupCount;
-    }
+    const total = _countGroupsByMonth();
     return {
       data: pageData,
-      total: cachedMonthCatalogTotal,
+      total,
     };
-  } catch (err) {
-    console.log("分页获取图片信息发生错误：", err);
+  } catch (error) {
+    console.error("Error fetching groups by year:", error);
+    throw error;
   }
 }
 
 module.exports = {
   deleteTableImages,
   createTableImages,
-  saveImageInfo,
-  findImageInfoById,
-  getAllImageInfo,
-  getAllImageInfoByPage,
-  getCertainTimeRangeImageInfoByPage,
-  getYearCatalogInfoByPage,
-  getMonthCatalogInfoByPage,
+  insertImage,
+  // findImageInfoById,
+  selectAllImages,
+  selectImagesByPage,
+  selectImagesByTimeRange,
+  selectGroupsByYear,
+  selectGroupsByMonth,
 };

@@ -1,8 +1,9 @@
+const { SERVER_ERROR } = require("../constants/messageCodes");
 /*
  * @Author: zhangshouchang
  * @Date: 2024-12-16 09:29:27
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-12-16 16:26:32
+ * @LastEditTime: 2024-12-31 16:19:11
  * @Description: Custom error class
  */
 class CustomError extends Error {
@@ -14,7 +15,7 @@ class CustomError extends Error {
    * @param {string} options.message - 错误的提示信息，主要用于开发和调试
    * @param {string} options.messageType - 消息类型（success, warning, error, info），用于前端弹框样式
    */
-  constructor({ httpStatus = 500, messageCode = "SERVER_ERROR", message = "An error occurred", messageType = "error" } = {}) {
+  constructor({ httpStatus = 500, messageCode = SERVER_ERROR, message = "An error occurred", messageType = "error" } = {}) {
     // 继承父类的 message 属性
     super(message);
 

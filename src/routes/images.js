@@ -2,22 +2,20 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-17 14:06:00
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-22 02:57:30
+ * @LastEditTime: 2024-12-29 21:44:42
  * @Description: File description
  */
 const express = require("express");
 const router = express.Router();
 const imageController = require("../controllers/imageController");
 
-// 获取所有图片信息
-router.get("/queryAll", imageController.getAllImages);
 // 分页获取图片信息
-router.post("/queryAllByPage", imageController.getAllImagesByPage);
+router.post("/queryAllByPage", imageController.handleGetAllByPage);
 // 分页获取具体某个月份的图片信息
-router.post("/queryCertainTimeRangeByPage", imageController.getCertainTimeRangeImagesByPage);
+router.post("/queryByTimeRange", imageController.handleGetByTimeRange);
 // 分页获取按年份分组数据
-router.post("/queryGroupByYearAndPage", imageController.getGroupedImagesByYearAndPage);
+router.post("/queryGroupByYear", imageController.handleGroupByYear);
 // 分页获取按月份分组数据
-router.post("/queryGroupByMonthAndPage", imageController.getGroupedImagesByMonthAndPage);
+router.post("/queryGroupByMonth", imageController.handleGroupByMonth);
 
 module.exports = router;

@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-12-13 16:41:10
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-12-21 01:24:40
+ * @LastEditTime: 2024-12-31 16:34:37
  * @Description: File description
  */
 const authModel = require("../models/authModel");
@@ -12,6 +12,8 @@ const nodemailer = require("nodemailer");
 const jwt = require("jsonwebtoken");
 const { getRedisClient } = require("../services/redisClient");
 const CustomError = require("../errors/customError");
+const { validateEmail, validatePassword } = require("../validators/index");
+const messageCodes = require("../constants/messageCodes");
 
 // 检查用户的冷却时间
 const checkCooldown = async (email) => {
@@ -21,7 +23,7 @@ const checkCooldown = async (email) => {
     if (!redisClient) {
       throw new CustomError({
         httpStatus: 500,
-        messageCode: "REDIS_ERROR",
+        messageCode: messageCodes.REDIS_ERROR,
         message: "server is currently unavailable, please try again later.",
         messageType: "error",
       });
@@ -31,7 +33,12 @@ const checkCooldown = async (email) => {
     const result = await redisClient.get(cooldownKey);
     return result;
   } catch (error) {
-    throw error;
+    throw new CustomError({
+      httpStatus: 500,
+      messageCode: messageCodes.REDIS_ERROR,
+      message: "failed to get cooldown result.",
+      messageType: "error",
+    });
   }
 };
 
@@ -44,16 +51,40 @@ const generateJWTToken = (userId) => {
   return token;
 };
 
-const findUserByEmail = async (email) => {
-  return await authModel.findUserByEmail(email);
+const getUserInfoByEmail = async (email) => {
+  try {
+    validateEmail(email); // 验证 email 格式
+    const user = await authModel.findUserByEmail(email);
+    if (!user) {
+      throw new CustomError({
+        httpStatus: 404,
+        messageCode: messageCodes.ACCOUNT_NOT_FOUND,
+        message: "Account not found",
+        messageType: "error",
+      });
+    }
+    return user;
+  } catch (error) {
+    console.error("failed to find user by email:", error.message);
+    throw error;
+  }
 };
 
-const validatePassword = async (inputPassword, hashedPassword) => {
-  return await bcrypt.compare(inputPassword, hashedPassword);
+const validateInputPassword = async (inputPassword, hashedPassword) => {
+  try {
+    return await bcrypt.compare(inputPassword, hashedPassword);
+  } catch (error) {
+    throw new CustomError({
+      httpStatus: 500,
+      messageCode: messageCodes.COMPARE_PASSWORD_ERROR,
+      message: "Error occurred while comparing passwords",
+      messageType: "error",
+    });
+  }
 };
 
 // 生成不可逆加密密码 用于存储于数据库
-const hashPassword = async (password) => {
+const _hashPassword = async (password) => {
   return await bcrypt.hash(password, 10);
 };
 
@@ -62,57 +93,69 @@ const hashPassword = async (password) => {
 //   return crypto.randomBytes(32).toString("hex");
 // };
 
-const createNewUser = async (email, password, language) => {
+const createNewUser = async ({ email, password, language = "zh" }) => {
+  try {
+    validateEmail(email);
+    validatePassword(password);
+  } catch (error) {
+    throw error;
+  }
   // 加密密码
-  const hashedPassword = await hashPassword(password);
+  const hashedPassword = await _hashPassword(password);
 
   // 在数据库中创建用户
-  const newUser = await authModel.createUser(email, hashedPassword, language);
+  const newUser = await authModel.insertUser(email, hashedPassword, language);
 
   // 生成 JWT Token (用户激活时用的验证链接)
   const verificationJWTToken = generateJWTToken(newUser.id);
 
   // 将生成的 token 存储到数据库的 verificationToken 字段
-  await authModel.updateUserVerificationToken(newUser.id, verificationJWTToken);
+  try {
+    await authModel.updateUserVerificationToken(newUser.id, verificationJWTToken);
+  } catch (error) {
+    throw new CustomError({
+      httpStatus: 500,
+      messageCode: messageCodes.UPDATE_VERIFICATION_TOKEN_ERROR,
+      message: "Error occurred while updating verification token.",
+      messageType: "error",
+    });
+  }
 
   // 返回创建的用户和生成的 JWT Token
   newUser.verificationJWTToken = verificationJWTToken;
   return newUser;
 };
 
-const verifyJWTToken = (token) => {
+const _verifyJWTToken = (token) => {
   const secretKey = process.env.JWT_SECRET;
-  try {
-    const decoded = jwt.verify(token, secretKey);
-    return decoded; // 返回解码后的数据，例如 { userId: 123, exp: 1670815945 }
-  } catch (error) {
-    if (error.name === "TokenExpiredError") {
-      throw new Error("Token 已过期");
-    } else if (error.name === "JsonWebTokenError") {
-      throw new Error("Token 无效");
-    } else {
-      throw new Error("Token 校验失败");
-    }
-  }
+  // 返回解码后的数据，例如 { userId: 123, exp: 1670815945 }
+  return jwt.verify(token, secretKey);
 };
 
 const verifyEmail = async (token) => {
   try {
-    if (!token) throw new CustomError({ httpStatus: 400, messageCode: "TOKEN_REQUIRED", message: "token is empty", messageType: "error" });
+    if (!token)
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: messageCodes.VERIFICATION_TOKEN_REQUIRED,
+        message: "token is empty",
+        messageType: "error",
+      });
 
     // 验证 JWT Token 是否有效
-    const decoded = verifyJWTToken(token);
+    const decoded = _verifyJWTToken(token);
     const userId = decoded.userId;
 
     // 在数据库中查找与 userId 匹配的用户
     const user = await authModel.findUserById(userId);
-    if (!user) throw new CustomError({ httpStatus: 404, messageCode: "ACCOUNT_NOT_FOUND", message: "user not found", messageType: "error" });
+    if (!user)
+      throw new CustomError({ httpStatus: 404, messageCode: messageCodes.ACCOUNT_NOT_FOUND, message: "user not found", messageType: "error" });
 
     // 如果用户的 verifiedStatus 不是 "pending"，抛出错误
     if (user.verifiedStatus === "active") {
       throw new CustomError({
         httpStatus: 400,
-        messageCode: "ACCOUNT_ALREADY_ACTIVE",
+        messageCode: messageCodes.ACCOUNT_ALREADY_ACTIVE,
         message: "Your account has been verified",
         messageType: "warning",
       });
@@ -120,7 +163,7 @@ const verifyEmail = async (token) => {
       // 已注销
       throw new CustomError({
         httpStatus: 403,
-        messageCode: "ACCOUNT_CANNOT_BE_VERIFIED",
+        messageCode: messageCodes.ACCOUNT_CANNOT_BE_VERIFIED,
         message: "Your account has been verified",
         messageType: "error",
       });
@@ -130,13 +173,23 @@ const verifyEmail = async (token) => {
     await authModel.updateUserStatus(userId, "active");
 
     // 清空用户的 verificationToken
-    await authModel.clearVerificationToken(userId);
+    await authModel.updateVerificationTokenToNull(userId);
   } catch (error) {
     // 这里的错误将传递给 Controller 中的 catch
     if (error.name === "TokenExpiredError") {
-      throw new CustomError({ httpStatus: 401, messageCode: "TOKEN_INVALID", message: "Token expired", messageType: "error" });
+      throw new CustomError({
+        httpStatus: 401,
+        messageCode: messageCodes.VERIFICATION_TOKEN_INVALID,
+        message: "Token expired",
+        messageType: "error",
+      });
     } else if (error.name === "JsonWebTokenError") {
-      throw new CustomError({ httpStatus: 401, messageCode: "TOKEN_INVALID", message: "Invalid Token signature", messageType: "error" });
+      throw new CustomError({
+        httpStatus: 401,
+        messageCode: messageCodes.VERIFICATION_TOKEN_INVALID,
+        message: "Invalid Token signature",
+        messageType: "error",
+      });
     } else {
       throw error;
     }
@@ -148,15 +201,27 @@ const logout = async (req) => {
 };
 
 const resendVerificationEmail = async (email) => {
-  // 查找用户
-  const user = await authModel.findUserByEmail(email);
-  if (!user) throw new CustomError({ httpStatus: 404, messageCode: "ACCOUNT_NOT_FOUND", message: "account not found", messageType: "error" });
+  try {
+    validateEmail(email); // 验证 email 格式
+    var user = await authModel.findUserByEmail(email);
+    if (!user) {
+      throw new CustomError({
+        httpStatus: 404,
+        messageCode: messageCodes.ACCOUNT_NOT_FOUND,
+        message: "Account not found",
+        messageType: "error",
+      });
+    }
+  } catch (error) {
+    console.error("failed to find user by email:", error.message);
+    throw error;
+  }
 
   // 如果用户的状态是 "active"，不需要发送激活邮件
   if (user.verifiedStatus === "active") {
     throw new CustomError({
       httpStatus: 400,
-      messageCode: "ACCOUNT_ALREADY_ACTIVE",
+      messageCode: messageCodes.ACCOUNT_ALREADY_ACTIVE,
       message: "Your account has been verified",
       messageType: "warning",
     });
@@ -166,20 +231,42 @@ const resendVerificationEmail = async (email) => {
   const newVerificationJWTToken = generateJWTToken(user.id);
 
   // 更新数据库中的用户 token
-  await authModel.updateUserVerificationToken(user.id, newVerificationJWTToken);
+  try {
+    await authModel.updateUserVerificationToken(user.id, newVerificationJWTToken);
+  } catch (error) {
+    throw new CustomError({
+      httpStatus: 500,
+      messageCode: messageCodes.UPDATE_VERIFICATION_TOKEN_ERROR,
+      message: "Error occurred while updating verification token.",
+      messageType: "error",
+    });
+  }
 
   // 重新发送验证邮件
-  await sendVerificationEmail(email, newVerificationJWTToken, user.language);
+  try {
+    await sendVerificationEmail({ email, JWTToken: newVerificationJWTToken, language: user.language });
+  } catch (error) {
+    throw error;
+  }
 
   // 在 Redis 中设置冷却时间
   try {
     const redisClient = await getRedisClient();
     const cooldownTime = parseInt(process.env.COOLDOWN_SECONDS, 10) || 60; // 确保将其转为整数
-    await redisClient.set(`resend_email_${email}`, "1", { EX: cooldownTime });
+    try {
+      await redisClient.set(`resend_email_${email}`, "1", { EX: cooldownTime });
+    } catch (error) {
+      throw new CustomError({
+        httpStatus: 500,
+        messageCode: messageCodes.SET_REDIS_KEY_ERROR,
+        message: "Error occurred while setting redis client key",
+        messageType: "error",
+      });
+    }
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
-      messageCode: "REDIS_ERROR",
+      messageCode: messageCodes.REDIS_SERVER_ERROR,
       message: "server is currently unavailable, please try again later.",
       messageType: "error",
     });
@@ -188,12 +275,17 @@ const resendVerificationEmail = async (email) => {
   return { email };
 };
 
-const sendVerificationEmail = async (email, JWTToken, language) => {
-  // 获取用户的语言，默认值为 'zh'
-  const userLanguage = language || "zh";
+const sendVerificationEmail = async ({ email, JWTToken, language = "zh" }) => {
+  try {
+    validateEmail(email);
+  } catch (error) {
+    throw error;
+  }
+
+  const userLanguage = language;
 
   // 动态生成邮件内容
-  const emailContent = getEmailContent(userLanguage, JWTToken);
+  const emailContent = _getEmailContent(userLanguage, JWTToken);
 
   const transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
@@ -214,14 +306,20 @@ const sendVerificationEmail = async (email, JWTToken, language) => {
 
   await transporter.sendMail(mailOptions, (error, info) => {
     if (error) {
-      console.log("邮件发送失败:", error);
+      console.error("邮件发送失败:", error);
+      throw new CustomError({
+        httpStatus: 500,
+        messageCode: messageCodes.SEND_MAIL_ERROR,
+        message: "Error occurred while sending email.",
+        messageType: "error",
+      });
     } else {
       console.log("邮件已发送:", info.response);
     }
   });
 };
 
-const getEmailContent = (language, JWTToken) => {
+const _getEmailContent = (language, JWTToken) => {
   // 这里定义多语言的标题和正文内容
   const content = {
     en: {
@@ -256,25 +354,24 @@ const getEmailContent = (language, JWTToken) => {
   return content[language] || content.zh;
 };
 
-const findUserByToken = async (token) => {
-  return await authModel.findUserByToken(token);
-};
+// const findUserByToken = async (token) => {
+//   return await authModel.findUserByToken(token);
+// };
 
-const activateUserAccount = async (userId) => {
-  return await authModel.updateUserStatus(userId, "active");
-};
+// const activateUserAccount = async (userId) => {
+// return await authModel.updateUserStatus(userId, "active");
+// };
 
 module.exports = {
-  findUserByEmail,
-  validatePassword,
-  hashPassword,
+  getUserInfoByEmail,
+  validateInputPassword,
   generateJWTToken,
   createNewUser,
   verifyEmail,
   logout,
   sendVerificationEmail,
   resendVerificationEmail,
-  findUserByToken,
-  activateUserAccount,
+  // findUserByToken,
+  // activateUserAccount,
   checkCooldown,
 };
