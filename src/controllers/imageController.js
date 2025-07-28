@@ -2,31 +2,16 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:00:14
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-12-31 16:12:24
+ * @LastEditTime: 2025-02-15 16:59:55
  * @Description: File description
  */
-//这个文件后面要优化下 不要在controller中直接调用model的方法 而是统一调用service的 然后service调用model的
-// 后面删掉这个
 require("dotenv").config();
 const path = require("path");
 const fsExtra = require("fs-extra");
-const fs = require("fs");
 const async = require("async");
 const { readFile } = require("../services/fileService");
 const imageService = require("../services/imageService");
 const { stringToTimestamp } = require("../utils/formatTime");
-const handleErrorResponse = require("../errors/errorResponseHandler");
-// const { error } = require("console");
-
-const logFile = path.join(__dirname, "..", "..", process.env.PROCESSED_IMAGE_LOG_FILE);
-
-// 创建日志流
-const logStream = fs.createWriteStream(logFile, { flags: "a" });
-
-function logError(message) {
-  // console.error(message);
-  logStream.write(message + "\n");
-}
 
 //源文件目录
 const uploadFolder = path.join(__dirname, "..", "..", process.env.UPLOADS_DIR);
@@ -115,7 +100,6 @@ async function _processImagesConcurrently(imageFiles, limit, processImageFn) {
   return new Promise((resolve, reject) => {
     async.eachLimit(imageFiles, limit, processImageFn, (error) => {
       if (error) {
-        console.error("并发处理出错:", error);
         reject(error);
       } else {
         console.log(`并发任务完成，成功处理${processState.processedCount}/${imageFiles.length}张`);
@@ -246,7 +230,6 @@ async function processAndSaveImage() {
     await _processImagesConcurrently(imageFiles, 4, processImage);
   } catch (error) {
     console.log("图片处理出错：", error);
-    // handleErrorResponse(res, error)
   } finally {
     console.log(`图片处理完成：成功处理 ${processState.processedCount}/${imageFiles.length} 张图片`);
     if (state.errors.length) {
@@ -256,7 +239,7 @@ async function processAndSaveImage() {
 }
 
 // 分页获取所有图片信息
-async function handleGetAllByPage(req, res) {
+async function handleGetAllByPage(req, res, next) {
   const { pageNo, pageSize } = req.body;
   try {
     // 分页获取数据库中所有已存储图片信息
@@ -268,15 +251,14 @@ async function handleGetAllByPage(req, res) {
     // 为每张图片添加服务器基本路径
     const imagesWithBaseUrl = _addBaseUrlToImages(baseUrl, queryResult.data);
 
-    res.status(200).json({ status: "success", data: imagesWithBaseUrl, total: queryResult.total });
+    res.sendResponse({ data: { list: imagesWithBaseUrl, total: queryResult.total } });
   } catch (error) {
-    console.error("Error fetching images by page：", error?.message);
-    handleErrorResponse(res, error);
+    next(error);
   }
 }
 
 //分页获取具体某个时间段的图片
-async function handleGetByTimeRange(req, res) {
+async function handleGetByTimeRange(req, res, next) {
   const { pageNo, pageSize, creationDate, timeRange } = req.body;
   try {
     // 分页获取数据库中具体某个月已存储图片信息
@@ -287,15 +269,14 @@ async function handleGetByTimeRange(req, res) {
 
     // 为每张图片添加服务器基本路径
     const imagesWithBaseUrl = _addBaseUrlToImages(baseUrl, queryResult.data);
-    res.status(200).json({ status: "success", data: imagesWithBaseUrl, total: queryResult.total });
+    res.sendResponse({ data: { list: imagesWithBaseUrl, total: queryResult.total } });
   } catch (error) {
-    console.error("Error fetching images by time range：", error?.message);
-    handleErrorResponse(res, error);
+    next(error);
   }
 }
 
 // 分页获取按年份分组数据
-async function handleGroupByYear(req, res) {
+async function handleGroupByYear(req, res, next) {
   const { pageSize, pageNo } = req.body;
   try {
     // 分页获取数据
@@ -306,15 +287,14 @@ async function handleGroupByYear(req, res) {
 
     // 为每张图片添加服务器基本路径
     const groupsWithBaseUrl = _addBaseUrlToGroupCover(baseUrl, queryResult.data);
-    res.status(200).json({ status: "success", data: groupsWithBaseUrl, total: queryResult.total });
+    res.sendResponse({ data: { list: groupsWithBaseUrl, total: queryResult.total } });
   } catch (error) {
-    console.error("Error fetching groups by year：", error?.message);
-    handleErrorResponse(res, error);
+    next(error);
   }
 }
 
 // 分页获取按月份分组数据
-async function handleGroupByMonth(req, res) {
+async function handleGroupByMonth(req, res, next) {
   const { pageSize, pageNo } = req.body;
   try {
     // 分页获取数据
@@ -325,10 +305,9 @@ async function handleGroupByMonth(req, res) {
 
     // 为每张图片添加服务器基本路径
     const groupsWithBaseUrl = _addBaseUrlToGroupCover(baseUrl, queryResult.data);
-    res.status(200).json({ status: "success", data: groupsWithBaseUrl, total: queryResult.total });
+    res.sendResponse({ data: { list: groupsWithBaseUrl, total: queryResult.total } });
   } catch (error) {
-    console.error("Error fetching groups by month：", error?.message);
-    handleErrorResponse(res, error);
+    next(error);
   }
 }
 

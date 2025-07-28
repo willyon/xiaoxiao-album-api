@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:01:09
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-12-31 10:50:13
+ * @LastEditTime: 2025-01-06 16:23:13
  * @Description: File description
  */
 const { db } = require("../services/dbService");
@@ -68,7 +68,6 @@ function _countAllImages() {
     try {
       cachedAllTotal = countQuery.get().total;
     } catch (error) {
-      console.error("Error fetching total image count:", error);
       throw error;
     }
   }
@@ -91,7 +90,6 @@ function selectImagesByPage({ pageNo, pageSize }) {
       total,
     };
   } catch (error) {
-    console.error("Error fetching images by page:", error);
     throw error;
   }
 }
@@ -130,7 +128,6 @@ function selectImagesByTimeRange({ pageNo, pageSize, creationDate, timeRange }) 
         total: certainTimeRangeTotal[timeRange],
       };
     } catch (error) {
-      console.error("有照片拍摄时间戳 Error fetching images by time range:", error);
       throw error;
     }
   } else {
@@ -157,7 +154,6 @@ function selectImagesByTimeRange({ pageNo, pageSize, creationDate, timeRange }) 
         total: certainTimeRangeTotal[timeRange],
       };
     } catch (error) {
-      console.error("没有照片拍摄时间戳 Error fetching images by time range:", error);
       throw error;
     }
   }
@@ -177,7 +173,6 @@ function _countGroupsByYear() {
     try {
       cachedYearCatalogTotal = countQuery.get().groupCount;
     } catch (error) {
-      console.error("Error fetching total groups count by year:", error);
       throw error;
     }
   }
@@ -224,7 +219,6 @@ function selectGroupsByYear({ pageNo, pageSize }) {
       total,
     };
   } catch (error) {
-    console.error("Error fetching groups by year:", error);
     throw error;
   }
 }
@@ -243,7 +237,6 @@ function _countGroupsByMonth() {
     try {
       cachedMonthCatalogTotal = countQuery.get().groupCount;
     } catch (error) {
-      console.error("Error fetching total groups count by month:", error);
       throw error;
     }
   }
@@ -290,7 +283,6 @@ function selectGroupsByMonth({ pageNo, pageSize }) {
       total,
     };
   } catch (error) {
-    console.error("Error fetching groups by year:", error);
     throw error;
   }
 }

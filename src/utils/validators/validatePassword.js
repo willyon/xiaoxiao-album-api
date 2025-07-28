@@ -2,11 +2,12 @@
  * @Author: zhangshouchang
  * @Date: 2024-12-31 00:15:34
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-12-31 16:36:19
+ * @LastEditTime: 2025-01-05 10:14:47
  * @Description: File description
  */
-const messageCodes = require("../constants/messageCodes");
-const CustomError = require("../errors/customError");
+const validator = require("validator");
+const { ERROR_CODES } = require("../../constants/messageCodes");
+const CustomError = require("../../errors/customError");
 
 /**
  * Validates the given password.
@@ -17,8 +18,7 @@ function validatePassword(password) {
   if (!password || typeof password !== "string") {
     throw new CustomError({
       httpStatus: 400,
-      messageCode: messageCodes.PASSWORD_REQUIRED,
-      message: "Password is required and must be a string.",
+      messageCode: ERROR_CODES.PASSWORD_REQUIRED,
       messageType: "warning",
     });
   }
@@ -32,9 +32,7 @@ function validatePassword(password) {
   if (!lengthValid || !hasLowercase || !hasUppercase || !hasDigit || !hasSpecialChar) {
     throw new CustomError({
       httpStatus: 400,
-      messageCode: messageCodes.PASSWORD_TOO_WEAK,
-      message:
-        "Password must be 8-16 characters long and include at least one uppercase letter, one lowercase letter, one digit, and one special character.",
+      messageCode: ERROR_CODES.PASSWORD_TOO_WEAK,
       messageType: "warning",
     });
   }

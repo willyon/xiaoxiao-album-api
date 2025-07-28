@@ -1,4 +1,10 @@
-// services/redisClient.js
+/*
+ * @Author: zhangshouchang
+ * @Date: 2024-12-17 02:03:49
+ * @LastEditors: zhangshouchang
+ * @LastEditTime: 2025-07-27 21:18:47
+ * @Description: 提供全局唯一的 Redis 客户端连接；
+ */
 const { createClient } = require("redis");
 
 let redisClient = null;

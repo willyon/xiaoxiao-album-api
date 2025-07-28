@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-08-29 02:08:10
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-12-31 16:49:58
+ * @LastEditTime: 2025-01-06 16:22:41
  * @Description: File description
  */
 const fsExtra = require("fs-extra");
@@ -15,7 +15,7 @@ const imagemagick = require("imagemagick");
 // const sharp = require("sharp");
 const crypto = require("crypto");
 const CustomError = require("../errors/customError");
-const messageCodes = require("../constants/messageCodes");
+const { ERROR_CODES } = require("../constants/messageCodes");
 
 const imageModel = require("../models/imageModel");
 
@@ -86,8 +86,7 @@ async function getAllImages() {
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
-      messageCode: messageCodes.FAILED_SELECT_ALL_DATA,
-      message: "Failed to select all images",
+      messageCode: ERROR_CODES.FAILED_SELECT_ALL_DATA,
       messageType: "error",
     });
   }
@@ -98,8 +97,7 @@ async function getAllImagesByPage({ pageNo = 1, pageSize = 10 }) {
   if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1) {
     throw new CustomError({
       httpStatus: 400,
-      messageCode: messageCodes.INVALID_PARAMETERS,
-      message: "Invalid pagination parameters.",
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
       messageType: "warning",
     });
   }
@@ -108,8 +106,7 @@ async function getAllImagesByPage({ pageNo = 1, pageSize = 10 }) {
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
-      messageCode: messageCodes.FAILED_SELECT_BY_PAGE,
-      message: "Failed to select all images by page",
+      messageCode: ERROR_CODES.FAILED_SELECT_BY_PAGE,
       messageType: "error",
     });
   }
@@ -119,8 +116,7 @@ async function getImagesByTimeRange({ pageNo = 1, pageSize = 10, creationDate = 
   if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1) {
     throw new CustomError({
       httpStatus: 400,
-      messageCode: messageCodes.INVALID_PARAMETERS,
-      message: "Invalid parameters.",
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
       messageType: "warning",
     });
   }
@@ -129,8 +125,7 @@ async function getImagesByTimeRange({ pageNo = 1, pageSize = 10, creationDate = 
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
-      messageCode: messageCodes.FAILED_SELECT_BY_TIME_RANGE,
-      message: "Failed to select images by time range",
+      messageCode: ERROR_CODES.FAILED_SELECT_BY_TIME_RANGE,
       messageType: "error",
     });
   }
@@ -141,8 +136,7 @@ async function getGroupsByYear({ pageNo = 1, pageSize = 10 }) {
   if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1) {
     throw new CustomError({
       httpStatus: 400,
-      messageCode: messageCodes.INVALID_PARAMETERS,
-      message: "Invalid pagination parameters.",
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
       messageType: "warning",
     });
   }
@@ -151,8 +145,7 @@ async function getGroupsByYear({ pageNo = 1, pageSize = 10 }) {
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
-      messageCode: messageCodes.FAILED_SELECT_GROUPS_BY_YEAR,
-      message: "Failed to select images groups by year",
+      messageCode: ERROR_CODES.FAILED_SELECT_GROUPS_BY_YEAR,
       messageType: "error",
     });
   }
@@ -163,8 +156,7 @@ async function getGroupsByMonth({ pageNo = 1, pageSize = 10 }) {
   if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1) {
     throw new CustomError({
       httpStatus: 400,
-      messageCode: messageCodes.INVALID_PARAMETERS,
-      message: "Invalid pagination parameters.",
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
       messageType: "warning",
     });
   }
@@ -173,8 +165,7 @@ async function getGroupsByMonth({ pageNo = 1, pageSize = 10 }) {
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
-      messageCode: messageCodes.FAILED_SELECT_GROUPS_BY_MONTH,
-      message: "Failed to select images groups by month",
+      messageCode: ERROR_CODES.FAILED_SELECT_GROUPS_BY_MONTH,
       messageType: "error",
     });
   }
@@ -186,8 +177,7 @@ async function setUpTableImages() {
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
-      messageCode: messageCodes.TABLE_CREATE_FAILED,
-      message: "Failed to create table 'images'",
+      messageCode: ERROR_CODES.TABLE_CREATE_FAILED,
       messageType: "error",
     });
   }
@@ -199,8 +189,7 @@ async function saveNewImage(imageData) {
   if (!originalImageUrl || !bigHighQualityImageUrl || !bigLowQualityImageUrl || !previewImageUrl || !hash) {
     throw new CustomError({
       httpStatus: 400,
-      messageCode: messageCodes.INVALID_PARAMETERS,
-      message: "Invalid image data",
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
       messageType: "warning",
     });
   }
@@ -209,19 +198,16 @@ async function saveNewImage(imageData) {
     if (result.affectedRows === 0) {
       throw new CustomError({
         httpStatus: 500,
-        messageCode: messageCodes.DATA_INSERT_FAILED,
-        message: "No rows were inserted",
+        messageCode: ERROR_CODES.DATA_INSERT_FAILED,
         messageType: "error",
       });
     }
     console.log("Image insert successful:");
     return result;
   } catch (error) {
-    console.error("Error insert image data in service:", error);
     throw new CustomError({
       httpStatus: 500,
-      messageCode: messageCodes.DATA_INSERT_FAILED,
-      message: "Failed to insert image data",
+      messageCode: ERROR_CODES.DATA_INSERT_FAILED,
       messageType: "error",
     });
   }

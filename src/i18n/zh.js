@@ -1,0 +1,49 @@
+/*
+ * @Author: zhangshouchang
+ * @Date: 2025-01-01 17:59:15
+ * @LastEditors: zhangshouchang
+ * @LastEditTime: 2025-07-26 22:36:37
+ * @Description: File description
+ */
+module.exports = {
+  SEND_ACTIVATION_EMAIL_FAILED: "邮箱地址无效，无法发送激活邮件。",
+  REQUEST_COMPLETED: "请求完成",
+  EMAIL_REQUIRED: "邮箱不能为空",
+  PASSWORD_REQUIRED: "密码不能为空",
+  INVALID_PARAMETERS: "请求参数无效",
+  ACCOUNT_NOT_FOUND: "未找到账户，请检查邮箱或密码是否正确",
+  ACCOUNT_ALREADY_ACTIVE: "您的账户已被激活，无需重复激活",
+  ACCOUNT_CANNOT_BE_VERIFIED: "该账户已注销，无法被激活",
+  ACCOUNT_INACTIVE: "该账户已被注销",
+  ACCOUNT_PENDING_ACTIVATION: "账户已成功创建，请检查您的邮箱以激活账户",
+  EMAIL_VERIFICATION_RESENT: "激活邮件已重新发送",
+  VERIFICATION_TOKEN_REQUIRED: "无法激活，激活令牌不能为空",
+  VERIFICATION_TOKEN_INVALID: "激活令牌无效或已过期，请重新获取激活邮件",
+  INVALID_PASSWORD: "密码错误，请重试",
+  LOGIN_SUCCESS: "登录成功",
+  LOGOUT_SUCCESS: "登出成功",
+  REQUESTS_TOO_FREQUENT: "您的请求过于频繁，请在 {retryAfterSeconds} 秒后重试",
+  SERVER_ERROR: "服务器发生了意外错误",
+  ACCOUNT_VERIFIED_SUCCESS: "账户激活成功",
+  REDIS_ERROR: "Redis服务器当前不可用",
+  SEND_MAIL_ERROR: "账户激活邮件发送失败",
+  FAILED_TO_READ_FILE: "文件读取失败",
+  TABLE_CREATE_FAILED: "数据表创建失败",
+  DATA_INSERT_FAILED: "表数据插入失败",
+  FAILED_SELECT_ALL_DATA: "获取数据失败",
+  FAILED_SELECT_BY_PAGE: "获取分页数据失败",
+  FAILED_SELECT_BY_TIME_RANGE: "获取指定时间范围内的数据失败",
+  FAILED_SELECT_GROUPS_BY_YEAR: "按年份分组的数据获取失败",
+  FAILED_SELECT_GROUPS_BY_MONTH: "按月份分组的数据获取失败",
+  INVALID_EMAIL_FORMAT: "邮箱格式无效",
+  PASSWORD_TOO_WEAK: "密码必须为 8-16 个字符，包含大写字母、小写字母、数字和特殊字符",
+  INVALID_IMAGE_DATA: "提供的图像数据无效",
+  UPDATE_VERIFICATION_TOKEN_ERROR: "更新激活令牌失败",
+  SET_REDIS_KEY_ERROR: "设置 Redis 键失败",
+  REDIS_SERVER_ERROR: "Redis 服务器错误",
+  COMPARE_PASSWORD_ERROR: "密码比对发生错误",
+  INVALID_JWT_TOKEN: "鉴权失败，JWT令牌无效",
+  UNAUTHORIZED: "未提供JWT令牌或令牌格式不正确",
+  TOKEN_EXPIRED: "登录状态已过期，请重新登录。",
+  INVALID_REFRESH_TOKEN: "刷新令牌无效或过期",
+};

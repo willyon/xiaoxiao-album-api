@@ -2,10 +2,25 @@
  * @Author: zhangshouchang
  * @Date: 2024-12-13 16:41:24
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-12-29 21:21:46
+ * @LastEditTime: 2025-02-15 13:54:29
  * @Description: File description
  */
 const { db } = require("../services/dbService");
+
+// 创建表格 执行成功不会返回任何值
+// function createTableUsers() {
+//   const createtablestmt = `
+//       CREATE TABLE IF NOT EXISTS users (
+//         id INTEGER PRIMARY KEY AUTOINCREMENT,
+//         email TEXT NOT NULL UNIQUE,
+//         password TEXT NOT NULL,
+//         verifiedStatus TEXT DEFAULT 'pending',
+//         verificationToken TEXT,
+//         createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+//       );
+//     `;
+//   db.prepare(createtablestmt).run();
+// }
 
 const findUserById = (userId) => {
   const stmt = db.prepare("SELECT * FROM users WHERE id = ?");
@@ -22,11 +37,14 @@ const findUserByEmail = (email) => {
 //   return stmt.get(token);
 // };
 
-const insertUser = (email, password, language) => {
-  const stmt = db.prepare("INSERT INTO users (email, password, language) VALUES (?, ?, ?)");
-  const result = stmt.run(email, password, language); // 执行插入操作
+const insertUser = (email, password) => {
+  const stmt = db.prepare("INSERT INTO users (email, password, verifiedStatus) VALUES (?, ?, 'pending')");
+  const result = stmt.run(email, password); // 执行插入操作
   const userId = result.lastInsertRowid; // 获取插入的用户ID
-  return { id: userId, email, password, language }; // 返回新创建用户的信息
+
+  // 查询并返回完整的用户信息
+  const newUser = findUserById(userId);
+  return newUser;
 };
 
 // const updateUserEmailVerification = (id) => {
