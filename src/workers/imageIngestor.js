@@ -12,6 +12,31 @@ const imageService = require("../services/imageService");
 const { stringToTimestamp } = require("../utils/formatTime");
 const { getRedisClient } = require("../services/redisClient");
 const { userSetKey } = require("../workers/sharedEnsure");
+const { DateTime } = require("luxon");
+
+// ========================== Timezone helpers (Luxon) ========================== //
+// TIMEZONE can be 'utc' or 'local' (default: 'local')
+const TIMEZONE = (process.env.TIMEZONE || "local").toLowerCase() === "utc" ? "utc" : "local";
+
+/**
+ * Derive monthKey like '2025-08' from a millisecond timestamp using Luxon.
+ * When ts is falsy or invalid => return 'unknown'.
+ */
+function toMonthKey(ts) {
+  if (ts == null) return "unknown";
+  const dt = DateTime.fromMillis(Number(ts), { zone: TIMEZONE });
+  return dt.isValid ? dt.toFormat("yyyy-LL") : "unknown";
+}
+
+/**
+ * Derive yearKey like '2025' from a millisecond timestamp using Luxon.
+ * When ts is falsy or invalid => return 'unknown'.
+ */
+function toYearKey(ts) {
+  if (ts == null) return "unknown";
+  const dt = DateTime.fromMillis(Number(ts), { zone: TIMEZONE });
+  return dt.isValid ? dt.toFormat("yyyy") : "unknown";
+}
 
 // 格式化图片后缀名
 const imgExtension = process.env.PROCESSED_IMAGE_TARGET_EXTENSION;
@@ -179,6 +204,10 @@ async function processAndSaveSingleImage(fileInfo) {
       return;
     }
 
+    // Compute materialized keys for faster grouping/queries
+    const monthKey = toMonthKey(creationDate);
+    const yearKey = toYearKey(creationDate);
+
     const imageData = {
       originalImageUrl: path.join(`/${process.env.PROCESSED_ORIGINAL_IMAGE_DIR}`, filename),
       bigHighQualityImageUrl: path.join(`/${process.env.PROCESSED_BIG_HIGH_IMAGE_DIR}`, `${imageHash}.${imgExtension}`),
@@ -187,6 +216,8 @@ async function processAndSaveSingleImage(fileInfo) {
       creationDate,
       hash: imageHash,
       userId: fileInfo.userId,
+      monthKey,
+      yearKey,
     };
 
     // 保存至数据库

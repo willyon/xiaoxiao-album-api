@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-12-13 16:41:10
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-13 09:09:55
+ * @LastEditTime: 2025-08-14 00:19:32
  * @Description: File description
  */
 const authModel = require("../models/authModel");
@@ -73,14 +73,14 @@ const createNewUser = async ({ email, password }) => {
     validateEmail(email);
     validatePassword(password);
 
-    // 生成验证 token
-    const verificationJWTToken = generateJWTToken(email);
-
     // 加密密码
     const hashedPassword = await _hashPassword(password);
 
     // 创建新用户
     const newUser = await authModel.insertUser(email, hashedPassword);
+
+    // 生成邮箱验证 token
+    const verificationJWTToken = generateJWTToken(newUser.id);
 
     // 更新验证 token
     await authModel.updateUserVerificationToken(newUser.id, verificationJWTToken);
@@ -113,8 +113,8 @@ const verifyEmail = async (token) => {
       });
 
     // 验证 JWT Token 是否有效
-    const decoded = _verifyJWTToken(token);
-    const userId = decoded.userId;
+    const { userId } = _verifyJWTToken(token);
+    console.log("解开了", userId);
 
     // 在数据库中查找与 userId 匹配的用户
     const user = await authModel.findUserById(userId);
@@ -137,10 +137,10 @@ const verifyEmail = async (token) => {
     }
 
     // 更新用户的 verifiedStatus 为 "active"
-    await authModel.updateUserStatus(userId, "active");
+    await authModel.updateUserStatus(user.id, "active");
 
     // 清空用户的 verificationToken
-    await authModel.updateVerificationTokenToNull(userId);
+    await authModel.updateVerificationTokenToNull(user.id);
   } catch (error) {
     // 这里的错误将传递给 Controller 中的 catch
     if (error.name === "TokenExpiredError") {

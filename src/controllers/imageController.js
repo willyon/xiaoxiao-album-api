@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:00:14
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-12 16:16:39
+ * @LastEditTime: 2025-08-14 01:12:23
  * @Description: File description
  */
 const imageService = require("../services/imageService");
@@ -51,13 +51,29 @@ async function handleGetAllByPage(req, res, next) {
   }
 }
 
-//分页获取具体某个时间段的图片
-async function handleGetByTimeRange(req, res, next) {
+//分页获取具体某个年份的图片
+async function handleGetByCertainYear(req, res, next) {
   const { userId } = req?.user;
-  const { pageNo, pageSize, creationDate, timeRange } = req.body;
+  const { pageNo, pageSize, yearKey } = req.body;
   try {
-    // 分页获取数据库中具体某个月已存储图片信息
-    const queryResult = await imageService.getImagesByTimeRange({ userId, pageNo, pageSize, creationDate, timeRange });
+    const queryResult = await imageService.getImagesByYear({ userId, pageNo, pageSize, yearKey });
+
+    // 资源地址 用于图片访问地址拼接
+    const baseUrl = _getBaseUrl(req);
+
+    // 为每张图片添加服务器基本路径
+    const imagesWithBaseUrl = _addBaseUrlToImages(baseUrl, queryResult.data);
+    res.sendResponse({ data: { list: imagesWithBaseUrl, total: queryResult.total } });
+  } catch (error) {
+    next(error);
+  }
+}
+//分页获取具体某个月份的图片
+async function handleGetByCertainMonth(req, res, next) {
+  const { userId } = req?.user;
+  const { pageNo, pageSize, monthKey } = req.body;
+  try {
+    const queryResult = await imageService.getImagesByMonth({ userId, pageNo, pageSize, monthKey });
 
     // 资源地址 用于图片访问地址拼接
     const baseUrl = _getBaseUrl(req);
@@ -110,7 +126,8 @@ async function handleGroupByMonth(req, res, next) {
 
 module.exports = {
   handleGetAllByPage,
-  handleGetByTimeRange,
+  handleGetByCertainYear,
+  handleGetByCertainMonth,
   handleGroupByYear,
   handleGroupByMonth,
 };

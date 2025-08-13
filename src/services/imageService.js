@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-08-29 02:08:10
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-12 16:21:41
+ * @LastEditTime: 2025-08-14 01:11:05
  * @Description: File description
  */
 const fsExtra = require("fs-extra");
@@ -82,20 +82,6 @@ async function calculateImageHash(imagePath) {
   });
 }
 
-// async function generateImageHash(imagePath) {}
-//获取数据库全部图片
-async function getAllImages() {
-  try {
-    return await imageModel.selectAllImages();
-  } catch (error) {
-    throw new CustomError({
-      httpStatus: 500,
-      messageCode: ERROR_CODES.FAILED_SELECT_ALL_DATA,
-      messageType: "error",
-    });
-  }
-}
-
 async function getAllImagesByPage({ pageNo = 1, pageSize = 10, userId }) {
   // 参数校验和默认值保护
   if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
@@ -116,7 +102,7 @@ async function getAllImagesByPage({ pageNo = 1, pageSize = 10, userId }) {
   }
 }
 
-async function getImagesByTimeRange({ pageNo = 1, pageSize = 10, creationDate = null, timeRange = "", userId }) {
+async function getImagesByYear({ pageNo = 1, pageSize = 10, yearKey = "unknown", userId }) {
   if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
     throw new CustomError({
       httpStatus: 400,
@@ -125,7 +111,26 @@ async function getImagesByTimeRange({ pageNo = 1, pageSize = 10, creationDate = 
     });
   }
   try {
-    return await imageModel.selectImagesByTimeRange({ pageNo, pageSize, creationDate, timeRange, userId });
+    return await imageModel.selectImagesByYear({ pageNo, pageSize, yearKey, userId });
+  } catch (error) {
+    throw new CustomError({
+      httpStatus: 500,
+      messageCode: ERROR_CODES.FAILED_SELECT_BY_TIME_RANGE,
+      messageType: "error",
+    });
+  }
+}
+
+async function getImagesByMonth({ pageNo = 1, pageSize = 10, monthKey = "unknown", userId }) {
+  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: "warning",
+    });
+  }
+  try {
+    return await imageModel.selectImagesByMonth({ pageNo, pageSize, monthKey, userId });
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
@@ -222,8 +227,8 @@ module.exports = {
   calculateImageHash,
   extractImageMetadata,
   getAllImagesByPage,
-  getImagesByTimeRange,
-  getAllImages,
+  getImagesByMonth,
+  getImagesByYear,
   getGroupsByYear,
   getGroupsByMonth,
   saveNewImage,
