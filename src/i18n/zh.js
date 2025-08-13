@@ -2,10 +2,12 @@
  * @Author: zhangshouchang
  * @Date: 2025-01-01 17:59:15
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-07-26 22:36:37
+ * @LastEditTime: 2025-08-09 22:17:36
  * @Description: File description
  */
 module.exports = {
+  FILE_UPLOADED_SUCCESSFULLY: "文件上传成功",
+  NO_UPLOAD_FILE: "未检测到上传文件",
   SEND_ACTIVATION_EMAIL_FAILED: "邮箱地址无效，无法发送激活邮件。",
   REQUEST_COMPLETED: "请求完成",
   EMAIL_REQUIRED: "邮箱不能为空",
@@ -46,4 +48,8 @@ module.exports = {
   UNAUTHORIZED: "未提供JWT令牌或令牌格式不正确",
   TOKEN_EXPIRED: "登录状态已过期，请重新登录。",
   INVALID_REFRESH_TOKEN: "刷新令牌无效或过期",
+  NETWORK_TIMEOUT: "网络请求超时，请稍后重试",
+  BAD_GATEWAY: "上游服务暂时不可用，请稍后重试",
+  FILE_NOT_FOUND: "文件不存在或路径无效",
+  EXIF_READ_FAILED: "读取图片 EXIF 元数据失败，请检查文件是否为有效的图片",
 };

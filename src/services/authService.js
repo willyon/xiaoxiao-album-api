@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-12-13 16:41:10
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-07-28 15:48:22
+ * @LastEditTime: 2025-08-13 09:09:55
  * @Description: File description
  */
 const authModel = require("../models/authModel");
@@ -22,10 +22,10 @@ const generateJWTToken = (userId) => {
 async function generateAndStoreRefreshToken(userId) {
   const refreshToken = jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET, { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d" });
   try {
-    const redisClient = await getRedisClient();
+    const redisClient = getRedisClient();
     const redisKey = `refresh_token_${userId}`;
     const ttl = parseInt(process.env.JWT_REFRESH_EXPIRES_IN_MS) / 1000; //过期时间（单位秒） 用于redis 与cookie httponly过期时间保持一致
-    await redisClient.set(redisKey, refreshToken, { EX: ttl });
+    await redisClient.set(redisKey, refreshToken, "EX", ttl);
   } catch (error) {
     console.warn("Redis error: 存储 refresh token 失败，将继续返回 token", error);
   }
@@ -66,11 +66,6 @@ const validateInputPassword = async (inputPassword, hashedPassword) => {
 const _hashPassword = async (password) => {
   return await bcrypt.hash(password, 10);
 };
-
-// 生成邮件验证链接唯一标识
-// const generateVerificationToken = () => {
-//   return crypto.randomBytes(32).toString("hex");
-// };
 
 const createNewUser = async ({ email, password }) => {
   try {
@@ -153,14 +148,12 @@ const verifyEmail = async (token) => {
         httpStatus: 401,
         messageCode: ERROR_CODES.VERIFICATION_TOKEN_INVALID,
         messageType: "error",
-        refreshable: false,
       });
     } else if (error.name === "JsonWebTokenError") {
       throw new CustomError({
         httpStatus: 401,
         messageCode: ERROR_CODES.VERIFICATION_TOKEN_INVALID,
         messageType: "error",
-        refreshable: false,
       });
     } else {
       throw error;

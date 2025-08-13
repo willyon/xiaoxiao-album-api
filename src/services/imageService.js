@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-08-29 02:08:10
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-01-06 16:22:41
+ * @LastEditTime: 2025-08-12 16:21:41
  * @Description: File description
  */
 const fsExtra = require("fs-extra");
@@ -63,7 +63,11 @@ async function extractImageMetadata(filePath) {
   try {
     return await exiftool.read(filePath);
   } catch (error) {
-    throw error;
+    throw new CustomError({
+      httpStatus: 422, // Unprocessable Entity fits “bad file / unreadable EXIF”
+      messageCode: ERROR_CODES.EXIF_READ_FAILED,
+      messageType: "error",
+    });
   }
 }
 
@@ -79,7 +83,7 @@ async function calculateImageHash(imagePath) {
 }
 
 // async function generateImageHash(imagePath) {}
-
+//获取数据库全部图片
 async function getAllImages() {
   try {
     return await imageModel.selectAllImages();
@@ -92,9 +96,9 @@ async function getAllImages() {
   }
 }
 
-async function getAllImagesByPage({ pageNo = 1, pageSize = 10 }) {
+async function getAllImagesByPage({ pageNo = 1, pageSize = 10, userId }) {
   // 参数校验和默认值保护
-  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1) {
+  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
     throw new CustomError({
       httpStatus: 400,
       messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -102,7 +106,7 @@ async function getAllImagesByPage({ pageNo = 1, pageSize = 10 }) {
     });
   }
   try {
-    return await imageModel.selectImagesByPage({ pageNo, pageSize });
+    return await imageModel.selectImagesByPage({ pageNo, pageSize, userId });
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
@@ -112,8 +116,8 @@ async function getAllImagesByPage({ pageNo = 1, pageSize = 10 }) {
   }
 }
 
-async function getImagesByTimeRange({ pageNo = 1, pageSize = 10, creationDate = null, timeRange = "" }) {
-  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1) {
+async function getImagesByTimeRange({ pageNo = 1, pageSize = 10, creationDate = null, timeRange = "", userId }) {
+  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
     throw new CustomError({
       httpStatus: 400,
       messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -121,7 +125,7 @@ async function getImagesByTimeRange({ pageNo = 1, pageSize = 10, creationDate = 
     });
   }
   try {
-    return await imageModel.selectImagesByTimeRange({ pageNo, pageSize, creationDate, timeRange });
+    return await imageModel.selectImagesByTimeRange({ pageNo, pageSize, creationDate, timeRange, userId });
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
@@ -131,9 +135,9 @@ async function getImagesByTimeRange({ pageNo = 1, pageSize = 10, creationDate = 
   }
 }
 
-async function getGroupsByYear({ pageNo = 1, pageSize = 10 }) {
+async function getGroupsByYear({ userId, pageNo = 1, pageSize = 10 }) {
   // 参数校验和默认值保护
-  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1) {
+  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
     throw new CustomError({
       httpStatus: 400,
       messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -141,7 +145,7 @@ async function getGroupsByYear({ pageNo = 1, pageSize = 10 }) {
     });
   }
   try {
-    return await imageModel.selectGroupsByYear({ pageNo, pageSize });
+    return await imageModel.selectGroupsByYear({ pageNo, pageSize, userId });
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
@@ -151,9 +155,9 @@ async function getGroupsByYear({ pageNo = 1, pageSize = 10 }) {
   }
 }
 
-async function getGroupsByMonth({ pageNo = 1, pageSize = 10 }) {
+async function getGroupsByMonth({ userId, pageNo = 1, pageSize = 10 }) {
   // 参数校验和默认值保护
-  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1) {
+  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
     throw new CustomError({
       httpStatus: 400,
       messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -161,7 +165,7 @@ async function getGroupsByMonth({ pageNo = 1, pageSize = 10 }) {
     });
   }
   try {
-    return await imageModel.selectGroupsByMonth({ pageNo, pageSize });
+    return await imageModel.selectGroupsByMonth({ pageNo, pageSize, userId });
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
@@ -171,22 +175,10 @@ async function getGroupsByMonth({ pageNo = 1, pageSize = 10 }) {
   }
 }
 
-async function setUpTableImages() {
-  try {
-    await imageModel.createTableImages();
-  } catch (error) {
-    throw new CustomError({
-      httpStatus: 500,
-      messageCode: ERROR_CODES.TABLE_CREATE_FAILED,
-      messageType: "error",
-    });
-  }
-}
-
 async function saveNewImage(imageData) {
   // 参数校验
-  const { originalImageUrl, bigHighQualityImageUrl, bigLowQualityImageUrl, previewImageUrl, hash } = imageData;
-  if (!originalImageUrl || !bigHighQualityImageUrl || !bigLowQualityImageUrl || !previewImageUrl || !hash) {
+  const { userId, originalImageUrl, bigHighQualityImageUrl, bigLowQualityImageUrl, previewImageUrl, hash } = imageData;
+  if (!userId || !originalImageUrl || !bigHighQualityImageUrl || !bigLowQualityImageUrl || !previewImageUrl || !hash) {
     throw new CustomError({
       httpStatus: 400,
       messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -202,18 +194,27 @@ async function saveNewImage(imageData) {
         messageType: "error",
       });
     }
-    console.log("Image insert successful:");
     return result;
+  } catch (error) {
+    throw error;
+  }
+}
+
+//获取用户hashes
+async function getUserImageHashes(userId) {
+  try {
+    return await imageModel.selectHashesByUserId(userId);
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
-      messageCode: ERROR_CODES.DATA_INSERT_FAILED,
+      messageCode: ERROR_CODES.FAILED_SELECT_ALL_DATA,
       messageType: "error",
     });
   }
 }
 
 module.exports = {
+  getUserImageHashes,
   isImage,
   isDuplicate,
   formatImage,
@@ -225,6 +226,5 @@ module.exports = {
   getAllImages,
   getGroupsByYear,
   getGroupsByMonth,
-  setUpTableImages,
   saveNewImage,
 };

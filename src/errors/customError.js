@@ -1,26 +1,31 @@
-const { SERVER_ERROR } = require("../constants/messageCodes");
+const { ERROR_CODES } = require("../constants/messageCodes");
 /*
  * @Author: zhangshouchang
  * @Date: 2024-12-16 09:29:27
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-07-26 20:40:19
+ * @LastEditTime: 2025-08-09 22:31:40
  * @Description: Custom error class
  */
 class CustomError extends Error {
   /**
    * 自定义错误类的构造函数
    * @param {Object} options - 错误对象的详细信息
-   * @param {number} options.httpStatus - HTTP 状态码 默认 500
-   * @param {string} options.messageCode - 错误的业务逻辑代码（例如 ACCOUNT_NOT_FOUND, INVALID_TOKEN）
-   * @param {string} options.message - 错误的提示信息，主要用于开发和调试
-   * @param {string} options.messageType - 消息类型（success, warning, error, info），用于前端弹框样式
+   * @param {number} [options.httpStatus=500] - HTTP 状态码
+   * @param {string} [options.messageCode=SERVER_ERROR] - 业务逻辑错误代码（如 ACCOUNT_NOT_FOUND, INVALID_TOKEN）
+   * @param {string} [options.messageType="error"] - 消息类型（success, warning, error, info），用于前端弹框样式
+   * @param {boolean} [options.refreshable] - 是否允许刷新/重试（例如刷新 JWT）
+   * @param {Object} [options.details] - 结构化内部上下文，供日志与 i18n 占位使用（默认不下发给前端）
+   * @param {string} [options.message] - 用于存储原始错误信息（默认不下发给前端 用于日志）
+   * @param {Object} [options.public] - 允许返回给前端的附加字段（仅该对象内的键会下发）
    */
   constructor({
-    message = "An error occurred",
     httpStatus = 500,
-    messageCode = SERVER_ERROR,
+    messageCode = ERROR_CODES.SERVER_ERROR,
     messageType = "error",
-    refreshable = false,
+    refreshable,
+    details,
+    public: publicFields,
+    message,
     ...extraFields
   } = {}) {
     // super调用Error的构造函数，它只接受一个参数:message
@@ -30,10 +35,12 @@ class CustomError extends Error {
     this.httpStatus = httpStatus; // HTTP 状态码
     this.messageCode = messageCode; // 业务逻辑的错误代码
     this.messageType = messageType; // 前端的消息类型（用于前端控制弹框的样式）
-    this.refreshable = refreshable; // 是否可刷新jwt token
-    Object.assign(this, extraFields); // 未来其它自定义字段
+    if (refreshable !== undefined) this.refreshable = refreshable; // 是否可刷新jwt token
+    if (details !== undefined) this.details = details; // 内部上下文
+    if (publicFields !== undefined) this.public = publicFields; // 允许额外给前端返回的字段集合
+    Object.assign(this, extraFields); // 透传其它未来可能传入的字段
 
-    // 捕获错误调用栈，排除 constructor，这允许开发人员更轻松地调试错误的来源位置，因为错误的调用位置会被保存在栈中。
+    // 捕获错误调用栈，排除 constructor
     Error.captureStackTrace(this, this.constructor);
   }
 }

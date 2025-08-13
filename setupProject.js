@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-08-28 09:24:56
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-08-28 09:25:15
+ * @LastEditTime: 2025-08-10 16:48:39
  * @Description: File description
  */
 const fs = require("fs");
@@ -39,7 +39,7 @@ const projectStructure = {
       devDependencies: {},
     },
     null,
-    2
+    2,
   ),
 };
 
@@ -50,12 +50,10 @@ function createStructure(base, structure) {
     if (typeof value === "string") {
       // 创建文件并写入内容
       fs.writeFileSync(fullPath, value, "utf8");
-      console.log(`Created file: ${fullPath}`);
     } else {
       // 创建文件夹并递归调用
       if (!fs.existsSync(fullPath)) {
         fs.mkdirSync(fullPath);
-        console.log(`Created directory: ${fullPath}`);
       }
       createStructure(fullPath, value);
     }

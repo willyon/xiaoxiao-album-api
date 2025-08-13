@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-12-13 16:31:24
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-07-28 15:40:53
+ * @LastEditTime: 2025-08-13 00:17:47
  * @Description: File description
  */
 // 将这个文件的参数校验的逻辑挪到service中去 待整理
@@ -12,6 +12,8 @@ const CustomError = require("../errors/customError");
 const { getRedisClient } = require("../services/redisClient");
 const CooldownManager = require("../services/cooldownService");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
+
+const redisClient = getRedisClient();
 
 // 用户注册/登录
 const handleLoginOrRegister = async (req, res, next) => {
@@ -29,13 +31,10 @@ const handleLoginOrRegister = async (req, res, next) => {
   try {
     // 查询用户是否存在
     let existingUser = await authService.getUserInfoByEmail(email);
-    console.log("Existing user:", existingUser); // 添加日志
 
     // 用户不存在，执行注册流程
     if (!existingUser) {
-      console.log("Creating new user..."); // 添加日志
       const newUser = await authService.createNewUser({ email, password });
-      console.log("New user created:", newUser); // 添加日志
 
       await authService.sendVerificationEmail({
         email,
@@ -46,12 +45,12 @@ const handleLoginOrRegister = async (req, res, next) => {
       // 提示用户去邮箱激活账号
       return res.sendResponse({
         messageCode: SUCCESS_CODES.ACCOUNT_PENDING_ACTIVATION,
-        data: newUser,
         httpStatus: 201,
       });
     }
 
-    // 用户存在，验证密码
+    // 用户存在，执行登陆流程
+    // 验证密码
     const isPasswordValid = await authService.validateInputPassword(password, existingUser.password);
     if (!isPasswordValid) {
       throw new CustomError({
@@ -65,47 +64,36 @@ const handleLoginOrRegister = async (req, res, next) => {
     const { verifiedStatus } = existingUser;
 
     if (verifiedStatus === "deactivated") {
+      // 账户已被注销
       throw new CustomError({
         httpStatus: 403,
         messageCode: ERROR_CODES.ACCOUNT_INACTIVE,
         messageType: "error",
       });
-    }
-
-    if (verifiedStatus === "pending") {
+    } else if (verifiedStatus === "pending") {
       // 账户未激活，重发激活邮件
-      await resendEmailHandler({ email, req, res });
+      await resendEmailHandler({ req, res, email });
     } else if (verifiedStatus === "active") {
-      try {
-        // 账户已激活，登录成功
-        const jwtToken = authService.generateJWTToken(existingUser.id);
-        // 生成refresh token
-        const refreshToken = await authService.generateAndStoreRefreshToken(existingUser.id);
-        // 将 refreshToken 写入 Cookie(httpOnly)
-        res.setCookie("refresh_token", refreshToken);
+      // 账户已是激活状态 可正常访问
+      const jwtToken = authService.generateJWTToken(existingUser.id);
+      // 生成refresh token
+      const refreshToken = await authService.generateAndStoreRefreshToken(existingUser.id);
+      // 将 refreshToken 写入 Cookie(httpOnly)
+      res.setCookie("refresh_token", refreshToken);
 
-        // 返回登录成功数据
-        return res.sendResponse({
-          messageCode: SUCCESS_CODES.LOGIN_SUCCESS,
-          data: {
-            jwtToken, // JWT token 用于 Authorization 头
-            user: {
-              id: existingUser.id,
-              email: existingUser.email,
-            },
+      // 返回登录成功数据
+      return res.sendResponse({
+        messageCode: SUCCESS_CODES.LOGIN_SUCCESS,
+        data: {
+          jwtToken, // JWT token 用于 Authorization 头
+          user: {
+            // id: existingUser.id,
+            email: existingUser.email,
           },
-        });
-      } catch (error) {
-        console.error("Login error:", error);
-        throw new CustomError({
-          httpStatus: 500,
-          messageCode: ERROR_CODES.SERVER_ERROR,
-          messageType: "error",
-        });
-      }
+        },
+      });
     }
   } catch (error) {
-    console.error("Login/Register error:", error); // 添加错误日志
     next(error);
   }
 };
@@ -120,7 +108,6 @@ const handleLogoutUser = async (req, res, next) => {
         httpStatus: 401,
         messageCode: ERROR_CODES.UNAUTHORIZED,
         messageType: "error",
-        refreshable: false,
       });
     }
 
@@ -128,18 +115,16 @@ const handleLogoutUser = async (req, res, next) => {
     try {
       decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
     } catch (err) {
-      res.clearCookie("refresh_token");
+      res.clearCookie("refresh_token"); // 清除浏览器 cookie
       throw new CustomError({
         httpStatus: 401,
         messageCode: ERROR_CODES.INVALID_REFRESH_TOKEN,
         messageType: "error",
-        refreshable: false,
       });
     }
 
     // 解码 refresh token 获取 userId
     try {
-      const redisClient = await getRedisClient();
       const redisKey = `refresh_token_${decoded.userId}`;
       await redisClient.del(redisKey); // 删除 Redis 中的 token
     } catch (redisErr) {
@@ -172,25 +157,17 @@ const handleCheckLoginStatus = async (req, res, next) => {
     const userId = req.user.userId; // 由 authMiddleware 解码并注入的 userId
 
     const existingUser = await authService.getUserInfoById(userId);
+    // 登陆状态无效
     if (!existingUser || existingUser.verifiedStatus !== "active") {
       throw new CustomError({
         httpStatus: 401,
         messageCode: ERROR_CODES.UNAUTHORIZED,
         messageType: "error",
-        refreshable: false,
       });
     }
 
     // 登录状态有效
-    return res.sendResponse({
-      messageCode: SUCCESS_CODES.LOGIN_SUCCESS,
-      // data: {
-      //   user: {
-      //     id: existingUser.id,
-      //     email: existingUser.email,
-      //   },
-      // },
-    });
+    return res.sendResponse();
   } catch (error) {
     next(error);
   }
@@ -214,10 +191,10 @@ const handleResendVerificationEmail = async (req, res, next) => {
   }
 };
 
+//重发邮件
 const resendEmailHandler = async ({ req, res, email }) => {
   try {
     // 检查是否在短时间内多次请求
-    const redisClient = await getRedisClient();
     const cooldownManager = new CooldownManager(redisClient, { defaultCooldown: parseInt(process.env.EMAIL_COOLDOWN_SECONDS) });
     const isCooling = await cooldownManager.isCoolingDown("email", email);
     if (isCooling) {
@@ -226,15 +203,17 @@ const resendEmailHandler = async ({ req, res, email }) => {
         httpStatus: 429,
         messageCode: ERROR_CODES.REQUESTS_TOO_FREQUENT,
         messageType: "warning",
-        retryAfterSeconds: remaining,
+        details: {
+          retryAfterSeconds: remaining,
+        },
       });
     }
 
     // 重新发送激活邮件
-    const result = await authService.resendVerificationEmail({ email, req });
+    await authService.resendVerificationEmail({ email, req });
     // 设置冷却时间
     cooldownManager.setCooldown("email", email);
-    res.sendResponse({ messageCode: SUCCESS_CODES.EMAIL_VERIFICATION_RESENT, data: result });
+    res.sendResponse({ messageCode: SUCCESS_CODES.EMAIL_VERIFICATION_RESENT });
   } catch (error) {
     throw error;
   }
@@ -248,7 +227,6 @@ const handleRefreshToken = async (req, res, next) => {
       httpStatus: 401,
       messageCode: ERROR_CODES.UNAUTHORIZED,
       messageType: "error",
-      refreshable: false,
     });
   }
 
@@ -257,7 +235,6 @@ const handleRefreshToken = async (req, res, next) => {
     const userId = decoded.userId;
 
     // 从 Redis 获取存储的 refresh token
-    const redisClient = await getRedisClient();
     const redisKey = `refresh_token_${userId}`;
     const storedToken = await redisClient.get(redisKey);
 
@@ -266,7 +243,6 @@ const handleRefreshToken = async (req, res, next) => {
         httpStatus: 401,
         messageCode: ERROR_CODES.INVALID_REFRESH_TOKEN,
         messageType: "error",
-        refreshable: false,
       });
     }
 

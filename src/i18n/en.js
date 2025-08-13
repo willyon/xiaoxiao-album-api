@@ -2,10 +2,12 @@
  * @Author: zhangshouchang
  * @Date: 2025-01-01 18:00:00
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-07-26 22:36:26
+ * @LastEditTime: 2025-08-09 22:17:51
  * @Description: Translated English messages
  */
 module.exports = {
+  FILE_UPLOADED_SUCCESSFULLY: "File uploaded successfully",
+  NO_UPLOAD_FILE: "No uploaded file detected",
   SEND_ACTIVATION_EMAIL_FAILED: "The email address is invalid. Unable to send the activation email.",
   REQUEST_COMPLETED: "request completed",
   EMAIL_REQUIRED: "Email cannot be empty",
@@ -46,4 +48,8 @@ module.exports = {
   UNAUTHORIZED: "No JWT token provided or token format is incorrect",
   TOKEN_EXPIRED: "Your session has expired. Please log in again.",
   INVALID_REFRESH_TOKEN: "Invalid or expired refresh token",
+  NETWORK_TIMEOUT: "Network request timed out. Please try again later.",
+  BAD_GATEWAY: "Upstream service is temporarily unavailable. Please try again later.",
+  FILE_NOT_FOUND: "File does not exist or the path is invalid.",
+  EXIF_READ_FAILED: "Failed to read EXIF metadata from the image. Please check if the file is a valid image.",
 };

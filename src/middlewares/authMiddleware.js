@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2025-02-15 00:43:34
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-07-26 17:26:51
+ * @LastEditTime: 2025-08-09 21:37:28
  * @Description: File description
  */
 const jwt = require("jsonwebtoken");
@@ -18,7 +18,6 @@ const authMiddleware = async (req, res, next) => {
         httpStatus: 401,
         messageCode: ERROR_CODES.UNAUTHORIZED,
         messageType: "error",
-        refreshable: false,
       }),
     );
   }
@@ -47,7 +46,6 @@ const authMiddleware = async (req, res, next) => {
         httpStatus: 401,
         messageCode: ERROR_CODES.INVALID_JWT_TOKEN,
         messageType: "error",
-        refreshable: false,
       }),
     );
   }

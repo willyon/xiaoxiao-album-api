@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-08-30 16:46:37
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-07-26 18:15:44
+ * @LastEditTime: 2025-08-12 15:53:02
  * @Description: Optimized Server Configuration
  */
 
@@ -12,6 +12,9 @@ const path = require("path");
 
 const express = require("express");
 const { getRedisClient } = require("./src/services/redisClient");
+const initGracefulShutdown = require("./src/utils/gracefulShutdown");
+
+const { closeUploadQueue } = require("./src/queues/uploadQueue");
 
 // 应用服务安全中间件
 const xssClean = require("xss-clean");
@@ -21,7 +24,7 @@ const cookieParser = require("cookie-parser");
 
 //中间件
 const { responseHandler } = require("./src/middlewares/responseHandler");
-const errorHandler = require("./src/middlewares/errorHandler");
+const { errorHandler } = require("./src/middlewares/errorHandler");
 const authMiddleware = require("./src/middlewares/authMiddleware");
 
 // 导入业务路由
@@ -61,7 +64,7 @@ app.use(cookieParser());
 // 注册表单解析 解析form-data或URL参数 { extended: true }表示使用第三方qs模块 以便解析嵌套对象
 app.use(express.urlencoded({ extended: true }));
 
-// 注册自定义响应格式中间件
+// 注册自定义响应格式中间件 必须在所有路由之前挂载
 app.use(responseHandler);
 
 // ========================== 静态资源中间件 ========================== //
@@ -79,29 +82,21 @@ app.use("/images", [authMiddleware], imagesRoutes);
 
 // ========================== 错误处理中间件 ========================== //
 
-// 注册错误处理器
+// 注册错误处理器 必须在所有路由之后挂载
 app.use(errorHandler);
-
-// ========================== 进程信号处理 ========================== //
-
-// 关闭 Redis 连接（程序退出时）
-process.on("SIGINT", async () => {
-  try {
-    console.log("Closing Redis connection...");
-    const redisClient = await getRedisClient();
-    if (redisClient) {
-      await redisClient.quit();
-      console.log("Redis connection closed successfully.");
-    }
-  } catch (error) {
-    console.error("Failed to close Redis connection:", error);
-  } finally {
-    process.exit(0);
-  }
-});
 
 // ========================== 启动服务器 ========================== //
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`服务已启用：http://localhost:${PORT}`);
+});
+
+// 应用服务进程退出前进行的操作
+initGracefulShutdown({
+  server,
+  getRedisClient,
+  extraClosers: [
+    // 关闭 BullMQ 的 Queue 及其底层连接（API 进程只负责入队）
+    async () => closeUploadQueue(),
+  ],
 });

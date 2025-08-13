@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2025-01-01 18:00:02
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-07-26 22:51:11
+ * @LastEditTime: 2025-08-13 00:24:27
  * @Description: File description
  */
 const { setCookie } = require("../utils/cookieHelper");
@@ -12,18 +12,19 @@ const { SUCCESS_CODES } = require("../constants/messageCodes");
 
 // 修改为导出中间件函数
 const responseHandler = (req, res, next) => {
-  req.userLanguage = req.headers["X-accept-language"] || "zh"; // 根据请求头选择语言
+  req.userLanguage = req.get("X-Accept-Language") || req.headers["x-accept-language"] || "zh";
 
   res.sendResponse = ({ messageCode = SUCCESS_CODES.REQUEST_COMPLETED, data = null, httpStatus = 200, ...extraFields } = {}) => {
     const message = getI18nMessage(messageCode, req.userLanguage, extraFields);
-
-    res.status(httpStatus).json({
-      messageCode,
+    const safeStatus = Number.isInteger(httpStatus) ? httpStatus : 200;
+    const payload = {
       status: "success",
       messageType: "success",
+      messageCode,
       message,
-      data,
-    });
+    };
+    if (data) payload.data = data;
+    res.status(safeStatus).json(payload);
   };
 
   res.setCookie = (name, value, options) => setCookie(res, name, value, options);

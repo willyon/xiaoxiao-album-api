@@ -2,13 +2,17 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-17 14:06:00
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-07-25 16:55:56
+ * @LastEditTime: 2025-08-04 12:34:46
  * @Description: File description
  */
 const express = require("express");
 const router = express.Router();
+const upload = require("../middlewares/upload"); // 引入 upload 中间件
 const { handleGetAllByPage, handleGetByTimeRange, handleGroupByYear, handleGroupByMonth } = require("../controllers/imageController");
+const { handlePostImages } = require("../controllers/uploadController");
 
+//上传图片
+router.post("/postImages", upload.single("file"), handlePostImages);
 // 分页获取图片信息
 router.post("/queryAllByPage", handleGetAllByPage);
 // 分页获取具体某个月份的图片信息

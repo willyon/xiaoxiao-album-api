@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2025-07-26 21:00:09
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-07-26 21:58:18
+ * @LastEditTime: 2025-08-13 00:16:42
  * @Description:提供基于 Redis 的冷却时间管理功能，用于限制特定操作（如邮件发送、验证码获取）的频率，防止重复提交。
  */
 
@@ -37,6 +37,7 @@ class CooldownManager {
     const key = this.getKey(type, identifier);
     try {
       const exists = await this.redis.get(key);
+      console.log("存不存在呢", exists);
       return !!exists;
     } catch (err) {
       console.warn(`[CooldownManager] Redis check failed for ${key}:`, err);
@@ -54,7 +55,7 @@ class CooldownManager {
   async setCooldown(type, identifier, duration = this.defaultCooldown) {
     const key = this.getKey(type, identifier);
     try {
-      await this.redis.set(key, "1", { EX: duration });
+      await this.redis.set(key, "1", "EX", duration);
     } catch (err) {
       console.warn(`[CooldownManager] Redis set failed for ${key}:`, err);
     }
