@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:01:09
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-14 01:10:31
+ * @LastEditTime: 2025-08-14 01:55:18
  * @Description: File description
  */
 const { db } = require("../services/dbService");
@@ -169,7 +169,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
       GROUP BY m.monthKey
     )
     SELECT
-      latest.monthKey AS timeOfGroup,        -- 分组键（YYYY-MM / 'unknown'）
+      latest.monthKey,        -- 分组键（YYYY-MM / 'unknown'）
       latest.previewImageUrl AS latestImageUrl,
       latest.creationDate,
       counts.imageCount
@@ -224,7 +224,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
       GROUP BY m.yearKey
     )
     SELECT
-      latest.yearKey  AS timeOfGroup,        -- 分组键（YYYY / 'unknown'）
+      latest.yearKey,        -- 分组键（YYYY / 'unknown'）
       latest.previewImageUrl AS latestImageUrl,
       latest.creationDate,
       counts.imageCount
