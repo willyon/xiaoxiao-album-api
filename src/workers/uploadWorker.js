@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2025-08-04 16:42:09
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-13 00:43:00
+ * @LastEditTime: 2025-08-14 23:32:34
  * @Description: 创建worker消费者任务
  */
 require("dotenv").config();
@@ -27,7 +27,7 @@ const worker = new Worker(
     //图片处理
     await processAndSaveSingleImage(job.data);
   },
-  { connection, concurrency: 4 }, //一次最多同时并发4个任务
+  { connection, concurrency: 2 }, //一次最多同时并发4个任务
 );
 
 worker.on("completed", (job) => {

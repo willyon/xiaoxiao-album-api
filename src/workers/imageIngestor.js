@@ -8,47 +8,15 @@
 const logger = require("../utils/logger");
 const path = require("path");
 const fsExtra = require("fs-extra");
-const imageService = require("../services/imageService");
-const { stringToTimestamp } = require("../utils/formatTime");
+const { saveNewImage, rollbackMany, formatMultipleImagesFromOneSource } = require("../services/imageService");
 const { getRedisClient } = require("../services/redisClient");
 const { userSetKey } = require("../workers/sharedEnsure");
-const { DateTime } = require("luxon");
-
-// ========================== Timezone helpers (Luxon) ========================== //
-// TIMEZONE can be 'utc' or 'local' (default: 'local')
-const TIMEZONE = (process.env.TIMEZONE || "local").toLowerCase() === "utc" ? "utc" : "local";
-
-/**
- * Derive monthKey like '2025-08' from a millisecond timestamp using Luxon.
- * When ts is falsy or invalid => return 'unknown'.
- */
-function toMonthKey(ts) {
-  if (ts == null) return "unknown";
-  const dt = DateTime.fromMillis(Number(ts), { zone: TIMEZONE });
-  return dt.isValid ? dt.toFormat("yyyy-LL") : "unknown";
-}
-
-/**
- * Derive yearKey like '2025' from a millisecond timestamp using Luxon.
- * When ts is falsy or invalid => return 'unknown'.
- */
-function toYearKey(ts) {
-  if (ts == null) return "unknown";
-  const dt = DateTime.fromMillis(Number(ts), { zone: TIMEZONE });
-  return dt.isValid ? dt.toFormat("yyyy") : "unknown";
-}
-
-// 格式化图片后缀名
-const imgExtension = process.env.PROCESSED_IMAGE_TARGET_EXTENSION;
+const { metaQueue } = require("../queues/metaQueue");
 
 // 失败图片存放目录（防止失败文件滞留待处理目录）
 const failedFolder = path.join(__dirname, "..", "..", process.env.FAILED_IMAGE_DIR);
 // 重复图片存放目录
 const duplicateFolder = path.join(__dirname, "..", "..", process.env.DUPLICATE_IMAGE_DIR);
-// 存放处理成功图片的源图片文件夹
-const originalFolder = path.join(__dirname, "..", "..", process.env.PROCESSED_ORIGINAL_IMAGE_DIR);
-// 转换高质量大图目录
-const bigHighImageFolder = path.join(__dirname, "..", "..", process.env.PROCESSED_BIG_HIGH_IMAGE_DIR);
 // 转换低质量大图目录
 const bigLowImageFolder = path.join(__dirname, "..", "..", process.env.PROCESSED_BIG_LOW_IMAGE_DIR);
 // 转换小图目录
@@ -57,212 +25,148 @@ const previewImageFolder = path.join(__dirname, "..", "..", process.env.PROCESSE
 // 确保目标文件夹存在 若不存在 会自动创建
 fsExtra.ensureDirSync(failedFolder);
 fsExtra.ensureDirSync(duplicateFolder);
-fsExtra.ensureDirSync(originalFolder);
-fsExtra.ensureDirSync(bigHighImageFolder);
 fsExtra.ensureDirSync(bigLowImageFolder);
 fsExtra.ensureDirSync(previewImageFolder);
 
-const handleDuplicatedImage = async (fileInfo) => {
-  const filename = fileInfo.filename;
-  const sourceFilePath = fileInfo.path;
-  // 处理重复图片逻辑
+// 迁移重复图片到duplicateFolder
+async function handleDuplicatedImage(fileInfo) {
+  const { filename, path: sourceFilePath } = fileInfo;
   const duplicateFilePath = path.join(duplicateFolder, filename);
   try {
     await fsExtra.move(sourceFilePath, duplicateFilePath, { overwrite: true });
   } catch (error) {
     logger.error({
-      message: `File processing failed, error message: ${error?.message}`,
+      message: `move duplicated file failed: ${error?.message}`,
       stack: error?.stack,
-      details: { step: "move duplicated file.", file: fileInfo.path, sourceFilePath, duplicateFilePath },
+      details: { step: "move duplicated file", file: sourceFilePath, duplicateFilePath },
     });
   }
-};
+}
+
+// 原子化：先查集合 → 抢锁 → 失败则再查集合 → 再决定 busy/重复
+async function ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
+  const { userId, imageHash } = fileInfo;
+  const setKey = userSetKey(userId);
+
+  // 1) 快路径：集合命中，立即按重复处理
+  const already = await redisClient.sismember(setKey, imageHash);
+  if (already === 1) {
+    await handleDuplicatedImage(fileInfo);
+    return { proceed: false }; // 不继续处理
+  }
+
+  // 2) 抢占锁（避免同图并发重复处理）
+  const lockKey = `${process.env.IMAGES_HASH_LOCK_KEY_PREFIX}${imageHash}`;
+  const ttlMs = Number(process.env.IMAGE_HASH_LOCK_TTL_MS) || 10 * 60 * 1000; //10分钟后释放锁 避免因为忘记释放锁导致死锁
+  //NX：仅当 key 不存在 时才设置（Not eXists） PX <ms>：给这个 key 设置 过期时间（毫秒）（eXPIRE in ms）
+  const lockOk = await redisClient.set(lockKey, "1", "NX", "PX", ttlMs);
+  if (!lockOk) {
+    // 3) 抢锁失败：复查集合（可能另一 worker 已经完成并写入）
+    const nowExists = await redisClient.sismember(setKey, imageHash);
+    if (nowExists === 1) {
+      await handleDuplicatedImage(fileInfo);
+      return { proceed: false };
+    }
+    // 仍不存在：说明别人正在处理，抛“忙”让队列重试
+    const busyErr = new Error("image_processing_in_progress");
+    busyErr.code = "IMG_BUSY";
+    throw busyErr;
+  }
+
+  // 抢锁成功：把锁 key 返回给调用者以便 finally 里释放
+  return { proceed: true, lockKey };
+}
 
 /**
  * 独立的单张图片处理与入库方法
  * @param {Object} fileInfo - 包含图片文件信息的对象，需至少有 filename、path、userId 字段
  */
+
 async function processAndSaveSingleImage(fileInfo) {
-  const { filename, path: sourceFilePath, userId } = fileInfo;
+  const { filename, path: sourceFilePath, userId, imageHash } = fileInfo;
+  const redisClient = getRedisClient();
+  let lockKey;
 
-  // 计算图片哈希值
-  let imageHash;
   try {
-    imageHash = await imageService.calculateImageHash(sourceFilePath);
-  } catch (error) {
-    logger.error({
-      message: `File processing failed, error message: ${error?.message}`,
-      stack: error?.stack,
-      details: { step: "calculateImageHash", file: fileInfo.path },
-    });
-    // 将源文件移入失败目录，避免滞留
-    try {
-      const failedPath = path.join(failedFolder, filename);
-      await fsExtra.move(sourceFilePath, failedPath, { overwrite: true });
-    } catch (e2) {
-      logger.warn({
-        message: `move failed image to failedFolder failed: ${e2?.message}`,
-        details: { step: "move failed image (hash)", file: fileInfo.path },
-      });
-    }
-    return;
-  }
+    const { proceed, lockKey: key } = await ensureProcessRightOrShortCircuit(fileInfo, redisClient);
+    if (!proceed) return;
+    lockKey = key;
 
-  // 检查是否重复/并发锁
-  let redisClient = getRedisClient();
-  // 分布式锁 + 集合(健壮去重)
-  const lockPrefix = process.env.IMAGES_HASH_LOCK_KEY_PREFIX;
-  const lockKey = `${lockPrefix}${imageHash}`;
-  const lockTtlMs = Number(process.env.IMAGE_HASH_LOCK_TTL_MS); // 默认10分钟
-  // 抢占处理资格：SET NX PX ttl（已存在或他人处理中则拿不到锁）
-  const lockOk = await redisClient.set(lockKey, "1", "NX", "PX", lockTtlMs);
-  // 未拿到锁
-  if (!lockOk) {
+    // ======== 快路径：仅产出 preview.webp + bigLow.webp ========
+    const imgExtension = process.env.IMAGE_EXTENSION_WEBP || "webp";
+    const bigLowPath = path.join(bigLowImageFolder, `${imageHash}.${imgExtension}`);
+    const previewPath = path.join(previewImageFolder, `${imageHash}.${imgExtension}`);
+
     try {
-      const known = await redisClient.sismember(userSetKey(userId), imageHash);
-      // 判断一次去重
-      if (known === 1) {
-        await handleDuplicatedImage(fileInfo);
-        return;
-      }
-      // 不在集合里：说明其他 worker 正在处理同一图片，抛出可重试错误，交给队列重试
-      const busyErr = new Error("image_processing_in_progress");
-      busyErr.code = "IMG_BUSY";
-      throw busyErr;
+      await formatMultipleImagesFromOneSource({
+        inputPath: sourceFilePath,
+        tasks: [
+          // 低清大图（webp）
+          {
+            outputPath: bigLowPath,
+            quality: 40, //建议40-45
+          },
+          // 预览图（webp, 600px）
+          {
+            outputPath: previewPath,
+            quality: 50, //建议50-55
+            resizeWidth: 600,
+          },
+        ],
+      });
     } catch (e) {
-      // 安全兜底：如果上面判断出错，记录并以重试方式结束
-      logger.warn({ message: `check duplicate via lock+set failed: ${e?.message}`, details: { file: fileInfo.path } });
-      const busyErr = new Error("image_processing_in_progress");
-      busyErr.code = "IMG_BUSY";
-      throw busyErr;
-    }
-  }
-  //拿到锁 则继续往下走
-  try {
-    const isDuplicate = await redisClient.sismember(userSetKey(userId), imageHash);
-    if (isDuplicate === 1) {
-      await handleDuplicatedImage(fileInfo);
-      return;
-    }
-
-    // 转换路径
-    const bigHighFilePath = path.join(bigHighImageFolder, `${imageHash}.${imgExtension}`);
-    const bigLowFilePath = path.join(bigLowImageFolder, `${imageHash}.${imgExtension}`);
-    const previewFilePath = path.join(previewImageFolder, `${imageHash}.${imgExtension}`);
-
-    // 图片格式化并添加到相应文件夹
-    try {
-      await Promise.all([
-        imageService.formatImage([sourceFilePath, "-quality", "50", bigHighFilePath]),
-        imageService.formatImage([sourceFilePath, "-quality", "10", bigLowFilePath]),
-        imageService.formatImage([sourceFilePath, "-quality", "50", "-resize", "600x", previewFilePath]),
-      ]);
-    } catch (error) {
-      await imageService.rollbackOperation(bigHighFilePath);
-      await imageService.rollbackOperation(bigLowFilePath);
-      await imageService.rollbackOperation(previewFilePath);
-      logger.error({
-        message: `File processing failed, error message: ${error?.message}`,
-        stack: error?.stack,
-        details: { step: "format image", file: fileInfo.path },
-      });
-      // 将图片移动至操作失败文件夹下保存
+      // 这里一定等到所有分支结束才会进入（因为上游用的是 allSettled）
+      const toRemove = Array.isArray(e.successPaths) && e.successPaths.length ? e.successPaths : [bigLowPath, previewPath]; // 兜底：按预期列表删
+      await rollbackMany(toRemove);
+      // // 失败兜底：把源文件挪到 failed
       try {
         const failedPath = path.join(failedFolder, filename);
         await fsExtra.move(sourceFilePath, failedPath, { overwrite: true });
-      } catch (e2) {
-        logger.warn({
-          message: `move failed image to failedFolder failed: ${e2?.message}`,
-          details: { step: "move failed image (format)", file: fileInfo.path },
-        });
-      }
+      } catch {}
       return;
     }
 
-    // 读取元数据
-    let creationDate = null;
-    let exifData;
-    try {
-      exifData = await imageService.extractImageMetadata(sourceFilePath);
-      creationDate = exifData.DateTimeOriginal ? stringToTimestamp(exifData.DateTimeOriginal.rawValue) : null;
-    } catch (error) {
-      logger.error({
-        message: `File processing failed, error message: ${error?.message}`,
-        stack: error?.stack,
-        details: { step: "fail to extract image metadata", file: fileInfo.path },
-      });
-      // 将图片移动至操作失败文件夹下保存
-      try {
-        const failedPath = path.join(failedFolder, filename);
-        await fsExtra.move(sourceFilePath, failedPath, { overwrite: true });
-      } catch (e2) {
-        logger.warn({
-          message: `move failed image to failedFolder failed: ${e2?.message}`,
-          details: { step: "move failed image (exif)", file: fileInfo.path },
-        });
-      }
-      return;
-    }
-
-    // Compute materialized keys for faster grouping/queries
-    const monthKey = toMonthKey(creationDate);
-    const yearKey = toYearKey(creationDate);
-
+    // ======== 先写库（creationDate 为空；monthKey/yearKey = 'unknown'；bigHigh 先留空或保留旧值）========
     const imageData = {
-      originalImageUrl: path.join(`/${process.env.PROCESSED_ORIGINAL_IMAGE_DIR}`, filename),
-      bigHighQualityImageUrl: path.join(`/${process.env.PROCESSED_BIG_HIGH_IMAGE_DIR}`, `${imageHash}.${imgExtension}`),
-      bigLowQualityImageUrl: path.join(`/${process.env.PROCESSED_BIG_LOW_IMAGE_DIR}`, `${imageHash}.${imgExtension}`),
-      previewImageUrl: path.join(`/${process.env.PROCESSED_PREVIEW_IMAGE_DIR}`, `${imageHash}.${imgExtension}`),
-      creationDate,
+      originalImageUrl: "", // 先空着，待 metaWorker 填充
+      bigHighQualityImageUrl: "", // 先空着，待 metaWorker 填充
+      bigLowQualityImageUrl: `/${process.env.PROCESSED_BIG_LOW_IMAGE_DIR}/${imageHash}.${imgExtension}`,
+      previewImageUrl: `/${process.env.PROCESSED_PREVIEW_IMAGE_DIR}/${imageHash}.${imgExtension}`,
+      creationDate: null,
       hash: imageHash,
-      userId: fileInfo.userId,
-      monthKey,
-      yearKey,
+      userId,
+      monthKey: "unknown",
+      yearKey: "unknown",
     };
 
-    // 保存至数据库
     try {
-      await imageService.saveNewImage(imageData);
-      // 将当前新增图片hash写入redis中
+      await saveNewImage(imageData);
       await redisClient.sadd(userSetKey(userId), imageHash);
-    } catch (error) {
-      await imageService.rollbackOperation(bigHighFilePath);
-      await imageService.rollbackOperation(bigLowFilePath);
-      await imageService.rollbackOperation(previewFilePath);
-      logger.error({
-        message: `File processing failed, error message: ${error?.message}`,
-        stack: error?.stack,
-        details: { step: "fail to insert new image data", file: fileInfo.path },
-      });
-      // 将图片移动至操作失败文件夹下保存
+    } catch (e) {
+      // 回滚已产出的 webp
+      await rollbackMany([bigLowPath, previewPath]);
+      // 移到 failed
       try {
         const failedPath = path.join(failedFolder, filename);
         await fsExtra.move(sourceFilePath, failedPath, { overwrite: true });
-      } catch (e2) {
-        logger.warn({
-          message: `move failed image to failedFolder failed: ${e2?.message}`,
-          details: { step: "move failed image (db)", file: fileInfo.path },
-        });
-      }
+      } catch {}
       return;
     }
 
-    // 移动原图
-    const originalFilePath = path.join(originalFolder, filename);
-    try {
-      await fsExtra.move(sourceFilePath, originalFilePath, { overwrite: true });
-    } catch (error) {
-      logger.error({
-        message: `File processing failed, error message: ${error?.message}`,
-        stack: error?.stack,
-        details: { step: "fail to move image to original folder", file: fileInfo.path, sourceFilePath, originalFilePath },
-      });
-    }
+    // ======== 入 Meta 队列做“慢活”（EXIF + 高清 AVIF + DB 更新）========
+    await metaQueue.add("postProcess", {
+      userId,
+      imageHash,
+      filename,
+      sourceFilePath,
+      bigHighExt: process.env.IMAGE_EXTENSION_AVIF,
+    });
   } finally {
-    // 无论成功或失败都释放锁（仅当我们曾拿到锁时才有意义）
-    try {
-      await redisClient.del(lockKey);
-    } catch {}
+    if (lockKey) {
+      try {
+        await redisClient.del(lockKey);
+      } catch {}
+    }
   }
 }
 

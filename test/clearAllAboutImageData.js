@@ -2,13 +2,14 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-17 22:24:29
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-13 09:19:40
+ * @LastEditTime: 2025-08-15 10:02:56
  * @Description: File description
  */
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
 const { db } = require("../src/services/dbService");
+const { uploadQueue } = require("../src/queues/uploadQueue");
 
 // ============清空数据库 images 表所有数据==========//
 function clearImagesTable() {
@@ -47,6 +48,18 @@ for (let key in clearFolders) {
   deleteFolderSync(clearFolders[key]);
 }
 // ============清空图片转换过程中涉及的所有目标文件夹的所有图片==========//
+
+// ============清空 BullMQ 队列中未处理的任务==========//
+async function clearPendingJobs() {
+  try {
+    await uploadQueue.drain(true); // true 表示移除延迟任务
+    console.log("BullMQ 队列等待中和延迟的任务已清空");
+  } catch (err) {
+    console.error("清空 BullMQ 队列任务失败：", err);
+  }
+}
+clearPendingJobs().catch(console.error);
+// ============清空 BullMQ 队列中未处理的任务==========//
 
 // ============清空 Redis 中 readyKeyOf、lockKeyOf、userSetKey 三类键，用于开发测试环境快速重置==========//
 const { readyKeyOf, lockKeyOf, userSetKey } = require("../src/workers/sharedEnsure");

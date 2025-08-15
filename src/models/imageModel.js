@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:01:09
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-14 01:55:18
+ * @LastEditTime: 2025-08-15 23:00:18
  * @Description: File description
  */
 const { db } = require("../services/dbService");
@@ -10,36 +10,36 @@ const { db } = require("../services/dbService");
 //保存用户上传的图片元数据到数据库
 function insertImage({
   userId,
+  hash,
   originalImageUrl,
   bigHighQualityImageUrl,
   bigLowQualityImageUrl,
   previewImageUrl,
   creationDate,
-  hash,
   yearKey,
   monthKey,
 }) {
   const stmt = db.prepare(`
     INSERT OR IGNORE INTO images (
       user_id,
+      hash,
       originalImageUrl,
       bigHighQualityImageUrl,
       bigLowQualityImageUrl,
       previewImageUrl,
       creationDate,
-      hash,
       yearKey,  
       monthKey 
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const result = stmt.run(
     userId,
+    hash,
     originalImageUrl,
     bigHighQualityImageUrl,
     bigLowQualityImageUrl,
     previewImageUrl,
     creationDate,
-    hash,
     yearKey,
     monthKey,
   );
@@ -251,9 +251,43 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
     throw error;
   }
 }
+// 仅更新有值的字段
+function updateMetaAndHQ({ userId, hash, creationDate, monthKey, yearKey, bigHighQualityImageUrl, originalImageUrl }) {
+  const fields = [];
+  const params = [];
+
+  if (creationDate) {
+    fields.push("creationDate = ?");
+    params.push(creationDate);
+  }
+  if (monthKey) {
+    fields.push("monthKey = ?");
+    params.push(monthKey);
+  }
+  if (yearKey) {
+    fields.push("yearKey = ?");
+    params.push(yearKey);
+  }
+  if (bigHighQualityImageUrl) {
+    fields.push("bigHighQualityImageUrl = ?");
+    params.push(bigHighQualityImageUrl);
+  }
+
+  if (originalImageUrl) {
+    fields.push("originalImageUrl = ?");
+    params.push(originalImageUrl);
+  }
+
+  if (!fields.length) return { affectedRows: 0 };
+
+  params.push(userId, hash);
+  const sql = `UPDATE images SET ${fields.join(", ")} WHERE user_id = ? AND hash = ?`;
+  return db.prepare(sql).run(...params);
+}
 
 module.exports = {
   insertImage,
+  updateMetaAndHQ,
   selectImagesByPage,
   selectImagesByYear,
   selectImagesByMonth,
