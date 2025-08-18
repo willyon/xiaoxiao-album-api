@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:00:14
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-14 23:14:34
+ * @LastEditTime: 2025-08-17 14:45:00
  * @Description: File description
  */
 const imageService = require("../services/imageService");
@@ -11,9 +11,8 @@ const imageService = require("../services/imageService");
 function _addBaseUrlToImages(baseUrl, images) {
   return images.map((image) => ({
     ...image,
-    bigHighQualityImageUrl: `${baseUrl}${image.bigHighQualityImageUrl}`,
-    bigLowQualityImageUrl: `${baseUrl}${image.bigLowQualityImageUrl}`,
-    previewImageUrl: `${baseUrl}${image.previewImageUrl}`,
+    highResUrl: `${baseUrl}${image.highResUrl}`,
+    thumbnailUrl: `${baseUrl}${image.thumbnailUrl}`,
   }));
 }
 

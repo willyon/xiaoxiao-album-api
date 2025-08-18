@@ -2,22 +2,22 @@
  * @Author: zhangshouchang
  * @Date: 2024-08-30 15:07:02
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2024-09-30 16:43:49
+ * @LastEditTime: 2025-08-16 22:25:34
  * @Description: File description
  */
 const { DateTime } = require("luxon");
 
 // 定义两种格式
-const formatWithZone = "yyyy:MM:dd HH:mm:ssZZ"; // 包含时区信息
-const formatWithoutZone = "yyyy:MM:dd HH:mm:ss"; // 不包含时区信息
+const WITH_ZONETIME = "yyyy:MM:dd HH:mm:ssZZ"; // 包含时区信息
+const NO_ZONETIME = "yyyy:MM:dd HH:mm:ss"; // 不包含时区信息
 
 function stringToTimestamp(timeStr) {
   if (!timeStr) {
     return null;
   } else if (timeStr.includes("+") || timeStr.includes("-")) {
-    var date = DateTime.fromFormat(timeStr, formatWithZone);
+    var date = DateTime.fromFormat(timeStr, WITH_ZONETIME);
   } else {
-    var date = DateTime.fromFormat(timeStr, formatWithoutZone);
+    var date = DateTime.fromFormat(timeStr, NO_ZONETIME);
   }
   // 检查是否解析成功
   if (!date.isValid) {

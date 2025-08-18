@@ -2,12 +2,12 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:00:01
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-15 16:11:12
+ * @LastEditTime: 2025-08-19 01:01:24
  * @Description: File description
  */
 const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
-const { uploadQueue } = require("../queues/uploadQueue");
+const { imageUploadQueue } = require("../queues/imageUploadQueue");
 const { computeFileHash } = require("../utils/hash");
 
 async function handlePostImages(req, res, next) {
@@ -30,8 +30,8 @@ async function handlePostImages(req, res, next) {
     const imageHash = await computeFileHash(path);
 
     // 用 userId + hash 作为唯一 jobId，避免重复入队
-    await uploadQueue.add(
-      "processImage",
+    await imageUploadQueue.add(
+      process.env.IMAGE_UPLOAD_QUEUE_NAME,
       { filename, originalname, mimetype, size, path, userId, imageHash },
       {
         jobId: `${userId}:${imageHash}`,
@@ -39,10 +39,10 @@ async function handlePostImages(req, res, next) {
     );
 
     // 加入队列任务前，打印队列状态
-    // const jobCounts = await uploadQueue.getJobCounts();
+    // const jobCounts = await imageUploadQueue.getJobCounts();
     // console.log("当前队列状态：", jobCounts);
 
-    // const waitingJobs = await uploadQueue.getWaiting();
+    // const waitingJobs = await imageUploadQueue.getWaiting();
     // console.log("当前队列等待状态：", waitingJobs);
     // waitingJobs.forEach((job, index) => {
     //   console.log(`等待任务 ${index + 1}:`);

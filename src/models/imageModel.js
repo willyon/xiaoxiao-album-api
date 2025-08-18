@@ -2,47 +2,26 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-05 17:01:09
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-15 23:00:18
+ * @LastEditTime: 2025-08-17 15:07:05
  * @Description: File description
  */
 const { db } = require("../services/dbService");
 
 //保存用户上传的图片元数据到数据库
-function insertImage({
-  userId,
-  hash,
-  originalImageUrl,
-  bigHighQualityImageUrl,
-  bigLowQualityImageUrl,
-  previewImageUrl,
-  creationDate,
-  yearKey,
-  monthKey,
-}) {
+function insertImage({ userId, hash, originalUrl, highResUrl, thumbnailUrl, creationDate, yearKey, monthKey }) {
   const stmt = db.prepare(`
     INSERT OR IGNORE INTO images (
       user_id,
       hash,
-      originalImageUrl,
-      bigHighQualityImageUrl,
-      bigLowQualityImageUrl,
-      previewImageUrl,
+      originalUrl,
+      highResUrl,
+      thumbnailUrl,
       creationDate,
       yearKey,  
       monthKey 
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
-  const result = stmt.run(
-    userId,
-    hash,
-    originalImageUrl,
-    bigHighQualityImageUrl,
-    bigLowQualityImageUrl,
-    previewImageUrl,
-    creationDate,
-    yearKey,
-    monthKey,
-  );
+  const result = stmt.run(userId, hash, originalUrl, highResUrl, thumbnailUrl, creationDate, yearKey, monthKey);
   return { affectedRows: result.changes };
 }
 
@@ -59,7 +38,7 @@ function selectImagesByPage({ pageNo, pageSize, userId }) {
 
   // 分页数据查询
   const dataQuery = db.prepare(`
-    SELECT originalImageUrl, bigHighQualityImageUrl, bigLowQualityImageUrl, previewImageUrl, creationDate, monthKey, yearKey
+    SELECT originalUrl, highResUrl, thumbnailUrl, creationDate, monthKey, yearKey
     FROM images
     WHERE user_id = ?
     ORDER BY COALESCE(creationDate, 0) DESC, id DESC
@@ -88,7 +67,7 @@ function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
 
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
-    SELECT originalImageUrl, bigHighQualityImageUrl, bigLowQualityImageUrl, previewImageUrl, creationDate, monthKey, yearKey
+    SELECT originalUrl, highResUrl, thumbnailUrl, creationDate, monthKey, yearKey
     FROM images
     WHERE user_id = ?
       AND yearKey = ?
@@ -118,7 +97,7 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
 
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
-    SELECT originalImageUrl, bigHighQualityImageUrl, bigLowQualityImageUrl, previewImageUrl, creationDate, monthKey, yearKey
+    SELECT originalUrl, highResUrl, thumbnailUrl, creationDate, monthKey, yearKey
     FROM images
     WHERE user_id = ?
       AND monthKey = ?
@@ -155,7 +134,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
     ),
     latest AS (
       -- 为每个 monthKey 选最新一张（先按 creationDate DESC，再按 id DESC 保证稳定）
-      SELECT m.monthKey, m.previewImageUrl, m.creationDate, m.id
+      SELECT m.monthKey, m.thumbnailUrl, m.creationDate, m.id
       FROM images m
       WHERE m.user_id = ?
         AND m.id = (
@@ -170,7 +149,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
     )
     SELECT
       latest.monthKey,        -- 分组键（YYYY-MM / 'unknown'）
-      latest.previewImageUrl AS latestImageUrl,
+      latest.thumbnailUrl AS latestImageUrl,
       latest.creationDate,
       counts.imageCount
     FROM latest
@@ -210,7 +189,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
     ),
     latest AS (
       -- 为每个 yearKey 选最新一张（先按 creationDate DESC，再按 id DESC 保证稳定）
-      SELECT m.yearKey, m.previewImageUrl, m.creationDate, m.id
+      SELECT m.yearKey, m.thumbnailUrl, m.creationDate, m.id
       FROM images m
       WHERE m.user_id = ?
         AND m.id = (
@@ -225,7 +204,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
     )
     SELECT
       latest.yearKey,        -- 分组键（YYYY / 'unknown'）
-      latest.previewImageUrl AS latestImageUrl,
+      latest.thumbnailUrl AS latestImageUrl,
       latest.creationDate,
       counts.imageCount
     FROM latest
@@ -252,7 +231,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
   }
 }
 // 仅更新有值的字段
-function updateMetaAndHQ({ userId, hash, creationDate, monthKey, yearKey, bigHighQualityImageUrl, originalImageUrl }) {
+function updateMetaAndHQ({ userId, hash, creationDate, monthKey, yearKey, highResUrl, originalUrl }) {
   const fields = [];
   const params = [];
 
@@ -268,14 +247,14 @@ function updateMetaAndHQ({ userId, hash, creationDate, monthKey, yearKey, bigHig
     fields.push("yearKey = ?");
     params.push(yearKey);
   }
-  if (bigHighQualityImageUrl) {
-    fields.push("bigHighQualityImageUrl = ?");
-    params.push(bigHighQualityImageUrl);
+  if (highResUrl) {
+    fields.push("highResUrl = ?");
+    params.push(highResUrl);
   }
 
-  if (originalImageUrl) {
-    fields.push("originalImageUrl = ?");
-    params.push(originalImageUrl);
+  if (originalUrl) {
+    fields.push("originalUrl = ?");
+    params.push(originalUrl);
   }
 
   if (!fields.length) return { affectedRows: 0 };

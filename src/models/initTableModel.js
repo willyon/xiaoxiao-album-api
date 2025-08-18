@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2025-08-13 09:10:37
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-13 22:20:34
+ * @LastEditTime: 2025-08-17 14:46:14
  * @Description: File description
  */
 const { db } = require("../services/dbService");
@@ -53,10 +53,9 @@ function createTableImages() {
       CREATE TABLE IF NOT EXISTS images (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
-        originalImageUrl TEXT,
-        bigHighQualityImageUrl TEXT,
-        bigLowQualityImageUrl TEXT,
-        previewImageUrl TEXT,
+        originalUrl TEXT,
+        highResUrl TEXT,
+        thumbnailUrl TEXT,
         creationDate INTEGER,              -- 毫秒时间戳，可为 NULL
         hash TEXT,                         -- 图片内容哈希
         yearKey  TEXT,                     -- 物化：'YYYY' 或 'unknown'

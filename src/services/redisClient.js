@@ -2,10 +2,11 @@
  * @Author: zhangshouchang
  * @Date: 2024-12-17 02:03:49
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-10 16:53:59
+ * @LastEditTime: 2025-08-16 22:50:52
  * @Description: 提供全局唯一的 Redis 客户端连接；已改为使用 ioredis
  */
 const Redis = require("ioredis");
+const logger = require("../utils/logger");
 
 let redisClient = null;
 
@@ -19,7 +20,7 @@ const getRedisClient = () => {
     });
 
     redisClient.on("connect", () => {
-      console.log("ioredis connected successfully!");
+      logger.info({ message: "通用ioredis已连接成功!" });
     });
 
     redisClient.on("error", (err) => {

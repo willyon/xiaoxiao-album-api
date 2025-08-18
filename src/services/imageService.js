@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2024-08-29 02:08:10
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-16 01:49:14
+ * @LastEditTime: 2025-08-17 22:53:54
  * @Description: File description
  */
 const fsExtra = require("fs-extra");
@@ -18,9 +18,9 @@ const logger = require("../utils/logger");
 const imageModel = require("../models/imageModel");
 
 // 判断文件是否为图片
-function isImage(file) {
-  return [".jpg", ".jpeg", ".png", ".avif", ".heic", ".heif", ".webp", ".gif"].includes(path.extname(file).toLowerCase());
-}
+// function isImage(file) {
+//   return [".jpg", ".jpeg", ".png", ".avif", ".heic", ".heif", ".webp", ".gif"].includes(path.extname(file).toLowerCase());
+// }
 
 // 判断图片是否重复
 async function isDuplicate(currentHash, existingImages) {
@@ -65,12 +65,13 @@ function _applyEncoderByExt(pipeline, ext, quality = 80) {
       return pipeline.webp({
         quality, // 有损质量；一般 35–60
         smartSubsample: true, // 智能抽样，减少色彩伪影
+        effort: 3, // 0~6，越小越快；3 是很好的平衡点 effort表示编码器花多少 CPU 算力去挤压文件体积
         nearLossless: false, // 是否启用“近无损”（为 true 时更接近 PNG 特性）
       });
     case "avif":
       return pipeline.avif({
         quality, // 一般 55–90；同等主观质量下比 WebP 文件更小
-        effort: Number(process.env.SHARP_AVIF_EFFORT || 6), // effort: 0–9，越大越慢、体积越小；5–7 是常见折中
+        effort: Number(process.env.SHARP_AVIF_EFFORT || 3), // effort: 0–9，越大越慢、体积越小；5–7 是常见折中
         chromaSubsampling: "4:2:0", // 色度抽样，减小体积
       });
     case "heic":
@@ -124,10 +125,11 @@ async function formatMultipleImagesFromOneSource({ inputPath, tasks }) {
     let branch = base.clone();
     if (t.resizeWidth) {
       branch = branch.resize({
-        width: t.resizeWidth,
+        width: t.resizeWidth, //设定最大宽度
         fit: "inside", // inside 保持原图比例，把图片缩小到不超过目标宽高的最大尺寸
-        withoutEnlargement: true, //小图不会被放大
+        withoutEnlargement: true, //如果原图本来就小于目标尺寸，不放大
         fastShrinkOnLoad: true, //在解码图片的时候，如果目标尺寸（resizeWidth / resizeHeight）明显比原图小很多，Sharp 会直接在解码阶段先用更低分辨率读取，而不是先解出原图全尺寸再去缩小。
+        // kernel: sharp.kernel.lanczos2,
       });
     }
     branch = _applyEncoderByExt(branch, ext, t.quality ?? 80);
@@ -158,28 +160,32 @@ async function formatMultipleImagesFromOneSource({ inputPath, tasks }) {
  * 单张场景 单产物转码
  */
 async function formatSingleImage({ inputPath, outputPath, quality = 80, resizeWidth, withoutEnlargement = true, fit = "inside" }) {
-  await fsExtra.ensureDir(path.dirname(outputPath));
-  const ext = path.extname(outputPath).toLowerCase().slice(1);
+  try {
+    await fsExtra.ensureDir(path.dirname(outputPath));
+    const ext = path.extname(outputPath).toLowerCase().slice(1);
 
-  let pipeline = _createSharpBase(inputPath);
+    let pipeline = _createSharpBase(inputPath);
 
-  if (resizeWidth) {
-    pipeline = pipeline.resize({
-      width: resizeWidth,
-      fit,
-      withoutEnlargement,
-      fastShrinkOnLoad: true,
-    });
+    if (resizeWidth) {
+      pipeline = pipeline.resize({
+        width: resizeWidth,
+        fit,
+        withoutEnlargement,
+        fastShrinkOnLoad: true,
+        // kernel: sharp.kernel.lanczos2,
+      });
+    }
+
+    pipeline = _applyEncoderByExt(pipeline, ext, quality);
+
+    await pipeline.toFile(outputPath);
+  } catch (error) {
+    throw error;
   }
-
-  pipeline = _applyEncoderByExt(pipeline, ext, quality);
-
-  // 不保留 EXIF 以减小体积（原图另行保存即可）
-  await pipeline.toFile(outputPath);
 }
 
 // 单条回滚 图片处理过程中出错时，删除出错步骤对应的可能已处理成功的图片
-async function rollbackOperation(filePath) {
+async function cleanupGeneratedFile(filePath) {
   try {
     await fsExtra.remove(filePath); // 不需要先判断存在与否
   } catch (err) {
@@ -313,8 +319,8 @@ async function getGroupsByMonth({ userId, pageNo = 1, pageSize = 10 }) {
 
 async function saveNewImage(imageData) {
   // 参数校验
-  const { userId, hash, bigLowQualityImageUrl, previewImageUrl } = imageData;
-  if (!userId || !hash || !bigLowQualityImageUrl || !previewImageUrl) {
+  const { userId, hash, thumbnailUrl } = imageData;
+  if (!userId || !hash || !thumbnailUrl) {
     throw new CustomError({
       httpStatus: 400,
       messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -349,7 +355,7 @@ async function getUserImageHashes(userId) {
   }
 }
 // src/services/imageService.js 里新增
-async function updateImageMetaAndHQ({ userId, hash, creationDate, monthKey, yearKey, bigHighQualityImageUrl, originalImageUrl }) {
+async function updateImageMetaAndHQ({ userId, hash, creationDate, monthKey, yearKey, highResUrl, originalUrl }) {
   // 你可在 imageModel 里实现 update 语句，这里只做参数校验 + 转发
   if (!userId || !hash) {
     throw new CustomError({
@@ -365,8 +371,8 @@ async function updateImageMetaAndHQ({ userId, hash, creationDate, monthKey, year
       creationDate,
       monthKey,
       yearKey,
-      bigHighQualityImageUrl,
-      originalImageUrl,
+      highResUrl,
+      originalUrl,
     });
   } catch (error) {
     throw error;
@@ -376,12 +382,12 @@ async function updateImageMetaAndHQ({ userId, hash, creationDate, monthKey, year
 module.exports = {
   updateImageMetaAndHQ,
   getUserImageHashes,
-  isImage,
-  isDuplicate,
+  // isImage,
   formatImage,
+  isDuplicate,
   formatSingleImage,
   formatMultipleImagesFromOneSource,
-  rollbackOperation,
+  cleanupGeneratedFile,
   rollbackMany,
   extractImageMetadata,
   getAllImagesByPage,

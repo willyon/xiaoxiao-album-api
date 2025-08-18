@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2025-08-04 17:05:12
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-04 17:05:24
+ * @LastEditTime: 2025-08-16 21:21:08
  * @Description: File description
  */
 // ecosystem.config.js
@@ -17,8 +17,16 @@ module.exports = {
       },
     },
     {
-      name: "upload-worker",
-      script: "src/workers/uploadWorker.js",
+      name: "image-upload-worker",
+      script: "src/workers/imageUploadWorker.js",
+      watch: false,
+      env: {
+        NODE_ENV: "production",
+      },
+    },
+    {
+      name: "image-meta-worker",
+      script: "src/workers/imageMetaWorker.js",
       watch: false,
       env: {
         NODE_ENV: "production",

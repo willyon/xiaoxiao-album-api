@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2025-01-06 15:27:15
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-12 23:34:58
+ * @LastEditTime: 2025-08-19 01:02:40
  * @Description: File description
  */
 const fs = require("fs");
@@ -19,8 +19,8 @@ if (!fs.existsSync(LOG_DIR)) {
 
 // 获取当天的日志文件路径 没有则新建
 function getLogFilePath() {
-  const date = DateTime.now().toFormat("yyyy-LL-dd");
-  return path.join(LOG_DIR, `error-${date}.log`);
+  const date = DateTime.now().toFormat("yyyy-MM-dd");
+  return path.join(LOG_DIR, `${date}.log`);
 }
 
 /**
@@ -183,7 +183,7 @@ function flushQueue() {
 
           // 若期间有被丢弃的日志，先写一条告警（这条也可能触发背压）
           if (droppedCount > 0) {
-            const warn = `[${DateTime.now().toFormat("yyyy-LL-dd HH:mm:ss")}] [WARN] Logger queue dropped ${droppedCount} messages due to backpressure`;
+            const warn = `[${DateTime.now().toFormat("yyyy-MM-dd HH:mm:ss")}] [WARN] Logger queue dropped ${droppedCount} messages due to backpressure`;
             droppedCount = 0;
             const okWarn = stream.write(warn + "\n");
             if (!okWarn) {
@@ -266,7 +266,7 @@ const logger = {
    * @param {Object} param0
    */
   error({ message, code, requestId, details, messageToUserI18n, stack, requestInfo }) {
-    const timestamp = DateTime.now().toFormat("yyyy-LL-dd HH:mm:ss");
+    const timestamp = DateTime.now().toFormat("yyyy-MM-dd HH:mm:ss");
     const logMessage = formatLogMessage({
       timestamp,
       level: "error",
@@ -286,7 +286,7 @@ const logger = {
    * @param {Object} param0
    */
   warn({ message, code, requestId, details }) {
-    const timestamp = DateTime.now().toFormat("yyyy-LL-dd HH:mm:ss");
+    const timestamp = DateTime.now().toFormat("yyyy-MM-dd HH:mm:ss");
     const logMessage = formatLogMessage({
       timestamp,
       level: "warn",
@@ -303,7 +303,7 @@ const logger = {
    * @param {Object} param0
    */
   info({ message, code, requestId, details }) {
-    const timestamp = DateTime.now().toFormat("yyyy-LL-dd HH:mm:ss");
+    const timestamp = DateTime.now().toFormat("yyyy-MM-dd HH:mm:ss");
     const logMessage = formatLogMessage({
       timestamp,
       level: "info",

@@ -1,0 +1,1238 @@
+npm verbose cli /Users/zhangshouchang/.nvm/versions/node/v20.19.4/bin/node /Users/zhangshouchang/.nvm/versions/node/v20.19.4/bin/npm
+npm info using npm@10.8.2
+npm info using node@v20.19.4
+npm warn config optional Use `--omit=optional` to exclude optional dependencies, or
+npm warn config `--include=optional` to include them.
+npm warn config
+npm warn config       Default value does install optional deps unless otherwise omitted.
+npm verbose title npm i sharp@0.33.5
+npm verbose argv "i" "sharp@0.33.5" "--build-from-source" "--no-optional" "--foreground-scripts" "--loglevel" "verbose"
+npm verbose logfile logs-max:10 dir:/Users/zhangshouchang/.npm/_logs/2025-08-18T07_43_09_102Z-
+npm verbose logfile /Users/zhangshouchang/.npm/_logs/2025-08-18T07_43_09_102Z-debug-0.log
+npm http fetch GET 200 https://registry.npmjs.org/async 5961ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/bcrypt 627ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/better-sqlite3 674ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/bullmq 2213ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cookie-parser 724ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cors 363ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/csurf 888ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/date-fns 849ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/dotenv 404ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/exif-parser 392ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/exiftool-vendored 960ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/express 707ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/express-rate-limit 386ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fs-extra 756ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/helmet 1221ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/image-hash 1839ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/imagemagick 1121ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ioredis 1089ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jsonwebtoken 936ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/luxon 1050ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/multer 465ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/nodemailer 768ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/nodemon 842ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/redis 914ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/validator 677ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/xss-clean 1791ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/sharp 684ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/chai 1356ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/eslint 1203ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jiti 765ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/mocha 3892ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/prettier 753ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ioredis 40ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/node-addon-api 475ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/semver 792ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tslib 450ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/uuid 817ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/assertion-error 364ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/check-error 373ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/deep-eql 373ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/node-abort-controller 4165ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/loupe 719ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/pathval 384ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/prebuild-install 4841ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cookie 534ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cookie-signature 378ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/bindings 5129ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cookie 4ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/vary 703ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cron-parser 5599ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/object-assign 745ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/csrf 788ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/msgpackr 5793ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@mapbox%2fnode-pre-gyp 5841ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint-community%2feslint-utils 482ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/http-errors 994ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint%2fconfig-array 472ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint%2fconfig-helpers 376ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint%2fcore 369ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint-community%2fregexpp 752ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint%2fplugin-kit 477ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint%2feslintrc 1036ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@humanwhocodes%2fretry 713ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint%2fjs 864ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@humanwhocodes%2fmodule-importer 809ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@types%2fjson-schema 479ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@types%2festree 788ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/chalk 417ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/escape-string-regexp 417ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@humanfs%2fnode 1686ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-visitor-keys 754ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/debug 1109ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cross-spawn 1215ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ajv 1359ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-scope 1129ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/esquery 480ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/espree 880ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fast-deep-equal 324ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/esutils 343ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/find-up 279ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-glob 288ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/imurmurhash 303ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/json-stable-stringify-without-jsonify 293ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/glob-parent 542ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.merge 307ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/file-entry-cache 763ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/natural-compare 350ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/optionator 467ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ignore 1303ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/he 805ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@types%2fluxon 865ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/minimatch 1155ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/depd 338ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/etag 383ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/vary 7ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/debug 6ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/fresh 392ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@photostructure%2ftz-lookup 1966ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/exiftool-vendored.pl 1881ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/accepts 466ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/send 1088ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/qs 1532ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/batch-cluster 2524ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/statuses 346ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/methods 478ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/parseurl 378ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/http-errors 5ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/exiftool-vendored.exe 2154ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/escape-html 381ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/encodeurl 741ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/on-finished 401ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/body-parser 516ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/type-is 1173ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/utils-merge 365ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/safe-buffer 525ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/content-type 438ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/finalhandler 444ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/range-parser 354ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/proxy-addr 1016ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/array-flatten 372ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/content-disposition 355ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/merge-descriptors 384ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/setprototypeof 456ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/universalify 372ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/path-to-regexp 1041ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jpeg-js 416ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@cwasm%2fwebp 793ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/graceful-fs 1183ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jsonfile 1014ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/serve-static 1412ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@ioredis%2fcommands 409ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/denque 449ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.defaults 438ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cluster-key-slot 549ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/request 654ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/redis-errors 386ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/redis-parser 518ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ms 453ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/standard-as-callback 530ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jws 383ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/pngjs 1518ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.includes 353ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.once 398ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/file-type 2216ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ms 9ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.isnumber 389ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.isarguments 1156ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.isstring 341ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.isboolean 356ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.isinteger 332ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/minimatch 8ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.isplainobject 382ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/js-yaml 459ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/log-symbols 403ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ansi-colors 681ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/diff 1044ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/workerpool 860ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/chokidar 1089ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/browser-stdout 353ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/yargs-parser 523ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/yargs-unparser 512ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/strip-json-comments 471ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/supports-color 749ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/append-field 347ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/object-assign 5ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/type-is 5ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/serialize-javascript 562ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/glob 1944ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/semver 6ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/chokidar 5ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/xtend 378ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/touch 397ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/supports-color 5ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/undefsafe 516ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/concat-stream 817ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/busboy 967ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/pstree.remy 353ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/mkdirp 874ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ignore-by-default 356ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/simple-update-notifier 577ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@redis%2fsearch 756ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@redis%2fjson 1060ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@redis%2fbloom 1053ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@redis%2fclient 1186ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@redis%2ftime-series 754ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/color 503ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/detect-libc 563ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-wasm32 580ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-linux-arm 419ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-win32-x64 412ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@redis%2fgraph 1936ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-linux-x64 733ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-darwin-x64 522ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-linux-s390x 518ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-linux-arm64 631ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-darwin-arm64 456ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-linuxmusl-arm64 560ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-linux-arm 474ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-linux-x64 508ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-linuxmusl-x64 838ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-darwin-x64 420ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-linux-arm64 469ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-linux-s390x 417ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-linuxmusl-arm64 354ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-darwin-arm64 442ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-win32-ia32 1741ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/xss-filters 1094ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@img%2fsharp-libvips-linuxmusl-x64 1578ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/yargs 11810ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/detect-libc 11ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/nopt 368ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/make-dir 459ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/https-proxy-agent 1064ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/rimraf 1148ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tar 1220ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/npmlog 1522ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/node-fetch 2787ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/encoding 283ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/console-control-strings 365ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/glob 7ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/set-blocking 419ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/mkdirp 5ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/abbrev 462ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/agent-base 570ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/are-we-there-yet 596ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/chownr 369ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/yallist 648ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/gauge 1130ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fs-minipass 569ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/whatwg-url 1337ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/minizlib 799ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/minipass 1932ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/file-uri-to-path 347ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/github-from-package 347ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/napi-build-utils 396ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/mkdirp-classic 417ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/expand-template 610ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/rc 671ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/simple-get 704ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/pump 779ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tunnel-agent 533ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/node-abi 1482ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tar-fs 1078ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/minimist 1718ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/msgpackr-extract 824ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/depd 20ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/statuses 21ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/setprototypeof 7ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/rndm 354ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/inherits 390ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tsscmp 455ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/toidentifier 467ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/uid-safe 1547ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/random-bytes 1488ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/eslint 9ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-visitor-keys 25ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/@humanwhocodes%2fretry 19ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/espree 28ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/fast-deep-equal 8ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/levn 435ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint%2fobject-schema 450ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/import-fresh 505ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@humanfs%2fcore 572ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/json-schema-traverse 555ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fast-json-stable-stringify 392ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ansi-styles 577ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/globals 1075ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/shebang-command 486ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/path-key 519ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/esrecurse 363ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/which 1251ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/acorn-jsx 756ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/estraverse 826ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/estraverse 740ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-glob 10ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/flat-cache 753ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-extglob 281ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/locate-path 422ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/path-exists 387ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/acorn 1198ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/brace-expansion 437ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/deep-is 404ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/prelude-ls 618ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/uri-js 2696ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/word-wrap 547ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fast-levenshtein 495ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/type-check 1109ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/argparse 353ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/resolve-from 356ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/parent-module 453ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/type-check 5ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/punycode 2051ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/has-flag 403ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/color-convert 500ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/color-name 488ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/isexe 376ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/shebang-regex 1049ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/raw-body 727ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/content-type 8ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/destroy 787ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/toidentifier 4ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/mime-types 825ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/iconv-lite 844ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/bytes 1021ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/unpipe 305ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/forwarded 363ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/encodeurl 5ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/mime-types 4ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/ee-first 414ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/unpipe 1480ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/side-channel 459ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/mime 444ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/negotiator 1768ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ipaddr.js 1035ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/media-typer 750ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/mime-db 1218ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/safer-buffer 401ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/flatted 877ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/keyv 4707ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/p-locate 1514ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/json-buffer 521ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/uuid 16ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/qs 29ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/readable-web-to-node-stream 433ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/caseless 447ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/isstream 338ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/aws-sign2 340ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/extend 942ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/form-data 418ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/oauth-sign 419ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/token-types 1271ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/forever-agent 363ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/aws4 1623ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-typedarray 373ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@canvas%2fimage-data 1928ms (cache miss)find node_modules -name "*.node" | grep -i sharp
+npm http fetch GET 200 https://registry.npmjs.org/http-signature 395ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/har-validator 736ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/performance-now 400ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/json-stringify-safe 372ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/combined-stream 700ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/strtok3 2690ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tough-cookie 2281ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/readable-stream 460ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@tokenizer%2ftoken 475ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ieee754 495ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@tokenizer%2ftoken 550ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/peek-readable 1083ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/callsites 435ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jwa 1081ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/buffer-equal-constant-time 360ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ecdsa-sig-formatter 362ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/p-limit 565ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/concat-map 441ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/balanced-match 710ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/glob-parent 19ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/is-binary-path 339ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/normalize-path 438ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/once 524ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/readdirp 671ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/brace-expansion 4ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/inflight 374ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/braces 783ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/randombytes 432ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/y18n 401ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fs.realpath 793ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/yargs-parser 4ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/is-unicode-supported 756ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fsevents 1453ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cliui 688ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/anymatch 1492ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/string-width 403ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/require-directory 573ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-plain-obj 386ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/decamelize 593ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/get-caller-file 1039ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/camelcase 983ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/escalade 1408ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/flat 1167ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/normalize-path 12ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/fill-range 377ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/binary-extensions 605ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/picomatch 1641ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/picomatch 2152ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/to-regex-range 697ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-number 539ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/wrappy 396ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/wrappy 563ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/node-gyp-build-optional-packages 698ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@msgpackr-extract%2fmsgpackr-extract-linux-arm 1035ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@msgpackr-extract%2fmsgpackr-extract-linux-x64 1033ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@msgpackr-extract%2fmsgpackr-extract-darwin-arm64 1051ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@msgpackr-extract%2fmsgpackr-extract-linux-arm64 1054ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@msgpackr-extract%2fmsgpackr-extract-win32-x64 1086ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@msgpackr-extract%2fmsgpackr-extract-darwin-x64 1161ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/readable-stream 15ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/minimist 20ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/buffer-from 329ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/typedarray 409ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/streamsearch 420ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/string_decoder 630ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/util-deprecate 839ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tr46 1267ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/webidl-conversions 1292ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/has-flag 6ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/string-width 13ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/delegates 330ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/has-unicode 347ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/aproba 465ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/wide-align 521ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/color-support 502ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/strip-ansi 571ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/signal-exit 1407ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/emoji-regex 408ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ansi-regex 991ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-fullwidth-code-point 1244ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/yocto-queue 633ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/chownr 13ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/strip-json-comments 19ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/simple-concat 473ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/decompress-response 474ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ini 695ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/deep-extend 723ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/end-of-stream 800ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tar-stream 1783ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/side-channel-map 441ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/side-channel-list 448ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/object-inspect 478ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/side-channel-weakmap 557ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/es-errors 1138ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/process 475ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/events 525ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/abort-controller 938ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/buffer 1803ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/yallist 8ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/generic-pool 488ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/har-schema 462ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/punycode 5ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/asynckit 520ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/delayed-stream 590ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/psl 960ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/assert-plus 1011ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/sshpk 1016ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jsprim 1070ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/asn1 456ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/getpass 504ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/extsprintf 631ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jsbn 673ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/verror 757ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ecc-jsbn 433ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/json-schema 984ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/bcrypt-pbkdf 418ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/dashdash 1192ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tweetnacl 758ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/core-util-is 434ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/path-is-absolute 379ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@emnapi%2fruntime 1281ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/color-string 1282ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/simple-swizzle 428ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-arrayish 586ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/get-intrinsic 348ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/call-bound 426ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/call-bound 425ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/get-intrinsic 595ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/get-intrinsic 20ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/function-bind 442ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/get-proto 446ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/call-bind-apply-helpers 470ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/call-bind-apply-helpers 482ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/gopd 825ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/es-object-atoms 860ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/math-intrinsics 395ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/hasown 423ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/has-symbols 455ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/es-define-property 1547ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/dunder-proto 842ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/mimic-response 2006ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tweetnacl 6ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/minipass 11ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/minipass 18ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/fs-constants 411ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/bl 450ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/buffer 6ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/ieee754 6ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/base64-js 631ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/wrap-ansi 832ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/event-target-shim 1238ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/process/-/process-0.11.10.tgz 992ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-plain-obj/-/is-plain-obj-2.1.0.tgz 992ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/decamelize/-/decamelize-4.0.0.tgz 993ms (cache miss)
+npm http fetch POST 200 https://registry.npmjs.org/-/npm/v1/security/advisories/bulk 1304ms
+npm http fetch GET 200 https://registry.npmjs.org/path-is-absolute/-/path-is-absolute-1.0.1.tgz 1270ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/events/-/events-3.3.0.tgz 1348ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-3.0.1.tgz 1359ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/get-caller-file/-/get-caller-file-2.0.5.tgz 1389ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/camelcase/-/camelcase-6.3.0.tgz 1457ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/media-typer/-/media-typer-0.3.0.tgz 1851ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/core-util-is/-/core-util-is-1.0.2.tgz 1881ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/random-bytes/-/random-bytes-1.0.0.tgz 1929ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/event-target-shim/-/event-target-shim-5.0.1.tgz 1970ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/punycode/-/punycode-2.3.1.tgz 2054ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/isexe/-/isexe-2.0.0.tgz 2162ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz 2288ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/base64-js/-/base64-js-1.5.1.tgz 2411ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ieee754/-/ieee754-1.2.1.tgz 2436ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fs-constants/-/fs-constants-1.0.0.tgz 2499ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/chownr/-/chownr-2.0.0.tgz 2840ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/bl/-/bl-4.1.0.tgz 3189ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fs-minipass/-/fs-minipass-2.1.0.tgz 3203ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tar-stream/-/tar-stream-2.2.0.tgz 3304ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tr46/-/tr46-0.0.3.tgz 3483ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/minipass/-/minipass-5.0.0.tgz 3506ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/has-flag/-/has-flag-4.0.0.tgz 3527ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/minizlib/-/minizlib-2.1.2.tgz 3710ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/peek-readable/-/peek-readable-4.1.0.tgz 3778ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ansi-regex/-/ansi-regex-5.0.1.tgz 3856ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/emoji-regex/-/emoji-regex-8.0.0.tgz 3914ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-fullwidth-code-point/-/is-fullwidth-code-point-3.0.0.tgz 3928ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/getpass/-/getpass-0.1.7.tgz 4267ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ecc-jsbn/-/ecc-jsbn-0.1.2.tgz 4436ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jsbn/-/jsbn-0.1.1.tgz 4500ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/buffer/-/buffer-5.7.1.tgz 4534ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/bcrypt-pbkdf/-/bcrypt-pbkdf-1.0.2.tgz 4628ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/y18n/-/y18n-5.0.8.tgz 4780ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/flat/-/flat-5.0.2.tgz 4789ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/wrap-ansi/-/wrap-ansi-7.0.0.tgz 4798ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/require-directory/-/require-directory-2.1.1.tgz 4795ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@tokenizer/token/-/token-0.3.0.tgz 4790ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/dashdash/-/dashdash-1.14.1.tgz 4907ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/simple-concat/-/simple-concat-1.0.1.tgz 4944ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/mimic-response/-/mimic-response-3.1.0.tgz 5013ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/abort-controller/-/abort-controller-3.0.0.tgz 5145ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cliui/-/cliui-7.0.4.tgz 5192ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/hasown/-/hasown-2.0.2.tgz 5153ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/decompress-response/-/decompress-response-6.0.0.tgz 5155ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/dunder-proto/-/dunder-proto-1.0.1.tgz 5161ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/asn1/-/asn1-0.2.6.tgz 5161ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/math-intrinsics/-/math-intrinsics-1.1.0.tgz 5289ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/es-object-atoms/-/es-object-atoms-1.1.1.tgz 5293ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/gopd/-/gopd-1.2.0.tgz 5583ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/get-proto/-/get-proto-1.0.1.tgz 5584ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/side-channel-weakmap/-/side-channel-weakmap-1.0.2.tgz 5580ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/xss-filters/-/xss-filters-1.2.7.tgz 5658ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/function-bind/-/function-bind-1.1.2.tgz 5631ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/side-channel-map/-/side-channel-map-1.0.1.tgz 5689ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/has-symbols/-/has-symbols-1.1.0.tgz 5752ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/es-define-property/-/es-define-property-1.0.1.tgz 5846ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/psl/-/psl-1.15.0.tgz 5955ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/call-bound/-/call-bound-1.0.4.tgz 5918ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/shebang-regex/-/shebang-regex-3.0.0.tgz 5932ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/call-bind-apply-helpers/-/call-bind-apply-helpers-1.0.2.tgz 5986ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/side-channel-list/-/side-channel-list-1.0.0.tgz 5982ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/es-errors/-/es-errors-1.3.0.tgz 5996ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/get-intrinsic/-/get-intrinsic-1.3.0.tgz 6000ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/simple-swizzle/-/simple-swizzle-0.2.2.tgz 5995ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/color-string/-/color-string-1.9.1.tgz 6049ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tweetnacl/-/tweetnacl-0.14.5.tgz 6110ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/object-inspect/-/object-inspect-1.13.4.tgz 6104ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/randombytes/-/randombytes-2.1.0.tgz 6147ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-arrayish/-/is-arrayish-0.3.2.tgz 6302ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/extsprintf/-/extsprintf-1.3.0.tgz 6299ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/json-schema/-/json-schema-0.4.0.tgz 6332ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/color/-/color-4.2.3.tgz 6336ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/har-schema/-/har-schema-2.0.0.tgz 6339ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/asynckit/-/asynckit-0.4.0.tgz 6368ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jsprim/-/jsprim-1.4.2.tgz 6379ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/delayed-stream/-/delayed-stream-1.0.0.tgz 6376ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/assert-plus/-/assert-plus-1.0.0.tgz 6427ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/verror/-/verror-1.10.0.tgz 6496ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/oauth-sign/-/oauth-sign-0.9.0.tgz 6567ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/json-stringify-safe/-/json-stringify-safe-5.0.1.tgz 6615ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-typedarray/-/is-typedarray-1.0.0.tgz 6648ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/isstream/-/isstream-0.1.2.tgz 6652ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/performance-now/-/performance-now-2.1.0.tgz 6670ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/har-validator/-/har-validator-5.1.5.tgz 6746ms (cache miss)
+npm warn deprecated har-validator@5.1.5: this library is no longer supported
+npm http fetch GET 200 https://registry.npmjs.org/forever-agent/-/forever-agent-0.6.1.tgz 6745ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/combined-stream/-/combined-stream-1.0.8.tgz 6745ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/escalade/-/escalade-3.2.0.tgz 6874ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/extend/-/extend-3.0.2.tgz 6835ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/sshpk/-/sshpk-1.18.0.tgz 6883ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/http-signature/-/http-signature-1.2.0.tgz 6895ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tough-cookie/-/tough-cookie-2.5.0.tgz 6999ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/aws4/-/aws4-1.13.2.tgz 7113ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/string_decoder/-/string_decoder-1.3.0.tgz 7197ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ini/-/ini-1.3.8.tgz 7220ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@redis/json/-/json-1.0.7.tgz 7223ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/yallist/-/yallist-4.0.0.tgz 7384ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/mime/-/mime-1.6.0.tgz 7435ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/form-data/-/form-data-2.3.3.tgz 7480ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/caseless/-/caseless-0.12.0.tgz 7481ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/util-deprecate/-/util-deprecate-1.0.2.tgz 7488ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/generic-pool/-/generic-pool-3.9.0.tgz 7533ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@redis/bloom/-/bloom-1.2.0.tgz 7559ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/deep-extend/-/deep-extend-0.6.0.tgz 7563ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/end-of-stream/-/end-of-stream-1.4.5.tgz 7562ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/side-channel/-/side-channel-1.1.0.tgz 7616ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@redis/graph/-/graph-1.1.1.tgz 7624ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/forwarded/-/forwarded-0.2.0.tgz 7740ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@redis/search/-/search-1.2.0.tgz 7818ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@redis/client/-/client-1.6.1.tgz 7867ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tar-fs/-/tar-fs-2.1.3.tgz 7859ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/pump/-/pump-3.0.3.tgz 7933ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/github-from-package/-/github-from-package-0.0.0.tgz 7932ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tunnel-agent/-/tunnel-agent-0.6.0.tgz 7938ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/rc/-/rc-1.2.8.tgz 7972ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/mkdirp-classic/-/mkdirp-classic-0.5.3.tgz 7972ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/napi-build-utils/-/napi-build-utils-2.0.0.tgz 7976ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/simple-get/-/simple-get-4.0.1.tgz 7988ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/node-abi/-/node-abi-3.75.0.tgz 7995ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/expand-template/-/expand-template-2.0.3.tgz 8008ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@redis/time-series/-/time-series-1.1.0.tgz 8106ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/yocto-queue/-/yocto-queue-0.1.0.tgz 8091ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/p-limit/-/p-limit-3.1.0.tgz 8219ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/string-width/-/string-width-4.2.3.tgz 8392ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/aproba/-/aproba-2.1.0.tgz 8388ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/aws-sign2/-/aws-sign2-0.7.0.tgz 8430ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ee-first/-/ee-first-1.1.1.tgz 8394ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/strip-ansi/-/strip-ansi-6.0.1.tgz 8449ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ipaddr.js/-/ipaddr.js-1.9.1.tgz 8505ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/delegates/-/delegates-1.0.0.tgz 8515ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/callsites/-/callsites-3.1.0.tgz 8539ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fast-levenshtein/-/fast-levenshtein-2.0.6.tgz 8610ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/word-wrap/-/word-wrap-1.2.5.tgz 8637ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/has-unicode/-/has-unicode-2.0.1.tgz 8704ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/gauge/-/gauge-3.0.2.tgz 8760ms (cache miss)
+npm warn deprecated gauge@3.0.2: This package is no longer supported.
+npm http fetch GET 200 https://registry.npmjs.org/are-we-there-yet/-/are-we-there-yet-2.0.0.tgz 8757ms (cache miss)
+npm warn deprecated are-we-there-yet@2.0.0: This package is no longer supported.
+npm http fetch GET 200 https://registry.npmjs.org/console-control-strings/-/console-control-strings-1.1.0.tgz 8808ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/touch/-/touch-3.1.1.tgz 8798ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/set-blocking/-/set-blocking-2.0.0.tgz 8797ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/abbrev/-/abbrev-1.1.1.tgz 8909ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/simple-update-notifier/-/simple-update-notifier-2.0.0.tgz 8945ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ignore-by-default/-/ignore-by-default-1.0.1.tgz 8963ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/minimist/-/minimist-1.2.8.tgz 8977ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/undefsafe/-/undefsafe-2.0.5.tgz 8985ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/typedarray/-/typedarray-0.0.6.tgz 9049ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/color-support/-/color-support-1.1.3.tgz 9128ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/deep-is/-/deep-is-0.1.4.tgz 9177ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/buffer-from/-/buffer-from-1.1.2.tgz 9160ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/readable-stream/-/readable-stream-3.6.2.tgz 9193ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/pstree.remy/-/pstree.remy-1.1.8.tgz 9200ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/signal-exit/-/signal-exit-3.0.7.tgz 9249ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/streamsearch/-/streamsearch-1.1.0.tgz 9241ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/wide-align/-/wide-align-1.1.5.tgz 9319ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/xtend/-/xtend-4.0.2.tgz 9326ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/wrappy/-/wrappy-1.0.2.tgz 9410ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/once/-/once-1.4.0.tgz 9539ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/binary-extensions/-/binary-extensions-2.3.0.tgz 9541ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/concat-stream/-/concat-stream-2.0.0.tgz 9545ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/to-regex-range/-/to-regex-range-5.0.1.tgz 9617ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fs.realpath/-/fs.realpath-1.0.0.tgz 9626ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-unicode-supported/-/is-unicode-supported-0.1.0.tgz 9738ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fill-range/-/fill-range-7.1.1.tgz 9750ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/whatwg-url/-/whatwg-url-5.0.0.tgz 9760ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/normalize-path/-/normalize-path-3.0.0.tgz 9768ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/readdirp/-/readdirp-3.6.0.tgz 9787ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-binary-path/-/is-binary-path-2.1.0.tgz 9880ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/anymatch/-/anymatch-3.1.3.tgz 9899ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/inflight/-/inflight-1.0.6.tgz 9982ms (cache miss)
+npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm http fetch GET 200 https://registry.npmjs.org/busboy/-/busboy-1.6.0.tgz 10005ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/picomatch/-/picomatch-2.3.1.tgz 10033ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/braces/-/braces-3.0.3.tgz 10174ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/mkdirp/-/mkdirp-0.5.6.tgz 10208ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/yargs-unparser/-/yargs-unparser-2.0.0.tgz 10201ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/log-symbols/-/log-symbols-4.1.0.tgz 10213ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/yargs-parser/-/yargs-parser-20.2.9.tgz 10270ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/browser-stdout/-/browser-stdout-1.3.1.tgz 10291ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/serialize-javascript/-/serialize-javascript-6.0.2.tgz 10308ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/concat-map/-/concat-map-0.0.1.tgz 10409ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/append-field/-/append-field-1.0.0.tgz 10468ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/workerpool/-/workerpool-6.5.1.tgz 10520ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/brace-expansion/-/brace-expansion-1.1.12.tgz 10614ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/type-check/-/type-check-0.4.0.tgz 10634ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/json-buffer/-/json-buffer-3.0.1.tgz 10725ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/buffer-equal-constant-time/-/buffer-equal-constant-time-1.0.1.tgz 10764ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.once/-/lodash.once-4.1.1.tgz 10837ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/yargs/-/yargs-16.2.0.tgz 10979ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.isstring/-/lodash.isstring-4.0.1.tgz 10964ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/p-locate/-/p-locate-5.0.0.tgz 11012ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/prelude-ls/-/prelude-ls-1.2.1.tgz 11055ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/chokidar/-/chokidar-3.6.0.tgz 11074ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.isinteger/-/lodash.isinteger-4.0.4.tgz 11110ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.isplainobject/-/lodash.isplainobject-4.0.6.tgz 11128ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/diff/-/diff-5.2.0.tgz 11169ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jwa/-/jwa-1.4.2.tgz 11178ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.includes/-/lodash.includes-4.3.0.tgz 11260ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.isboolean/-/lodash.isboolean-3.0.3.tgz 11343ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/argparse/-/argparse-2.0.1.tgz 11390ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/balanced-match/-/balanced-match-1.0.2.tgz 11449ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/standard-as-callback/-/standard-as-callback-2.1.0.tgz 11441ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-extglob/-/is-extglob-2.1.1.tgz 11452ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.defaults/-/lodash.defaults-4.2.0.tgz 11511ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jws/-/jws-3.2.2.tgz 11542ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/redis-errors/-/redis-errors-1.2.0.tgz 11540ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.isarguments/-/lodash.isarguments-3.1.0.tgz 11546ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/redis-parser/-/redis-parser-3.0.0.tgz 11563ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ansi-colors/-/ansi-colors-4.1.3.tgz 11692ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.isnumber/-/lodash.isnumber-3.0.3.tgz 11687ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/resolve-from/-/resolve-from-4.0.0.tgz 11689ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cluster-key-slot/-/cluster-key-slot-1.1.2.tgz 11727ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/readable-web-to-node-stream/-/readable-web-to-node-stream-3.0.4.tgz 11850ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/toidentifier/-/toidentifier-1.0.0.tgz 12199ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ecdsa-sig-formatter/-/ecdsa-sig-formatter-1.0.11.tgz 12258ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/safer-buffer/-/safer-buffer-2.1.2.tgz 12253ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/request/-/request-2.88.2.tgz 12305ms (cache miss)
+npm warn deprecated request@2.88.2: request has been deprecated, see https://github.com/request/request/issues/3142
+npm http fetch GET 200 https://registry.npmjs.org/strtok3/-/strtok3-6.3.0.tgz 12359ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jpeg-js/-/jpeg-js-0.4.4.tgz 12356ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/denque/-/denque-2.1.0.tgz 12407ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/mime-db/-/mime-db-1.52.0.tgz 12500ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/agent-base/-/agent-base-6.0.2.tgz 12533ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/graceful-fs/-/graceful-fs-4.2.11.tgz 12609ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/parent-module/-/parent-module-1.0.1.tgz 12682ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/inherits/-/inherits-2.0.4.tgz 12685ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/token-types/-/token-types-4.2.1.tgz 12705ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jsonfile/-/jsonfile-6.2.0.tgz 12711ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@canvas/image-data/-/image-data-1.0.0.tgz 12726ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@ioredis/commands/-/commands-1.3.0.tgz 12819ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/locate-path/-/locate-path-6.0.0.tgz 12928ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/file-type/-/file-type-16.5.4.tgz 12936ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/path-exists/-/path-exists-4.0.0.tgz 12968ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/flatted/-/flatted-3.3.3.tgz 12997ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/universalify/-/universalify-2.0.1.tgz 13031ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@cwasm/webp/-/webp-0.1.5.tgz 13056ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/keyv/-/keyv-4.5.4.tgz 13164ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/glob/-/glob-8.1.0.tgz 13245ms (cache miss)
+npm warn deprecated glob@8.1.0: Glob versions prior to v9 are no longer supported
+npm http fetch GET 200 https://registry.npmjs.org/bytes/-/bytes-3.1.2.tgz 13188ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/mime-types/-/mime-types-2.1.35.tgz 13357ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/statuses/-/statuses-2.0.1.tgz 13377ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/type-is/-/type-is-1.6.18.tgz 13396ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/setprototypeof/-/setprototypeof-1.2.0.tgz 13408ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/utils-merge/-/utils-merge-1.0.1.tgz 13410ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/range-parser/-/range-parser-1.2.1.tgz 13534ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/raw-body/-/raw-body-2.5.2.tgz 13546ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/destroy/-/destroy-1.2.0.tgz 13575ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/flat-cache/-/flat-cache-4.0.1.tgz 13650ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/serve-static/-/serve-static-1.16.2.tgz 13655ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/path-to-regexp/-/path-to-regexp-0.1.12.tgz 13697ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/unpipe/-/unpipe-1.0.0.tgz 13777ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/proxy-addr/-/proxy-addr-2.0.7.tgz 13762ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/on-finished/-/on-finished-2.4.1.tgz 13841ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/parseurl/-/parseurl-1.3.3.tgz 13882ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fresh/-/fresh-0.5.2.tgz 13879ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/qs/-/qs-6.13.0.tgz 13894ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/methods/-/methods-1.1.2.tgz 13952ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/merge-descriptors/-/merge-descriptors-1.0.3.tgz 13998ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/etag/-/etag-1.8.1.tgz 14037ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/send/-/send-0.19.0.tgz 14122ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/encodeurl/-/encodeurl-2.0.0.tgz 14109ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/escape-html/-/escape-html-1.0.3.tgz 14123ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/content-disposition/-/content-disposition-0.5.4.tgz 14169ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/body-parser/-/body-parser-1.20.3.tgz 14257ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/depd/-/depd-2.0.0.tgz 14259ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/array-flatten/-/array-flatten-1.1.1.tgz 14318ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ms/-/ms-2.1.3.tgz 14603ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/esrecurse/-/esrecurse-4.3.0.tgz 14615ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@types/luxon/-/luxon-3.7.1.tgz 14706ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/safe-buffer/-/safe-buffer-5.2.1.tgz 14755ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/finalhandler/-/finalhandler-1.3.1.tgz 14769ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/acorn-jsx/-/acorn-jsx-5.3.2.tgz 14753ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/negotiator/-/negotiator-0.6.3.tgz 14795ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/accepts/-/accepts-1.3.8.tgz 14797ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/which/-/which-2.0.2.tgz 14895ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/path-key/-/path-key-3.1.1.tgz 14931ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/shebang-command/-/shebang-command-2.0.0.tgz 14938ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/batch-cluster/-/batch-cluster-13.0.0.tgz 14961ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/color-name/-/color-name-1.1.4.tgz 15047ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/color-convert/-/color-convert-2.0.1.tgz 15083ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/supports-color/-/supports-color-7.2.0.tgz 15148ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/strip-json-comments/-/strip-json-comments-3.1.1.tgz 15248ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/json-schema-traverse/-/json-schema-traverse-0.4.1.tgz 15248ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/he/-/he-1.2.0.tgz 15276ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/import-fresh/-/import-fresh-3.3.1.tgz 15437ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/levn/-/levn-0.4.1.tgz 15441ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ansi-styles/-/ansi-styles-4.3.0.tgz 15507ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@photostructure/tz-lookup/-/tz-lookup-11.2.0.tgz 15613ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fast-json-stable-stringify/-/fast-json-stable-stringify-2.1.0.tgz 15596ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/estraverse/-/estraverse-5.3.0.tgz 15830ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/js-yaml/-/js-yaml-4.1.0.tgz 15887ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/minimatch/-/minimatch-3.1.2.tgz 15916ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/is-glob/-/is-glob-4.0.3.tgz 16024ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@humanfs/core/-/core-0.19.1.tgz 16057ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint/object-schema/-/object-schema-2.1.6.tgz 16065ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/acorn/-/acorn-8.15.0.tgz 16131ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/json-stable-stringify-without-jsonify/-/json-stable-stringify-without-jsonify-1.0.1.tgz 16177ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/globals/-/globals-14.0.0.tgz 16195ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/content-type/-/content-type-1.0.5.tgz 16191ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/natural-compare/-/natural-compare-1.4.0.tgz 16193ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/glob-parent/-/glob-parent-6.0.2.tgz 16215ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/find-up/-/find-up-5.0.0.tgz 16240ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/optionator/-/optionator-0.9.4.tgz 16270ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/file-entry-cache/-/file-entry-cache-8.0.0.tgz 16388ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/imurmurhash/-/imurmurhash-0.1.4.tgz 16518ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/esutils/-/esutils-2.0.3.tgz 16523ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/debug/-/debug-4.4.1.tgz 16558ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/pngjs/-/pngjs-6.0.0.tgz 16676ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cross-spawn/-/cross-spawn-7.0.6.tgz 16610ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz 16678ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-4.0.0.tgz 16766ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/chalk/-/chalk-4.1.2.tgz 16808ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/espree/-/espree-10.4.0.tgz 16874ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ignore/-/ignore-5.3.2.tgz 16896ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-visitor-keys/-/eslint-visitor-keys-4.2.1.tgz 16916ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@types/json-schema/-/json-schema-7.0.15.tgz 16947ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@humanwhocodes/retry/-/retry-0.4.3.tgz 17066ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@humanfs/node/-/node-0.16.6.tgz 17232ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.merge/-/lodash.merge-4.6.2.tgz 17263ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint/js/-/js-9.33.0.tgz 17434ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/uid-safe/-/uid-safe-2.1.5.tgz 17631ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@types/estree/-/estree-1.0.8.tgz 17687ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@humanwhocodes/module-importer/-/module-importer-1.0.1.tgz 17698ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint/core/-/core-0.15.2.tgz 17696ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint/plugin-kit/-/plugin-kit-0.3.5.tgz 17957ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/rndm/-/rndm-1.2.0.tgz 17946ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/vary/-/vary-1.1.2.tgz 17994ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tsscmp/-/tsscmp-1.0.6.tgz 18066ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint-community/eslint-utils/-/eslint-utils-4.7.0.tgz 18089ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint/config-array/-/config-array-0.21.0.tgz 18129ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/http-errors/-/http-errors-1.7.3.tgz 18175ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/csrf/-/csrf-3.1.0.tgz 18313ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cookie-signature/-/cookie-signature-1.0.6.tgz 18331ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/object-assign/-/object-assign-4.1.1.tgz 18399ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/check-error/-/check-error-2.1.1.tgz 18620ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/uuid/-/uuid-9.0.1.tgz 18812ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint/config-helpers/-/config-helpers-0.3.1.tgz 18845ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/loupe/-/loupe-3.2.0.tgz 18836ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cookie/-/cookie-0.7.2.tgz 18914ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tslib/-/tslib-2.8.1.tgz 18974ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/node-abort-controller/-/node-abort-controller-3.1.1.tgz 19019ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/assertion-error/-/assertion-error-2.0.1.tgz 19181ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cron-parser/-/cron-parser-4.9.0.tgz 19223ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/file-uri-to-path/-/file-uri-to-path-1.0.0.tgz 19307ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/bindings/-/bindings-1.5.0.tgz 19355ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-scope/-/eslint-scope-8.4.0.tgz 19566ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/deep-eql/-/deep-eql-5.0.2.tgz 19732ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/pathval/-/pathval-2.0.1.tgz 19763ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/npmlog/-/npmlog-5.0.1.tgz 19768ms (cache miss)
+npm warn deprecated npmlog@5.0.1: This package is no longer supported.
+npm http fetch GET 200 https://registry.npmjs.org/@eslint/eslintrc/-/eslintrc-3.3.1.tgz 19974ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/rimraf/-/rimraf-3.0.2.tgz 20033ms (cache miss)
+npm warn deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer supported
+npm http fetch GET 200 https://registry.npmjs.org/tar/-/tar-6.2.1.tgz 20044ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/detect-libc/-/detect-libc-2.0.4.tgz 20134ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/make-dir/-/make-dir-3.1.0.tgz 20143ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/nopt/-/nopt-5.0.0.tgz 20190ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/iconv-lite/-/iconv-lite-0.4.24.tgz 20573ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ajv/-/ajv-6.12.6.tgz 20475ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/https-proxy-agent/-/https-proxy-agent-5.0.1.tgz 20447ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/xss-clean/-/xss-clean-0.1.4.tgz 20457ms (cache miss)
+npm warn deprecated xss-clean@0.1.4: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+npm http fetch GET 200 https://registry.npmjs.org/prebuild-install/-/prebuild-install-7.1.3.tgz 20510ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/semver/-/semver-7.7.2.tgz 20635ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/node-fetch/-/node-fetch-2.7.0.tgz 20729ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/nodemon/-/nodemon-3.1.10.tgz 21173ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/multer/-/multer-2.0.2.tgz 21343ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/node-addon-api/-/node-addon-api-5.1.0.tgz 21387ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/redis/-/redis-4.7.1.tgz 21557ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/uri-js/-/uri-js-4.4.1.tgz 21687ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/jsonwebtoken/-/jsonwebtoken-9.0.2.tgz 21647ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/image-hash/-/image-hash-5.3.2.tgz 21741ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/imagemagick/-/imagemagick-0.1.3.tgz 21994ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint-community/regexpp/-/regexpp-4.12.1.tgz 22198ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/express-rate-limit/-/express-rate-limit-6.11.2.tgz 22673ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/helmet/-/helmet-7.2.0.tgz 22755ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/esquery/-/esquery-1.6.0.tgz 22923ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/fs-extra/-/fs-extra-11.3.1.tgz 22941ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/validator/-/validator-13.15.15.tgz 22961ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/nodemailer/-/nodemailer-6.10.1.tgz 23185ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cookie-parser/-/cookie-parser-1.4.7.tgz 23424ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/csurf/-/csurf-1.11.0.tgz 23674ms (cache miss)
+npm warn deprecated csurf@1.11.0: This package is archived and no longer maintained. For support, visit https://github.com/expressjs/express/discussions
+npm http fetch GET 200 https://registry.npmjs.org/ioredis/-/ioredis-5.7.0.tgz 23731ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/dotenv/-/dotenv-16.6.1.tgz 23796ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/express/-/express-4.21.2.tgz 23923ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@mapbox/node-pre-gyp/-/node-pre-gyp-1.0.11.tgz 24286ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/bcrypt/-/bcrypt-5.1.1.tgz 24408ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/chai/-/chai-5.2.1.tgz 24645ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/exiftool-vendored/-/exiftool-vendored-28.8.0.tgz 24678ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/chownr/-/chownr-1.1.4.tgz 25020ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/minipass/-/minipass-3.3.6.tgz 25217ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/brace-expansion/-/brace-expansion-2.0.2.tgz 25371ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/strip-json-comments/-/strip-json-comments-2.0.1.tgz 25413ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/minimatch/-/minimatch-5.1.6.tgz 25659ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/glob-parent/-/glob-parent-5.1.2.tgz 25716ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/sharp/-/sharp-0.33.5.tgz 25807ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cors/-/cors-2.8.5.tgz 26030ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/async/-/async-3.2.6.tgz 26452ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/uuid/-/uuid-3.4.0.tgz 26504ms (cache miss)
+npm warn deprecated uuid@3.4.0: Please upgrade  to version 7 or higher.  Older versions may use Math.random() in certain circumstances, which is known to be problematic.  See https://v8.dev/blog/math-random for details.
+npm http fetch GET 200 https://registry.npmjs.org/readable-stream/-/readable-stream-4.7.0.tgz 26516ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/buffer/-/buffer-6.0.3.tgz 26558ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/minipass/-/minipass-3.3.6.tgz 26739ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/toidentifier/-/toidentifier-1.0.1.tgz 26773ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/toidentifier/-/toidentifier-1.0.1.tgz 26867ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/http-errors/-/http-errors-2.0.0.tgz 26943ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/http-errors/-/http-errors-2.0.0.tgz 27043ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/encodeurl/-/encodeurl-1.0.2.tgz 27109ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/debug/-/debug-2.6.9.tgz 27318ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/toidentifier/-/toidentifier-1.0.1.tgz 27487ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/debug/-/debug-2.6.9.tgz 27659ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ms/-/ms-2.0.0.tgz 27688ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/msgpackr/-/msgpackr-1.11.5.tgz 27791ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ms/-/ms-2.0.0.tgz 27752ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ms/-/ms-2.0.0.tgz 27779ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/http-errors/-/http-errors-2.0.0.tgz 27876ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/qs/-/qs-6.5.3.tgz 27916ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/debug/-/debug-2.6.9.tgz 28081ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/@humanwhocodes/retry/-/retry-0.3.1.tgz 28123ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/statuses/-/statuses-1.5.0.tgz 28122ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-visitor-keys/-/eslint-visitor-keys-3.4.3.tgz 28141ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/setprototypeof/-/setprototypeof-1.1.1.tgz 28153ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/depd/-/depd-1.1.2.tgz 28295ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/has-flag/-/has-flag-3.0.0.tgz 28506ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/supports-color/-/supports-color-8.1.1.tgz 28683ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/semver/-/semver-6.3.1.tgz 28725ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/supports-color/-/supports-color-5.5.0.tgz 28887ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/glob/-/glob-7.2.3.tgz 28890ms (cache miss)
+npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+npm http fetch GET 200 https://registry.npmjs.org/mkdirp/-/mkdirp-1.0.4.tgz 28924ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/bullmq/-/bullmq-5.58.0.tgz 29034ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/toidentifier/-/toidentifier-1.0.1.tgz 29028ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/minimatch/-/minimatch-5.1.6.tgz 29051ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/ms/-/ms-2.0.0.tgz 29090ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/http-errors/-/http-errors-2.0.0.tgz 29266ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/debug/-/debug-2.6.9.tgz 29302ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cookie/-/cookie-0.7.1.tgz 29390ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/brace-expansion/-/brace-expansion-2.0.2.tgz 29428ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cookie/-/cookie-0.4.0.tgz 29537ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/tough-cookie 28962ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/cookie 29482ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/request 29807ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/form-data 29884ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/exif-parser/-/exif-parser-0.1.12.tgz 30938ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/csurf 1340ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/image-hash 1143ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/mocha/-/mocha-10.8.2.tgz 33150ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/luxon/-/luxon-3.7.1.tgz 34043ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/eslint/-/eslint-9.33.0.tgz 35502ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/better-sqlite3/-/better-sqlite3-11.10.0.tgz 48774ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/prettier/-/prettier-3.6.2.tgz 48935ms (cache miss)
+npm http fetch GET 200 https://registry.npmjs.org/date-fns/-/date-fns-4.1.0.tgz 52373ms (cache miss)
+npm info run bcrypt@5.1.1 install node_modules/bcrypt node-pre-gyp install --fallback-to-build
+
+> bcrypt@5.1.1 installfind node_modules -name "*.node" | grep -i sharp
+> node-pre-gyp install --fallback-to-build
+
+node-pre-gyp info it worked if it ends with ok
+node-pre-gyp verb cli [
+node-pre-gyp verb cli   '/Users/zhangshouchang/.nvm/versions/node/v20.19.4/bin/node',
+node-pre-gyp verb cli   '/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/.bin/node-pre-gyp',
+node-pre-gyp verb cli   'install',
+node-pre-gyp verb cli   '--fallback-to-build'
+node-pre-gyp verb cli ]
+node-pre-gyp info using node-pre-gyp@1.0.11
+node-pre-gyp info using node@20.19.4 | darwin | arm64
+node-pre-gyp verb command install [ 'napi_build_version=3' ]
+node-pre-gyp info build requesting source compile
+node-pre-gyp verb command build [ 'rebuild', 'napi_build_version=3' ]
+gyp info it worked if it ends with ok
+gyp verb cli [
+gyp verb cli '/Users/zhangshouchang/.nvm/versions/node/v20.19.4/bin/node',
+gyp verb cli '/Users/zhangshouchang/.nvm/versions/node/v20.19.4/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js',
+gyp verb cli 'clean'
+gyp verb cli ]
+gyp info using node-gyp@10.1.0
+gyp info using node@20.19.4 | darwin | arm64
+gyp verb clean removing "build" directory
+gyp info ok 
+gyp info it worked if it ends with ok
+gyp verb cli [
+gyp verb cli '/Users/zhangshouchang/.nvm/versions/node/v20.19.4/bin/node',
+gyp verb cli '/Users/zhangshouchang/.nvm/versions/node/v20.19.4/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js',
+gyp verb cli 'configure',
+gyp verb cli '--fallback-to-build',
+gyp verb cli '--module=/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/bcrypt/lib/binding/napi-v3/bcrypt_lib.node',
+gyp verb cli '--module_name=bcrypt_lib',
+gyp verb cli '--module_path=/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/bcrypt/lib/binding/napi-v3',
+gyp verb cli '--napi_version=9',
+gyp verb cli '--node_abi_napi=napi',
+gyp verb cli '--napi_build_version=3',
+gyp verb cli '--node_napi_label=napi-v3',
+gyp verb cli '--python=/opt/homebrew/opt/python@3.11/bin/python3.11'
+gyp verb cli ]
+gyp info using node-gyp@10.1.0
+gyp info using node@20.19.4 | darwin | arm64
+gyp verb find Python checking Python explicitly set from command line or npm configuration
+gyp verb find Python - "--python=" or "npm config get python" is "/opt/homebrew/opt/python@3.11/bin/python3.11"
+gyp verb find Python - executing "/opt/homebrew/opt/python@3.11/bin/python3.11" to get executable path
+gyp verb find Python - executable path is "/opt/homebrew/opt/python@3.11/bin/python3.11"
+gyp verb find Python - executing "/opt/homebrew/opt/python@3.11/bin/python3.11" to get version
+gyp verb find Python - version is "3.11.13"
+gyp info find Python using Python version 3.11.13 found at "/opt/homebrew/opt/python@3.11/bin/python3.11"
+gyp verb get node dir no --target version specified, falling back to host node version: 20.19.4
+
+gyp verb install input version string "20.19.4"
+gyp verb install installing version: 20.19.4
+gyp verb install --ensure was passed, so won't reinstall if already installed
+gyp verb install version is already installed, need to check "installVersion"
+gyp verb got "installVersion" 11
+gyp verb needs "installVersion" 11
+gyp verb install version is good
+gyp verb get node dir target node version installed: 20.19.4
+gyp verb build dir attempting to create "build" dir: /Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/bcrypt/build
+gyp verb build dir "build" dir needed to be created? Yes
+gyp verb build/config.gypi creating config file
+gyp verb build/config.gypi writing out config file: /Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/bcrypt/build/config.gypi
+gyp verb config.gypi checking for gypi file: /Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/bcrypt/config.gypi
+gyp verb common.gypi checking for gypi file: /Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/bcrypt/common.gypi
+gyp verb gyp gyp format was not specified; forcing "make"
+gyp info spawn /opt/homebrew/opt/python@3.11/bin/python3.11
+gyp info spawn args [
+gyp info spawn args '/Users/zhangshouchang/.nvm/versions/node/v20.19.4/lib/node_modules/npm/node_modules/node-gyp/gyp/gyp_main.py',
+gyp info spawn args 'binding.gyp',
+gyp info spawn args '-f',
+gyp info spawn args 'make',
+gyp info spawn args '-I',
+gyp info spawn args '/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/bcrypt/build/config.gypi',
+gyp info spawn args '-I',
+gyp info spawn args '/Users/zhangshouchang/.nvm/versions/node/v20.19.4/lib/node_modules/npm/node_modules/node-gyp/addon.gypi',
+gyp info spawn args '-I',
+gyp info spawn args '/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node/common.gypi',
+gyp info spawn args '-Dlibrary=shared_library',
+gyp info spawn args '-Dvisibility=default',
+gyp info spawn args '-Dnode_root_dir=/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4',
+gyp info spawn args '-Dnode_gyp_dir=/Users/zhangshouchang/.nvm/versions/node/v20.19.4/lib/node_modules/npm/node_modules/node-gyp',
+gyp info spawn args '-Dnode_lib_file=/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/<(target_arch)/node.lib',
+gyp info spawn args '-Dmodule_root_dir=/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/bcrypt',
+gyp info spawn args '-Dnode_engine=v8',
+gyp info spawn args '--depth=.',
+gyp info spawn args '--no-parallel',
+gyp info spawn args '--generator-output',
+gyp info spawn args 'build',
+gyp info spawn args '-Goutput_dir=.'
+gyp info spawn args ]
+gyp info ok 
+gyp info it worked if it ends with ok
+gyp verb cli [
+gyp verb cli '/Users/zhangshouchang/.nvm/versions/node/v20.19.4/bin/node',
+gyp verb cli '/Users/zhangshouchang/.nvm/versions/node/v20.19.4/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js',
+gyp verb cli 'build',
+gyp verb cli '--fallback-to-build',
+gyp verb cli '--module=/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/bcrypt/lib/binding/napi-v3/bcrypt_lib.node',
+gyp verb cli '--module_name=bcrypt_lib',
+gyp verb cli '--module_path=/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/bcrypt/lib/binding/napi-v3',
+gyp verb cli '--napi_version=9',
+gyp verb cli '--node_abi_napi=napi',
+gyp verb cli '--napi_build_version=3',
+gyp verb cli '--node_napi_label=napi-v3'
+gyp verb cli ]
+gyp info using node-gyp@10.1.0
+gyp info using node@20.19.4 | darwin | arm64
+gyp verb build type Release
+gyp verb architecture arm64
+gyp verb node dev dir /Users/zhangshouchang/Library/Caches/node-gyp/20.19.4
+gyp verb python /opt/homebrew/opt/python@3.11/bin/python3.11
+gyp verb `which` succeeded for `make` /usr/bin/make
+gyp verb bin symlinks created symlink to "/opt/homebrew/opt/python@3.11/bin/python3.11" in "/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/bcrypt/build/node_gyp_bins" and added to PATH
+gyp info spawn make
+gyp info spawn args [ 'V=1', 'BUILDTYPE=Release', '-C', 'build' ]
+  cc -o Release/obj.target/nothing/../node-addon-api/nothing.o ../../node-addon-api/nothing.c '-DNODE_GYP_MODULE_NAME=nothing' '-DUSING_UV_SHARED=1' '-DUSING_V8_SHARED=1' '-DV8_DEPRECATION_WARNINGS=1' '-D_GLIBCXX_USE_CXX11_ABI=1' '-D_FILE_OFFSET_BITS=64' '-D_DARWIN_USE_64_BIT_INODE=1' '-D_LARGEFILE_SOURCE' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/src -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/openssl/config -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/openssl/openssl/include -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/uv/include -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/zlib -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/v8/include  -O3 -gdwarf-2 -mmacosx-version-min=10.15 -arch arm64 -Wall -Wendif-labels -W -Wno-unused-parameter -fno-strict-aliasing -MMD -MF ./Release/.deps/Release/obj.target/nothing/../node-addon-api/nothing.o.d.raw   -c
+  rm -f Release/nothing.a && ./gyp-mac-tool filter-libtool libtool  -static -o Release/nothing.a Release/obj.target/nothing/../node-addon-api/nothing.o
+warning: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/libtool: archive library: Release/nothing.a the table of contents is empty (no object file members in the library define global symbols)
+  c++ -o Release/obj.target/bcrypt_lib/src/blowfish.o ../src/blowfish.cc '-DNODE_GYP_MODULE_NAME=bcrypt_lib' '-DUSING_UV_SHARED=1' '-DUSING_V8_SHARED=1' '-DV8_DEPRECATION_WARNINGS=1' '-D_GLIBCXX_USE_CXX11_ABI=1' '-D_FILE_OFFSET_BITS=64' '-D_DARWIN_USE_64_BIT_INODE=1' '-D_LARGEFILE_SOURCE' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-D_GNU_SOURCE' '-DBUILDING_NODE_EXTENSION' -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/src -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/openssl/config -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/openssl/openssl/include -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/uv/include -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/zlib -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/v8/include -I/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/node-addon-api  -O3 -gdwarf-2 -fvisibility=hidden -mmacosx-version-min=10.15 -arch arm64 -Wall -Wendif-labels -W -Wno-unused-parameter -std=gnu++17 -stdlib=libc++ -fno-rtti -fno-strict-aliasing -MMD -MF ./Release/.deps/Release/obj.target/bcrypt_lib/src/blowfish.o.d.raw   -c
+  c++ -o Release/obj.target/bcrypt_lib/src/bcrypt.o ../src/bcrypt.cc '-DNODE_GYP_MODULE_NAME=bcrypt_lib' '-DUSING_UV_SHARED=1' '-DUSING_V8_SHARED=1' '-DV8_DEPRECATION_WARNINGS=1' '-D_GLIBCXX_USE_CXX11_ABI=1' '-D_FILE_OFFSET_BITS=64' '-D_DARWIN_USE_64_BIT_INODE=1' '-D_LARGEFILE_SOURCE' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-D_GNU_SOURCE' '-DBUILDING_NODE_EXTENSION' -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/src -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/openssl/config -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/openssl/openssl/include -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/uv/include -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/zlib -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/v8/include -I/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/node-addon-api  -O3 -gdwarf-2 -fvisibility=hidden -mmacosx-version-min=10.15 -arch arm64 -Wall -Wendif-labels -W -Wno-unused-parameter -std=gnu++17 -stdlib=libc++ -fno-rtti -fno-strict-aliasing -MMD -MF ./Release/.deps/Release/obj.target/bcrypt_lib/src/bcrypt.o.d.raw   -c
+  c++ -o Release/obj.target/bcrypt_lib/src/bcrypt_node.o ../src/bcrypt_node.cc '-DNODE_GYP_MODULE_NAME=bcrypt_lib' '-DUSING_UV_SHARED=1' '-DUSING_V8_SHARED=1' '-DV8_DEPRECATION_WARNINGS=1' '-D_GLIBCXX_USE_CXX11_ABI=1' '-D_FILE_OFFSET_BITS=64' '-D_DARWIN_USE_64_BIT_INODE=1' '-D_LARGEFILE_SOURCE' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-D_GNU_SOURCE' '-DBUILDING_NODE_EXTENSION' -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/src -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/openssl/config -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/openssl/openssl/include -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/uv/include -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/zlib -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/v8/include -I/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/node-addon-api  -O3 -gdwarf-2 -fvisibility=hidden -mmacosx-version-min=10.15 -arch arm64 -Wall -Wendif-labels -W -Wno-unused-parameter -std=gnu++17 -stdlib=libc++ -fno-rtti -fno-strict-aliasing -MMD -MF ./Release/.deps/Release/obj.target/bcrypt_lib/src/bcrypt_node.o.d.raw   -c
+  c++ -bundle -undefined dynamic_lookup -Wl,-search_paths_first -mmacosx-version-min=10.15 -arch arm64 -L./Release -stdlib=libc++  -o Release/bcrypt_lib.node Release/obj.target/bcrypt_lib/src/blowfish.o Release/obj.target/bcrypt_lib/src/bcrypt.o Release/obj.target/bcrypt_lib/src/bcrypt_node.o Release/nothing.a 
+  ln -f "Release/bcrypt_lib.node" "/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/bcrypt/lib/binding/napi-v3/bcrypt_lib.node" 2>/dev/null || (rm -rf "/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/bcrypt/lib/binding/napi-v3/bcrypt_lib.node" && cp -af "Release/bcrypt_lib.node" "/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/bcrypt/lib/binding/napi-v3/bcrypt_lib.node")
+  touch Release/obj.target/action_after_build.stamp
+gyp info ok 
+node-pre-gyp info ok 
+npm info run bcrypt@5.1.1 install { code: 0, signal: null }
+npm info run better-sqlite3@11.10.0 install node_modules/better-sqlite3 prebuild-install || node-gyp rebuild --release
+
+> better-sqlite3@11.10.0 install
+> prebuild-install || node-gyp rebuild --release
+
+prebuild-install info begin Prebuild-install version 7.1.3
+prebuild-install info install --build-from-source specified, not attempting download.
+gyp info it worked if it ends with ok
+gyp verb cli [
+gyp verb cli '/Users/zhangshouchang/.nvm/versions/node/v20.19.4/bin/node',
+gyp verb cli '/Users/zhangshouchang/.nvm/versions/node/v20.19.4/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js',
+gyp verb cli 'rebuild',
+gyp verb cli '--release'
+gyp verb cli ]
+gyp info using node-gyp@10.1.0
+gyp info using node@20.19.4 | darwin | arm64
+gyp verb clean removing "build" directory
+gyp verb find Python checking Python explicitly set from command line or npm configuration
+gyp verb find Python - "--python=" or "npm config get python" is "/opt/homebrew/opt/python@3.11/bin/python3.11"
+gyp verb find Python - executing "/opt/homebrew/opt/python@3.11/bin/python3.11" to get executable path
+gyp verb find Python - executable path is "/opt/homebrew/opt/python@3.11/bin/python3.11"
+gyp verb find Python - executing "/opt/homebrew/opt/python@3.11/bin/python3.11" to get version
+gyp verb find Python - version is "3.11.13"
+gyp info find Python using Python version 3.11.13 found at "/opt/homebrew/opt/python@3.11/bin/python3.11"
+gyp verb get node dir no --target version specified, falling back to host node version: 20.19.4
+
+gyp verb install input version string "20.19.4"
+gyp verb install installing version: 20.19.4
+gyp verb install --ensure was passed, so won't reinstall if already installed
+gyp verb install version is already installed, need to check "installVersion"
+gyp verb got "installVersion" 11
+gyp verb needs "installVersion" 11
+gyp verb install version is good
+gyp verb get node dir target node version installed: 20.19.4
+gyp verb build dir attempting to create "build" dir: /Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/better-sqlite3/build
+gyp verb build dir "build" dir needed to be created? Yes
+gyp verb build/config.gypi creating config file
+gyp verb build/config.gypi writing out config file: /Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/better-sqlite3/build/config.gypi
+gyp verb config.gypi checking for gypi file: /Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/better-sqlite3/config.gypi
+gyp verb common.gypi checking for gypi file: /Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/better-sqlite3/common.gypi
+gyp verb gyp gyp format was not specified; forcing "make"
+gyp info spawn /opt/homebrew/opt/python@3.11/bin/python3.11
+gyp info spawn args [
+gyp info spawn args '/Users/zhangshouchang/.nvm/versions/node/v20.19.4/lib/node_modules/npm/node_modules/node-gyp/gyp/gyp_main.py',
+gyp info spawn args 'binding.gyp',
+gyp info spawn args '-f',
+gyp info spawn args 'make',
+gyp info spawn args '-I',
+gyp info spawn args '/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/better-sqlite3/build/config.gypi',
+gyp info spawn args '-I',
+gyp info spawn args '/Users/zhangshouchang/.nvm/versions/node/v20.19.4/lib/node_modules/npm/node_modules/node-gyp/addon.gypi',
+gyp info spawn args '-I',
+gyp info spawn args '/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node/common.gypi',
+gyp info spawn args '-Dlibrary=shared_library',
+gyp info spawn args '-Dvisibility=default',
+gyp info spawn args '-Dnode_root_dir=/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4',
+gyp info spawn args '-Dnode_gyp_dir=/Users/zhangshouchang/.nvm/versions/node/v20.19.4/lib/node_modules/npm/node_modules/node-gyp',
+gyp info spawn args '-Dnode_lib_file=/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/<(target_arch)/node.lib',
+gyp info spawn args '-Dmodule_root_dir=/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/better-sqlite3',
+gyp info spawn args '-Dnode_engine=v8',
+gyp info spawn args '--depth=.',
+gyp info spawn args '--no-parallel',
+gyp info spawn args '--generator-output',
+gyp info spawn args 'build',
+gyp info spawn args '-Goutput_dir=.'
+gyp info spawn args ]
+gyp verb build type Release
+gyp verb architecture arm64
+gyp verb node dev dir /Users/zhangshouchang/Library/Caches/node-gyp/20.19.4
+gyp verb python /opt/homebrew/opt/python@3.11/bin/python3.11
+gyp verb `which` succeeded for `make` /usr/bin/make
+gyp verb bin symlinks created symlink to "/opt/homebrew/opt/python@3.11/bin/python3.11" in "/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/better-sqlite3/build/node_gyp_bins" and added to PATH
+gyp info spawn make
+gyp info spawn args [ 'V=1', 'BUILDTYPE=Release', '-C', 'build' ]
+  touch ba23eeee118cd63e16015df367567cb043fed872.intermediate
+  LD_LIBRARY_PATH=/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/better-sqlite3/build/Release/lib.host:/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/better-sqlite3/build/Release/lib.target:$LD_LIBRARY_PATH; export LD_LIBRARY_PATH; cd ../deps; mkdir -p /Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/better-sqlite3/build/Release/obj/gen/sqlite3; node copy.js "/Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service/node_modules/better-sqlite3/build/Release/obj/gen/sqlite3" ""
+  touch Release/obj.target/deps/locate_sqlite3.stamp
+  cc -o Release/obj.target/sqlite3/gen/sqlite3/sqlite3.o Release/obj/gen/sqlite3/sqlite3.c '-DNODE_GYP_MODULE_NAME=sqlite3' '-DUSING_UV_SHARED=1' '-DUSING_V8_SHARED=1' '-DV8_DEPRECATION_WARNINGS=1' '-D_GLIBCXX_USE_CXX11_ABI=1' '-D_FILE_OFFSET_BITS=64' '-D_DARWIN_USE_64_BIT_INODE=1' '-D_LARGEFILE_SOURCE' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DHAVE_INT16_T=1' '-DHAVE_INT32_T=1' '-DHAVE_INT8_T=1' '-DHAVE_STDINT_H=1' '-DHAVE_UINT16_T=1' '-DHAVE_UINT32_T=1' '-DHAVE_UINT8_T=1' '-DHAVE_USLEEP=1' '-DSQLITE_DEFAULT_CACHE_SIZE=-16000' '-DSQLITE_DEFAULT_FOREIGN_KEYS=1' '-DSQLITE_DEFAULT_MEMSTATUS=0' '-DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1' '-DSQLITE_DQS=0' '-DSQLITE_ENABLE_COLUMN_METADATA' '-DSQLITE_ENABLE_DBSTAT_VTAB' '-DSQLITE_ENABLE_DESERIALIZE' '-DSQLITE_ENABLE_FTS3' '-DSQLITE_ENABLE_FTS3_PARENTHESIS' '-DSQLITE_ENABLE_FTS4' '-DSQLITE_ENABLE_FTS5' '-DSQLITE_ENABLE_GEOPOLY' '-DSQLITE_ENABLE_JSON1' '-DSQLITE_ENABLE_MATH_FUNCTIONS' '-DSQLITE_ENABLE_RTREE' '-DSQLITE_ENABLE_STAT4' '-DSQLITE_ENABLE_UPDATE_DELETE_LIMIT' '-DSQLITE_LIKE_DOESNT_MATCH_BLOBS' '-DSQLITE_OMIT_DEPRECATED' '-DSQLITE_OMIT_PROGRESS_CALLBACK' '-DSQLITE_OMIT_SHARED_CACHE' '-DSQLITE_OMIT_TCL_VARIABLE' '-DSQLITE_SOUNDEX' '-DSQLITE_THREADSAFE=2' '-DSQLITE_TRACE_SIZE_LIMIT=32' '-DSQLITE_USE_URI=0' '-DNDEBUG' -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/src -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/openssl/config -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/openssl/openssl/include -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/uv/include -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/zlib -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/v8/include -I./Release/obj/gen/sqlite3  -O3 -mmacosx-version-min=10.7 -arch arm64 -Wall -Wendif-labels -W -Wno-unused-parameter -w -fno-strict-aliasing -std=c99 -MMD -MF ./Release/.deps/Release/obj.target/sqlite3/gen/sqlite3/sqlite3.o.d.raw   -c
+  rm -f Release/sqlite3.a && ./gyp-mac-tool filter-libtool libtool  -static -o Release/sqlite3.a Release/obj.target/sqlite3/gen/sqlite3/sqlite3.o
+  c++ -o Release/obj.target/better_sqlite3/src/better_sqlite3.o ../src/better_sqlite3.cpp '-DNODE_GYP_MODULE_NAME=better_sqlite3' '-DUSING_UV_SHARED=1' '-DUSING_V8_SHARED=1' '-DV8_DEPRECATION_WARNINGS=1' '-D_GLIBCXX_USE_CXX11_ABI=1' '-D_FILE_OFFSET_BITS=64' '-D_DARWIN_USE_64_BIT_INODE=1' '-D_LARGEFILE_SOURCE' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DBUILDING_NODE_EXTENSION' '-DNDEBUG' -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/src -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/openssl/config -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/openssl/openssl/include -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/uv/include -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/zlib -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/v8/include -I./Release/obj/gen/sqlite3  -O3 -mmacosx-version-min=10.7 -arch arm64 -Wall -Wendif-labels -W -Wno-unused-parameter -std=gnu++17 -stdlib=libc++ -fno-rtti -fno-exceptions -fvisibility-inlines-hidden -std=c++20 -stdlib=libc++ -MMD -MF ./Release/.deps/Release/obj.target/better_sqlite3/src/better_sqlite3.o.d.raw   -c
+./src/better_sqlite3.lzz:67:1: warning: cast from 'void (*)(v8::Local<v8::Object>, v8::Local<v8::Value>, v8::Local<v8::Context>)' to 'node::addon_context_register_func' (aka 'void (*)(v8::Local<v8::Object>, v8::Local<v8::Value>, v8::Local<v8::Context>, void *)') converts to incompatible function type [-Wcast-function-type-mismatch]
+   67 | NODE_MODULE_INIT(/* exports, context */) {
+      | ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node/node.h:1296:3: note: expanded from macro 'NODE_MODULE_INIT'
+ 1296 |   NODE_MODULE_CONTEXT_AWARE(NODE_GYP_MODULE_NAME,                     \
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 1297 |                             NODE_MODULE_INITIALIZER)                  \
+      |                             ~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node/node.h:1265:3: note: expanded from macro 'NODE_MODULE_CONTEXT_AWARE'
+ 1265 |   NODE_MODULE_CONTEXT_AWARE_X(modname, regfunc, NULL, 0)
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node/node.h:1247:7: note: expanded from macro 'NODE_MODULE_CONTEXT_AWARE_X'
+ 1247 |       (node::addon_context_register_func) (regfunc),                  \
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+./src/objects/database.lzz:180:21: warning: variable 'status' set but not used [-Wunused-but-set-variable]
+  180 |                 int status = sqlite3_db_config(db_handle, SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION, 1, NULL);
+      |                     ^
+./src/util/custom-table.lzz:45:9: warning: missing field 'xIntegrity' initializer [-Wmissing-field-initializers]
+   45 |         };
+      |         ^
+./src/util/custom-table.lzz:72:9: warning: missing field 'xIntegrity' initializer [-Wmissing-field-initializers]
+   72 |         };
+      |         ^
+In file included from ../src/better_sqlite3.cpp:4:
+In file included from ./src/better_sqlite3.lzz:11:
+In file included from /Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node/node.h:73:
+In file included from /Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node/v8.h:24:
+In file included from /Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node/v8-array-buffer.h:13:
+In file included from /Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node/v8-object.h:10:
+/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node/v8-persistent-handle.h:526:37: warning: cast from 'typename WeakCallbackInfo<ObjectWrap>::Callback' (aka 'void (*)(const WeakCallbackInfo<ObjectWrap> &)') to 'Callback' (aka 'void (*)(const WeakCallbackInfo<void> &)') converts to incompatible function type [-Wcast-function-type-mismatch]
+  526 |                          parameter, reinterpret_cast<Callback>(callback), type);
+      |                                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node/node_object_wrap.h:85:18: note: in instantiation of function template specialization 'v8::PersistentBase<v8::Object>::SetWeak<node::ObjectWrap>' requested here
+   85 |     persistent().SetWeak(this, WeakCallback, v8::WeakCallbackType::kParameter);
+      |                  ^
+5 warnings generated.
+  c++ -bundle -undefined dynamic_lookup -Wl,-search_paths_first -Wl,-dead_strip -mmacosx-version-min=10.7 -arch arm64 -L./Release -stdlib=libc++  -o Release/better_sqlite3.node Release/obj.target/better_sqlite3/src/better_sqlite3.o Release/sqlite3.a 
+  cc -o Release/obj.target/test_extension/deps/test_extension.o ../deps/test_extension.c '-DNODE_GYP_MODULE_NAME=test_extension' '-DUSING_UV_SHARED=1' '-DUSING_V8_SHARED=1' '-DV8_DEPRECATION_WARNINGS=1' '-D_GLIBCXX_USE_CXX11_ABI=1' '-D_FILE_OFFSET_BITS=64' '-D_DARWIN_USE_64_BIT_INODE=1' '-D_LARGEFILE_SOURCE' '-DOPENSSL_NO_PINSHARED' '-DOPENSSL_THREADS' '-DBUILDING_NODE_EXTENSION' '-DNDEBUG' -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/include/node -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/src -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/openssl/config -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/openssl/openssl/include -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/uv/include -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/zlib -I/Users/zhangshouchang/Library/Caches/node-gyp/20.19.4/deps/v8/include -I./Release/obj/gen/sqlite3  -O3 -mmacosx-version-min=10.7 -arch arm64 -Wall -Wendif-labels -W -Wno-unused-parameter -fno-strict-aliasing -MMD -MF ./Release/.deps/Release/obj.target/test_extension/deps/test_extension.o.d.raw   -c
+  c++ -bundle -undefined dynamic_lookup -Wl,-search_paths_first -Wl,-dead_strip -mmacosx-version-min=10.7 -arch arm64 -L./Release -stdlib=libc++  -o Release/test_extension.node Release/obj.target/test_extension/deps/test_extension.o Release/sqlite3.a 
+rm ba23eeee118cd63e16015df367567cb043fed872.intermediate
+gyp info ok 
+npm info run better-sqlite3@11.10.0 install { code: 0, signal: null }
+npm info run sharp@0.33.5 install node_modules/sharp node install/check
+
+> sharp@0.33.5 install
+> node install/check
+
+sharp: Detected globally-installed libvips v8.17.1
+sharp: Attempting to build from source via node-gyp
+sharp: Found node-addon-api 
+sharp: Please add node-gyp to your dependencies
+npm info run sharp@0.33.5 install { code: 0, signal: null }
+
+added 439 packages, and audited 440 packages in 5m
+
+72 packages are looking for funding
+  run `npm fund` for details
+
+6 vulnerabilities (2 low, 2 moderate, 2 critical)
+
+To address all issues possible (including breaking changes), run:
+  npm audit fix --force
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+npm verbose cwd /Volumes/Personal-Files/project-develop/xiaoxiao-album/xiaoxiao-project-service
+npm verbose os Darwin 24.6.0
+npm verbose node v20.19.4
+npm verbose npm  v10.8.2
+npm verbose exit 0
+npm info ok

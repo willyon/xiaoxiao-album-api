@@ -1,10 +1,12 @@
 {
   "name": "my-node-project",
   "version": "1.0.0",
-  "main": "src/server.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "postinstall": "node scripts/healthcheck.js",
+    "server": "node server.js",
+    "imageUploadWorker": "node src/workers/imageUploadWorker",
+    "imageMetaWorker": "node src/workers/imageMetaWorker",
     "test": "mocha"
   },
   "dependencies": {
@@ -32,14 +34,16 @@
     "nodemailer": "^6.9.16",
     "nodemon": "^3.1.4",
     "redis": "^4.7.0",
-    "sharp": "^0.33.5",
     "validator": "^13.12.0",
-    "xss-clean": "^0.1.4"
+    "xss-clean": "^0.1.4",
+    "sharp": "^0.33.5"
   },
   "devDependencies": {
     "chai": "^5.1.1",
     "eslint": "^9.9.1",
     "mocha": "^10.7.3",
+    "node-addon-api": "^7.1.1",
+    "node-gyp": "^10.3.1",
     "prettier": "^3.3.3"
   }
 }

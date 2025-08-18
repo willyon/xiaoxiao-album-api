@@ -2,19 +2,21 @@
  * @Author: zhangshouchang
  * @Date: 2024-08-30 16:46:37
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-12 15:53:02
+ * @LastEditTime: 2025-08-18 10:33:42
  * @Description: Optimized Server Configuration
  */
 
 // 加载.env文件中的环境变量
 require("dotenv").config();
 const path = require("path");
+const logger = require("./src/utils/logger");
 
 const express = require("express");
 const { getRedisClient } = require("./src/services/redisClient");
 const initGracefulShutdown = require("./src/utils/gracefulShutdown");
 
-const { closeUploadQueue } = require("./src/queues/uploadQueue");
+const { closeImageUploadQueue } = require("./src/queues/imageUploadQueue");
+const { closeImageMetaQueue } = require("./src/queues/imageMetaQueue");
 
 // 应用服务安全中间件
 const xssClean = require("xss-clean");
@@ -88,7 +90,7 @@ app.use(errorHandler);
 // ========================== 启动服务器 ========================== //
 
 const server = app.listen(PORT, () => {
-  console.log(`服务已启用：http://localhost:${PORT}`);
+  logger.info({ message: `服务已启用：http://localhost:${PORT}` });
 });
 
 // 应用服务进程退出前进行的操作
@@ -97,6 +99,7 @@ initGracefulShutdown({
   getRedisClient,
   extraClosers: [
     // 关闭 BullMQ 的 Queue 及其底层连接（API 进程只负责入队）
-    async () => closeUploadQueue(),
+    async () => closeImageUploadQueue(),
+    async () => closeImageMetaQueue(),
   ],
 });
