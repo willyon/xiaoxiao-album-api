@@ -72,7 +72,7 @@ app.use(responseHandler);
 // ========================== 静态资源中间件 ========================== //
 
 // 提供静态文件访问服务
-app.use("/processedFiles", express.static(path.join(__dirname, "processedFiles")));
+app.use("/localStorage", express.static(path.join(__dirname, "localStorage")));
 
 // ========================== 业务路由注册 ========================== //
 

@@ -16,6 +16,27 @@ const { ERROR_CODES } = require("../constants/messageCodes");
 const logger = require("../utils/logger");
 
 const imageModel = require("../models/imageModel");
+const StorageService = require("./StorageService");
+
+// 创建存储服务实例
+const storageService = new StorageService();
+
+// 为图片添加完整URL的工具函数
+function _addFullUrlsToImages(images) {
+  return images.map((image) => ({
+    ...image,
+    highResUrl: storageService.getFileUrl(image.highResUrl),
+    thumbnailUrl: storageService.getFileUrl(image.thumbnailUrl),
+  }));
+}
+
+// 为按年/按月份组数据封面图片添加完整URL的工具函数
+function _addFullUrlsToGroupCover(groups) {
+  return groups.map((group) => ({
+    ...group,
+    latestImageUrl: storageService.getFileUrl(group.latestImageUrl),
+  }));
+}
 
 // 判断文件是否为图片
 // function isImage(file) {
@@ -219,7 +240,7 @@ async function extractImageMetadata(filePath) {
   }
 }
 
-async function getAllImagesByPage({ pageNo = 1, pageSize = 10, userId }) {
+async function getAllImagesByPage({ pageNo = 1, pageSize = 10, userId, withFullUrls = true }) {
   // 参数校验和默认值保护
   if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
     throw new CustomError({
@@ -229,7 +250,14 @@ async function getAllImagesByPage({ pageNo = 1, pageSize = 10, userId }) {
     });
   }
   try {
-    return await imageModel.selectImagesByPage({ pageNo, pageSize, userId });
+    const queryResult = await imageModel.selectImagesByPage({ pageNo, pageSize, userId });
+
+    // 如果需要完整URL，则转换
+    if (withFullUrls && queryResult.data) {
+      queryResult.data = _addFullUrlsToImages(queryResult.data);
+    }
+
+    return queryResult;
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
@@ -239,7 +267,7 @@ async function getAllImagesByPage({ pageNo = 1, pageSize = 10, userId }) {
   }
 }
 
-async function getImagesByYear({ pageNo = 1, pageSize = 10, yearKey = "unknown", userId }) {
+async function getImagesByYear({ pageNo = 1, pageSize = 10, yearKey = "unknown", userId, withFullUrls = true }) {
   if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
     throw new CustomError({
       httpStatus: 400,
@@ -248,7 +276,14 @@ async function getImagesByYear({ pageNo = 1, pageSize = 10, yearKey = "unknown",
     });
   }
   try {
-    return await imageModel.selectImagesByYear({ pageNo, pageSize, yearKey, userId });
+    const queryResult = await imageModel.selectImagesByYear({ pageNo, pageSize, yearKey, userId });
+
+    // 如果需要完整URL，则转换
+    if (withFullUrls && queryResult.data) {
+      queryResult.data = _addFullUrlsToImages(queryResult.data);
+    }
+
+    return queryResult;
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
@@ -258,7 +293,7 @@ async function getImagesByYear({ pageNo = 1, pageSize = 10, yearKey = "unknown",
   }
 }
 
-async function getImagesByMonth({ pageNo = 1, pageSize = 10, monthKey = "unknown", userId }) {
+async function getImagesByMonth({ pageNo = 1, pageSize = 10, monthKey = "unknown", userId, withFullUrls = true }) {
   if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
     throw new CustomError({
       httpStatus: 400,
@@ -267,7 +302,14 @@ async function getImagesByMonth({ pageNo = 1, pageSize = 10, monthKey = "unknown
     });
   }
   try {
-    return await imageModel.selectImagesByMonth({ pageNo, pageSize, monthKey, userId });
+    const queryResult = await imageModel.selectImagesByMonth({ pageNo, pageSize, monthKey, userId });
+
+    // 如果需要完整URL，则转换
+    if (withFullUrls && queryResult.data) {
+      queryResult.data = _addFullUrlsToImages(queryResult.data);
+    }
+
+    return queryResult;
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
@@ -277,7 +319,7 @@ async function getImagesByMonth({ pageNo = 1, pageSize = 10, monthKey = "unknown
   }
 }
 
-async function getGroupsByYear({ userId, pageNo = 1, pageSize = 10 }) {
+async function getGroupsByYear({ userId, pageNo = 1, pageSize = 10, withFullUrls = true }) {
   // 参数校验和默认值保护
   if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
     throw new CustomError({
@@ -287,7 +329,14 @@ async function getGroupsByYear({ userId, pageNo = 1, pageSize = 10 }) {
     });
   }
   try {
-    return await imageModel.selectGroupsByYear({ pageNo, pageSize, userId });
+    const queryResult = await imageModel.selectGroupsByYear({ pageNo, pageSize, userId });
+
+    // 如果需要完整URL，则转换
+    if (withFullUrls && queryResult.data) {
+      queryResult.data = _addFullUrlsToGroupCover(queryResult.data);
+    }
+
+    return queryResult;
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,
@@ -297,7 +346,7 @@ async function getGroupsByYear({ userId, pageNo = 1, pageSize = 10 }) {
   }
 }
 
-async function getGroupsByMonth({ userId, pageNo = 1, pageSize = 10 }) {
+async function getGroupsByMonth({ userId, pageNo = 1, pageSize = 10, withFullUrls = true }) {
   // 参数校验和默认值保护
   if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
     throw new CustomError({
@@ -307,7 +356,14 @@ async function getGroupsByMonth({ userId, pageNo = 1, pageSize = 10 }) {
     });
   }
   try {
-    return await imageModel.selectGroupsByMonth({ pageNo, pageSize, userId });
+    const queryResult = await imageModel.selectGroupsByMonth({ pageNo, pageSize, userId });
+
+    // 如果需要完整URL，则转换
+    if (withFullUrls && queryResult.data) {
+      queryResult.data = _addFullUrlsToGroupCover(queryResult.data);
+    }
+
+    return queryResult;
   } catch (error) {
     throw new CustomError({
       httpStatus: 500,

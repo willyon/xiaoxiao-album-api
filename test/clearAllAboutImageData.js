@@ -37,7 +37,6 @@ function deleteFolderSync(folderPath) {
 }
 const clearFolders = {
   uploadFolder: path.join(__dirname, "..", process.env.UPLOADS_DIR), //上传成功待处理图片存放文件夹
-  duplicateFolder: path.join(__dirname, "..", process.env.DUPLICATE_IMAGE_DIR), //上传图片中与数据库已有图片重复图片存放文件夹
   failedFolder: path.join(__dirname, "..", process.env.FAILED_IMAGE_DIR), //处理失败图片存放文件夹
   originalFolder: path.join(__dirname, "..", process.env.PROCESSED_ORIGINAL_IMAGE_DIR), //上传原图存放文件夹
   highResFolder: path.join(__dirname, "..", process.env.PROCESSED_HIGH_RES_IMAGE_DIR),

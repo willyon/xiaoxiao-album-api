@@ -1,0 +1,562 @@
+/*
+ * @Author: zhangshouchang
+ * @Date: 2025-08-29
+ * @Description: 阿里云OSS存储适配器
+ */
+
+const path = require("path");
+const OSS = require("ali-oss");
+const fsExtra = require("fs-extra");
+const BaseStorageAdapter = require("./BaseStorageAdapter");
+const logger = require("../../utils/logger");
+
+/**
+ * 阿里云OSS存储适配器
+ * 支持多种认证方式：RAM角色授权（推荐）、AccessKey、STS临时凭证
+ *
+ * @class AliyunOSSAdapter
+ * @extends {BaseStorageAdapter}
+ *
+ * @example
+ * // RAM角色授权（推荐，适用于ECS环境）
+ * const ramConfig = {
+ *   region: "oss-cn-hangzhou",
+ *   bucket: "my-bucket",
+ *   authType: "ram"
+ * };
+ *
+ * @example
+ * // AccessKey方式
+ * const accessKeyConfig = {
+ *   region: "oss-cn-hangzhou",
+ *   bucket: "my-bucket",
+ *   authType: "accesskey",
+ *   accessKeyId: "your_access_key_id",
+ *   accessKeySecret: "your_access_key_secret"
+ * };
+ *
+ * @example
+ * // STS临时凭证
+ * const stsConfig = {
+ *   region: "oss-cn-hangzhou",
+ *   bucket: "my-bucket",
+ *   authType: "sts",
+ *   accessKeyId: "temp_access_key_id",
+ *   accessKeySecret: "temp_access_key_secret",
+ *   stsToken: "temp_sts_token"
+ * };
+ *
+ * @example
+ * // 使用CDN自定义域名
+ * const cdnConfig = {
+ *   region: "oss-cn-hangzhou",
+ *   bucket: "my-bucket",
+ *   authType: "ram",
+ *   customDomain: "https://cdn.example.com" // 或 "cdn.example.com"
+ * };
+ *
+ * @param {Object} config - 配置对象
+ *
+ * @param {string} config.region - OSS区域标识符（必需）
+ *   支持的区域：
+ *   - 华东：oss-cn-hangzhou, oss-cn-shanghai
+ *   - 华北：oss-cn-beijing, oss-cn-qingdao, oss-cn-zhangjiakou
+ *   - 华南：oss-cn-shenzhen, oss-cn-guangzhou
+ *   - 海外：oss-us-west-1, oss-ap-southeast-1, oss-eu-central-1 等
+ *
+ * @param {string} config.bucket - OSS存储桶名称（必需）
+ *
+ *
+ * @param {string} [config.customDomain] - 自定义访问域名（可选）
+ *   - 支持CDN加速域名，如："https://cdn.example.com" 或 "cdn.example.com"
+ *   - 如果不提供协议前缀，默认使用https://
+ *   - 用于替代默认的OSS域名生成文件访问URL
+ *
+ * @param {number} [config.timeout=60000] - 请求超时时间（毫秒）
+ *   - 单个OSS请求的最大等待时间
+ *   - 建议：小文件30秒，大文件5-10分钟
+ *
+ * @param {boolean} [config.secure=true] - 是否使用HTTPS
+ *   - 推荐保持true，使用HTTPS协议
+ */
+class AliyunOSSAdapter extends BaseStorageAdapter {
+  constructor(config = {}) {
+    super(config);
+    this.type = "aliyun-oss";
+
+    // 1. 首先验证必要配置
+    this._validateConfig(config);
+
+    //内网域名
+    this.baseUrl = `https://${config.bucket}.${config.region}.internal.aliyuncs.com`;
+    //外网域名
+    // this.baseUrl = `https://${config.bucket}.${config.region}.aliyuncs.com`;
+
+    // 如果有自定义域名，优先使用
+    if (config.customDomain) {
+      this.baseUrl =
+        config.customDomain.startsWith("http://") || config.customDomain.startsWith("https://")
+          ? config.customDomain
+          : `https://${config.customDomain}`;
+    }
+
+    // 3. 最后初始化OSS客户端（此时所有依赖的属性都已设置完成）
+    this.client = this._createOSSClient(config);
+  }
+
+  /**
+   * 生成处理后图片的存储键名（OSS对象键名）
+   * @param {string} filename - 原始文件名
+   * @param {string} type - 图片类型 ('thumbnail', 'highres', 'original')
+   * @param {string} extension - 图片格式扩展名 (如: 'webp', 'avif', 'jpg')
+   * @returns {string} OSS对象键名
+   */
+  generateProcessedImageKey(type, filename, extension = "webp") {
+    const baseName = path.basename(filename, path.extname(filename));
+    return `${type}/${baseName}.${extension}`;
+  }
+
+  /**
+   * 创建OSS客户端（支持RAM角色和AccessKey两种认证方式）
+   * @param {Object} config - 配置对象
+   * @returns {OSS} OSS客户端实例
+   * @private
+   */
+  _createOSSClient(config) {
+    const baseConfig = {
+      region: config.region,
+      bucket: config.bucket,
+      timeout: config.timeout || 60000, // 单个请求超时时间，默认60秒
+      secure: config.secure !== false, // 默认使用HTTPS
+    };
+
+    const authType = config.authType;
+
+    switch (authType.toLowerCase()) {
+      case "ram":
+      case "role":
+        // RAM角色授权方式（推荐）
+        logger.info({
+          message: "Initializing aliyun OSS client with RAM role authentication",
+          details: { region: config.region, bucket: config.bucket },
+        });
+
+        return new OSS({
+          ...baseConfig,
+          // RAM角色授权不需要显式的accessKeyId和accessKeySecret
+          // OSS SDK会自动从ECS实例的元数据服务获取临时凭证
+        });
+
+      case "accesskey":
+      case "key":
+        // AccessKey方式
+        logger.info({
+          message: "Initializing aliyun OSS client with AccessKey authentication",
+          details: { region: config.region, bucket: config.bucket },
+        });
+
+        return new OSS({
+          ...baseConfig,
+          accessKeyId: config.accessKeyId,
+          accessKeySecret: config.accessKeySecret,
+        });
+
+      case "sts":
+        // STS临时凭证方式
+        logger.info({
+          message: "Initializing aliyun OSS client with STS token authentication",
+          details: { region: config.region, bucket: config.bucket },
+        });
+
+        return new OSS({
+          ...baseConfig,
+          accessKeyId: config.accessKeyId,
+          accessKeySecret: config.accessKeySecret,
+          stsToken: config.stsToken,
+        });
+
+      default:
+        throw new Error(`Unsupported authentication type: ${authType}. Supported types: ram, accesskey, sts`);
+    }
+  }
+
+  /**
+   * 验证配置参数
+   * @param {Object} config - 配置对象
+   * @private
+   */
+  _validateConfig(config) {
+    // 基础必需字段
+    const baseRequired = ["region", "bucket"];
+    const missing = baseRequired.filter((key) => !config[key]);
+
+    if (missing.length) {
+      throw new Error(`AliyunOSS config missing required fields: ${missing.join(", ")}`);
+    }
+
+    // 根据认证方式验证相应字段
+    const authType = config.authType || "ram";
+
+    switch (authType.toLowerCase()) {
+      case "ram":
+      case "role":
+        // RAM角色授权只需要region和bucket
+        break;
+
+      case "accesskey":
+      case "key":
+        // AccessKey方式需要accessKeyId和accessKeySecret
+        const accessKeyRequired = ["accessKeyId", "accessKeySecret"];
+        const accessKeyMissing = accessKeyRequired.filter((key) => !config[key]);
+        if (accessKeyMissing.length) {
+          throw new Error(`AccessKey authentication missing required fields: ${accessKeyMissing.join(", ")}`);
+        }
+        break;
+
+      case "sts":
+        // STS方式需要accessKeyId、accessKeySecret和stsToken
+        const stsRequired = ["accessKeyId", "accessKeySecret", "stsToken"];
+        const stsMissing = stsRequired.filter((key) => !config[key]);
+        if (stsMissing.length) {
+          throw new Error(`STS authentication missing required fields: ${stsMissing.join(", ")}`);
+        }
+        break;
+
+      default:
+        throw new Error(`Unsupported authentication type: ${authType}. Supported types: ram, accesskey, sts`);
+    }
+  }
+
+  /**
+   * 处理OSS错误
+   * @param {Error} error - OSS错误
+   * @param {string} operation - 操作名称
+   * @param {Object} context - 上下文信息
+   * @private
+   */
+  _handleOSSError(error, operation, context = {}) {
+    logger.error({
+      message: `AliyunOSS ${operation} failed`,
+      details: {
+        code: error.code,
+        message: error.message,
+        status: error.status,
+        requestId: error.requestId,
+        ...context,
+      },
+    });
+    throw error;
+  }
+
+  // ========== 基础文件操作实现 ==========
+
+  /**
+   * 上传文件到阿里云OSS
+   * @param {Buffer|string} fileData - 文件数据(Buffer)或本地文件路径(string)
+   * @param {string} ossKey - OSS对象键名
+   * @param {Object} options - 上传选项
+   * @returns {Promise<string>} 返回文件访问URL
+   */
+  async storeFile(fileData, ossKey, options = {}) {
+    try {
+      const uploadOptions = {
+        // 设置Content-Type
+        headers: {
+          "Content-Type": options.contentType || this._guessContentType(ossKey),
+          // 设置缓存控制
+          "Cache-Control": options.cacheControl || "public, max-age=31536000", // 默认公共缓存(允许任何浏览器、cdn、代理服务器存储这个文件) 1年有效期
+          ...options.headers,
+        },
+      };
+
+      // 如果有元数据，添加到headers中
+      if (options.metadata) {
+        Object.keys(options.metadata).forEach((metaKey) => {
+          uploadOptions.headers[`x-oss-meta-${metaKey}`] = options.metadata[metaKey];
+        });
+      }
+
+      let result;
+      if (Buffer.isBuffer(fileData)) {
+        // 上传Buffer数据
+        result = await this.client.put(ossKey, fileData, uploadOptions);
+      } else if (typeof fileData === "string") {
+        // 上传本地文件
+        const exists = await fsExtra.pathExists(fileData);
+        if (!exists) {
+          throw new Error(`Source file not found: ${fileData}`);
+        }
+        result = await this.client.put(ossKey, fileData, uploadOptions);
+      } else {
+        throw new Error("fileData must be Buffer or file path string");
+      }
+
+      return this.getFileUrl(ossKey);
+    } catch (error) {
+      this._handleOSSError(error, "upload", { ossKey });
+    }
+  }
+
+  /**
+   * 从OSS删除文件
+   * @param {string} ossKey - OSS对象键名
+   * @returns {Promise<void>}
+   */
+  async deleteFile(ossKey) {
+    try {
+      await this.client.delete(ossKey);
+    } catch (error) {
+      // 如果文件不存在，OSS会返回204状态码，不算错误
+      if (error.status === 404) {
+        return; // 文件不存在，认为删除成功
+      }
+      this._handleOSSError(error, "delete", { ossKey });
+    }
+  }
+
+  /**
+   * 检查OSS中文件是否存在
+   * @param {string} ossKey - OSS对象键名
+   * @returns {Promise<boolean>}
+   */
+  async fileExists(ossKey) {
+    try {
+      await this.client.head(ossKey);
+      return true;
+    } catch (error) {
+      if (error.status === 404) {
+        return false;
+      }
+      this._handleOSSError(error, "exists check", { ossKey });
+    }
+  }
+
+  /**
+   * 获取OSS文件内容的Buffer
+   * @param {string} ossKey - OSS对象键名
+   * @returns {Promise<Buffer>} 文件内容的Buffer
+   */
+  async getFileBuffer(ossKey) {
+    try {
+      const result = await this.client.get(ossKey);
+      return result.content;
+    } catch (error) {
+      this._handleOSSError(error, "get file buffer", { ossKey });
+    }
+  }
+
+  // ========== URL 生成实现 ==========
+
+  /**
+   * 获取OSS文件访问URL
+   * @param {string} ossKey - OSS对象键名
+   * @returns {string} 文件访问URL
+   */
+  getFileUrl(ossKey) {
+    // 如果bucket是公共读取，直接返回公共URL
+    return `${this.baseUrl}/${ossKey}`;
+  }
+
+  /**
+   * 获取带签名的临时访问URL
+   * @param {string} ossKey - OSS对象键名
+   * @param {number} expiresIn - 过期时间（秒）
+   * @returns {Promise<string>} 签名URL
+   */
+  async getSignedUrl(ossKey, expiresIn = 3600) {
+    try {
+      const url = this.client.signatureUrl(ossKey, {
+        expires: expiresIn,
+        method: "GET",
+      });
+      return url;
+    } catch (error) {
+      this._handleOSSError(error, "generate signed URL", { ossKey, expiresIn });
+    }
+  }
+
+  // ========== 目录操作实现 ==========
+
+  /**
+   * OSS不需要创建目录，此方法为空实现
+   * @param {string} dirPath - 目录路径
+   * @returns {Promise<void>}
+   */
+  async ensureDirectory(dirPath) {
+    // OSS是对象存储，不需要创建目录
+    return Promise.resolve();
+  }
+
+  /**
+   * 列出OSS中指定前缀的所有文件
+   * @param {string} prefix - 文件前缀
+   * @returns {Promise<Array<string>>} 文件键名数组
+   */
+  async listFiles(prefix) {
+    try {
+      const result = await this.client.list({
+        prefix: prefix,
+        "max-keys": 1000, // 限制返回数量，可根据需要调整
+      });
+
+      if (!result.objects) {
+        return [];
+      }
+
+      return result.objects.map((obj) => obj.name);
+    } catch (error) {
+      this._handleOSSError(error, "list files", { prefix });
+    }
+  }
+
+  // ========== 批量操作优化 ==========
+
+  /**
+   * 批量上传文件到OSS
+   * @param {Array<{fileData: Buffer|string, key: string, options?: Object}>} files
+   * @returns {Promise<Array<{success: boolean, key: string, url?: string, error?: string}>>}
+   */
+  async storeFiles(files) {
+    const results = [];
+
+    // OSS支持并发上传，但要控制并发数避免过载
+    const concurrency = this.config.uploadConcurrency || 5;
+    const chunks = [];
+
+    for (let i = 0; i < files.length; i += concurrency) {
+      chunks.push(files.slice(i, i + concurrency));
+    }
+
+    for (const chunk of chunks) {
+      const promises = chunk.map(async (file) => {
+        try {
+          const url = await this.storeFile(file.fileData, file.key, file.options || {});
+          return { success: true, key: file.key, url };
+        } catch (error) {
+          return { success: false, key: file.key, error: error.message };
+        }
+      });
+
+      const chunkResults = await Promise.allSettled(promises);
+      chunkResults.forEach((result) => {
+        if (result.status === "fulfilled") {
+          results.push(result.value);
+        } else {
+          results.push({
+            success: false,
+            key: "unknown",
+            error: result.reason?.message || "Unknown error",
+          });
+        }
+      });
+    }
+
+    return results;
+  }
+
+  /**
+   * 批量删除OSS文件
+   * @param {Array<string>} keys - OSS对象键名数组
+   * @returns {Promise<Array<{key: string, success: boolean, error?: string}>>}
+   */
+  async deleteFiles(keys) {
+    try {
+      // OSS支持批量删除，最多1000个对象
+      const results = [];
+      const batchSize = 1000;
+
+      for (let i = 0; i < keys.length; i += batchSize) {
+        const batch = keys.slice(i, i + batchSize);
+
+        try {
+          const result = await this.client.deleteMulti(batch, {
+            quiet: false, // 返回删除结果详情
+          });
+
+          // 处理成功删除的文件
+          if (result.deleted) {
+            result.deleted.forEach((obj) => {
+              results.push({ key: obj.Key, success: true });
+            });
+          }
+
+          // 处理删除失败的文件
+          if (result.failed) {
+            result.failed.forEach((obj) => {
+              results.push({
+                key: obj.Key,
+                success: false,
+                error: `${obj.Code}: ${obj.Message}`,
+              });
+            });
+          }
+
+          // 如果没有返回详情，认为批次中所有文件都成功删除
+          if (!result.deleted && !result.failed) {
+            batch.forEach((key) => {
+              results.push({ key, success: true });
+            });
+          }
+        } catch (error) {
+          // 批次删除失败，标记这批次中的所有文件为失败
+          batch.forEach((key) => {
+            results.push({ key, success: false, error: error.message });
+          });
+        }
+      }
+
+      return results;
+    } catch (error) {
+      this._handleOSSError(error, "batch delete", { count: keys.length });
+    }
+  }
+
+  // ========== 工具方法 ==========
+
+  /**
+   * 根据文件扩展名猜测Content-Type
+   * @param {string} ossKey - 文件键名
+   * @returns {string} Content-Type
+   * @private
+   */
+  _guessContentType(ossKey) {
+    const ext = ossKey.split(".").pop()?.toLowerCase();
+    const mimeTypes = {
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      png: "image/png",
+      webp: "image/webp",
+      avif: "image/avif",
+      heic: "image/heic",
+      heif: "image/heif",
+      gif: "image/gif",
+    };
+
+    // 默认按照application/octet-stream返回 表示这个是二进制数据流
+    // 当系统无法识别文件类型时，用 application/octet-stream 确保文件能正常存储和传输
+    return mimeTypes[ext] || "application/octet-stream";
+  }
+
+  /**
+   * 获取OSS客户端实例（用于高级操作）
+   * @returns {OSS} OSS客户端
+   */
+  getClient() {
+    return this.client;
+  }
+
+  /**
+   * 获取Bucket信息
+   * @returns {Promise<Object>} Bucket信息
+   */
+  async getBucketInfo() {
+    try {
+      const result = await this.client.getBucketInfo();
+      return result.bucket;
+    } catch (error) {
+      this._handleOSSError(error, "get bucket info");
+    }
+  }
+}
+
+module.exports = AliyunOSSAdapter;

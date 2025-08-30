@@ -18,7 +18,7 @@ const {
 const { handlePostImages } = require("../controllers/uploadController");
 
 //上传图片
-router.post("/postImages", upload.single("file"), handlePostImages);
+router.post("/postImages", upload, handlePostImages);
 // 分页获取图片信息
 router.post("/queryAllByPage", handleGetAllByPage);
 // 分页获取按年份分组数据

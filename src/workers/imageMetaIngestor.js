@@ -14,7 +14,7 @@ const timeIt = require("../utils/timeIt");
 
 // 用于存放被处理成功的图片源图的文件夹
 const originalFolder = path.join(__dirname, "..", "..", process.env.PROCESSED_ORIGINAL_IMAGE_DIR);
-// 转换高质量大图目录
+// 用于存放被处理成功的图片
 const highResFolder = path.join(__dirname, "..", "..", process.env.PROCESSED_HIGH_RES_IMAGE_DIR);
 
 fsExtra.ensureDirSync(originalFolder);
@@ -68,7 +68,9 @@ async function processImageMeta(payload) {
   const yearKey = _toYearKey(creationDate);
 
   // 2) 产出高清大图（AVIF 默认）
-  const highResPath = path.join(highResFolder, `${imageHash}.${highResExt}`);
+  // 直接使用上传时的文件名，只替换扩展名
+  const baseName = path.basename(filename, path.extname(filename));
+  const highResPath = path.join(highResFolder, `${baseName}.${highResExt}`);
   try {
     await timeIt(
       "metaformatSingleImage",
@@ -104,7 +106,7 @@ async function processImageMeta(payload) {
       creationDate,
       monthKey,
       yearKey,
-      highResUrl: `/${process.env.PROCESSED_HIGH_RES_IMAGE_DIR}/${imageHash}.${highResExt}`,
+      highResUrl: `/${process.env.PROCESSED_HIGH_RES_IMAGE_DIR}/${baseName}.${highResExt}`,
       originalUrl: `/${process.env.PROCESSED_ORIGINAL_IMAGE_DIR}/${filename}`,
     });
   } catch (e) {
