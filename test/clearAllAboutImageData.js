@@ -48,18 +48,48 @@ for (let key in clearFolders) {
 }
 // ============清空图片转换过程中涉及的所有目标文件夹的所有图片==========//
 
-// ============清空 BullMQ 队列中未处理的任务==========//
-async function clearPendingJobs() {
+// ============清空 BullMQ 队列中所有任务（等待、活跃、失败、完成、延迟）==========//
+async function clearAllQueueJobs() {
   try {
-    await imageUploadQueue.drain(true); // true 表示移除延迟任务
-    await imageMetaQueue.drain(true);
-    console.log("BullMQ 队列等待中和延迟的任务已清空");
+    console.log("开始清空 BullMQ 队列...");
+
+    // 清空上传队列
+    console.log("清空图片上传队列...");
+    const uploadStats = {
+      waiting: await imageUploadQueue.clean(0, 1000, "waiting"),
+      active: await imageUploadQueue.clean(0, 1000, "active"),
+      completed: await imageUploadQueue.clean(0, 1000, "completed"),
+      failed: await imageUploadQueue.clean(0, 1000, "failed"),
+      delayed: await imageUploadQueue.clean(0, 1000, "delayed"),
+    };
+    await imageUploadQueue.drain(true); // 清空剩余的等待任务
+
+    console.log(
+      `上传队列清理完成: 等待${uploadStats.waiting} | 活跃${uploadStats.active} | 完成${uploadStats.completed} | 失败${uploadStats.failed} | 延迟${uploadStats.delayed}`,
+    );
+
+    // 清空元数据队列
+    console.log("清空图片元数据队列...");
+    const metaStats = {
+      waiting: await imageMetaQueue.clean(0, 1000, "waiting"),
+      active: await imageMetaQueue.clean(0, 1000, "active"),
+      completed: await imageMetaQueue.clean(0, 1000, "completed"),
+      failed: await imageMetaQueue.clean(0, 1000, "failed"),
+      delayed: await imageMetaQueue.clean(0, 1000, "delayed"),
+    };
+    await imageMetaQueue.drain(true); // 清空剩余的等待任务
+
+    console.log(
+      `元数据队列清理完成: 等待${metaStats.waiting} | 活跃${metaStats.active} | 完成${metaStats.completed} | 失败${metaStats.failed} | 延迟${metaStats.delayed}`,
+    );
+
+    console.log("✅ BullMQ 队列所有任务已清空");
   } catch (err) {
-    console.error("清空 BullMQ 队列任务失败：", err);
+    console.error("❌ 清空 BullMQ 队列任务失败：", err);
   }
 }
-clearPendingJobs().catch(console.error);
-// ============清空 BullMQ 队列中未处理的任务==========//
+clearAllQueueJobs().catch(console.error);
+// ============清空 BullMQ 队列中所有任务（等待、活跃、失败、完成、延迟）==========//
 
 // ============清空 Redis 中 readyKeyOf、lockKeyOf、userSetKey 三类键，用于开发测试环境快速重置==========//
 const { readyKeyOf, lockKeyOf, userSetKey } = require("../src/workers/userImageHashset");

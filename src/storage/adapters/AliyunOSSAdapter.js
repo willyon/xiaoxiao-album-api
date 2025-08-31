@@ -7,6 +7,7 @@
 const path = require("path");
 const OSS = require("ali-oss");
 const fsExtra = require("fs-extra");
+const multer = require("multer");
 const BaseStorageAdapter = require("./BaseStorageAdapter");
 const logger = require("../../utils/logger");
 
@@ -106,12 +107,18 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
 
   /**
    * 生成处理后图片的存储键名（OSS对象键名）
-   * @param {string} filename - 原始文件名
    * @param {string} type - 图片类型 ('thumbnail', 'highres', 'original')
-   * @param {string} extension - 图片格式扩展名 (如: 'webp', 'avif', 'jpg')
+   * @param {string} filename - 原始文件名
+   * @param {string} [extension] - 图片格式扩展名 (如: 'webp', 'avif', 'jpg')，不传则使用filename本身
    * @returns {string} OSS对象键名
    */
-  generateProcessedImageKey(type, filename, extension = "webp") {
+  generateStorageKey(type, filename, extension) {
+    // 如果没有传extension，直接使用filename本身
+    if (!extension) {
+      return `${type}/${filename}`;
+    }
+
+    // 传了extension，则使用原来的逻辑
     const baseName = path.basename(filename, path.extname(filename));
     return `${type}/${baseName}.${extension}`;
   }
@@ -315,6 +322,28 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
   }
 
   /**
+   * 移动OSS文件（通过复制+删除实现）
+   * @param {string} sourceKey - 源OSS对象键名
+   * @param {string} targetKey - 目标OSS对象键名
+   * @returns {Promise<boolean>} 移动成功返回true
+   */
+  async moveFile(sourceKey, targetKey) {
+    try {
+      // OSS没有原生的move操作，需要通过copy + delete实现
+      await this.client.copy(targetKey, sourceKey);
+      logger.info(`OSS文件复制成功: ${sourceKey} -> ${targetKey}`);
+
+      await this.client.delete(sourceKey);
+      logger.info(`OSS源文件删除成功: ${sourceKey}`);
+
+      return true;
+    } catch (error) {
+      this._handleOSSError(error, "moveFile", { sourceKey, targetKey });
+      return false;
+    }
+  }
+
+  /**
    * 检查OSS中文件是否存在
    * @param {string} ossKey - OSS对象键名
    * @returns {Promise<boolean>}
@@ -329,6 +358,70 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
       }
       this._handleOSSError(error, "exists check", { ossKey });
     }
+  }
+
+  /**
+   * 直接存储处理后的图片（OSS需要转Buffer）
+   * @param {Object} pipeline - Sharp pipeline对象
+   * @param {string} ossKey - OSS对象键名
+   * @returns {Promise<string>} 返回文件访问URL
+   */
+  async storeProcessedImage(pipeline, ossKey) {
+    try {
+      // OSS必须先转换为Buffer再上传
+      const buffer = await pipeline.toBuffer();
+      return await this.storeFile(buffer, ossKey);
+    } catch (error) {
+      logger.error(`OSS存储处理后图片失败: ${error.message}`, {
+        ossKey,
+        error: error.stack,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * 获取文件数据（OSS存储返回Buffer）
+   * @param {string} ossKey - OSS对象键名
+   * @returns {Promise<Buffer>} 文件Buffer数据
+   */
+  async getFileData(ossKey) {
+    return await this.getFileBuffer(ossKey);
+  }
+
+  /**
+   * 获取Multer存储配置 - 内存存储
+   * @param {Function} generateFilename - 文件名生成函数（OSS模式下会在中间件中使用）
+   * @returns {Object} Multer memoryStorage配置
+   */
+  getMulterStorage(generateFilename) {
+    // OSS模式使用内存存储，文件名会在upload中间件中生成
+    return multer.memoryStorage();
+  }
+
+  /**
+   * 获取文件大小（OSS存储）
+   * @param {string|Buffer} input - 输入数据，可以是OSS键名或Buffer
+   * @returns {Promise<number>} 文件大小（字节）
+   */
+  async getFileSize(input) {
+    if (Buffer.isBuffer(input)) {
+      return input.length;
+    } else if (typeof input === "string") {
+      try {
+        // OSS键名，获取对象信息
+        const result = await this.client.head(input);
+        return parseInt(result.res.headers["content-length"]) || 0;
+      } catch (error) {
+        logger.error(`获取OSS文件大小失败: ${error.message}`, {
+          ossKey: input,
+          error: error.stack,
+        });
+        // 返回默认大小
+        return 1 * 1024 * 1024; // 1MB
+      }
+    }
+    return 1 * 1024 * 1024; // 默认1MB
   }
 
   /**

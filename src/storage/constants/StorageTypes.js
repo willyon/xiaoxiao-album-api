@@ -63,7 +63,6 @@ function getSupportedStorageTypes() {
 module.exports = {
   STORAGE_TYPES,
   OSS_AUTH_TYPES,
-  FILE_TYPES,
   DEFAULT_CONFIG,
   isValidStorageType,
   isValidOSSAuthType,

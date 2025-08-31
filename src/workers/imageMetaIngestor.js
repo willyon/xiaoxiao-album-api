@@ -1,104 +1,91 @@
 /*
  * @Author: zhangshouchang
- * @Date: 2025-08-15
+ * @Date: 2025-08-31
  * @Description: meta 阶段（EXIF + 高清产物 + DB 补充）的独立处理器
  */
 
 const path = require("path");
-const fsExtra = require("fs-extra");
 const logger = require("../utils/logger");
-const { extractImageMetadata, updateImageMetaAndHQ, formatSingleImage } = require("../services/imageService");
-const { DateTime } = require("luxon");
-const { stringToTimestamp } = require("../utils/formatTime");
+const { extractImageMetadata, updateImageMetaAndHQ } = require("../services/imageService");
+const { stringToTimestamp, timestampToYearMonth, timestampToYear } = require("../utils/formatTime");
 const timeIt = require("../utils/timeIt");
+const StorageService = require("../services/storageService");
 
-// 用于存放被处理成功的图片源图的文件夹
-const originalFolder = path.join(__dirname, "..", "..", process.env.PROCESSED_ORIGINAL_IMAGE_DIR);
-// 用于存放被处理成功的图片
-const highResFolder = path.join(__dirname, "..", "..", process.env.PROCESSED_HIGH_RES_IMAGE_DIR);
-
-fsExtra.ensureDirSync(originalFolder);
-fsExtra.ensureDirSync(highResFolder);
-
-// 时区
-const TIMEZONE = (process.env.TIMEZONE || "local").toLowerCase() === "utc" ? "utc" : "local";
-
-const _toMonthKey = (ts) => {
-  if (ts == null) return "unknown"; //ts为nulh或undefined
-  const dt = DateTime.fromMillis(Number(ts), { zone: TIMEZONE });
-  return dt.isValid ? dt.toFormat("yyyy-MM") : "unknown";
-};
-
-const _toYearKey = (ts) => {
-  if (ts == null) return "unknown";
-  const dt = DateTime.fromMillis(Number(ts), { zone: TIMEZONE });
-  return dt.isValid ? dt.toFormat("yyyy") : "unknown";
-};
+// 创建存储服务实例
+const storageService = new StorageService();
 
 /**
- * 处理单张图片的“后处理”：
+ * 处理单张图片的"后处理"：
  * 1) 读取 EXIF → creationDate/monthKey/yearKey
  * 2) 产出高清大图（默认 AVIF）
  * 3) 更新数据库（补 creationDate/monthKey/yearKey/highResUrl）
- * 4) 将原图从uploadedFiles移动至originalFolder
+ * 4) 将原图移动至 original 存储位置
  *
  * @param {Object} payload
  * @param {number|string} payload.userId
  * @param {string} payload.imageHash
- * @param {string} payload.sourcePath
- * @param {string} [payload.highResExt]
+ * @param {string} payload.filename
+ * @param {string} payload.storageKey - 原始文件的存储键名
+ * @param {string} [payload.extension]
+ * @param {number} [payload.fileSize]
+ * @param {string} [payload.mimetype]
  */
 async function processImageMeta(payload) {
-  const { userId, imageHash, filename, sourcePath, highResExt } = payload;
+  const { userId, imageHash, filename, storageKey, extension, fileSize, mimetype } = payload;
 
   // 1) 解析 EXIF → creationDate
   let creationDate = null;
   try {
-    const exif = await extractImageMetadata(sourcePath);
+    // 通过存储服务获取文件数据进行 EXIF 读取
+    const fileData = await storageService.storage.getFileData(storageKey);
+    const exif = await extractImageMetadata(fileData);
+    //图片拍摄时间戳
     creationDate = exif?.DateTimeOriginal ? stringToTimestamp(exif.DateTimeOriginal.rawValue) : null;
   } catch (e) {
     // 非致命：没 EXIF 也可以走 unknown
     logger.warn({
       message: "EXIF read failed in imageMetaIngestor",
-      details: { imageHash, userId, err: String(e) },
+      details: { imageHash, userId, storageKey, err: String(e) },
     });
   }
 
-  const monthKey = _toMonthKey(creationDate);
-  const yearKey = _toYearKey(creationDate);
+  const monthKey = timestampToYearMonth(creationDate);
+  const yearKey = timestampToYear(creationDate);
 
   // 2) 产出高清大图（AVIF 默认）
-  // 直接使用上传时的文件名，只替换扩展名
-  const baseName = path.basename(filename, path.extname(filename));
-  const highResPath = path.join(highResFolder, `${baseName}.${highResExt}`);
+  // 使用存储服务生成高清图片的存储键名
+  const highResType = process.env.IMAGE_STORAGE_KEY_HIGHRES || "highres";
+  const highResStorageKey = storageService.storage.generateStorageKey(highResType, filename, extension);
+
   try {
     await timeIt(
-      "metaformatSingleImage",
+      "processAndStoreImage",
       async () => {
-        await formatSingleImage({
-          inputPath: sourcePath, // 用原图生成保证质量
-          outputPath: highResPath,
-          quality: 55, // 建议50-60
-          resizeWidth: 2560, //
+        await storageService.processAndStoreImage({
+          fileSize, // 传递文件大小，提升性能
+          mimetype, // 传递文件类型
+          sourceStorageKey: storageKey,
+          targetStorageKey: highResStorageKey,
+          extension,
+          quality: 65, // avif建议 缩略图50-60 高清图60-70
+          resizeWidth: 2560,
         });
       },
       imageHash,
     );
-    // await formatSingleImage({
-    //   inputPath: sourcePath, // 用原图生成保证质量
-    //   outputPath: highResPath,
-    //   quality: 55, // 可按需微调
-    //  resizeWidth: 2560,
-    // });
   } catch (e) {
     // 高清失败也不算致命 → 记录警告，继续更新元数据
     logger.warn({
-      message: "Generate HQ image (AVIF) failed",
-      details: { imageHash, userId, err: String(e) },
+      message: "Generate HQ image failed",
+      details: { imageHash, userId, highResStorageKey, err: String(e) },
     });
   }
 
   // 3) 更新数据库：补 creationDate / monthKey / yearKey / highResUrl
+  // 生成原图的存储键名（不传extension，直接使用filename）
+  const originalType = process.env.IMAGE_STORAGE_KEY_ORIGINAL || "originals";
+  const originalStorageKey = storageService.storage.generateStorageKey(originalType, filename);
+
   try {
     await updateImageMetaAndHQ({
       userId,
@@ -106,23 +93,43 @@ async function processImageMeta(payload) {
       creationDate,
       monthKey,
       yearKey,
-      highResUrl: `/${process.env.PROCESSED_HIGH_RES_IMAGE_DIR}/${baseName}.${highResExt}`,
-      originalUrl: `/${process.env.PROCESSED_ORIGINAL_IMAGE_DIR}/${filename}`,
+      highResUrl: highResStorageKey,
+      originalUrl: originalStorageKey,
     });
   } catch (e) {
     logger.error({
       message: "updateImageMetaAndHQ failed in imageMetaIngestor",
       details: { imageHash, userId, err: String(e) },
     });
-    // 不删文件：留待后续修复脚本或人工巡检
   }
-  // ======== 移动原图到 original 文件夹 ========
-  const originalPath = path.join(originalFolder, filename);
+  // ======== 移动原图到 original 存储位置 ========
   try {
-    await fsExtra.move(sourcePath, originalPath, { overwrite: true });
+    await storageService.storage.moveFile(storageKey, originalStorageKey);
+
+    logger.info({
+      message: "Image metadata processing completed successfully",
+      details: {
+        imageHash,
+        userId,
+        filename,
+        originalStorageKey,
+        highResStorageKey: highResStorageKey || null,
+        creationDate: creationDate || null,
+      },
+    });
   } catch (e) {
     // 记录错误，不算致命
-    logger.warn({ message: "move original failed", details: { sourcePath, originalPath, err: String(e) } });
+    // 移动文件失败不应该影响元数据更新，但需要记录警告
+    // 原始文件仍在临时位置，可以通过后续脚本修复
+    logger.warn({
+      message: "Original file remains in temporary location due to move failure",
+      details: {
+        imageHash,
+        userId,
+        temporaryLocation: storageKey,
+        intendedLocation: originalStorageKey,
+      },
+    });
   }
 }
 

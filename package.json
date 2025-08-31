@@ -7,7 +7,12 @@
     "server": "node server.js",
     "imageUploadWorker": "node src/workers/imageUploadWorker",
     "imageMetaWorker": "node src/workers/imageMetaWorker",
-    "test": "mocha"
+    "test": "mocha",
+    "queue": "node scripts/quickQueue.js",
+    "queue:monitor": "node scripts/queueMonitor.js",
+    "queue:watch": "node scripts/queueMonitor.js --watch",
+    "queue:jobs": "node scripts/queueMonitor.js --jobs",
+    "queue:clean": "node scripts/queueMonitor.js --clean failed"
   },
   "dependencies": {
     "ali-oss": "^6.23.0",

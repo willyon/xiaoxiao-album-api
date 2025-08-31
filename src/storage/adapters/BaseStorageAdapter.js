@@ -63,14 +63,53 @@ class BaseStorageAdapter {
   }
 
   /**
+   * 直接存储处理后的图片（性能优化版本）
+   * 本地存储：直接写入文件，OSS存储：转Buffer后上传
+   * @param {Object} pipeline - Sharp pipeline对象
+   * @param {string} key - 存储键名
+   * @returns {Promise<string>} 返回文件访问URL
+   */
+  async storeProcessedImage(pipeline, key) {
+    throw new Error(`storeProcessedImage method must be implemented in ${this.constructor.name}`);
+  }
+
+  /**
+   * 获取文件数据
+   * 本地存储：返回绝对文件路径，OSS存储：返回Buffer
+   * @param {string} key - 存储键名
+   * @returns {Promise<string|Buffer>} 文件路径或Buffer数据
+   */
+  async getFileData(key) {
+    throw new Error(`getFileData method must be implemented in ${this.constructor.name}`);
+  }
+
+  /**
+   * 获取文件大小用于优化处理
+   * @param {string|Buffer} input - 输入数据，可以是存储键名或Buffer
+   * @returns {Promise<number>} 文件大小（字节）
+   */
+  async getFileSize(input) {
+    throw new Error(`getFileSize method must be implemented in ${this.constructor.name}`);
+  }
+
+  /**
+   * 获取Multer存储配置
+   * @param {Function} generateFilename - 文件名生成函数
+   * @returns {Object} Multer存储配置对象
+   */
+  getMulterStorage(generateFilename) {
+    throw new Error(`getMulterStorage method must be implemented in ${this.constructor.name}`);
+  }
+
+  /**
    * 生成处理后图片的存储键名
-   * @param {string} filename - 原始文件名
    * @param {string} type - 图片类型 ('thumbnail', 'highres', 'original')
-   * @param {string} extension - 图片格式扩展名 (如: 'webp', 'avif', 'jpg')
+   * @param {string} filename - 原始文件名
+   * @param {string} [extension] - 图片格式扩展名 (如: 'webp', 'avif', 'jpg')，不传则使用filename本身
    * @returns {string} 存储键名
    */
-  generateProcessedImageKey(type, filename, extension) {
-    throw new Error(`generateProcessedImageKey method must be implemented in ${this.constructor.name}`);
+  generateStorageKey(type, filename, extension) {
+    throw new Error(`generateStorageKey method must be implemented in ${this.constructor.name}`);
   }
 
   // ========== URL 生成 ==========

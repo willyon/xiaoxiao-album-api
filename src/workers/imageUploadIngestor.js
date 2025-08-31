@@ -6,71 +6,15 @@
  */
 
 const logger = require("../utils/logger");
-const path = require("path");
-const os = require("os");
-const fsExtra = require("fs-extra");
-const { saveNewImage, cleanupGeneratedFile, formatSingleImage } = require("../services/imageService");
+const { saveNewImage } = require("../services/imageService");
 const { getRedisClient } = require("../services/redisClient");
 const { userSetKey } = require("./userImageHashset");
 const { imageMetaQueue } = require("../queues/imageMetaQueue");
-const StorageService = require("../services/StorageService");
-const { STORAGE_TYPES } = require("../storage/constants/StorageTypes");
+const StorageService = require("../services/storageService");
 const timeIt = require("../utils/timeIt");
 
-async function _handleRemoveThumbnail(thumbnailPath, filename, sourcePath) {
-  try {
-    await cleanupGeneratedFile(thumbnailPath);
-  } catch (err) {
-    // 失败兜底：把源文件挪到 failed
-    try {
-      const failedPath = path.join(failedFolder, filename);
-      await fsExtra.move(sourcePath, failedPath, { overwrite: true });
-    } catch (e) {
-      // 记录移动到failed目录失败，但不要覆盖原始 err
-      logger.error({
-        message: `moved to failed Folder failed: ${e?.message}`,
-        stack: e?.stack,
-        details: { failedPath, filename, sourcePath },
-      });
-    }
-    throw err;
-  }
-}
-
-// 处理重复图片：记录日志并删除文件
-async function _handleDuplicatedImage(fileInfo) {
-  const { filename, path: sourcePath, userId, imageHash } = fileInfo;
-
-  try {
-    // 记录重复图片信息到日志
-    logger.info({
-      message: "Duplicate image detected and removed",
-      details: {
-        filename,
-        imageHash,
-        userId,
-        sourcePath,
-        timestamp: Date.now(),
-        action: "deleted",
-      },
-    });
-
-    // 直接删除重复的上传文件
-    await fsExtra.remove(sourcePath);
-
-    logger.info({
-      message: "Duplicate image file deleted successfully",
-      details: { filename, sourcePath },
-    });
-  } catch (error) {
-    logger.error({
-      message: `Failed to delete duplicate image file: ${error?.message}`,
-      stack: error?.stack,
-      details: { sourcePath, filename, imageHash, userId },
-    });
-    // 即使删除失败也不要抛出错误，避免影响主流程
-  }
-}
+// 创建存储服务单例
+const storageService = new StorageService();
 
 // 原子化：先查集合 → 抢锁 → 失败则再查集合 → 再决定 busy/重复
 async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
@@ -80,7 +24,7 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
   // 1) 快路径：集合命中，立即按重复处理
   const already = await redisClient.sismember(setKey, imageHash);
   if (already === 1) {
-    await _handleDuplicatedImage(fileInfo);
+    await storageService.deleteFile(fileInfo);
     return { proceed: false }; // 不继续处理
   }
 
@@ -93,7 +37,7 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
     // 3) 抢锁失败：复查集合（可能另一 worker 已经完成并写入）
     const nowExists = await redisClient.sismember(setKey, imageHash);
     if (nowExists === 1) {
-      await _handleDuplicatedImage(fileInfo);
+      await storageService.deleteFile(fileInfo);
       return { proceed: false };
     }
     // 仍不存在：说明别人正在处理，抛“忙”让队列重试
@@ -107,64 +51,22 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
 }
 
 /**
- * 根据存储类型获取文件的本地临时路径
- * @param {Object} fileInfo - 文件信息
- * @returns {Promise<{tempPath: string, cleanup: Function}>} 临时文件路径和清理函数
- */
-async function _getFileForProcessing(fileInfo) {
-  const { storageKey, storageType, filename } = fileInfo;
-  const storageService = new StorageService();
-
-  if (storageType === STORAGE_TYPES.LOCAL) {
-    // 本地存储：直接使用文件路径
-    return {
-      tempPath: storageKey, // storageKey 就是本地文件路径
-      cleanup: async () => {}, // 本地文件不需要清理临时文件
-    };
-  } else {
-    // OSS存储：下载到临时文件
-    const tempDir = os.tmpdir();
-    const tempPath = path.join(tempDir, `temp_${Date.now()}_${filename}`);
-
-    try {
-      // 从OSS下载文件内容
-      const fileBuffer = await storageService.getFileBuffer(storageKey);
-      await fsExtra.writeFile(tempPath, fileBuffer);
-
-      return {
-        tempPath,
-        cleanup: async () => {
-          try {
-            await fsExtra.remove(tempPath);
-          } catch (error) {
-            logger.warn({
-              message: "Failed to cleanup temporary file",
-              details: { tempPath, error: error.message },
-            });
-          }
-        },
-      };
-    } catch (error) {
-      // 清理可能创建的临时文件
-      try {
-        await fsExtra.remove(tempPath);
-      } catch {}
-      throw error;
-    }
-  }
-}
-
-/**
  * 独立的单张图片处理与入库方法
- * @param {Object} fileInfo - 包含图片文件信息的对象，需至少有 filename、storageKey、userId、storageType 字段
+ * @param {Object} fileInfo - 包含图片文件信息的对象
+ * @param {string} fileInfo.filename - 文件名
+ * @param {string} fileInfo.storageKey - 存储键名
+ * @param {string} fileInfo.userId - 用户ID
+ * @param {string} fileInfo.imageHash - 图片哈希
+ * @param {number} fileInfo.fileSize - 文件大小
+ * @param {string} fileInfo.mimetype - 文件MIME类型
+ * @param {string} [fileInfo.extension="webp"] - 缩略图扩展名
  */
 async function processAndSaveSingleImage(fileInfo) {
-  const { filename, storageKey, userId, imageHash, storageType } = fileInfo;
-  console.log("处理文件:", filename, "存储类型:", storageType);
+  const { filename, storageKey, userId, imageHash, fileSize, mimetype, extension } = fileInfo;
+  logger.info({ message: "处理文件", details: { filename } });
   const redisClient = getRedisClient();
-  const storageService = new StorageService();
   let lockKey;
-  let fileCleanup;
+  let thumbnailStorageKey;
 
   try {
     // 去重 + 分布式锁
@@ -173,73 +75,70 @@ async function processAndSaveSingleImage(fileInfo) {
     if (!proceed) return;
     lockKey = key;
 
-    // 获取文件用于处理（本地直接使用，OSS下载到临时文件）
-    const { tempPath, cleanup } = await _getFileForProcessing(fileInfo);
-    fileCleanup = cleanup;
-
-    // ======== 快路径：仅产出 preview.webp ========
+    // ======== 快路径：仅产出 preview 缩略图 ========
     // 使用适配器生成存储键名，避免硬编码路径
-    const imgExtension = process.env.IMAGE_EXTENSION_WEBP || "webp";
-    const thumbnailStorageKey = storageService.generateProcessedImageKey("thumbnail", filename, imgExtension);
-
-    let thumbnailOutputPath;
-    let needsCleanup = false;
+    const thumbnailType = process.env.IMAGE_STORAGE_KEY_THUMBNAIL || "thumbnail";
+    thumbnailStorageKey = storageService.storage.generateStorageKey(thumbnailType, filename, extension);
 
     try {
-      if (storageType === STORAGE_TYPES.LOCAL) {
-        // 本地存储：直接输出到目标路径，无需临时文件
-        thumbnailOutputPath = storageService.adapter._getFullPath(thumbnailStorageKey);
-        // 确保目标目录存在
-        await fsExtra.ensureDir(path.dirname(thumbnailOutputPath));
-      } else {
-        // OSS存储：输出到临时文件，稍后上传
-        thumbnailOutputPath = path.join(os.tmpdir(), `thumb_${Date.now()}_${path.basename(filename, path.extname(filename))}.${imgExtension}`);
-        needsCleanup = true;
-      }
-
       await timeIt(
-        "formatSingleImage",
+        "processAndStoreImage",
         async () => {
-          // 预览图（webp, 600px）
-          await formatSingleImage({
-            inputPath: tempPath,
-            outputPath: thumbnailOutputPath,
-            quality: 50, //建议50-55
+          // 从存储读取原图，处理后存储缩略图
+          await storageService.processAndStoreImage({
+            fileSize,
+            mimetype,
+            sourceStorageKey: storageKey,
+            targetStorageKey: thumbnailStorageKey,
+            extension,
+            quality: 65, // webp建议 缩略图60-70 高清图75-85
             resizeWidth: 600,
           });
         },
         imageHash,
       );
-
-      // OSS存储需要上传临时文件到OSS
-      if (storageType === STORAGE_TYPES.ALIYUN_OSS) {
-        await storageService.storeFile(thumbnailOutputPath, thumbnailStorageKey);
-      }
     } catch (error) {
-      // 清理临时缩略图文件（仅OSS模式）
-      if (needsCleanup && thumbnailOutputPath) {
-        try {
-          await fsExtra.remove(thumbnailOutputPath);
-        } catch (cleanupErr) {
-          logger.warn({
-            message: "Failed to cleanup temporary thumbnail file",
-            details: { thumbnailOutputPath, error: cleanupErr.message },
-          });
-        }
+      // 缩略图处理失败，将原始文件移动到失败目录
+      logger.error({
+        message: "Thumbnail generation failed",
+        details: {
+          imageHash,
+          userId,
+          filename,
+          sourceStorageKey: storageKey,
+          thumbnailStorageKey,
+          error: error.message,
+        },
+      });
+
+      try {
+        // 生成失败文件存储键名并移动文件
+        const failedType = process.env.IMAGE_STORAGE_KEY_FAILED || "failed";
+        const failedStorageKey = storageService.storage.generateStorageKey(failedType, filename);
+        await storageService.storage.moveFile(storageKey, failedStorageKey);
+
+        logger.info({
+          message: "Failed image moved to failed directory",
+          details: {
+            imageHash,
+            userId,
+            originalLocation: storageKey,
+            failedLocation: failedStorageKey,
+            reason: "thumbnail_generation_failed",
+          },
+        });
+      } catch (moveError) {
+        logger.warn({
+          message: "Failed to move source file to failed directory after thumbnail generation failure",
+          details: {
+            storageKey,
+            moveError: moveError.message,
+            fallbackAction: "file_remains_in_original_location",
+          },
+        });
       }
+
       throw error;
-    } finally {
-      // 清理临时缩略图文件（仅OSS模式）
-      if (needsCleanup && thumbnailOutputPath) {
-        try {
-          await fsExtra.remove(thumbnailOutputPath);
-        } catch (cleanupErr) {
-          logger.warn({
-            message: "Failed to cleanup temporary thumbnail file in finally",
-            details: { thumbnailOutputPath, error: cleanupErr.message },
-          });
-        }
-      }
     }
 
     // ======== 先写库（creationDate 为空；monthKey/yearKey = 'unknown'；bigHigh 先留空或保留旧值）========
@@ -258,15 +157,50 @@ async function processAndSaveSingleImage(fileInfo) {
       await saveNewImage(imageData);
       await redisClient.sadd(userSetKey(userId), imageHash);
     } catch (error) {
-      // 数据库保存失败，清理已存储的缩略图
+      // 数据库保存失败，将原始文件移动到失败目录并清理缩略图
+      logger.error({
+        message: "Database save failed, moving to failed directory and cleaning up thumbnail",
+        details: {
+          imageHash,
+          userId,
+          thumbnailStorageKey,
+          sourceStorageKey: storageKey,
+          error: error.message,
+        },
+      });
+
       try {
-        await storageService.deleteFile(thumbnailStorageKey);
-      } catch (cleanupErr) {
-        logger.error({
-          message: "Failed to cleanup thumbnail after DB save failed",
-          details: { thumbnailStorageKey, error: cleanupErr.message },
+        // 1. 先删除已生成的缩略图
+        await storageService.storage.deleteFile(thumbnailStorageKey);
+
+        // 2. 生成失败文件存储键名并移动文件
+        const failedType = process.env.IMAGE_STORAGE_KEY_FAILED || "failed";
+        const failedStorageKey = storageService.storage.generateStorageKey(failedType, filename);
+        await storageService.storage.moveFile(storageKey, failedStorageKey);
+
+        logger.info({
+          message: "Failed image moved to failed directory after database save failure",
+          details: {
+            imageHash,
+            userId,
+            originalLocation: storageKey,
+            failedLocation: failedStorageKey,
+            thumbnailCleaned: thumbnailStorageKey,
+            reason: "database_save_failed",
+          },
+        });
+      } catch (cleanupError) {
+        logger.warn({
+          message: "Failed to cleanup files after database save failure",
+          details: {
+            thumbnailStorageKey,
+            sourceStorageKey: storageKey,
+            cleanupError: cleanupError.message,
+            fallbackAction: "manual_cleanup_required",
+          },
         });
       }
+
       throw error;
     }
 
@@ -276,25 +210,45 @@ async function processAndSaveSingleImage(fileInfo) {
       imageHash,
       filename,
       storageKey, // 传递原始文件的存储键名
-      storageType, // 传递存储类型
-      highResExt: process.env.IMAGE_EXTENSION_AVIF,
+      extension: process.env.IMAGE_HIGHRES_EXTENSION || "avif",
+      fileSize, // 传递文件大小
+      mimetype, // 传递文件类型
     });
+
+    logger.info({
+      message: "Image processing completed successfully",
+      details: {
+        imageHash,
+        userId,
+        filename,
+        thumbnailStorageKey,
+      },
+    });
+  } catch (error) {
+    // 最外层错误处理 - 记录完整的失败信息
+    logger.error({
+      message: "Image processing failed completely",
+      details: {
+        imageHash,
+        userId,
+        filename,
+        sourceStorageKey: storageKey,
+        thumbnailStorageKey,
+        error: error.message,
+        stack: error.stack,
+      },
+    });
+
+    throw error; // 重新抛出，让 Worker 处理重试逻辑
   } finally {
     // 清理分布式锁
     if (lockKey) {
       try {
         await redisClient.del(lockKey);
-      } catch {}
-    }
-
-    // 清理临时文件
-    if (fileCleanup) {
-      try {
-        await fileCleanup();
-      } catch (error) {
+      } catch (lockCleanupError) {
         logger.warn({
-          message: "Failed to cleanup temporary file in finally",
-          details: { storageKey, error: error.message },
+          message: "Failed to cleanup distributed lock",
+          details: { lockKey, error: lockCleanupError.message },
         });
       }
     }

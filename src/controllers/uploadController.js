@@ -9,15 +9,11 @@ const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
 const { imageUploadQueue } = require("../queues/imageUploadQueue");
 const { computeFileHash } = require("../utils/hash");
-const StorageService = require("../services/StorageService");
+const StorageService = require("../services/storageService");
 const logger = require("../utils/logger");
-const { getStorageType, STORAGE_TYPES } = require("../storage/constants/StorageTypes");
 
 // 创建存储服务实例
 const storageService = new StorageService();
-
-// 获取当前存储类型
-const storageType = getStorageType();
 
 async function handlePostImages(req, res, next) {
   try {
@@ -30,18 +26,12 @@ async function handlePostImages(req, res, next) {
       });
     }
 
-    const { mimetype, size, filename } = file;
+    const { mimetype, size: fileSize, filename } = file;
     const userId = req?.user?.userId;
 
     // 第一步：先计算哈希，用于去重检查
-    let imageHash;
-    if (storageType !== STORAGE_TYPES.LOCAL) {
-      // OSS模式：从内存buffer计算哈希
-      imageHash = await computeFileHash(file.buffer);
-    } else {
-      // 本地模式：从临时文件计算哈希
-      imageHash = await computeFileHash(file.path);
-    }
+    // 统一使用适配器处理，支持Buffer和文件路径
+    const imageHash = await computeFileHash(file.buffer || file.path);
 
     // 第二步：检查队列中是否已存在相同的任务（提前去重）
     const jobId = `${userId}:${imageHash}`;
@@ -52,24 +42,17 @@ async function handlePostImages(req, res, next) {
       logger.info({
         message: "Duplicate job detected, skipping storage",
         details: {
+          jobId,
           userId,
           imageHash,
           filename,
-          storageType,
           action: "duplicate_skipped_before_storage",
         },
       });
 
-      // 本地模式需要清理临时文件
-      if (storageType === STORAGE_TYPES.LOCAL) {
-        try {
-          await storageService.deleteFile(file.path);
-        } catch (cleanupError) {
-          logger.error({
-            message: "Failed to cleanup temporary file",
-            details: { path: file.path, filename, error: cleanupError.message },
-          });
-        }
+      // 清理重复的上传文件（本地存储模式）
+      if (file.path) {
+        await storageService.deleteFile({ filename, storageKey: file.path });
       }
 
       // 返回成功，用户无感知
@@ -78,23 +61,23 @@ async function handlePostImages(req, res, next) {
 
     // 第三步：没有重复，进行存储操作
     let storageKey;
-    if (storageType !== STORAGE_TYPES.LOCAL) {
-      // OSS存储模式：上传到OSS
+    if (file.buffer) {
+      // 内存存储模式：上传到存储服务（OSS等）
       const uploadStorageKey = `uploads/${filename}`;
-      await storageService.storeFile(file.buffer, uploadStorageKey);
+      await storageService.storage.storeFile(file.buffer, uploadStorageKey);
       storageKey = uploadStorageKey;
 
       logger.info({
-        message: "File uploaded to OSS",
-        details: { userId, filename, uploadStorageKey, size },
+        message: "File uploaded to storage service",
+        details: { userId, filename, uploadStorageKey, fileSize },
       });
     } else {
-      // 本地存储模式：文件已通过multer保存到本地
+      // 磁盘存储模式：文件已通过multer中间件保存到本地 所以这里不需要再做什么操作
       storageKey = file.path;
 
       logger.info({
         message: "File uploaded to local storage",
-        details: { userId, filename, path: file.path, size },
+        details: { userId, filename, path: file.path, fileSize },
       });
     }
 
@@ -104,11 +87,11 @@ async function handlePostImages(req, res, next) {
       {
         filename,
         mimetype,
-        size,
-        storageKey, // 本地路径或OSS键名
+        fileSize,
+        storageKey, // 本地路径或存储键名
         userId,
         imageHash,
-        storageType, // 传递存储类型给Worker
+        extension: process.env.IMAGE_THUMBNAIL_EXTENSION || "webp",
       },
       {
         jobId: jobId,
@@ -120,7 +103,8 @@ async function handlePostImages(req, res, next) {
       details: {
         userId,
         filename,
-        storageType,
+        fileSize,
+        storageKey,
       },
     });
 
@@ -137,11 +121,11 @@ async function handlePostImages(req, res, next) {
     //   console.log("任务数据:", job.data);
     // });
 
-    // console.log("接收到文件:", filename, mimetype, size, filePath);
+    // console.log("接收到文件:", filename, mimetype, fileSize, filePath);
 
     // const savedFile = {
     //   mimeType: mimetype,
-    //   size,
+    //   fileSize,
     //   storagePath: filePath,
     //   filename,
     // };
