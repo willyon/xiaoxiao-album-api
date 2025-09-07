@@ -5,6 +5,7 @@
  */
 
 const StorageAdapterFactory = require("../storage/factory/StorageAdapterFactory");
+const { STORAGE_TYPES } = require("../storage/constants/StorageTypes");
 const logger = require("../utils/logger");
 const sharp = require("sharp");
 
@@ -13,6 +14,8 @@ const SHARP_CONFIG = {
   failOnError: false, // 避免遇到坏图直接崩
   sequentialRead: true, // 顺序读取，减少磁盘随机 I/O
   limitInputPixels: false, // 不限制像素避免超大图被强制拒绝（如需要可设上限）
+  // 性能优化配置
+  density: 72, // 设置DPI(像素密度) 降低内存占用 提升处理速度 72位标准屏dpi 对web显示来说 72dpi就够了 对最终图片质量影响很小
 };
 
 // 文件大小阈值
@@ -134,12 +137,13 @@ function _applyEncoderByExt(pipeline, ext, quality = 80, fileSize = FILE_SIZE_TH
 }
 
 /**
- * 统一存储服务 - 直接暴露适配器 + 业务方法
+ * 统一存储服务 - 支持多存储类型和智能适配器管理
  *
  * 设计理念：
- * 1. 基础存储操作直接使用 storage 属性访问适配器方法
- * 2. 复杂业务逻辑通过服务方法提供
- * 3. 避免无意义的包装层，保持代码简洁
+ * 1. 数据分类：将图片数据按存储类型分组
+ * 2. 当前适配器处理：直接用当前配置的适配器处理对应类型的数据
+ * 3. 备用适配器处理：为另一种类型创建临时适配器处理
+ * 4. 性能优化：避免重复创建适配器实例
  */
 class StorageService {
   /**
@@ -147,8 +151,166 @@ class StorageService {
    * @param {Object|null} [config=null] - 可选配置，如果不提供则从环境变量读取
    */
   constructor(config = null) {
-    // 直接暴露适配器，无包装层
-    this.storage = StorageAdapterFactory.getStorageAdapter(config);
+    // 当前配置的存储适配器（可能是本地存储或OSS）
+    this.storage = StorageAdapterFactory.createAdapter(config);
+
+    // 获取当前存储类型
+    this._currentStorageType = this.storage.type;
+
+    // 在实例化时就创建备用适配器
+    this._backupAdapter = this._createBackupAdapter();
+  }
+
+  /**
+   * 创建备用存储适配器（与当前适配器不同的类型）
+   * @returns {Object} 备用存储适配器实例
+   */
+  _createBackupAdapter() {
+    try {
+      // 如果当前是本地存储，返回OSS适配器
+      if (this._currentStorageType === STORAGE_TYPES.LOCAL) {
+        return StorageAdapterFactory.createAdapter(STORAGE_TYPES.ALIYUN_OSS, false);
+      }
+
+      // 如果当前是OSS存储，返回本地适配器
+      if (this._currentStorageType === STORAGE_TYPES.ALIYUN_OSS) {
+        return StorageAdapterFactory.createAdapter(STORAGE_TYPES.LOCAL, false);
+      }
+
+      // 默认返回本地适配器
+      return StorageAdapterFactory.createAdapter(STORAGE_TYPES.LOCAL, false);
+    } catch (error) {
+      // 如果创建备用适配器失败，回退到本地适配器
+      logger.warn({
+        message: "创建备用适配器失败，回退到本地适配器",
+        details: { error: error.message },
+      });
+      return StorageAdapterFactory.createAdapter(STORAGE_TYPES.LOCAL, false);
+    }
+  }
+
+  /**
+   * 获取备用存储适配器（与当前适配器不同的类型）
+   * @returns {Object} 备用存储适配器实例
+   */
+  getBackupStorageAdapter() {
+    return this._backupAdapter;
+  }
+
+  /**
+   * 智能获取文件完整URL
+   * 根据图片的存储类型自动选择对应的存储适配器
+   * @param {string} storageKey - 存储键名
+   * @param {string} storageType - 存储类型
+   * @returns {Promise<string|null>} 完整的文件访问URL
+   */
+  async getFileUrl(storageKey, storageType) {
+    try {
+      let adapter;
+
+      // 根据存储类型选择对应的适配器
+      if (storageType === this._currentStorageType) {
+        adapter = this.storage;
+      } else if (storageType === this._backupAdapter.type) {
+        adapter = this._backupAdapter;
+      } else {
+        // 如果都不匹配，使用当前适配器作为默认
+        adapter = this.storage;
+      }
+
+      return await adapter.getFileUrl(storageKey);
+    } catch (error) {
+      logger.error({
+        message: "获取文件访问URL失败",
+        details: {
+          storageKey,
+          storageType,
+          error: error.message,
+        },
+      });
+      return null;
+    }
+  }
+
+  /**
+   * 批量获取文件URL（优化版本）
+   * 先对数据进行分类，然后批量处理，避免重复的适配器判断和创建
+   * @param {Array<{storageKey: string, storageType: string}>} files - 文件信息数组
+   * @returns {Promise<Array<{storageKey: string, storageType: string, url: string|null}>>} URL结果数组
+   */
+  async getFileUrls(files) {
+    // 创建文件到索引的映射，保持原始顺序
+    const fileToIndexMap = new Map();
+    files.forEach((file, index) => {
+      fileToIndexMap.set(file.storageKey, index);
+    });
+
+    // 按存储类型分组
+    const currentTypeFiles = [];
+    const otherTypeFiles = [];
+
+    files.forEach((file) => {
+      if (file.storageType === this._currentStorageType) {
+        currentTypeFiles.push(file);
+      } else {
+        otherTypeFiles.push(file);
+      }
+    });
+
+    // 初始化结果数组，保持原始顺序
+    const results = new Array(files.length);
+
+    // 1. 使用当前配置的适配器处理对应类型的数据（性能最优）
+    if (currentTypeFiles.length > 0) {
+      const currentUrls = await Promise.all(
+        currentTypeFiles.map(async (file) => {
+          try {
+            const url = await this.storage.getFileUrl(file.storageKey);
+            return { storageKey: file.storageKey, storageType: file.storageType, url };
+          } catch (error) {
+            logger.error({
+              message: "获取文件URL失败",
+              details: { storageKey: file.storageKey, storageType: file.storageType, error: error.message },
+            });
+            return { storageKey: file.storageKey, storageType: file.storageType, url: null };
+          }
+        }),
+      );
+
+      // 将结果放回原始位置
+      currentUrls.forEach((result) => {
+        const index = fileToIndexMap.get(result.storageKey);
+        results[index] = result;
+      });
+    }
+
+    // 2. 使用备用适配器处理其他类型的数据
+    if (otherTypeFiles.length > 0) {
+      const backupAdapter = this.getBackupStorageAdapter();
+
+      const otherUrls = await Promise.all(
+        otherTypeFiles.map(async (file) => {
+          try {
+            const url = await backupAdapter.getFileUrl(file.storageKey);
+            return { storageKey: file.storageKey, storageType: file.storageType, url };
+          } catch (error) {
+            logger.error({
+              message: "获取文件URL失败",
+              details: { storageKey: file.storageKey, storageType: file.storageType, error: error.message },
+            });
+            return { storageKey: file.storageKey, storageType: file.storageType, url: null };
+          }
+        }),
+      );
+
+      // 将结果放回原始位置
+      otherUrls.forEach((result) => {
+        const index = fileToIndexMap.get(result.storageKey);
+        results[index] = result;
+      });
+    }
+
+    return results;
   }
 
   // ========== 业务方法（有实际价值的封装） ==========
@@ -180,8 +342,8 @@ class StorageService {
    * @example
    * // 基本用法：生成缩略图
    * await storageService.processAndStoreImage({
-   *   sourceStorageKey: 'uploads/original.jpg',
-   *   targetStorageKey: 'thumbnails/thumb.webp',
+   *   sourceStorageKey: 'upload/original.jpg',
+   *   targetStorageKey: 'thumbnail/thumb.webp',
    *   extension: 'webp',
    *   resizeWidth: 300,
    *   quality: 70
@@ -190,8 +352,8 @@ class StorageService {
    * @example
    * // 高级用法：自定义优化选项
    * await storageService.processAndStoreImage({
-   *   sourceStorageKey: 'uploads/large.png',
-   *   targetStorageKey: 'processed/optimized.avif',
+   *   sourceStorageKey: 'upload/large.png',
+   *   targetStorageKey: 'highres/optimized.avif',
    *   extension: 'avif',
    *   resizeWidth: 1920,
    *   quality: 85,

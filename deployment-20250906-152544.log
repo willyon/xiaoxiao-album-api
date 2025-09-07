@@ -1,0 +1,37 @@
+⏭️ 跳过数据清理，保留现有数据
+🗄️ 第六步：数据库初始化...
+📊 创建数据库表...
+🚀 第七步：启动服务...
+⏹️ 停止现有服务...
+🗑️ 删除现有服务...
+🚀 启动新服务...
+💾 保存PM2配置...
+🧪 第八步：验证部署...
+⏳ 等待服务启动...
+📊 检查服务状态...
+🌐 测试API接口...
+🎉 完整后端部署完成！
+
+📋 部署总结：
+✅ 代码打包和上传
+✅ Redis服务安装和启动
+✅ PM2进程管理器安装
+✅ Sharp模块修复
+✅ 数据库表创建
+✅ 目录结构创建
+✅ 服务启动和配置
+
+🌐 你的API现在可以通过以下地址访问：
+   https://photos.bingbingcloud.com/auth/loginOrRegister
+   https://photos.bingbingcloud.com/images/queryAllByPage
+
+📝 如需查看服务状态，请运行：
+   ssh -i $SSH_KEY $SERVER_USER@$SERVER_HOST 'pm2 status'
+
+📝 如需查看服务日志，请运行：
+   ssh -i $SSH_KEY $SERVER_USER@$SERVER_HOST 'pm2 logs'
+
+📝 如需清理队列，请运行：
+   ssh -i $SSH_KEY $SERVER_USER@$SERVER_HOST 'cd $SERVER_PATH && node scripts/clearQueues.js'
+
+📄 完整部署日志已保存到: $LOG_FILE
