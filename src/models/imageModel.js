@@ -6,14 +6,15 @@
  * @Description: File description
  */
 const { db } = require("../services/dbService");
+const { mapFields } = require("../utils/fieldMapper");
 
 //保存用户上传的图片元数据到数据库
 function insertImage({
   userId,
-  hash,
-  originalUrl,
-  highResUrl,
-  thumbnailUrl,
+  imageHash,
+  originalStorageKey,
+  highResStorageKey,
+  thumbnailStorageKey,
   creationDate,
   yearKey,
   monthKey,
@@ -21,31 +22,33 @@ function insertImage({
   gpsLongitude,
   gpsAltitude,
   gpsLocation,
-  storageType = "local", // 默认本地存储
+  storageType, // 默认本地存储
+  fileSize, // 文件大小（字节）
 }) {
   const stmt = db.prepare(`
     INSERT OR IGNORE INTO images (
       user_id,
-      hash,
-      originalUrl,
-      highResUrl,
-      thumbnailUrl,
-      creationDate,
-      yearKey,  
-      monthKey,
-      gpsLatitude,
-      gpsLongitude,
-      gpsAltitude,
-      gpsLocation,
-      storageType
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      image_hash,
+      original_storage_key,
+      high_res_storage_key,
+      thumbnail_storage_key,
+      creation_date,
+      year_key,  
+      month_key,
+      gps_latitude,
+      gps_longitude,
+      gps_altitude,
+      gps_location,
+      storage_type,
+      file_size
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const result = stmt.run(
     userId,
-    hash,
-    originalUrl,
-    highResUrl,
-    thumbnailUrl,
+    imageHash,
+    originalStorageKey,
+    highResStorageKey,
+    thumbnailStorageKey,
     creationDate,
     yearKey,
     monthKey,
@@ -54,6 +57,7 @@ function insertImage({
     gpsAltitude,
     gpsLocation,
     storageType,
+    fileSize,
   );
   return { affectedRows: result.changes };
 }
@@ -61,7 +65,7 @@ function insertImage({
 // 获取用户所有图片hash
 function selectHashesByUserId(userId) {
   // pluck() 会让返回值从对象([{hash:'123'}, {hash:'2323'}])变为单列值(取结果的第一列也就是这里的{hash:'123'})['123', '2323']，
-  const stmt = db.prepare(`SELECT hash FROM images WHERE user_id = ?`).pluck();
+  const stmt = db.prepare(`SELECT image_hash FROM images WHERE user_id = ?`).pluck();
   return stmt.all(userId);
 }
 
@@ -71,10 +75,10 @@ function selectImagesByPage({ pageNo, pageSize, userId }) {
 
   // 分页数据查询
   const dataQuery = db.prepare(`
-    SELECT highResUrl, thumbnailUrl, creationDate, monthKey, yearKey, storageType
+    SELECT high_res_storage_key, thumbnail_storage_key, creation_date, month_key, year_key, storage_type
     FROM images
     WHERE user_id = ?
-    ORDER BY COALESCE(creationDate, 0) DESC, id DESC
+    ORDER BY COALESCE(creation_date, 0) DESC, id DESC
     LIMIT ? OFFSET ?
   `);
 
@@ -88,7 +92,7 @@ function selectImagesByPage({ pageNo, pageSize, userId }) {
   try {
     const data = dataQuery.all(userId, pageSize, offset);
     const { total } = countQuery.get(userId);
-    return { data, total };
+    return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;
   }
@@ -100,11 +104,11 @@ function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
 
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
-    SELECT highResUrl, thumbnailUrl, creationDate, monthKey, yearKey, storageType
+    SELECT high_res_storage_key, thumbnail_storage_key, creation_date, month_key, year_key, storage_type
     FROM images
     WHERE user_id = ?
-      AND yearKey = ?
-    ORDER BY COALESCE(creationDate, 0) DESC, id DESC
+      AND year_key = ?
+    ORDER BY COALESCE(creation_date, 0) DESC, id DESC
     LIMIT ? OFFSET ?
   `);
 
@@ -112,13 +116,13 @@ function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
     SELECT COUNT(*) AS total
     FROM images
     WHERE user_id = ?
-      AND yearKey = ?
+      AND year_key = ?
   `);
 
   try {
     const data = dataQuery.all(userId, yearKey, pageSize, offset);
     const { total } = countQuery.get(userId, yearKey);
-    return { data, total };
+    return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;
   }
@@ -130,11 +134,11 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
 
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
-    SELECT highResUrl, thumbnailUrl, creationDate, monthKey, yearKey, storageType
+    SELECT high_res_storage_key, thumbnail_storage_key, creation_date, month_key, year_key, storage_type
     FROM images
     WHERE user_id = ?
-      AND monthKey = ?
-    ORDER BY COALESCE(creationDate, 0) DESC, id DESC
+      AND month_key = ?
+    ORDER BY COALESCE(creation_date, 0) DESC, id DESC
     LIMIT ? OFFSET ?
   `);
 
@@ -142,13 +146,13 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
     SELECT COUNT(*) AS total
     FROM images
     WHERE user_id = ?
-      AND monthKey = ?
+      AND month_key = ?
   `);
 
   try {
     const data = dataQuery.all(userId, monthKey, pageSize, offset);
     const { total } = countQuery.get(userId, monthKey);
-    return { data, total };
+    return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;
   }
@@ -160,43 +164,43 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
 
   const dataQuery = db.prepare(`
     WITH counts AS (
-      SELECT monthKey, COUNT(*) AS imageCount
+      SELECT month_key, COUNT(*) AS imageCount
       FROM images
       WHERE user_id = ?
-      GROUP BY monthKey
+      GROUP BY month_key
     ),
     latest AS (
-      -- 为每个 monthKey 选最新一张（先按 creationDate DESC，再按 id DESC 保证稳定）
-      SELECT m.monthKey, m.thumbnailUrl, m.creationDate, m.id, m.storageType
+      -- 为每个 month_key 选最新一张（先按 creation_date DESC，再按 id DESC 保证稳定）
+      SELECT m.month_key, m.thumbnail_url, m.creation_date, m.id, m.storage_type
       FROM images m
       WHERE m.user_id = ?
         AND m.id = (
           SELECT m2.id
           FROM images m2
           WHERE m2.user_id = m.user_id
-            AND m2.monthKey = m.monthKey
-          ORDER BY COALESCE(m2.creationDate, 0) DESC, m2.id DESC
+            AND m2.month_key = m.month_key
+          ORDER BY COALESCE(m2.creation_date, 0) DESC, m2.id DESC
           LIMIT 1
         )
-      GROUP BY m.monthKey
+      GROUP BY m.month_key
     )
     SELECT
-      latest.monthKey,        -- 分组键（YYYY-MM / 'unknown'）
-      latest.thumbnailUrl AS latestImageUrl,
-      latest.creationDate,
-      latest.storageType,
+      latest.month_key,        -- 分组键（YYYY-MM / 'unknown'）
+      latest.thumbnail_url AS latestImageUrl,
+      latest.creation_date,
+      latest.storage_type,
       counts.imageCount
     FROM latest
-    JOIN counts ON counts.monthKey = latest.monthKey
+    JOIN counts ON counts.month_key = latest.month_key
     ORDER BY
-      CASE WHEN latest.monthKey = 'unknown' THEN 1 ELSE 0 END,
-      latest.monthKey DESC
+      CASE WHEN latest.month_key = 'unknown' THEN 1 ELSE 0 END,
+      latest.month_key DESC
     LIMIT ? OFFSET ?;
   `);
 
-  // 组总数：直接对 monthKey 去重计数
+  // 组总数：直接对 month_key 去重计数
   const countQuery = db.prepare(`
-    SELECT COUNT(DISTINCT monthKey) AS groupCount
+    SELECT COUNT(DISTINCT month_key) AS groupCount
     FROM images
     WHERE user_id = ?;
   `);
@@ -204,7 +208,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
   try {
     const data = dataQuery.all(userId, userId, pageSize, offset);
     const { groupCount: total } = countQuery.get(userId);
-    return { data, total };
+    return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;
   }
@@ -216,43 +220,43 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
 
   const dataQuery = db.prepare(`
     WITH counts AS (
-      SELECT yearKey, COUNT(*) AS imageCount
+      SELECT year_key, COUNT(*) AS imageCount
       FROM images
       WHERE user_id = ?
-      GROUP BY yearKey
+      GROUP BY year_key
     ),
     latest AS (
-      -- 为每个 yearKey 选最新一张（先按 creationDate DESC，再按 id DESC 保证稳定）
-      SELECT m.yearKey, m.thumbnailUrl, m.creationDate, m.id, m.storageType
+      -- 为每个 year_key 选最新一张（先按 creation_date DESC，再按 id DESC 保证稳定）
+      SELECT m.year_key, m.thumbnail_url, m.creation_date, m.id, m.storage_type
       FROM images m
       WHERE m.user_id = ?
         AND m.id = (
           SELECT m2.id
           FROM images m2
           WHERE m2.user_id = m.user_id
-            AND m2.yearKey  = m.yearKey
-          ORDER BY COALESCE(m2.creationDate, 0) DESC, m2.id DESC
+            AND m2.year_key  = m.year_key
+          ORDER BY COALESCE(m2.creation_date, 0) DESC, m2.id DESC
           LIMIT 1
         )
-      GROUP BY m.yearKey
+      GROUP BY m.year_key
     )
     SELECT
-      latest.yearKey,        -- 分组键（YYYY / 'unknown'）
-      latest.thumbnailUrl AS latestImageUrl,
-      latest.creationDate,
-      latest.storageType,
+      latest.year_key,        -- 分组键（YYYY / 'unknown'）
+      latest.thumbnail_url AS latestImageUrl,
+      latest.creation_date,
+      latest.storage_type,
       counts.imageCount
     FROM latest
-    JOIN counts ON counts.yearKey = latest.yearKey
+    JOIN counts ON counts.year_key = latest.year_key
     ORDER BY
-      CASE WHEN latest.yearKey = 'unknown' THEN 1 ELSE 0 END,
-      latest.yearKey DESC
+      CASE WHEN latest.year_key = 'unknown' THEN 1 ELSE 0 END,
+      latest.year_key DESC
     LIMIT ? OFFSET ?;
   `);
 
-  // 组总数：直接对 yearKey 去重计数
+  // 组总数：直接对 year_key 去重计数
   const countQuery = db.prepare(`
-    SELECT COUNT(DISTINCT yearKey) AS groupCount
+    SELECT COUNT(DISTINCT year_key) AS groupCount
     FROM images
     WHERE user_id = ?;
   `);
@@ -260,7 +264,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
   try {
     const data = dataQuery.all(userId, userId, pageSize, offset);
     const { groupCount: total } = countQuery.get(userId);
-    return { data, total };
+    return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;
   }
@@ -268,12 +272,12 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
 // 仅更新有值的字段
 function updateMetaAndHQ({
   userId,
-  hash,
+  imageHash,
   creationDate,
   monthKey,
   yearKey,
-  highResUrl,
-  originalUrl,
+  highResStorageKey,
+  originalStorageKey,
   gpsLatitude,
   gpsLongitude,
   gpsAltitude,
@@ -284,53 +288,64 @@ function updateMetaAndHQ({
   const params = [];
 
   if (creationDate != null) {
-    fields.push("creationDate = ?");
+    fields.push("creation_date = ?");
     params.push(creationDate);
   }
   if (monthKey != null) {
-    fields.push("monthKey = ?");
+    fields.push("month_key = ?");
     params.push(monthKey);
   }
   if (yearKey != null) {
-    fields.push("yearKey = ?");
+    fields.push("year_key = ?");
     params.push(yearKey);
   }
-  if (highResUrl != null) {
-    fields.push("highResUrl = ?");
-    params.push(highResUrl);
+  if (highResStorageKey != null) {
+    fields.push("high_res_storage_key = ?");
+    params.push(highResStorageKey);
   }
-  if (originalUrl != null) {
-    fields.push("originalUrl = ?");
-    params.push(originalUrl);
+  if (originalStorageKey != null) {
+    fields.push("original_storage_key = ?");
+    params.push(originalStorageKey);
   }
 
   // GPS 信息更新
   if (gpsLatitude != null) {
-    fields.push("gpsLatitude = ?");
+    fields.push("gps_latitude = ?");
     params.push(gpsLatitude);
   }
   if (gpsLongitude != null) {
-    fields.push("gpsLongitude = ?");
+    fields.push("gps_longitude = ?");
     params.push(gpsLongitude);
   }
   if (gpsAltitude != null) {
-    fields.push("gpsAltitude = ?");
+    fields.push("gps_altitude = ?");
     params.push(gpsAltitude);
   }
   if (gpsLocation != null) {
-    fields.push("gpsLocation = ?");
+    fields.push("gps_location = ?");
     params.push(gpsLocation);
   }
   if (storageType != null) {
-    fields.push("storageType = ?");
+    fields.push("storage_type = ?");
     params.push(storageType);
   }
 
   if (!fields.length) return { affectedRows: 0 };
 
-  params.push(userId, hash);
-  const sql = `UPDATE images SET ${fields.join(", ")} WHERE user_id = ? AND hash = ?`;
+  params.push(userId, imageHash);
+  const sql = `UPDATE images SET ${fields.join(", ")} WHERE user_id = ? AND image_hash = ?`;
   return db.prepare(sql).run(...params);
+}
+
+// 检查文件是否已存在（用于预检）
+function checkFileExists({ imageHash, userId }) {
+  const stmt = db.prepare(`
+    SELECT id
+    FROM images 
+    WHERE image_hash = ? AND user_id = ?
+    LIMIT 1
+  `);
+  return stmt.get(imageHash, userId);
 }
 
 module.exports = {
@@ -342,4 +357,5 @@ module.exports = {
   selectGroupsByYear,
   selectGroupsByMonth,
   selectHashesByUserId,
+  checkFileExists,
 };

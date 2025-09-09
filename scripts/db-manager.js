@@ -83,8 +83,8 @@ function showImages(limit = 10) {
     const images = db
       .prepare(
         `
-            SELECT id, user_id, hash, originalUrl, highResUrl, thumbnailUrl,
-                   creationDate, yearKey, monthKey, storageType
+            SELECT id, user_id, image_hash, original_storage_key, high_res_storage_key, thumbnail_storage_key,
+                   creation_date, year_key, month_key, storage_type
             FROM images 
             ORDER BY id DESC 
             LIMIT ?

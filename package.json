@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "NODE_ENV=development node server.js",
     "prod": "NODE_ENV=production node server.js",
-    "build": "mkdir -p backend-dist && cp -r src backend-dist/ && cp server.js backend-dist/ && cp package.json backend-dist/ && cp package-lock.json backend-dist/ && cp ecosystem.config.js backend-dist/ && cp .npmrc backend-dist/ && cp README.md backend-dist/ && cp .env backend-dist/ && mkdir -p backend-dist/deployment-scripts && cp deployment-scripts/fix-sharp-complete.sh backend-dist/deployment-scripts/ && cp deployment-scripts/init-database.js backend-dist/deployment-scripts/ && cp deployment-scripts/deploy-server.sh backend-dist/deployment-scripts/ && cp deployment-scripts/clearAllAboutImageData.js backend-dist/deployment-scripts/ && cp deployment-scripts/clearQueues.js backend-dist/deployment-scripts/ && cp -r scripts backend-dist/ && echo 'Package built in backend-dist/ directory'",
+    "build": "mkdir -p backend-dist && cp -r src backend-dist/ && cp server.js backend-dist/ && cp package.json backend-dist/ && cp package-lock.json backend-dist/ && cp ecosystem.config.js backend-dist/ && cp .npmrc backend-dist/ && cp README.md backend-dist/ && cp .env backend-dist/ && cp -r deployment-scripts backend-dist/ && cp -r scripts backend-dist/ && echo 'Package built in backend-dist/ directory'",
     "test": "mocha",
     "db": "node scripts/db-manager.js"
   },

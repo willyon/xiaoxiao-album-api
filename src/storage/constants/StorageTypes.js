@@ -29,47 +29,19 @@ const OSS_AUTH_TYPES = {
  * 根据环境自动选择存储类型
  */
 function getDefaultStorageType() {
-  // 优先使用显式设置的STORAGE_TYPE
-  if (process.env.STORAGE_TYPE) {
-    return process.env.STORAGE_TYPE;
-  }
-
-  // 设置默认NODE_ENV（如果未设置）
-  const nodeEnv = process.env.NODE_ENV || "development";
-
-  // 根据NODE_ENV自动选择
-  if (nodeEnv === "production") {
-    return STORAGE_TYPES.ALIYUN_OSS;
-  }
-
-  // 开发环境默认使用本地存储
-  return STORAGE_TYPES.LOCAL;
+  return process.env.STORAGE_TYPE || STORAGE_TYPES.LOCAL;
 }
 
 /**
  * 获取默认配置（动态计算，确保环境变量已加载）
  */
 function getDefaultConfig() {
-  const envAuthType = process.env.ALIYUN_OSS_AUTH_TYPE;
-  const defaultAuthType = OSS_AUTH_TYPES.RAM;
-  const finalAuthType = envAuthType || defaultAuthType;
-
-  console.log("🔍 getDefaultConfig 调试信息：");
-  console.log(`  process.env.ALIYUN_OSS_AUTH_TYPE: ${envAuthType || "undefined"}`);
-  console.log(`  OSS_AUTH_TYPES.RAM: ${defaultAuthType}`);
-  console.log(`  finalAuthType: ${finalAuthType}`);
-
   return {
     STORAGE_TYPE: getDefaultStorageType(),
-    OSS_AUTH_TYPE: finalAuthType,
-    LOCAL_BASE_URL: process.env.STORAGE_LOCAL_BASE_URL || "http://localhost:3000",
+    OSS_AUTH_TYPE: process.env.ALIYUN_OSS_AUTH_TYPE || OSS_AUTH_TYPES.RAM,
+    LOCAL_BASE_URL: process.env.API_BASE_URL_LOCAL || "http://localhost:3000",
   };
 }
-
-/**
- * 默认配置（保持向后兼容）
- */
-const DEFAULT_CONFIG = getDefaultConfig();
 
 /**
  * 验证存储类型是否支持
@@ -100,7 +72,6 @@ function getSupportedStorageTypes() {
 module.exports = {
   STORAGE_TYPES,
   OSS_AUTH_TYPES,
-  DEFAULT_CONFIG,
   getDefaultConfig,
   isValidStorageType,
   isValidOSSAuthType,

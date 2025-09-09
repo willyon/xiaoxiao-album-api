@@ -70,7 +70,7 @@ class StorageAdapterFactory {
     switch (finalStorageType.toLowerCase()) {
       case STORAGE_TYPES.LOCAL:
         config.options = {
-          baseUrl: process.env.STORAGE_LOCAL_BASE_URL,
+          baseUrl: process.env.API_BASE_URL_LOCAL,
         };
         break;
 
@@ -115,7 +115,7 @@ class StorageAdapterFactory {
         config = {
           type: STORAGE_TYPES.LOCAL,
           options: {
-            baseUrl: process.env.STORAGE_LOCAL_BASE_URL,
+            baseUrl: process.env.API_BASE_URL_LOCAL,
           },
         };
     }
@@ -194,13 +194,6 @@ class StorageAdapterFactory {
     // 如果使用缓存，保存到currentAdapter
     if (useCache) {
       StorageAdapterFactory.currentAdapter = adapter;
-      logger.info({
-        message: "Storage adapter initialized",
-        details: {
-          type: adapter.getType(),
-          config: adapter.config,
-        },
-      });
     }
 
     return adapter;

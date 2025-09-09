@@ -51,13 +51,12 @@ echo "📤 第二步：上传文件到服务器..."
 
 # 上传打包后的代码（包含deploy-server.sh）
 echo "📦 上传代码文件..."
-rsync -avz --progress --delete --no-times --exclude ".DS_Store" --exclude "database.db" --exclude "localStorage/" --exclude "logs/" -e "ssh -i $SSH_KEY" backend-dist/ "$SERVER_USER@$SERVER_HOST:$SERVER_PATH/"
+rsync -avz --progress --delete --no-times --exclude ".DS_Store" --exclude "database.db" --exclude "localStorage/" --exclude "logs/" --exclude "node_modules/" -e "ssh -i $SSH_KEY" backend-dist/ "$SERVER_USER@$SERVER_HOST:$SERVER_PATH/"
 
 # 给脚本执行权限
 echo "🔑 设置脚本执行权限..."
 ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && chmod +x deployment-scripts/fix-sharp-complete.sh"
 ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && chmod +x deployment-scripts/deploy-server.sh"
-ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && chmod +x scripts/clearAllAboutImageData.js"
 
 if [ $? -ne 0 ]; then
     echo "❌ 设置脚本执行权限失败，退出部署"

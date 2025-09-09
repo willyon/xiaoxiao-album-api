@@ -19,7 +19,7 @@ class LocalStorageAdapter extends BaseStorageAdapter {
     // 设置默认的 baseUrl，优先使用配置，其次使用环境变量，最后使用默认值
     // 默认端口使用常见的开发端口，可通过环境变量 PORT 动态调整
     const defaultPort = process.env.PORT || 3000;
-    this.baseUrl = config.baseUrl || process.env.STORAGE_LOCAL_BASE_URL || `http://localhost:${defaultPort}`;
+    this.baseUrl = config.baseUrl || process.env.API_BASE_URL_LOCAL || `http://localhost:${defaultPort}`;
 
     // 设置基础目录为项目根目录
     this.baseDir = path.join(__dirname, "..", "..", "..");
@@ -37,33 +37,33 @@ class LocalStorageAdapter extends BaseStorageAdapter {
   /**
    * 生成处理后图片的存储键名
    * @param {string} type - 图片类型 ('thumbnail', 'highres', 'original')
-   * @param {string} filename - 原始文件名
-   * @param {string} [extension] - 图片格式扩展名 (如: 'webp', 'avif', 'jpg')，不传则使用filename本身
+   * @param {string} fileName - 原始文件名
+   * @param {string} [extension] - 图片格式扩展名 (如: 'webp', 'avif', 'jpg')，不传则使用fileName本身
    * @returns {string} 存储键名
    */
-  generateStorageKey(type, filename, extension) {
-    // 如果没有传extension，直接使用filename本身
+  generateStorageKey(type, fileName, extension) {
+    // 如果没有传extension，直接使用fileName本身
     if (!extension) {
       switch (type) {
         case process.env.IMAGE_STORAGE_KEY_THUMBNAIL || "thumbnail":
           const thumbnailDir = process.env.PROCESSED_THUMBNAIL_IMAGE_DIR || "localStorage/processed/thumbnails";
-          return `${thumbnailDir}/${filename}`;
+          return `${thumbnailDir}/${fileName}`;
         case process.env.IMAGE_STORAGE_KEY_HIGHRES || "highres":
           const highresDir = process.env.PROCESSED_HIGH_RES_IMAGE_DIR || "localStorage/processed/highres";
-          return `${highresDir}/${filename}`;
+          return `${highresDir}/${fileName}`;
         case process.env.IMAGE_STORAGE_KEY_ORIGINAL || "original":
           const originalDir = process.env.PROCESSED_ORIGINAL_IMAGE_DIR || "localStorage/processed/originals";
-          return `${originalDir}/${filename}`;
+          return `${originalDir}/${fileName}`;
         case process.env.IMAGE_STORAGE_KEY_FAILED || "failed":
           const failedDir = process.env.FAILED_IMAGE_DIR || "localStorage/processing/failed";
-          return `${failedDir}/${filename}`;
+          return `${failedDir}/${fileName}`;
         default:
           throw new Error(`Unknown image type: ${type}`);
       }
     }
 
     // 传了extension，则使用原来的逻辑
-    const baseName = path.basename(filename, path.extname(filename));
+    const baseName = path.basename(fileName, path.extname(fileName));
 
     switch (type) {
       case process.env.IMAGE_STORAGE_KEY_THUMBNAIL || "thumbnail":

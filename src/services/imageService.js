@@ -7,7 +7,7 @@
  */
 const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
-const StorageService = require("./storageService");
+const storageService = require("./storageService");
 const imageModel = require("../models/imageModel");
 const exifr = require("exifr");
 const exiftool = require("exiftool-vendored").exiftool;
@@ -16,9 +16,6 @@ const path = require("path");
 const os = require("os");
 const logger = require("../utils/logger");
 const { stringToTimestamp } = require("../utils/formatTime");
-
-// 创建存储服务实例
-const storageService = new StorageService();
 
 // ========== 活跃的业务逻辑代码 ==========
 
@@ -35,11 +32,13 @@ async function _addFullUrls(items, type = "image") {
     if (type === "image") {
       // 处理图片：生成高清图片URL和缩略图URL
       for (const item of items) {
-        if (item.highResUrl) {
-          item.highResUrl = await storageService.getFileUrl(item.highResUrl, item.storageType || "local");
+        if (item.highResStorageKey) {
+          item.highResUrl = await storageService.getFileUrl(item.highResStorageKey, item.storageType || "local");
+          delete item.highResStorageKey; // 删除原始字段
         }
-        if (item.thumbnailUrl) {
-          item.thumbnailUrl = await storageService.getFileUrl(item.thumbnailUrl, item.storageType || "local");
+        if (item.thumbnailStorageKey) {
+          item.thumbnailUrl = await storageService.getFileUrl(item.thumbnailStorageKey, item.storageType || "local");
+          delete item.thumbnailStorageKey; // 删除原始字段
         }
         // 删除 storageType 字段
         delete item.storageType;
@@ -214,8 +213,8 @@ function _standardizeMetadata(rawData) {
 // 保存新图片信息到数据库
 async function saveNewImage(imageData) {
   // 参数校验
-  const { userId, hash, thumbnailUrl } = imageData;
-  if (!userId || !hash || !thumbnailUrl) {
+  const { userId, imageHash, thumbnailStorageKey } = imageData;
+  if (!userId || !imageHash || !thumbnailStorageKey) {
     throw new CustomError({
       httpStatus: 400,
       messageCode: ERROR_CODES.INVALID_PARAMETERS,

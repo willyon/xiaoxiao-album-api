@@ -2,25 +2,70 @@
  * @Author: zhangshouchang
  * @Date: 2024-09-17 22:24:29
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-17 15:45:44
- * @Description: File description
+ * @LastEditTime: 2025-01-09 10:30:00
+ * @Description: 数据清理脚本 - 支持选择性清理存储文件、队列和Redis键
+ * @Usage: node clearAllAboutImageData.js [选项]
+ *
+ * 功能说明：
+ *   1. 清理存储文件：清空数据库表、删除本地存储文件和OSS存储文件
+ *   2. 清理队列：清空BullMQ队列中的所有任务
+ *   3. 清理Redis键：删除Redis中的相关键值
+ *
+ * 安全特性：
+ *   - 默认不执行任何清理操作
+ *   - 需要明确指定参数才会执行相应操作
+ *   - 支持组合使用多个参数
  */
 const path = require("path");
-require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
+
+// 获取脚本所在目录的绝对路径
+const scriptDir = path.dirname(__filename);
+const projectRoot = path.resolve(scriptDir, "..");
+
+// 设置工作目录为项目根目录
+process.chdir(projectRoot);
+
+require("dotenv").config();
 const fs = require("fs");
-const { db } = require("../src/services/dbService");
+
+// 解析命令行参数
+const args = process.argv.slice(2);
+const CLEAR_STORAGE = args.includes("--clear-storage");
+const CLEAR_QUEUES = args.includes("--clear-queues");
+const CLEAR_REDIS = args.includes("--clear-redis");
+const CLEAR_ALL = args.includes("--clear-all");
+
+// 如果没有指定任何参数，显示帮助信息
+if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
+  console.log("使用方法：");
+  console.log("  node clearAllAboutImageData.js [选项]");
+  console.log("");
+  console.log("选项：");
+  console.log("  --clear-storage  清理存储文件（数据库表、本地文件、OSS文件）");
+  console.log("  --clear-queues   清理BullMQ队列");
+  console.log("  --clear-redis    清理Redis键");
+  console.log("  --clear-all      清理所有数据（等同于上述三个选项）");
+  console.log("  -h, --help       显示帮助信息");
+  console.log("");
+  console.log("示例：");
+  console.log("  node clearAllAboutImageData.js --clear-all");
+  console.log("  node clearAllAboutImageData.js --clear-storage --clear-queues");
+  process.exit(0);
+}
+
+// 使用绝对路径导入模块
+const { db } = require(path.join(projectRoot, "src", "services", "dbService"));
 // 队列导入
-const { imageUploadQueue } = require("../src/queues/imageUploadQueue");
-const { imageMetaQueue } = require("../src/queues/imageMetaQueue");
-const StorageAdapterFactory = require("../src/storage/factory/StorageAdapterFactory");
-const { STORAGE_TYPES } = require("../src/storage/constants/StorageTypes");
+const { imageUploadQueue } = require(path.join(projectRoot, "src", "queues", "imageUploadQueue"));
+const { imageMetaQueue } = require(path.join(projectRoot, "src", "queues", "imageMetaQueue"));
+const StorageAdapterFactory = require(path.join(projectRoot, "src", "storage", "factory", "StorageAdapterFactory"));
+const { STORAGE_TYPES } = require(path.join(projectRoot, "src", "storage", "constants", "StorageTypes"));
 
 // ============清空数据库 images 表所有数据==========//
 function clearImagesTable() {
   db.prepare("DELETE FROM images").run();
   console.log("images数据表已清空");
 }
-clearImagesTable();
 // ============清空数据库 images 表所有数据==========//
 
 // ============清空图片转换过程中涉及的所有目标文件夹的所有图片==========//
@@ -136,12 +181,16 @@ async function clearOSSStorageFiles() {
 async function clearStorageFiles() {
   console.log("🗂️  开始清空所有存储类型的文件...");
 
-  // 1. 清空本地存储文件
-  console.log("\n📁 第一步：清空本地存储文件");
+  // 1. 清空数据库表数据
+  console.log("\n📊 第一步：清空数据库表数据");
+  clearImagesTable();
+
+  // 2. 清空本地存储文件
+  console.log("\n📁 第二步：清空本地存储文件");
   clearLocalStorageFiles();
 
-  // 2. 清空OSS存储文件
-  console.log("\n☁️  第二步：清空OSS存储文件");
+  // 3. 清空OSS存储文件
+  console.log("\n☁️  第三步：清空OSS存储文件");
   try {
     await clearOSSStorageFiles();
   } catch (error) {
@@ -150,10 +199,10 @@ async function clearStorageFiles() {
   }
 
   console.log("\n✅ 所有存储类型的文件清空完成");
+  console.log("🎉 所有操作已完成！系统已准备就绪！");
 }
 
-// 执行存储文件清理
-clearStorageFiles().catch(console.error);
+// 存储文件清理将在main()函数中执行
 // ============清空图片转换过程中涉及的所有目标文件夹的所有图片==========//
 
 // ============清空 BullMQ 队列中所有任务（等待、活跃、失败、完成、延迟）==========//
@@ -223,5 +272,53 @@ async function clearRedisKeys() {
   console.log("OK!清空工作完毕！");
 }
 
-clearRedisKeys().catch(console.error);
+// 主函数：根据参数协调清理操作
+async function main() {
+  try {
+    console.log("🚀 开始执行清理操作...");
+    console.log(`📋 清理选项：存储文件=${CLEAR_STORAGE || CLEAR_ALL}, 队列=${CLEAR_QUEUES || CLEAR_ALL}, Redis=${CLEAR_REDIS || CLEAR_ALL}`);
+
+    let hasOperations = false;
+
+    // 1. 清理存储文件
+    if (CLEAR_STORAGE || CLEAR_ALL) {
+      console.log("📁 开始清理存储文件...");
+      await clearStorageFiles();
+      hasOperations = true;
+    } else {
+      console.log("⏭️ 跳过存储文件清理");
+    }
+
+    // 2. 清理队列
+    if (CLEAR_QUEUES || CLEAR_ALL) {
+      console.log("📋 开始清理队列...");
+      await clearAllQueueJobs();
+      hasOperations = true;
+    } else {
+      console.log("⏭️ 跳过队列清理");
+    }
+
+    // 3. 清理Redis键
+    if (CLEAR_REDIS || CLEAR_ALL) {
+      console.log("🔑 开始清理Redis键...");
+      await clearRedisKeys();
+      hasOperations = true;
+    } else {
+      console.log("⏭️ 跳过Redis键清理");
+    }
+
+    if (hasOperations) {
+      console.log("🎉 清理操作完成！");
+    } else {
+      console.log("ℹ️ 没有指定清理操作，请使用 --help 查看可用选项");
+    }
+    process.exit(0);
+  } catch (error) {
+    console.error("❌ 清理操作失败:", error);
+    process.exit(1);
+  }
+}
+
+// 执行主函数
+main();
 // ============清空 Redis 中 readyKeyOf、lockKeyOf、userSetKey 三类键，用于开发测试环境快速重置==========//

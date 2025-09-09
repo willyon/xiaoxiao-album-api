@@ -9,11 +9,8 @@ const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
 const { imageUploadQueue } = require("../queues/imageUploadQueue");
 const { computeFileHash } = require("../utils/hash");
-const StorageService = require("../services/storageService");
+const storageService = require("../services/storageService");
 const logger = require("../utils/logger");
-
-// 创建存储服务实例
-const storageService = new StorageService();
 
 async function handlePostImages(req, res, next) {
   try {
@@ -26,7 +23,7 @@ async function handlePostImages(req, res, next) {
       });
     }
 
-    const { mimetype, size: fileSize, filename } = file;
+    const { size: fileSize, filename: fileName } = file;
     const userId = req?.user?.userId;
 
     // 第一步：先计算哈希，用于去重检查
@@ -45,14 +42,14 @@ async function handlePostImages(req, res, next) {
           jobId,
           userId,
           imageHash,
-          filename,
+          fileName,
           action: "duplicate_skipped_before_storage",
         },
       });
 
       // 清理重复的上传文件（本地存储模式）
       if (file.path) {
-        await storageService.deleteFile({ filename, storageKey: file.path });
+        await storageService.deleteFile({ fileName, storageKey: file.path });
       }
 
       // 返回成功，用户无感知
@@ -63,13 +60,13 @@ async function handlePostImages(req, res, next) {
     let storageKey;
     if (file.buffer) {
       // 内存存储模式：上传到存储服务（OSS等）
-      const uploadStorageKey = `upload/${filename}`;
+      const uploadStorageKey = `upload/${fileName}`;
       await storageService.storage.storeFile(file.buffer, uploadStorageKey);
       storageKey = uploadStorageKey;
 
       logger.info({
         message: "File uploaded to storage service",
-        details: { userId, filename, uploadStorageKey, fileSize },
+        details: { userId, fileName, uploadStorageKey, fileSize },
       });
     } else {
       // 磁盘存储模式：文件已通过multer中间件保存到本地 所以这里不需要再做什么操作
@@ -77,7 +74,7 @@ async function handlePostImages(req, res, next) {
 
       logger.info({
         message: "File uploaded to local storage",
-        details: { userId, filename, path: file.path, fileSize },
+        details: { userId, fileName, path: file.path, fileSize },
       });
     }
 
@@ -85,8 +82,7 @@ async function handlePostImages(req, res, next) {
     await imageUploadQueue.add(
       process.env.IMAGE_UPLOAD_QUEUE_NAME,
       {
-        filename,
-        mimetype,
+        fileName,
         fileSize,
         storageKey, // 本地路径或存储键名
         userId,
@@ -102,7 +98,7 @@ async function handlePostImages(req, res, next) {
       message: "New image upload job added to queue",
       details: {
         userId,
-        filename,
+        fileName,
         fileSize,
         storageKey,
       },
@@ -121,13 +117,12 @@ async function handlePostImages(req, res, next) {
     //   console.log("任务数据:", job.data);
     // });
 
-    // console.log("接收到文件:", filename, mimetype, fileSize, filePath);
+    // console.log("接收到文件:", fileName, fileSize, filePath);
 
     // const savedFile = {
-    //   mimeType: mimetype,
     //   fileSize,
     //   storagePath: filePath,
-    //   filename,
+    //   fileName,
     // };
 
     res.sendResponse({ messageCode: SUCCESS_CODES.FILE_UPLOADED_SUCCESSFULLY });

@@ -104,11 +104,11 @@ class BaseStorageAdapter {
   /**
    * 生成处理后图片的存储键名
    * @param {string} type - 图片类型 ('thumbnail', 'highres', 'original')
-   * @param {string} filename - 原始文件名
-   * @param {string} [extension] - 图片格式扩展名 (如: 'webp', 'avif', 'jpg')，不传则使用filename本身
+   * @param {string} fileName - 原始文件名
+   * @param {string} [extension] - 图片格式扩展名 (如: 'webp', 'avif', 'jpg')，不传则使用fileName本身
    * @returns {string} 存储键名
    */
-  generateStorageKey(type, filename, extension) {
+  generateStorageKey(type, fileName, extension) {
     throw new Error(`generateStorageKey method must be implemented in ${this.constructor.name}`);
   }
 

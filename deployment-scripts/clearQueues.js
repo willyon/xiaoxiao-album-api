@@ -4,9 +4,17 @@
  * @Description: 专门用于清理 BullMQ 队列的脚本
  */
 
-require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") });
-const { imageUploadQueue } = require("../src/queues/imageUploadQueue");
-const { imageMetaQueue } = require("../src/queues/imageMetaQueue");
+// 获取脚本所在目录的绝对路径
+const path = require("path");
+const scriptDir = path.dirname(__filename);
+const projectRoot = path.resolve(scriptDir, "..");
+
+// 设置工作目录为项目根目录
+process.chdir(projectRoot);
+
+require("dotenv").config();
+const { imageUploadQueue } = require(path.join(projectRoot, "src", "queues", "imageUploadQueue"));
+const { imageMetaQueue } = require(path.join(projectRoot, "src", "queues", "imageMetaQueue"));
 
 async function clearAllQueueJobs() {
   try {

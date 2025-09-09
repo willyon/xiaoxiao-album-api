@@ -8,10 +8,7 @@
 const multer = require("multer");
 const path = require("path");
 const { DateTime } = require("luxon");
-const StorageService = require("../services/storageService");
-
-// 创建存储服务实例
-const storageService = new StorageService();
+const storageService = require("../services/storageService");
 
 // 生成文件名的通用函数
 function generateFilename(req, file) {

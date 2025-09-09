@@ -21,9 +21,9 @@ function createTableUsers() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT NOT NULL UNIQUE,
       password TEXT NOT NULL,
-      verifiedStatus TEXT DEFAULT 'pending',
-      verificationToken TEXT,
-      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      verified_status TEXT DEFAULT 'pending',
+      verification_token TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `;
   try {
@@ -53,25 +53,28 @@ function createTableImages() {
       CREATE TABLE IF NOT EXISTS images (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
-        originalUrl TEXT,
-        highResUrl TEXT,
-        thumbnailUrl TEXT,
-        creationDate INTEGER,              -- 毫秒时间戳，可为 NULL
-        hash TEXT,                         -- 图片内容哈希
-        yearKey  TEXT,                     -- 物化：'YYYY' 或 'unknown'
-        monthKey TEXT,                     -- 物化：'YYYY-MM' 或 'unknown'
+        original_storage_key TEXT,
+        high_res_storage_key TEXT,
+        thumbnail_storage_key TEXT,
+        creation_date INTEGER,              -- 毫秒时间戳，可为 NULL
+        image_hash TEXT,                   -- 图片内容哈希
+        year_key  TEXT,                     -- 物化：'YYYY' 或 'unknown'
+        month_key TEXT,                     -- 物化：'YYYY-MM' 或 'unknown'
         
         -- GPS 位置信息
-        gpsLatitude REAL,                  -- GPS纬度 (十进制格式) REAL 浮点数类型
-        gpsLongitude REAL,                 -- GPS经度 (十进制格式) REAL 浮点数类型
-        gpsAltitude REAL,                  -- GPS海拔 (米) REAL 浮点数类型
-        gpsLocation TEXT,                  -- 位置描述 (可选，用于显示)
+        gps_latitude REAL,                  -- GPS纬度 (十进制格式) REAL 浮点数类型
+        gps_longitude REAL,                 -- GPS经度 (十进制格式) REAL 浮点数类型
+        gps_altitude REAL,                  -- GPS海拔 (米) REAL 浮点数类型
+        gps_location TEXT,                  -- 位置描述 (可选，用于显示)
         
         -- 存储类型信息
-        storageType TEXT DEFAULT 'local',  -- 存储类型：'local', 'aliyun-oss', 's3', 'qiniu', 'cos', 'bos', 'gcs', 'azure'
+        storage_type TEXT,  -- 存储类型：'local', 'aliyun-oss', 's3', 'qiniu', 'cos', 'bos', 'gcs', 'azure'
+        
+        -- 文件大小信息
+        file_size INTEGER,                  -- 文件大小（字节）
 
         -- 同一用户下，内容哈希唯一（避免跨用户互相影响）
-        UNIQUE (user_id, hash),
+        UNIQUE (user_id, image_hash),
 
         -- 维护级联：删除用户自动删除其图片
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -92,7 +95,7 @@ function createTableImages() {
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_hash
-      ON images(hash);
+      ON images(image_hash);
     `,
     ).run();
 
@@ -100,7 +103,7 @@ function createTableImages() {
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_hash
-      ON images(user_id, hash);
+      ON images(user_id, image_hash);
     `,
     ).run();
 
@@ -108,7 +111,7 @@ function createTableImages() {
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_creation_desc
-      ON images(user_id, creationDate DESC, id DESC);
+      ON images(user_id, creation_date DESC, id DESC);
     `,
     ).run();
 
@@ -116,7 +119,7 @@ function createTableImages() {
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_year_creation
-      ON images(user_id, yearKey, creationDate DESC, id DESC);
+      ON images(user_id, year_key, creation_date DESC, id DESC);
     `,
     ).run();
 
@@ -124,7 +127,7 @@ function createTableImages() {
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_month_creation
-      ON images(user_id, monthKey, creationDate DESC, id DESC);
+      ON images(user_id, month_key, creation_date DESC, id DESC);
     `,
     ).run();
 
@@ -132,7 +135,7 @@ function createTableImages() {
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_storage_creation
-      ON images(user_id, storageType, creationDate DESC, id DESC);
+      ON images(user_id, storage_type, creation_date DESC, id DESC);
     `,
     ).run();
 
@@ -140,7 +143,7 @@ function createTableImages() {
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_year
-      ON images(user_id, yearKey);
+      ON images(user_id, year_key);
     `,
     ).run();
 
@@ -148,7 +151,7 @@ function createTableImages() {
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_month
-      ON images(user_id, monthKey);
+      ON images(user_id, month_key);
     `,
     ).run();
   } catch (err) {
@@ -164,7 +167,7 @@ function addStorageTypeColumn() {
     const checkColumnSQL = `
       SELECT COUNT(*) as count 
       FROM pragma_table_info('images') 
-      WHERE name = 'storageType'
+      WHERE name = 'storage_type'
     `;
     const result = db.prepare(checkColumnSQL).get();
 
@@ -172,24 +175,24 @@ function addStorageTypeColumn() {
       // 字段不存在，添加字段
       const addColumnSQL = `
         ALTER TABLE images 
-        ADD COLUMN storageType TEXT DEFAULT 'local'
+        ADD COLUMN storage_type TEXT DEFAULT 'local'
       `;
       db.prepare(addColumnSQL).run();
 
       // 根据现有路径判断存储类型并更新
       const updateStorageTypeSQL = `
                UPDATE images 
-               SET storageType = CASE 
-                 WHEN originalUrl LIKE 'localstorage/processed/%' THEN 'local'
+               SET storage_type = CASE 
+                 WHEN original_url LIKE 'localstorage/processed/%' THEN 'local'
                  ELSE 'aliyun-oss'
                END
-               WHERE storageType IS NULL OR storageType = 'local'
+               WHERE storage_type IS NULL OR storage_type = 'local'
              `;
       db.prepare(updateStorageTypeSQL).run();
 
-      console.log("✅ 成功添加 storageType 字段并更新现有数据");
+      console.log("✅ 成功添加 storage_type 字段并更新现有数据");
     } else {
-      console.log("ℹ️  storageType 字段已存在，跳过迁移");
+      console.log("ℹ️  storage_type 字段已存在，跳过迁移");
     }
   } catch (err) {
     console.error("❌ 添加 storageType 字段失败：", err.message);

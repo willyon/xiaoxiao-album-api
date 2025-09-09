@@ -11,7 +11,9 @@ const multer = require("multer");
 const BaseStorageAdapter = require("./BaseStorageAdapter");
 const { STORAGE_TYPES } = require("../constants/StorageTypes");
 const logger = require("../../utils/logger");
+const { generatePolicySignature } = require("../../utils/ossSignature");
 const { isAliyunECS } = require("../../utils/environmentDetector");
+const { buildOSSCallbackUrl } = require("../../utils/ossCallbackUtils");
 
 /**
  * 阿里云OSS存储适配器
@@ -88,6 +90,14 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     this.type = STORAGE_TYPES.ALIYUN_OSS;
     this.config = config;
 
+    // 设置 bucket 和 region 属性
+    this.bucket = config.bucket;
+    this.region = config.region;
+
+    // 设置认证信息（用于签名生成）
+    this.accessKeyId = config.accessKeyId;
+    this.accessKeySecret = config.accessKeySecret;
+
     // 1. 首先验证必要配置
     this._validateConfig();
 
@@ -98,19 +108,20 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
   /**
    * 生成处理后图片的存储键名（OSS对象键名）
    * @param {string} type - 图片类型 ('thumbnail', 'highres', 'original')
-   * @param {string} filename - 原始文件名
-   * @param {string} [extension] - 图片格式扩展名 (如: 'webp', 'avif', 'jpg')，不传则使用filename本身
+   * @param {string} fileName - 原始文件名
+   * @param {string} [extension] - 图片格式扩展名 (如: 'webp', 'avif', 'jpg')，不传则使用fileName本身
    * @returns {string} OSS对象键名
    */
-  generateStorageKey(type, filename, extension) {
-    // 如果没有传extension，直接使用filename本身
+  generateStorageKey(type, fileName, extension) {
+    // 如果没有传extension，直接使用fileName本身
     if (!extension) {
-      return `${type}/${filename}`;
+      return `${type}/${fileName}`;
     }
 
-    // 传了extension，则使用原来的逻辑
-    const baseName = path.basename(filename, path.extname(filename));
-    return `${type}/${baseName}.${extension}`;
+    // 传了extension，保持路径结构，只替换文件扩展名
+    const lastDotIndex = fileName.lastIndexOf(".");
+    const fileNameWithoutExt = lastDotIndex !== -1 ? fileName.substring(0, lastDotIndex) : fileName;
+    return `${type}/${fileNameWithoutExt}.${extension}`;
   }
 
   /**
@@ -120,61 +131,66 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    */
   _createOSSClient() {
     const baseConfig = {
-      region: this.config.region,
-      bucket: this.config.bucket,
+      region: this.region,
+      bucket: this.bucket,
       timeout: this.config.timeout || 300000, // 单个请求超时时间，默认5分钟（300秒）
       secure: this.config.secure !== false, // 默认使用HTTPS
     };
 
     const authType = this.config.authType;
+    let client;
 
     switch (authType.toLowerCase()) {
       case "ram":
       case "role":
         // RAM角色授权方式（推荐）
-        logger.info({
-          message: "Initializing aliyun OSS client with RAM role authentication",
-          details: { region: this.config.region, bucket: this.config.bucket },
-        });
-
         // RAM角色认证：OSS SDK会自动从ECS实例元数据服务获取临时凭证
         // 不需要提供accessKeyId和accessKeySecret
-        return new OSS({
+        client = new OSS({
           ...baseConfig,
           // 不设置accessKeyId和accessKeySecret，让SDK自动获取RAM角色凭证
         });
+        break;
 
       case "accesskey":
       case "key":
-        // AccessKey方式
-        logger.info({
-          message: "Initializing aliyun OSS client with AccessKey authentication",
-          details: { region: this.config.region, bucket: this.config.bucket },
-        });
-
-        return new OSS({
+        client = new OSS({
           ...baseConfig,
-          accessKeyId: this.config.accessKeyId,
-          accessKeySecret: this.config.accessKeySecret,
+          accessKeyId: this.accessKeyId,
+          accessKeySecret: this.accessKeySecret,
         });
+        break;
 
       case "sts":
         // STS临时凭证方式
-        logger.info({
-          message: "Initializing aliyun OSS client with STS token authentication",
-          details: { region: this.config.region, bucket: this.config.bucket },
-        });
 
-        return new OSS({
+        client = new OSS({
           ...baseConfig,
-          accessKeyId: this.config.accessKeyId,
-          accessKeySecret: this.config.accessKeySecret,
+          accessKeyId: this.accessKeyId,
+          accessKeySecret: this.accessKeySecret,
           stsToken: this.config.stsToken,
         });
+        break;
 
       default:
         throw new Error(`Unsupported authentication type: ${authType}. Supported types: ram, accesskey, sts`);
     }
+
+    // 记录OSS连接成功日志（仅在非脚本模式下显示）
+    const isScriptMode =
+      process.env.NODE_ENV === "script" || process.argv[1]?.includes("deployment-scripts") || process.argv[1]?.includes("scripts/");
+    if (!isScriptMode) {
+      logger.info({
+        message: "阿里云OSS已连接成功!",
+        details: {
+          region: this.config.region,
+          bucket: this.config.bucket,
+          authType: this.config.authType,
+        },
+      });
+    }
+
+    return client;
   }
 
   /**
@@ -543,6 +559,96 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
       return url;
     } catch (error) {
       this._handleOSSError(error, "generate signed URL", { ossKey, expiresIn });
+    }
+  }
+
+  /**
+   * 获取OSS上传签名（用于直传）
+   *
+   * 签名过程说明：
+   * 1. 构建上传策略（policy），包含上传条件、过期时间、回调信息等
+   * 2. 将策略转换为Base64编码的字符串
+   * 3. 使用AccessKeySecret作为密钥，对策略字符串进行HMAC-SHA1签名
+   * 4. 将签名结果进行Base64编码
+   * 5. 返回包含签名、策略、回调URL等信息的对象
+   *
+   * @param {Object} options - 签名选项
+   * @param {string} options.storageKey - OSS存储键
+   * @param {string} options.contentType - 内容类型
+   * @param {number} options.contentLength - 内容长度
+   * @param {string} options.userId - 用户ID
+   * @returns {Promise<Object>} 上传签名信息
+   */
+  async getUploadSignature({ storageKey, contentType, contentLength, userId }) {
+    try {
+      // 生成回调URL
+      const callbackUrl = buildOSSCallbackUrl();
+
+      // 记录回调URL
+      logger.info({
+        message: "生成OSS上传签名",
+        details: {
+          storageKey,
+          callbackUrl,
+          userId,
+        },
+      });
+
+      // 生成回调参数 - JSON格式
+      const callbackBody = JSON.stringify({
+        userId,
+        storageKey,
+        fileSize: contentLength,
+        imageHash: storageKey.split("/").pop().split(".")[0],
+      });
+
+      // 记录回调参数详情
+      logger.info({
+        message: "OSS回调参数详情",
+        details: {
+          callbackUrl,
+          callbackBody,
+        },
+      });
+
+      // 生成上传策略
+      const policy = {
+        expiration: new Date(Date.now() + 3600 * 1000).toISOString(), // 1小时后过期
+        conditions: [
+          ["content-length-range", 0, contentLength],
+          ["eq", "$bucket", this.bucket],
+          ["eq", "$key", storageKey],
+          ["eq", "$Content-Type", contentType],
+        ],
+      };
+
+      const policyString = Buffer.from(JSON.stringify(policy)).toString("base64");
+      const signature = generatePolicySignature(policyString, this.accessKeySecret);
+
+      // 构建OSS回调参数
+      const callbackParam = {
+        callbackUrl: callbackUrl,
+        callbackBody: callbackBody,
+        callbackBodyType: "application/json",
+      };
+
+      const callbackBase64 = Buffer.from(JSON.stringify(callbackParam)).toString("base64");
+
+      return {
+        storageKey,
+        policy: policyString,
+        signature,
+        accessKeyId: this.accessKeyId,
+        success_action_status: "200",
+        callback: callbackBase64, // 直接返回Base64字符串，按照官方文档
+        host: `https://${this.bucket}.${this.region}.aliyuncs.com`,
+      };
+    } catch (error) {
+      logger.error({
+        message: "Failed to generate upload signature",
+        details: { storageKey, contentType, contentLength, userId, error: error.message },
+      });
+      throw error;
     }
   }
 

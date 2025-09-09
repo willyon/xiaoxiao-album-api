@@ -9,11 +9,8 @@ const logger = require("../utils/logger");
 const { extractImageMetadata, updateImageMetaAndHQ } = require("../services/imageService");
 const { timestampToYearMonth, timestampToYear } = require("../utils/formatTime");
 const timeIt = require("../utils/timeIt");
-const StorageService = require("../services/storageService");
+const storageService = require("../services/storageService");
 const { getLocationFromCoordinates } = require("../services/geocodingService");
-
-// 创建存储服务实例
-const storageService = new StorageService();
 
 /**
  * 处理单张图片的"后处理"：
@@ -25,14 +22,13 @@ const storageService = new StorageService();
  * @param {Object} payload
  * @param {number|string} payload.userId
  * @param {string} payload.imageHash
- * @param {string} payload.filename
+ * @param {string} payload.fileName
  * @param {string} payload.storageKey - 原始文件的存储键名
  * @param {string} [payload.extension]
  * @param {number} [payload.fileSize]
- * @param {string} [payload.mimetype]
  */
 async function processImageMeta(payload) {
-  const { userId, imageHash, filename, storageKey, extension, fileSize, mimetype } = payload;
+  const { userId, imageHash, fileName, storageKey, extension, fileSize } = payload;
 
   // 1) 解析 EXIF → creationDate 和 GPS 信息
   let creationDate = null;
@@ -98,9 +94,9 @@ async function processImageMeta(payload) {
   // 2) 产出高清大图（AVIF 默认）
   // 使用存储服务生成高清图片的存储键名
   const highResType = process.env.IMAGE_STORAGE_KEY_HIGHRES || "highres";
-  const highResStorageKey = storageService.storage.generateStorageKey(highResType, filename, extension);
+  const highResStorageKey = storageService.storage.generateStorageKey(highResType, fileName, extension);
 
-  let highResUrl = null; // 只有成功处理时才设置高清图URL
+  let highResStorageKeyResult = null; // 只有成功处理时才设置高清图存储键
 
   try {
     await timeIt(
@@ -108,7 +104,6 @@ async function processImageMeta(payload) {
       async () => {
         await storageService.processAndStoreImage({
           fileSize, // 传递文件大小，提升性能
-          mimetype, // 传递文件类型
           sourceStorageKey: storageKey,
           targetStorageKey: highResStorageKey,
           extension,
@@ -119,35 +114,35 @@ async function processImageMeta(payload) {
       imageHash,
     );
 
-    // 高清图处理成功，设置URL
-    highResUrl = highResStorageKey;
+    // 高清图处理成功，设置存储键
+    highResStorageKeyResult = highResStorageKey;
 
     logger.info({
       message: "Generate HQ image successful",
       details: { imageHash, userId, highResStorageKey },
     });
   } catch (e) {
-    // 高清失败也不算致命 → 记录警告，但不设置highResUrl
+    // 高清失败也不算致命 → 记录警告，但不设置highResStorageKey
     logger.warn({
       message: "Generate HQ image failed",
       details: { imageHash, userId, highResStorageKey, err: String(e) },
     });
   }
 
-  // 3) 更新数据库：补 creationDate / monthKey / yearKey / highResUrl
-  // 生成原图的存储键名（不传extension，直接使用filename）
+  // 3) 更新数据库：补 creationDate / monthKey / yearKey / highResStorageKey
+  // 生成原图的存储键名（不传extension，直接使用fileName）
   const originalType = process.env.IMAGE_STORAGE_KEY_ORIGINAL || "original";
-  const originalStorageKey = storageService.storage.generateStorageKey(originalType, filename);
+  const originalStorageKey = storageService.storage.generateStorageKey(originalType, fileName);
 
   try {
     await updateImageMetaAndHQ({
       userId,
-      hash: imageHash,
+      imageHash,
       creationDate,
       monthKey,
       yearKey,
-      highResUrl, // 只有高清图处理成功时才不为null
-      originalUrl: originalStorageKey,
+      highResStorageKey: highResStorageKeyResult, // 只有高清图处理成功时才不为null
+      originalStorageKey,
       gpsLatitude,
       gpsLongitude,
       gpsAltitude,
@@ -168,7 +163,7 @@ async function processImageMeta(payload) {
       details: {
         imageHash,
         userId,
-        filename,
+        fileName,
         originalStorageKey,
         highResStorageKey: highResStorageKey || null,
         creationDate: creationDate || null,
@@ -183,8 +178,6 @@ async function processImageMeta(payload) {
       details: {
         imageHash,
         userId,
-        temporaryLocation: storageKey,
-        intendedLocation: originalStorageKey,
       },
     });
   }

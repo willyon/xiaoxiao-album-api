@@ -16,9 +16,15 @@ const {
   handleGroupByMonth,
 } = require("../controllers/imageController");
 const { handlePostImages } = require("../controllers/uploadController");
+const { handleCheckFileExists, handleGetUploadSignature } = require("../controllers/ossUploadController");
 
 //上传图片
 router.post("/postImages", upload, handlePostImages);
+
+// 预检和直传相关路由
+router.post("/checkFileExists", handleCheckFileExists);
+router.post("/getUploadSignature", handleGetUploadSignature);
+
 // 分页获取图片信息
 router.post("/queryAllByPage", handleGetAllByPage);
 // 分页获取按年份分组数据

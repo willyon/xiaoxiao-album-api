@@ -198,6 +198,53 @@ class StorageService {
   }
 
   /**
+   * 获取OSS上传签名（用于直传）
+   * @param {Object} options - 签名选项
+   * @param {string} options.storageKey - OSS存储键
+   * @param {string} options.contentType - 内容类型
+   * @param {number} options.contentLength - 内容长度
+   * @param {string} options.userId - 用户ID
+   * @returns {Promise<Object>} 上传签名信息
+   */
+  async getUploadSignature({ storageKey, contentType, contentLength, userId }) {
+    try {
+      // 只有OSS适配器支持签名生成
+      if (this._currentStorageType !== STORAGE_TYPES.ALIYUN_OSS) {
+        logger.error({
+          message: "Only OSS storage supports upload signature generation",
+          details: {
+            currentStorageType: this._currentStorageType,
+            storageKey,
+            contentType,
+            contentLength,
+            userId,
+          },
+        });
+        throw new Error("Only OSS storage supports upload signature generation");
+      }
+
+      return await this.storage.getUploadSignature({
+        storageKey,
+        contentType,
+        contentLength,
+        userId,
+      });
+    } catch (error) {
+      logger.error({
+        message: "获取上传签名失败",
+        details: {
+          storageKey,
+          contentType,
+          contentLength,
+          userId,
+          error: error.message,
+        },
+      });
+      throw error;
+    }
+  }
+
+  /**
    * 智能获取文件完整URL
    * 根据图片的存储类型自动选择对应的存储适配器
    * @param {string} storageKey - 存储键名
@@ -319,7 +366,6 @@ class StorageService {
    * 处理图片并存储（通过适配器自动处理不同存储类型）
    * @param {Object} options - 处理选项
    * @param {number} [options.fileSize] - 文件大小（字节），如果提供则跳过文件大小计算以提升性能
-   * @param {string} [options.mimetype] - 文件MIME类型，可用于日志记录
    * @param {string} options.sourceStorageKey - 源文件存储键名（本地存储为绝对路径，OSS为对象键名）
    * @param {string} options.targetStorageKey - 目标文件存储键名（本地存储为绝对路径，OSS为对象键名）
    * @param {string} options.extension - 目标图片扩展名，支持：'webp', 'avif', 'jpeg', 'jpg', 'png'
@@ -366,7 +412,6 @@ class StorageService {
    */
   async processAndStoreImage({
     fileSize,
-    mimetype,
     sourceStorageKey,
     targetStorageKey,
     extension,
@@ -406,17 +451,17 @@ class StorageService {
   /**
    * 删除文件并记录日志
    * @param {Object} fileInfo - 文件信息
-   * @param {string} fileInfo.filename - 文件名
+   * @param {string} fileInfo.fileName - 文件名
    * @param {string} fileInfo.storageKey - 存储键名
    * @returns {Promise<void>}
    */
-  async deleteFile({ filename, storageKey }) {
+  async deleteFile({ fileName, storageKey }) {
     try {
       // 记录重复图片信息到日志
       logger.info({
         message: "image detected and removed",
         details: {
-          filename,
+          fileName,
           storageKey,
           timestamp: Date.now(),
           action: "deleted",
@@ -428,17 +473,32 @@ class StorageService {
 
       logger.info({
         message: "image file deleted successfully",
-        details: { filename, storageKey },
+        details: { fileName, storageKey },
       });
     } catch (error) {
       logger.error({
         message: `Failed to delete image file: ${error?.message}`,
         stack: error?.stack,
-        details: { storageKey, filename },
+        details: { storageKey, fileName },
       });
       // 即使删除失败也不要抛出错误，避免影响主流程
     }
   }
 }
 
-module.exports = StorageService;
+// 单例模式：避免重复创建StorageService实例
+let storageServiceInstance = null;
+
+/**
+ * 获取StorageService单例实例
+ * @returns {StorageService} StorageService实例
+ */
+function getStorageService() {
+  if (!storageServiceInstance) {
+    storageServiceInstance = new StorageService();
+  }
+  return storageServiceInstance;
+}
+
+// 导出单例实例，而不是类
+module.exports = getStorageService();

@@ -10,12 +10,9 @@ const { saveNewImage } = require("../services/imageService");
 const { getRedisClient } = require("../services/redisClient");
 const { userSetKey } = require("./userImageHashset");
 const { imageMetaQueue } = require("../queues/imageMetaQueue");
-const StorageService = require("../services/storageService");
+const storageService = require("../services/storageService");
 const timeIt = require("../utils/timeIt");
 const { getDefaultStorageType } = require("../storage/constants/StorageTypes");
-
-// 创建存储服务单例
-const storageService = new StorageService();
 
 // 原子化：先查集合 → 抢锁 → 失败则再查集合 → 再决定 busy/重复
 async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
@@ -54,17 +51,16 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
 /**
  * 独立的单张图片处理与入库方法
  * @param {Object} fileInfo - 包含图片文件信息的对象
- * @param {string} fileInfo.filename - 文件名
+ * @param {string} fileInfo.fileName - 文件名
  * @param {string} fileInfo.storageKey - 存储键名
  * @param {string} fileInfo.userId - 用户ID
  * @param {string} fileInfo.imageHash - 图片哈希
  * @param {number} fileInfo.fileSize - 文件大小
- * @param {string} fileInfo.mimetype - 文件MIME类型
  * @param {string} [fileInfo.extension="webp"] - 缩略图扩展名
  */
 async function processAndSaveSingleImage(fileInfo) {
-  const { filename, storageKey, userId, imageHash, fileSize, mimetype, extension } = fileInfo;
-  logger.info({ message: "处理文件", details: { filename } });
+  const { fileName, storageKey, userId, imageHash, fileSize, extension } = fileInfo;
+  logger.info({ message: "处理文件", details: { fileName } });
   const redisClient = getRedisClient();
   let lockKey;
   let thumbnailStorageKey;
@@ -79,7 +75,7 @@ async function processAndSaveSingleImage(fileInfo) {
     // ======== 快路径：仅产出 preview 缩略图 ========
     // 使用适配器生成存储键名，避免硬编码路径
     const thumbnailType = process.env.IMAGE_STORAGE_KEY_THUMBNAIL || "thumbnail";
-    thumbnailStorageKey = storageService.storage.generateStorageKey(thumbnailType, filename, extension);
+    thumbnailStorageKey = storageService.storage.generateStorageKey(thumbnailType, fileName, extension);
 
     try {
       await timeIt(
@@ -88,7 +84,6 @@ async function processAndSaveSingleImage(fileInfo) {
           // 从存储读取原图，处理后存储缩略图
           await storageService.processAndStoreImage({
             fileSize,
-            mimetype,
             sourceStorageKey: storageKey,
             targetStorageKey: thumbnailStorageKey,
             extension,
@@ -105,7 +100,7 @@ async function processAndSaveSingleImage(fileInfo) {
         details: {
           imageHash,
           userId,
-          filename,
+          fileName,
           sourceStorageKey: storageKey,
           thumbnailStorageKey,
           error: error.message,
@@ -115,7 +110,7 @@ async function processAndSaveSingleImage(fileInfo) {
       try {
         // 生成失败文件存储键名并移动文件
         const failedType = process.env.IMAGE_STORAGE_KEY_FAILED || "failed";
-        const failedStorageKey = storageService.storage.generateStorageKey(failedType, filename);
+        const failedStorageKey = storageService.storage.generateStorageKey(failedType, fileName);
         await storageService.storage.moveFile(storageKey, failedStorageKey);
 
         logger.info({
@@ -144,15 +139,16 @@ async function processAndSaveSingleImage(fileInfo) {
 
     // ======== 先写库（creationDate 为空；monthKey/yearKey = 'unknown'；bigHigh 先留空或保留旧值）========
     const imageData = {
-      originalUrl: "", // 先空着，待 imageMetaWorker 填充
-      highResUrl: "", // 先空着，待 imageMetaWorker 填充
-      thumbnailUrl: thumbnailStorageKey, // 使用存储服务生成URL
+      originalStorageKey: "", // 先空着，待 imageMetaWorker 填充
+      highResStorageKey: "", // 先空着，待 imageMetaWorker 填充
+      thumbnailStorageKey: thumbnailStorageKey, // 使用存储服务生成URL
       creationDate: null,
-      hash: imageHash,
+      imageHash,
       userId,
       monthKey: "unknown",
       yearKey: "unknown",
       storageType: getDefaultStorageType(), // 动态获取当前存储类型
+      fileSize, // 文件大小（字节）
     };
 
     logger.info({
@@ -186,7 +182,7 @@ async function processAndSaveSingleImage(fileInfo) {
 
         // 2. 生成失败文件存储键名并移动文件
         const failedType = process.env.IMAGE_STORAGE_KEY_FAILED || "failed";
-        const failedStorageKey = storageService.storage.generateStorageKey(failedType, filename);
+        const failedStorageKey = storageService.storage.generateStorageKey(failedType, fileName);
         await storageService.storage.moveFile(storageKey, failedStorageKey);
 
         logger.info({
@@ -219,11 +215,10 @@ async function processAndSaveSingleImage(fileInfo) {
     await imageMetaQueue.add(process.env.IMAGE_META_QUEUE_NAME, {
       userId,
       imageHash,
-      filename,
+      fileName,
       storageKey, // 传递原始文件的存储键名
       extension: process.env.IMAGE_HIGHRES_EXTENSION || "avif",
       fileSize, // 传递文件大小
-      mimetype, // 传递文件类型
     });
 
     logger.info({
@@ -231,7 +226,7 @@ async function processAndSaveSingleImage(fileInfo) {
       details: {
         imageHash,
         userId,
-        filename,
+        fileName,
         thumbnailStorageKey,
       },
     });
@@ -242,7 +237,7 @@ async function processAndSaveSingleImage(fileInfo) {
       details: {
         imageHash,
         userId,
-        filename,
+        fileName,
         sourceStorageKey: storageKey,
         thumbnailStorageKey,
         error: error.message,

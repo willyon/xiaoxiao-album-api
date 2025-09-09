@@ -5,8 +5,16 @@
  * 用于在服务器上创建必要的数据库表
  */
 
+// 获取脚本所在目录的绝对路径
+const path = require("path");
+const scriptDir = path.dirname(__filename);
+const projectRoot = path.resolve(scriptDir, "..");
+
+// 设置工作目录为项目根目录
+process.chdir(projectRoot);
+
 require("dotenv").config();
-const { createTableUsers, createTableImages, addStorageTypeColumn } = require("../src/models/initTableModel");
+const { createTableUsers, createTableImages, addStorageTypeColumn } = require(path.join(projectRoot, "src", "models", "initTableModel"));
 
 async function initDatabase() {
   try {

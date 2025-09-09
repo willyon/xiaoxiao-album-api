@@ -32,6 +32,7 @@ const authMiddleware = require("./src/middlewares/authMiddleware");
 // 导入业务路由
 const authRoutes = require("./src/routes/authRoutes");
 const imagesRoutes = require("./src/routes/imagesRoutes");
+const aliyunOssCallbackRoutes = require("./src/routes/aliyunOssCallbackRoutes");
 
 // ========================== 创建Express实例，设置端口号 ========================== //
 
@@ -83,6 +84,9 @@ app.use("/localStorage", express.static(path.join(__dirname, "localStorage")));
 
 // 注册 注册/登录 路由
 app.use("/auth", authRoutes);
+
+// 注册阿里云OSS回调路由 - 不需要鉴权
+app.use("/aliyunOss", aliyunOssCallbackRoutes);
 
 // 注册图片业务路由+鉴权中间件(authMiddleware)
 app.use("/images", [authMiddleware], imagesRoutes);

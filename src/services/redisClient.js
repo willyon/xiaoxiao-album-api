@@ -20,7 +20,12 @@ const getRedisClient = () => {
     });
 
     redisClient.on("connect", () => {
-      logger.info({ message: "通用ioredis已连接成功!" });
+      // 仅在非脚本模式下显示连接成功日志
+      const isScriptMode =
+        process.env.NODE_ENV === "script" || process.argv[1]?.includes("deployment-scripts") || process.argv[1]?.includes("scripts/");
+      if (!isScriptMode) {
+        logger.info({ message: "通用ioredis已连接成功!" });
+      }
     });
 
     redisClient.on("error", (err) => {

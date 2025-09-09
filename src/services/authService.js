@@ -263,15 +263,18 @@ const sendVerificationEmail = async ({ email, JWTToken, language }) => {
 };
 
 const _getEmailContent = (language, JWTToken) => {
+  // 根据环境变量确定域名
+  const baseUrl = process.env.NODE_ENV === "development" ? "http://localhost:5173" : "https://photos.bingbingcloud.com";
+
   // 这里定义多语言的标题和正文内容
   const content = {
     en: {
-      mailName: "Xiao Album",
-      subject: "Activate Your Account for Xiao Album",
+      mailName: "Bingbing Cloud Photos",
+      subject: "Activate Your Account for Bingbing Cloud Photos",
       html: `
-        <h1>Welcome to Xiao Album!</h1>
+        <h1>Welcome to Bingbing Cloud Photos!</h1>
         <p>Click the button below to activate your account:</p>
-        <a href="https://photos.bingbingcloud.com/verifyEmail?token=${JWTToken}&lang=en" 
+        <a href="${baseUrl}/verifyEmail?token=${JWTToken}&lang=en" 
           style="display:inline-block;padding:10px 20px;background-color:#409eff;color:#fff;text-decoration:none;border-radius:4px;">
           Activate Account
         </a>
@@ -279,12 +282,12 @@ const _getEmailContent = (language, JWTToken) => {
       `,
     },
     zh: {
-      mailName: "笑笑相册",
-      subject: "激活您的笑笑相册账户",
+      mailName: "冰冰云照片",
+      subject: "激活您的冰冰云照片账户",
       html: `
-        <h1>欢迎来到 笑笑相册！</h1>
+        <h1>欢迎来到 冰冰云照片！</h1>
         <p>点击下面的按钮以激活您的账户：</p>
-        <a href="https://photos.bingbingcloud.com/verifyEmail?token=${JWTToken}&lang=zh" 
+        <a href="${baseUrl}/verifyEmail?token=${JWTToken}&lang=zh" 
           style="display:inline-block;padding:10px 20px;background-color:#409eff;color:#fff;text-decoration:none;border-radius:4px;">
           激活账户
         </a>

@@ -6,19 +6,22 @@
  * @Description: File description
  */
 const { db } = require("../services/dbService");
+const { mapFields } = require("../utils/fieldMapper");
 
 const findUserById = (userId) => {
   const stmt = db.prepare("SELECT * FROM users WHERE id = ?");
-  return stmt.get(userId);
+  const user = stmt.get(userId);
+  return user ? mapFields("users", user) : null;
 };
 
 const findUserByEmail = (email) => {
   const stmt = db.prepare("SELECT * FROM users WHERE email = ?");
-  return stmt.get(email);
+  const user = stmt.get(email);
+  return user ? mapFields("users", user) : null;
 };
 
 const insertUser = (email, password) => {
-  const stmt = db.prepare("INSERT INTO users (email, password, verifiedStatus) VALUES (?, ?, 'pending')");
+  const stmt = db.prepare("INSERT INTO users (email, password, verified_status) VALUES (?, ?, 'pending')");
   const result = stmt.run(email, password); // 执行插入操作
   const userId = result.lastInsertRowid; // 获取插入的用户ID
 
@@ -28,17 +31,17 @@ const insertUser = (email, password) => {
 };
 
 const updateUserVerificationToken = async (userId, newToken) => {
-  const stmt = db.prepare("UPDATE users SET verificationToken = ? WHERE id = ?");
+  const stmt = db.prepare("UPDATE users SET verification_token = ? WHERE id = ?");
   stmt.run(newToken, userId);
 };
 
 const updateUserStatus = async (userId, verifiedStatus) => {
-  const stmt = db.prepare("UPDATE users SET  verifiedStatus = ? WHERE id = ?");
+  const stmt = db.prepare("UPDATE users SET verified_status = ? WHERE id = ?");
   stmt.run(verifiedStatus, userId);
 };
 
 const updateVerificationTokenToNull = async (userId) => {
-  const stmt = db.prepare("UPDATE users SET verificationToken = NULL WHERE id = ?");
+  const stmt = db.prepare("UPDATE users SET verification_token = NULL WHERE id = ?");
   stmt.run(userId);
 };
 
