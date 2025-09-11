@@ -33,11 +33,11 @@ async function _addFullUrls(items, type = "image") {
       // 处理图片：生成高清图片URL和缩略图URL
       for (const item of items) {
         if (item.highResStorageKey) {
-          item.highResUrl = await storageService.getFileUrl(item.highResStorageKey, item.storageType || "local");
+          item.highResUrl = await storageService.getFileUrl(item.highResStorageKey, item.storageType);
           delete item.highResStorageKey; // 删除原始字段
         }
         if (item.thumbnailStorageKey) {
-          item.thumbnailUrl = await storageService.getFileUrl(item.thumbnailStorageKey, item.storageType || "local");
+          item.thumbnailUrl = await storageService.getFileUrl(item.thumbnailStorageKey, item.storageType);
           delete item.thumbnailStorageKey; // 删除原始字段
         }
         // 删除 storageType 字段
@@ -46,8 +46,9 @@ async function _addFullUrls(items, type = "image") {
     } else if (type === "group") {
       // 处理分组：生成封面图片URL
       for (const item of items) {
-        if (item.latestImageUrl) {
-          item.latestImageUrl = await storageService.getFileUrl(item.latestImageUrl, item.storageType || "local");
+        if (item.latestImagekey) {
+          item.latestImageUrl = await storageService.getFileUrl(item.latestImagekey, item.storageType);
+          delete item.latestImagekey; // 删除原始字段
         }
         // 删除 storageType 字段
         delete item.storageType;

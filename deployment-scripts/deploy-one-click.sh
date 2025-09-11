@@ -44,7 +44,7 @@ set -e  # 遇到错误立即退出
 SSH_KEY="/Volumes/Personal-Files/projects/aliCloud/remote-connecting/bingbingcloud-key.pem"
 SERVER_USER="xiaoxiao"
 SERVER_HOST="8.134.118.242"
-SERVER_PATH="/var/www/xiaoxiao-album/backend"
+SERVER_PATH="/var/www/photos.bingbingcloud.com/backend"
 
 # 创建日志文件（每天一个文件）
 LOG_FILE="./one-click-deployment-$(date +%Y%m%d).log"

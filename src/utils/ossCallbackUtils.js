@@ -15,20 +15,12 @@ const OSS_CALLBACK_CONFIG = {
   // 时间窗口（秒）
   MAX_AGE_SECONDS: parseInt(process.env.OSS_CALLBACK_MAX_AGE_SECONDS) || 600, // 10分钟
   // 公钥缓存时间（秒）
-  PUBLIC_KEY_CACHE_SECONDS: parseInt(process.env.OSS_PUBLIC_KEY_CACHE_SECONDS) || 3600, // 1小时
-  // URL解码缓存时间（秒）
-  PUBLIC_KEY_URL_CACHE_SECONDS: parseInt(process.env.OSS_PUBLIC_KEY_URL_CACHE_SECONDS) || 86400, // 24小时
+  PUBLIC_KEY_CACHE_SECONDS: parseInt(process.env.OSS_PUBLIC_KEY_CACHE_SECONDS) || 86400, // 24小时
 };
 
 // 公钥缓存
 let publicKeyCache = {
   key: null,
-  timestamp: 0,
-};
-
-// URL 解码缓存
-let urlDecodeCache = {
-  decodedUrl: null,
   timestamp: 0,
 };
 
@@ -75,23 +67,14 @@ function _isRequestTimestampValid(dateHeader) {
 }
 
 /**
- * 解码 Base64 编码的 URL（带缓存）
+ * 解码Base64编码的URL
  *
- * 由于 OSS 公钥 URL 是固定的，可以缓存解码结果以提高性能
+ * 将OSS回调中的Base64编码公钥URL解码为可用的URL
  *
  * @param {string} encodedUrl - Base64 编码的 URL
- * @returns {string} 解码后的 URL
+ * @returns {string|null} 解码后的 URL，无效时返回null
  */
-function _decodeUrlWithCache(encodedUrl) {
-  const now = Date.now();
-  const cacheAge = (now - urlDecodeCache.timestamp) / 1000; // 秒
-
-  // 检查缓存是否有效（基于配置的过期时间）
-  if (urlDecodeCache.decodedUrl && cacheAge < OSS_CALLBACK_CONFIG.PUBLIC_KEY_URL_CACHE_SECONDS) {
-    return urlDecodeCache.decodedUrl;
-  }
-
-  // 缓存无效，重新解码
+function _decodeUrl(encodedUrl) {
   const decodedUrl = Buffer.from(encodedUrl, "base64").toString("utf-8");
 
   // 验证公钥 URL 是否合法
@@ -100,14 +83,29 @@ function _decodeUrlWithCache(encodedUrl) {
       message: "Invalid public key URL",
       details: { decodedUrl },
     });
-    return null; // 返回空值，不缓存
+    return null;
   }
 
-  // 更新缓存
-  urlDecodeCache.decodedUrl = decodedUrl;
-  urlDecodeCache.timestamp = now;
-
   return decodedUrl;
+}
+
+/**
+ * 获取缓存的公钥
+ *
+ * 检查公钥缓存是否有值且未过期
+ *
+ * @returns {string|null} 缓存的公钥，无效时返回null
+ */
+function _getCachedPublicKey() {
+  const now = Date.now();
+  const cacheAge = (now - publicKeyCache.timestamp) / 1000; // 秒
+
+  // 检查缓存是否有效
+  if (publicKeyCache.key && cacheAge < OSS_CALLBACK_CONFIG.PUBLIC_KEY_CACHE_SECONDS) {
+    return publicKeyCache.key;
+  }
+
+  return null;
 }
 
 /**
@@ -121,18 +119,11 @@ function _decodeUrlWithCache(encodedUrl) {
  * @throws {Error} 当获取公钥失败时抛出错误
  */
 async function _fetchPublicKeyWithCache(pubKeyUrl) {
-  const now = Date.now();
-  const cacheAge = (now - publicKeyCache.timestamp) / 1000; // 秒
-
-  // 检查缓存是否有效
-  if (publicKeyCache.key && cacheAge < OSS_CALLBACK_CONFIG.PUBLIC_KEY_CACHE_SECONDS) {
-    return publicKeyCache.key;
-  }
-
   try {
     const publicKey = await _fetchPublicKey(pubKeyUrl);
 
     // 更新缓存
+    const now = Date.now();
     publicKeyCache.key = publicKey;
     publicKeyCache.timestamp = now;
 
@@ -145,6 +136,7 @@ async function _fetchPublicKeyWithCache(pubKeyUrl) {
         error: error.message,
       },
     });
+    throw error;
   }
 }
 
@@ -253,16 +245,21 @@ async function verifyOSSCallbackSignature(req) {
       }
 
       // 2. 公钥签名验证
-      // 解码获取公钥的URL（Base64编码，带缓存）
-      const decodedPubKeyUrl = _decodeUrlWithCache(pubKeyUrl);
+      // 先检查公钥缓存是否有值且未过期
+      let publicKey = await _getCachedPublicKey();
 
-      // 检查公钥 URL 是否合法
-      if (!decodedPubKeyUrl) {
-        return false;
+      // 如果公钥缓存无效，才去解码URL并获取公钥
+      if (!publicKey) {
+        const decodedPubKeyUrl = _decodeUrl(pubKeyUrl);
+
+        // 检查公钥 URL 是否合法
+        if (!decodedPubKeyUrl) {
+          return false;
+        }
+
+        // 获取公钥（带缓存）
+        publicKey = await _fetchPublicKeyWithCache(decodedPubKeyUrl);
       }
-
-      // 获取公钥（带缓存）
-      const publicKey = await _fetchPublicKeyWithCache(decodedPubKeyUrl);
 
       // 构建待签名字符串
       const stringToSign = _buildStringToSign(req);

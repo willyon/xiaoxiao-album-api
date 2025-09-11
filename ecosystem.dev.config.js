@@ -6,34 +6,31 @@
  * @Description: File description
  */
 // ecosystem.config.js
-// 生产环境配置 主要用于生产环境部署 pm2 start ecosystem.config.js
+// 开发环境配置 主要用于开发环境测试 pm2 start ecosystem.dev.config.js
 module.exports = {
   apps: [
     {
       name: "app-service",
       script: "server.js",
-      cwd: "/var/www/photos.bingbingcloud.com/backend",
       watch: false,
       env: {
-        NODE_ENV: "production",
+        NODE_ENV: "development",
       },
     },
     {
       name: "image-upload-worker",
       script: "src/workers/imageUploadWorker.js",
-      cwd: "/var/www/photos.bingbingcloud.com/backend",
       watch: false,
       env: {
-        NODE_ENV: "production",
+        NODE_ENV: "development",
       },
     },
     {
       name: "image-meta-worker",
       script: "src/workers/imageMetaWorker.js",
-      cwd: "/var/www/photos.bingbingcloud.com/backend",
       watch: false,
       env: {
-        NODE_ENV: "production",
+        NODE_ENV: "development",
       },
     },
   ],

@@ -41,7 +41,7 @@ async function handleCheckFileExists(req, res, next) {
     const exists = await redisClient.sismember(setKey, hash);
 
     if (exists === 1) {
-      // 文件已存在，返回秒传信息
+      // 文件已存在
       logger.info({
         message: "File exists in Redis cache",
         details: { userId, imageHash: hash },

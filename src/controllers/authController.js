@@ -12,6 +12,7 @@ const CustomError = require("../errors/customError");
 const { getRedisClient } = require("../services/redisClient");
 const CooldownManager = require("../services/cooldownService");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
+const { getDefaultStorageType } = require("../storage/constants/StorageTypes");
 
 const redisClient = getRedisClient();
 
@@ -90,6 +91,7 @@ const handleLoginOrRegister = async (req, res, next) => {
             // id: existingUser.id,
             email: existingUser.email,
           },
+          storageType: getDefaultStorageType(), // 当前存储类型
         },
       });
     }
@@ -167,7 +169,12 @@ const handleCheckLoginStatus = async (req, res, next) => {
     }
 
     // 登录状态有效
-    return res.sendResponse();
+    return res.sendResponse({
+      messageCode: "LOGIN_SUCCESS",
+      data: {
+        storageType: getDefaultStorageType(), // 当前存储类型
+      },
+    });
   } catch (error) {
     next(error);
   }

@@ -148,11 +148,10 @@ function _applyEncoderByExt(pipeline, ext, quality = 80, fileSize = FILE_SIZE_TH
 class StorageService {
   /**
    * 创建存储服务实例
-   * @param {Object|null} [config=null] - 可选配置，如果不提供则从环境变量读取
    */
-  constructor(config = null) {
+  constructor() {
     // 当前配置的存储适配器（可能是本地存储或OSS）
-    this.storage = StorageAdapterFactory.createAdapter(config);
+    this.storage = StorageAdapterFactory.createAdapter();
 
     // 获取当前存储类型
     this._currentStorageType = this.storage.type;
@@ -169,23 +168,23 @@ class StorageService {
     try {
       // 如果当前是本地存储，返回OSS适配器
       if (this._currentStorageType === STORAGE_TYPES.LOCAL) {
-        return StorageAdapterFactory.createAdapter(STORAGE_TYPES.ALIYUN_OSS, false);
+        return StorageAdapterFactory.createBackupAdapter(STORAGE_TYPES.ALIYUN_OSS);
       }
 
       // 如果当前是OSS存储，返回本地适配器
       if (this._currentStorageType === STORAGE_TYPES.ALIYUN_OSS) {
-        return StorageAdapterFactory.createAdapter(STORAGE_TYPES.LOCAL, false);
+        return StorageAdapterFactory.createBackupAdapter(STORAGE_TYPES.LOCAL);
       }
 
       // 默认返回本地适配器
-      return StorageAdapterFactory.createAdapter(STORAGE_TYPES.LOCAL, false);
+      return StorageAdapterFactory.createBackupAdapter(STORAGE_TYPES.LOCAL);
     } catch (error) {
       // 如果创建备用适配器失败，回退到本地适配器
       logger.warn({
         message: "创建备用适配器失败，回退到本地适配器",
         details: { error: error.message },
       });
-      return StorageAdapterFactory.createAdapter(STORAGE_TYPES.LOCAL, false);
+      return null;
     }
   }
 
@@ -249,23 +248,26 @@ class StorageService {
    * 根据图片的存储类型自动选择对应的存储适配器
    * @param {string} storageKey - 存储键名
    * @param {string} storageType - 存储类型
+   * @param {Object} [options={}] - 选项
+   * @param {number} [options.expiresIn=3600] - 签名URL过期时间（秒）
+   * @param {boolean} [options.forceSigned=false] - 是否强制生成签名URL
    * @returns {Promise<string|null>} 完整的文件访问URL
    */
-  async getFileUrl(storageKey, storageType) {
+  async getFileUrl(storageKey, storageType, options = {}) {
     try {
       let adapter;
 
       // 根据存储类型选择对应的适配器
       if (storageType === this._currentStorageType) {
         adapter = this.storage;
-      } else if (storageType === this._backupAdapter.type) {
+      } else if (this._backupAdapter && storageType === this._backupAdapter.type) {
         adapter = this._backupAdapter;
       } else {
         // 如果都不匹配，使用当前适配器作为默认
         adapter = this.storage;
       }
 
-      return await adapter.getFileUrl(storageKey);
+      return await adapter.getFileUrl(storageKey, options);
     } catch (error) {
       logger.error({
         message: "获取文件访问URL失败",
@@ -283,9 +285,12 @@ class StorageService {
    * 批量获取文件URL（优化版本）
    * 先对数据进行分类，然后批量处理，避免重复的适配器判断和创建
    * @param {Array<{storageKey: string, storageType: string}>} files - 文件信息数组
+   * @param {Object} [options={}] - 选项
+   * @param {number} [options.expiresIn=3600] - 签名URL过期时间（秒）
+   * @param {boolean} [options.forceSigned=false] - 是否强制生成签名URL
    * @returns {Promise<Array<{storageKey: string, storageType: string, url: string|null}>>} URL结果数组
    */
-  async getFileUrls(files) {
+  async getFileUrls(files, options = {}) {
     // 创建文件到索引的映射，保持原始顺序
     const fileToIndexMap = new Map();
     files.forEach((file, index) => {
@@ -312,7 +317,7 @@ class StorageService {
       const currentUrls = await Promise.all(
         currentTypeFiles.map(async (file) => {
           try {
-            const url = await this.storage.getFileUrl(file.storageKey);
+            const url = await this.storage.getFileUrl(file.storageKey, options);
             return { storageKey: file.storageKey, storageType: file.storageType, url };
           } catch (error) {
             logger.error({
@@ -338,7 +343,7 @@ class StorageService {
       const otherUrls = await Promise.all(
         otherTypeFiles.map(async (file) => {
           try {
-            const url = await backupAdapter.getFileUrl(file.storageKey);
+            const url = await backupAdapter.getFileUrl(file.storageKey, options);
             return { storageKey: file.storageKey, storageType: file.storageType, url };
           } catch (error) {
             logger.error({

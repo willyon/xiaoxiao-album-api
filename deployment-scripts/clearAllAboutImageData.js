@@ -103,78 +103,10 @@ function clearLocalStorageFiles() {
 
 // 清空OSS存储的图片文件
 async function clearOSSStorageFiles() {
-  console.log("☁️  开始清空OSS存储文件...");
-
-  try {
-    // 调试信息：检查环境变量
-    console.log("🔍 调试信息：");
-    console.log(`  ALIYUN_OSS_AUTH_TYPE: ${process.env.ALIYUN_OSS_AUTH_TYPE || "undefined"}`);
-    console.log(`  ALIYUN_OSS_REGION: ${process.env.ALIYUN_OSS_REGION || "undefined"}`);
-    console.log(`  ALIYUN_OSS_BUCKET: ${process.env.ALIYUN_OSS_BUCKET || "undefined"}`);
-
-    // 尝试创建OSS适配器
-    const storageAdapter = StorageAdapterFactory.createAdapter(STORAGE_TYPES.ALIYUN_OSS, false);
-
-    // 检查适配器类型
-    if (storageAdapter.type !== STORAGE_TYPES.ALIYUN_OSS) {
-      console.warn("⚠️  无法创建OSS适配器，跳过OSS存储清理");
-      return;
-    }
-
-    // 定义需要清空的前缀
-    const prefixes = [
-      "upload/", // 上传文件
-      "failed/", // 失败文件
-      "original/", // 原图
-      "highres/", // 高清图
-      "thumbnail/", // 缩略图
-    ];
-
-    let totalDeleted = 0;
-
-    for (const prefix of prefixes) {
-      console.log(`  正在清空前缀: ${prefix}`);
-
-      try {
-        // 获取该前缀下的所有文件
-        const files = await storageAdapter.listFiles(prefix);
-
-        if (files.length) {
-          console.log(`  找到 ${files.length} 个文件，开始删除...`);
-
-          // 批量删除文件
-          const results = await storageAdapter.deleteFiles(files);
-
-          // 统计删除结果
-          const successCount = results.filter((r) => r.success).length;
-          const failCount = results.filter((r) => !r.success).length;
-
-          totalDeleted += successCount;
-          console.log(`  前缀 ${prefix} 删除完成: 成功 ${successCount} 个，失败 ${failCount} 个`);
-
-          if (failCount > 0) {
-            console.warn(`  以下文件删除失败:`);
-            results
-              .filter((r) => !r.success)
-              .forEach((r) => {
-                console.warn(`    - ${r.key}: ${r.error}`);
-              });
-          }
-        } else {
-          console.log(`  前缀 ${prefix} 下没有文件`);
-        }
-      } catch (prefixError) {
-        console.warn(`  前缀 ${prefix} 处理失败: ${prefixError.message}`);
-        continue; // 继续处理下一个前缀
-      }
-    }
-
-    console.log(`✅ OSS存储文件清空完成，共删除 ${totalDeleted} 个文件`);
-  } catch (error) {
-    console.warn("⚠️  OSS存储清空失败，可能是配置问题");
-    console.warn(`   错误详情: ${error.message}`);
-    throw error; // 重新抛出错误，让上层处理
-  }
+  console.log("☁️  跳过OSS存储文件清理...");
+  console.log("⚠️  为了保护OSS中的图片数据，已禁用OSS文件删除功能");
+  console.log("💡 如需删除OSS文件，请手动在阿里云控制台操作");
+  return; // 直接返回，不执行任何删除操作
 }
 
 // 清空所有存储类型的文件（本地存储 + OSS存储）

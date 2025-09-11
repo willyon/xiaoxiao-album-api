@@ -20,7 +20,7 @@
 ```bash
 # SSH到服务器
 ssh -i /path/to/key.pem xiaoxiao@8.134.118.242
-cd /var/www/xiaoxiao-album/backend
+cd /var/www/photos.bingbingcloud.com/backend
 
 # 执行服务器部署脚本（根据本地脚本提示的参数）
 ./deploy-server.sh
@@ -209,19 +209,19 @@ node scripts/clearQueues.js
 
 ```bash
 # 上传文件到服务器
-scp -i /path/to/key.pem init-database.js xiaoxiao@server:/var/www/xiaoxiao-album/backend/
+scp -i /path/to/key.pem init-database.js xiaoxiao@server:/var/www/photos.bingbingcloud.com/backend/
 
 # 在服务器上执行数据库初始化
-ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/xiaoxiao-album/backend && node init-database.js"
+ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && node init-database.js"
 
 # 在服务器上修复Sharp（包含系统库安装）
-ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/xiaoxiao-album/backend && ./fix-sharp-complete.sh"
+ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && ./fix-sharp-complete.sh"
 
 # 清理所有数据（数据库、文件、队列）
-ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/xiaoxiao-album/backend && node scripts/clearAllAboutImageData.js"
+ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && node scripts/clearAllAboutImageData.js"
 
 # 清理队列任务
-ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/xiaoxiao-album/backend && node scripts/clearQueues.js"
+ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && node scripts/clearQueues.js"
 
 # 检查服务状态
 ssh -i /path/to/key.pem xiaoxiao@server "pm2 status"
@@ -236,7 +236,7 @@ ssh -i /path/to/key.pem xiaoxiao@server "pm2 logs"
 
    ```bash
    # 手动修复Sharp（包含系统库安装）
-   ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/xiaoxiao-album/backend && ./fix-sharp-complete.sh"
+   ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && ./fix-sharp-complete.sh"
    ```
 
 2. **Redis服务问题**
@@ -253,24 +253,24 @@ ssh -i /path/to/key.pem xiaoxiao@server "pm2 logs"
 
    ```bash
    # 重新初始化数据库
-   ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/xiaoxiao-album/backend && node init-database.js"
+   ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && node init-database.js"
    ```
 
 4. **服务问题**
 
    ```bash
    # 重启所有服务
-   ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/xiaoxiao-album/backend && pm2 restart all"
+   ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && pm2 restart all"
    ```
 
 5. **数据清理问题**
 
    ```bash
    # 清理所有数据（开发测试环境）
-   ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/xiaoxiao-album/backend && node scripts/clearAllAboutImageData.js"
+   ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && node scripts/clearAllAboutImageData.js"
 
    # 清理队列任务
-   ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/xiaoxiao-album/backend && node scripts/clearQueues.js"
+   ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && node scripts/clearQueues.js"
    ```
 
 ## 📊 PM2 服务管理
@@ -467,7 +467,7 @@ npm run db help
 ssh -i /path/to/key.pem xiaoxiao@8.134.118.242
 
 # 进入项目目录
-cd /var/www/xiaoxiao-album/backend
+cd /var/www/photos.bingbingcloud.com/backend
 
 # 打开数据库
 sqlite3 database.db
@@ -483,20 +483,20 @@ SELECT * FROM users LIMIT 5;  # 查询数据
 
 ```bash
 # 查看所有表
-ssh -i /path/to/key.pem xiaoxiao@8.134.118.242 "cd /var/www/xiaoxiao-album/backend && sqlite3 database.db '.tables'"
+ssh -i /path/to/key.pem xiaoxiao@8.134.118.242 "cd /var/www/photos.bingbingcloud.com/backend && sqlite3 database.db '.tables'"
 
 # 查询用户数据
-ssh -i /path/to/key.pem xiaoxiao@8.134.118.242 "cd /var/www/xiaoxiao-album/backend && sqlite3 database.db 'SELECT * FROM users LIMIT 5;'"
+ssh -i /path/to/key.pem xiaoxiao@8.134.118.242 "cd /var/www/photos.bingbingcloud.com/backend && sqlite3 database.db 'SELECT * FROM users LIMIT 5;'"
 
 # 统计记录数
-ssh -i /path/to/key.pem xiaoxiao@8.134.118.242 "cd /var/www/xiaoxiao-album/backend && sqlite3 database.db 'SELECT COUNT(*) FROM users;'"
+ssh -i /path/to/key.pem xiaoxiao@8.134.118.242 "cd /var/www/photos.bingbingcloud.com/backend && sqlite3 database.db 'SELECT COUNT(*) FROM users;'"
 ```
 
 #### 方法3：下载数据库文件到本地
 
 ```bash
 # 下载数据库文件
-scp -i /path/to/key.pem xiaoxiao@8.134.118.242:/var/www/xiaoxiao-album/backend/database.db ./database.db
+scp -i /path/to/key.pem xiaoxiao@8.134.118.242:/var/www/photos.bingbingcloud.com/backend/database.db ./database.db
 
 # 使用本地工具打开
 # DB Browser for SQLite: https://sqlitebrowser.org/
@@ -528,10 +528,10 @@ sqlite3 database.db
 
 ```bash
 # 创建备份
-ssh -i /path/to/key.pem xiaoxiao@8.134.118.242 "cd /var/www/xiaoxiao-album/backend && cp database.db database-$(date +%Y%m%d-%H%M%S).backup.db"
+ssh -i /path/to/key.pem xiaoxiao@8.134.118.242 "cd /var/www/photos.bingbingcloud.com/backend && cp database.db database-$(date +%Y%m%d-%H%M%S).backup.db"
 
 # 下载备份到本地
-scp -i /path/to/key.pem xiaoxiao@8.134.118.242:/var/www/xiaoxiao-album/backend/database-*.backup.db ./
+scp -i /path/to/key.pem xiaoxiao@8.134.118.242:/var/www/photos.bingbingcloud.com/backend/database-*.backup.db ./
 ```
 
 ## 🗑️ 数据清理指南
@@ -558,10 +558,10 @@ scp -i /path/to/key.pem xiaoxiao@8.134.118.242:/var/www/xiaoxiao-album/backend/d
 
 ```bash
 # 清理数据库和文件
-ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/xiaoxiao-album/backend && node scripts/clearAllAboutImageData.js"
+ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && node scripts/clearAllAboutImageData.js"
 
 # 清理队列任务
-ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/xiaoxiao-album/backend && node scripts/clearQueues.js"
+ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && node scripts/clearQueues.js"
 ```
 
 ### 清理内容

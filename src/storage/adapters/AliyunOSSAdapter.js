@@ -4,34 +4,53 @@
  * @Description: 阿里云OSS存储适配器
  */
 
-const path = require("path");
 const OSS = require("ali-oss");
 const fsExtra = require("fs-extra");
 const multer = require("multer");
 const BaseStorageAdapter = require("./BaseStorageAdapter");
-const { STORAGE_TYPES } = require("../constants/StorageTypes");
 const logger = require("../../utils/logger");
 const { generatePolicySignature } = require("../../utils/ossSignature");
-const { isAliyunECS } = require("../../utils/environmentDetector");
 const { buildOSSCallbackUrl } = require("../../utils/ossCallbackUtils");
+const { OSS_AUTH_TYPES } = require("../constants/StorageTypes");
+const Credential = require("@alicloud/credentials").default;
 
 /**
  * 阿里云OSS存储适配器
- * 支持多种认证方式：RAM角色授权（推荐）、AccessKey、STS临时凭证
+ *
+ * 提供完整的阿里云对象存储服务(OSS)集成，支持多种认证方式、智能网络选择、
+ * 前端直传、批量操作等高级功能。适用于图片存储、文件管理、CDN加速等场景。
  *
  * @class AliyunOSSAdapter
  * @extends {BaseStorageAdapter}
  *
+ * ## 主要功能
+ * - 🔐 **多种认证方式**：RAM角色(推荐)、AccessKey、STS临时凭证
+ * - 🌐 **智能网络选择**：自动检测ECS环境，优先使用内网地址节省流量
+ * - 📤 **前端直传支持**：生成签名URL，支持前端直接上传到OSS
+ * - 🔄 **批量操作**：支持批量上传、删除文件
+ * - 📁 **文件管理**：上传、下载、删除、移动、检查存在性
+ * - 🔗 **URL生成**：支持公共URL和签名URL
+ * - 🏷️ **元数据支持**：文件元数据设置和获取
+ * - ⚡ **Multer集成**：与Express文件上传中间件无缝集成
+ *
+ * ## 认证方式对比
+ * | 认证方式 | 适用场景 | 安全性 | 推荐度 |
+ * |---------|---------|--------|--------|
+ * | RAM角色 | ECS生产环境 | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+ * | STS临时凭证 | 前端直传、第三方集成 | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
+ * | AccessKey | 开发测试、小规模应用 | ⭐⭐ | ⭐⭐ |
+ *
  * @example
- * // RAM角色授权（推荐，适用于ECS环境）
- * const ramConfig = {
+ * // 角色授权（推荐，适用于ECS环境）
+ * const roleConfig = {
  *   region: "oss-cn-hangzhou",
  *   bucket: "my-bucket",
- *   authType: "ram"
+ *   authType: "ecs_ram_role",
+ *   ramRoleName: "ECS-Role-OSSReadWrite" // 可选：自动探测ECS绑定的角色
  * };
  *
  * @example
- * // AccessKey方式
+ * // AccessKey方式（开发测试）
  * const accessKeyConfig = {
  *   region: "oss-cn-hangzhou",
  *   bucket: "my-bucket",
@@ -41,7 +60,7 @@ const { buildOSSCallbackUrl } = require("../../utils/ossCallbackUtils");
  * };
  *
  * @example
- * // STS临时凭证
+ * // STS临时凭证（前端直传）
  * const stsConfig = {
  *   region: "oss-cn-hangzhou",
  *   bucket: "my-bucket",
@@ -52,12 +71,13 @@ const { buildOSSCallbackUrl } = require("../../utils/ossCallbackUtils");
  * };
  *
  * @example
- * // 使用CDN自定义域名
+ * // 自定义域名配置
  * const cdnConfig = {
  *   region: "oss-cn-hangzhou",
  *   bucket: "my-bucket",
- *   authType: "ram",
- *   customDomain: "https://cdn.example.com" // 或 "cdn.example.com"
+ *   authType: "ecs_ram_role",
+ *   customDomain: "https://oss.bingbingcloud.com", // 或 "oss.bingbingcloud.com"
+ *   preferInternal: true // 优先使用内网地址
  * };
  *
  * @param {Object} config - 配置对象
@@ -71,38 +91,264 @@ const { buildOSSCallbackUrl } = require("../../utils/ossCallbackUtils");
  *
  * @param {string} config.bucket - OSS存储桶名称（必需）
  *
+ * @param {string} [config.authType="ecs_ram_role"] - 认证方式
+ *   - "ecs_ram_role": RAM角色授权（推荐，适用于ECS环境）
+ *   - "accesskey": AccessKey长期密钥（开发测试）
+ *   - "sts": STS临时凭证（前端直传、第三方集成）
+ *
+ * @param {string} [config.ramRoleName] - RAM角色名称（仅role模式）
+ *   - 可选：若不传会自动探测ECS绑定的角色
+ *   - 例如："ECS-Role-OSSReadWrite"
+ *
+ * @param {string} [config.accessKeyId] - AccessKey ID（accesskey/sts模式必需）
+ * @param {string} [config.accessKeySecret] - AccessKey Secret（accesskey/sts模式必需）
+ * @param {string} [config.stsToken] - STS临时凭证Token（sts模式必需）
  *
  * @param {string} [config.customDomain] - 自定义访问域名（可选）
  *   - 支持CDN加速域名，如："https://cdn.example.com" 或 "cdn.example.com"
  *   - 如果不提供协议前缀，默认使用https://
  *   - 用于替代默认的OSS域名生成文件访问URL
  *
- * @param {number} [config.timeout=60000] - 请求超时时间（毫秒）
+ * @param {boolean} [config.preferInternal=false] - 是否优先使用内网地址
+ *   - true: 强制使用内网地址（节省流量费用）
+ *   - false: 使用公网地址（默认）
+ *
+ * @param {number} [config.timeout=300000] - 请求超时时间（毫秒）
  *   - 单个OSS请求的最大等待时间
  *   - 建议：小文件30秒，大文件5-10分钟
  *
- * @param {boolean} [config.secure=true] - 是否使用HTTPS
- *   - 推荐保持true，使用HTTPS协议
+ * @throws {Error} 当配置参数无效时抛出错误
+ *
+ * @since 1.0.0
+ * @version 2.0.0
  */
 class AliyunOSSAdapter extends BaseStorageAdapter {
   constructor(config = {}) {
     super(config);
-    this.type = STORAGE_TYPES.ALIYUN_OSS;
-    this.config = config;
+    this.type = config.storageType;
+    this.config = config[config.ossAuthType];
 
+    // 异步初始化：构造后立即启动初始化流程
+    this._initPromise = this._initClient();
+  }
+
+  /**
+   * 异步初始化客户端
+   * @private
+   */
+  async _initClient() {
+    // 认证上下文
+    const authCtx = this._prepareAuthContext();
+
+    // 基础配置
+    const baseConfig = this._buildBaseConfig();
+
+    // 实例化客户端（可能需要异步获取 STS）
+    this.client = await this._createClientByAuthType(baseConfig, authCtx);
+
+    // 若配置了自定义域名，则在初始化阶段就创建签名用的客户端
+    await this._maybeInitSigner(authCtx);
+
+    logger.info({
+      message: "阿里云OSS已连接(异步初始化)",
+      details: { region: this.region, bucket: this.bucket, endpoint: baseConfig.endpoint || "(public by region)", authType: authCtx.mode },
+    });
+  }
+
+  /**
+   * 在初始化阶段创建“签名客户端”，用于生成以自定义域名或公网桶域名为 Host 的签名 URL
+   * 触发条件：有 customDomain 或 preferInternal=true（后者用于内网 client 下的对外签名）
+   * @private
+   */
+  async _maybeInitSigner(authCtx) {
+    // 如果没有endpoint 则直接返回 代表了没有自定义域名 以及client实例没有走内网 走了默认的公网
+    if (!this.config.customDomain && !this.config.preferInternal) return;
+    let configObj = {};
+    if (!!this.config.customDomain) {
+      // 自定义域名，必须 cname:true
+      configObj.endpoint = this.config.customDomain.startsWith("http")
+        ? this.config.customDomain.replace(/\/+$/, "")
+        : `https://${this.config.customDomain}`;
+      configObj.cname = true;
+    }
+
+    const baseConfig = { region: this.region, bucket: this.bucket, ...configObj };
+
+    if (authCtx.mode === OSS_AUTH_TYPES.ROLE) {
+      // 复用主 client 的 RAM 角色凭证提供器
+      const credClient = this.credential; // 已在 _createClientByAuthType 中赋值
+      const s = await credClient.getCredential();
+
+      this.signer = new OSS({
+        ...baseConfig,
+        accessKeyId: s.accessKeyId,
+        accessKeySecret: s.accessKeySecret,
+        stsToken: s.securityToken,
+        refreshSTSToken: async () => {
+          const r = await credClient.getCredential();
+          return {
+            accessKeyId: r.accessKeyId,
+            accessKeySecret: r.accessKeySecret,
+            stsToken: r.securityToken,
+          };
+        },
+        refreshSTSTokenInterval: 10 * 60 * 1000, // 可按需调整
+      });
+      return;
+    } else if (authCtx.mode === OSS_AUTH_TYPES.ACCESS_KEY) {
+      this.signer = new OSS({
+        ...baseConfig,
+        accessKeyId: authCtx.accessKeyId,
+        accessKeySecret: authCtx.accessKeySecret,
+      });
+      return;
+    } else if (authCtx.mode === OSS_AUTH_TYPES.STS) {
+      this.signer = new OSS({
+        ...baseConfig,
+        accessKeyId: authCtx.accessKeyId,
+        accessKeySecret: authCtx.accessKeySecret,
+        stsToken: authCtx.stsToken,
+      });
+      return;
+    }
+  }
+
+  /**
+   * 确保 OSS 客户端已初始化
+   * @private
+   */
+  async _ensureClient() {
+    if (!this.client) {
+      // 没有正在进行的初始化就开一个
+      if (!this._initPromise) this._initPromise = this._initClient();
+
+      try {
+        await this._initPromise;
+      } catch (e) {
+        // 让后续有机会重新触发初始化
+        this._initPromise = null;
+        throw e;
+      }
+    }
+  }
+
+  /**
+   * 同步构建基础配置
+   * @private
+   */
+  _buildBaseConfig() {
+    const baseConfig = {
+      region: this.region,
+      bucket: this.bucket,
+      timeout: this.config.timeout || 300000,
+    };
+
+    // baseUrl 仅用于拼公共 URL 的显示域名；签名 URL 由 signer 决定 Host
+    this.baseUrl = this.config.customDomain || this._getBucketPublicHost();
+
+    // 配置 preferInternal=true 时，按约定拼装内网域名（要求同地域）
+    if (this.config.preferInternal) {
+      baseConfig.internal = true;
+      return baseConfig;
+    }
+
+    // 默认：不设置 endpoint，默认走公网
+    return baseConfig;
+  }
+
+  /**
+   * 校验并准备认证上下文
+   * @private
+   */
+  _prepareAuthContext() {
+    const required = ["region", "bucket"];
+    const missing = required.filter((k) => !this.config[k]);
+    if (missing.length) throw new Error(`AliyunOSS config missing required fields: ${missing.join(", ")}`);
     // 设置 bucket 和 region 属性
-    this.bucket = config.bucket;
-    this.region = config.region;
+    this.bucket = this.config.bucket;
+    this.region = this.config.region;
 
-    // 设置认证信息（用于签名生成）
-    this.accessKeyId = config.accessKeyId;
-    this.accessKeySecret = config.accessKeySecret;
+    const mode = (this?.config?.authType || OSS_AUTH_TYPES.ROLE).toLowerCase();
 
-    // 1. 首先验证必要配置
-    this._validateConfig();
+    if (mode === OSS_AUTH_TYPES.ACCESS_KEY) {
+      const need = ["accessKeyId", "accessKeySecret"];
+      const lack = need.filter((k) => !this.config[k]);
+      if (lack.length) throw new Error(`AccessKey authentication missing required fields: ${lack.join(", ")}`);
+      this.accessKeyId = this.config.accessKeyId;
+      this.accessKeySecret = this.config.accessKeySecret;
+      return { mode, accessKeyId: this.accessKeyId, accessKeySecret: this.accessKeySecret };
+    } else if (mode === OSS_AUTH_TYPES.STS) {
+      const need = ["accessKeyId", "accessKeySecret", "stsToken"];
+      const lack = need.filter((k) => !this.config[k]);
+      if (lack.length) throw new Error(`STS authentication missing required fields: ${lack.join(", ")}`);
+      this.accessKeyId = this.config.accessKeyId;
+      this.accessKeySecret = this.config.accessKeySecret;
+      this.stsToken = this.config.stsToken;
+      return { mode, accessKeyId: this.accessKeyId, accessKeySecret: this.accessKeySecret, stsToken: this.stsToken };
+    }
 
-    // 2. 初始化OSS客户端（baseUrl将在首次使用时初始化）
-    this.client = this._createOSSClient();
+    return { mode: OSS_AUTH_TYPES.ROLE };
+  }
+
+  /**
+   * 按认证方式创建 OSS 客户端
+   * @private
+   */
+  async _createClientByAuthType(baseConfig, authCtx) {
+    const mode = authCtx.mode;
+
+    if (mode === OSS_AUTH_TYPES.ROLE) {
+      // 使用 ECS RAM 角色：先取 STS，再把三元组交给 ali-oss，并配置自动续期
+      const credClient =
+        this.credential ||
+        new Credential({
+          type: this.config.authType, // 应为 'ecs_ram_role'
+          roleName: this.config.ramRoleName, // 可选
+          disableIMDSv1: true,
+          timeout: 3000,
+        });
+
+      const s = await credClient.getCredential();
+
+      const client = new OSS({
+        ...baseConfig,
+        accessKeyId: s.accessKeyId,
+        accessKeySecret: s.accessKeySecret,
+        stsToken: s.securityToken,
+        refreshSTSToken: async () => {
+          const r = await credClient.getCredential();
+          return {
+            accessKeyId: r.accessKeyId,
+            accessKeySecret: r.accessKeySecret,
+            stsToken: r.securityToken,
+          };
+        },
+        // 每 10 分钟刷新一次（可按需调整）
+        refreshSTSTokenInterval: 10 * 60 * 1000,
+      });
+
+      this.credential = credClient;
+      return client;
+    } else if (mode === OSS_AUTH_TYPES.ACCESS_KEY) {
+      // 长期 AK 明文传入（开发/测试）
+      return new OSS({
+        ...baseConfig,
+        accessKeyId: authCtx.accessKeyId,
+        accessKeySecret: authCtx.accessKeySecret,
+      });
+    } else if (mode === OSS_AUTH_TYPES.STS) {
+      // 显式 STS：调用方提供的临时凭证
+      return new OSS({
+        ...baseConfig,
+        accessKeyId: authCtx.accessKeyId,
+        accessKeySecret: authCtx.accessKeySecret,
+        stsToken: authCtx.stsToken,
+      });
+    }
+
+    throw new Error(
+      `Unsupported authentication type: ${mode}. Supported types: ${OSS_AUTH_TYPES.ROLE}, ${OSS_AUTH_TYPES.ACCESS_KEY}, ${OSS_AUTH_TYPES.STS}`,
+    );
   }
 
   /**
@@ -125,163 +371,12 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
   }
 
   /**
-   * 创建OSS客户端（支持RAM角色和AccessKey两种认证方式）
-   * @returns {OSS} OSS客户端实例
+   * 获取直传表单应提交的目标 Host（总是使用 OSS 官方桶域名）
+   * @returns {string}
    * @private
    */
-  _createOSSClient() {
-    const baseConfig = {
-      region: this.region,
-      bucket: this.bucket,
-      timeout: this.config.timeout || 300000, // 单个请求超时时间，默认5分钟（300秒）
-      secure: this.config.secure !== false, // 默认使用HTTPS
-    };
-
-    const authType = this.config.authType;
-    let client;
-
-    switch (authType.toLowerCase()) {
-      case "ram":
-      case "role":
-        // RAM角色授权方式（推荐）
-        // RAM角色认证：OSS SDK会自动从ECS实例元数据服务获取临时凭证
-        // 不需要提供accessKeyId和accessKeySecret
-        client = new OSS({
-          ...baseConfig,
-          // 不设置accessKeyId和accessKeySecret，让SDK自动获取RAM角色凭证
-        });
-        break;
-
-      case "accesskey":
-      case "key":
-        client = new OSS({
-          ...baseConfig,
-          accessKeyId: this.accessKeyId,
-          accessKeySecret: this.accessKeySecret,
-        });
-        break;
-
-      case "sts":
-        // STS临时凭证方式
-
-        client = new OSS({
-          ...baseConfig,
-          accessKeyId: this.accessKeyId,
-          accessKeySecret: this.accessKeySecret,
-          stsToken: this.config.stsToken,
-        });
-        break;
-
-      default:
-        throw new Error(`Unsupported authentication type: ${authType}. Supported types: ram, accesskey, sts`);
-    }
-
-    // 记录OSS连接成功日志（仅在非脚本模式下显示）
-    const isScriptMode =
-      process.env.NODE_ENV === "script" || process.argv[1]?.includes("deployment-scripts") || process.argv[1]?.includes("scripts/");
-    if (!isScriptMode) {
-      logger.info({
-        message: "阿里云OSS已连接成功!",
-        details: {
-          region: this.config.region,
-          bucket: this.config.bucket,
-          authType: this.config.authType,
-        },
-      });
-    }
-
-    return client;
-  }
-
-  /**
-   * 智能初始化baseUrl（支持内网/外网自动选择）
-   * @private
-   */
-  async _initializeBaseUrl() {
-    // 如果有自定义域名，优先使用
-    if (this.config.customDomain) {
-      this.baseUrl =
-        this.config.customDomain.startsWith("http://") || this.config.customDomain.startsWith("https://")
-          ? this.config.customDomain
-          : `https://${this.config.customDomain}`;
-
-      logger.info({
-        message: "使用自定义域名",
-        details: { baseUrl: this.baseUrl },
-      });
-      return;
-    }
-
-    // 检测是否在阿里云ECS环境中
-    const isECS = await isAliyunECS();
-
-    if (isECS) {
-      // 在ECS环境中，使用内网地址（节省流量费用，提高访问速度）
-      this.baseUrl = `https://${this.config.bucket}.${this.config.region}.internal.aliyuncs.com`;
-      logger.info({
-        message: "检测到阿里云ECS环境，使用内网地址",
-        details: {
-          baseUrl: this.baseUrl,
-          environment: "aliyun-ecs-internal",
-        },
-      });
-    } else {
-      // 非ECS环境，使用外网地址
-      this.baseUrl = `https://${this.config.bucket}.${this.config.region}.aliyuncs.com`;
-      logger.info({
-        message: "使用外网地址",
-        details: {
-          baseUrl: this.baseUrl,
-          environment: "external",
-        },
-      });
-    }
-  }
-
-  /**
-   * 验证配置参数
-   * @private
-   */
-  _validateConfig() {
-    // 基础必需字段
-    const baseRequired = ["region", "bucket"];
-    const missing = baseRequired.filter((key) => !this.config[key]);
-
-    if (missing.length) {
-      throw new Error(`AliyunOSS config missing required fields: ${missing.join(", ")}`);
-    }
-
-    // 根据认证方式验证相应字段
-    const authType = this.config.authType || "ram";
-
-    switch (authType.toLowerCase()) {
-      case "ram":
-      case "role":
-        // RAM角色授权只需要region和bucket
-        break;
-
-      case "accesskey":
-      case "key":
-        // AccessKey方式需要accessKeyId和accessKeySecret
-        const accessKeyRequired = ["accessKeyId", "accessKeySecret"];
-        const accessKeyMissing = accessKeyRequired.filter((key) => !this.config[key]);
-        if (accessKeyMissing.length) {
-          throw new Error(`AccessKey authentication missing required fields: ${accessKeyMissing.join(", ")}`);
-        }
-        break;
-
-      case "sts":
-        // STS方式需要accessKeyId、accessKeySecret和stsToken
-        const stsRequired = ["accessKeyId", "accessKeySecret", "stsToken"];
-        const stsMissing = stsRequired.filter((key) => !this.config[key]);
-        if (stsMissing.length) {
-          throw new Error(`STS authentication missing required fields: ${stsMissing.join(", ")}`);
-        }
-        break;
-
-      default:
-        throw new Error(`Unsupported authentication type: ${authType}. Supported types: ram, accesskey, sts`);
-    }
+  _getBucketPublicHost() {
+    return `https://${this.bucket}.${this.region}.aliyuncs.com`;
   }
 
   /**
@@ -315,6 +410,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<string>} 返回文件访问URL
    */
   async storeFile(fileData, ossKey, options = {}) {
+    await this._ensureClient();
     try {
       const uploadOptions = {
         // 设置Content-Type
@@ -333,17 +429,16 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
         });
       }
 
-      let result;
       if (Buffer.isBuffer(fileData)) {
         // 上传Buffer数据
-        result = await this.client.put(ossKey, fileData, uploadOptions);
+        await this.client.put(ossKey, fileData, uploadOptions);
       } else if (typeof fileData === "string") {
         // 上传本地文件
         const exists = await fsExtra.pathExists(fileData);
         if (!exists) {
           throw new Error(`Source file not found: ${fileData}`);
         }
-        result = await this.client.put(ossKey, fileData, uploadOptions);
+        await this.client.put(ossKey, fileData, uploadOptions);
       } else {
         throw new Error("fileData must be Buffer or file path string");
       }
@@ -361,6 +456,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<void>}
    */
   async deleteFile(ossKey) {
+    await this._ensureClient();
     try {
       await this.client.delete(ossKey);
     } catch (error) {
@@ -379,6 +475,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<boolean>} 移动成功返回true
    */
   async moveFile(sourceKey, targetKey) {
+    await this._ensureClient();
     try {
       // OSS没有原生的move操作，需要通过copy + delete实现
       await this.client.copy(targetKey, sourceKey);
@@ -400,6 +497,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<boolean>}
    */
   async fileExists(ossKey) {
+    await this._ensureClient();
     try {
       await this.client.head(ossKey);
       return true;
@@ -418,6 +516,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<string>} 返回文件访问URL
    */
   async storeProcessedImage(pipeline, ossKey) {
+    await this._ensureClient();
     try {
       // OSS必须先转换为Buffer再上传
       const buffer = await pipeline.toBuffer();
@@ -456,6 +555,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<number>} 文件大小（字节）
    */
   async getFileSize(input) {
+    await this._ensureClient();
     if (Buffer.isBuffer(input)) {
       return input.length;
     } else if (typeof input === "string") {
@@ -481,6 +581,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<Buffer>} 文件内容的Buffer
    */
   async getFileBuffer(ossKey) {
+    await this._ensureClient();
     try {
       const result = await this.client.get(ossKey);
       return result.content;
@@ -496,11 +597,11 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * 自动根据存储桶权限选择公共URL或签名URL
    * @param {string|null} ossKey - OSS对象键名，如果为null或空字符串则返回null
    * @param {Object} options - 选项
-   * @param {boolean} [options.forcePublic=false] - 强制使用公共URL
    * @param {number} [options.expiresIn=3600] - 签名URL过期时间（秒）
    * @returns {Promise<string|null>} 文件访问URL，如果ossKey为空则返回null
    */
   async getFileUrl(ossKey, options = {}) {
+    await this._ensureClient();
     // 如果ossKey为空，直接返回null
     if (!ossKey || typeof ossKey !== "string" || ossKey.trim() === "") {
       logger.info({
@@ -514,25 +615,11 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
       return null;
     }
 
-    // 初始化 baseUrl（如果需要）
-    if (!this.baseUrl) {
-      await this._initializeBaseUrl();
-    }
-
-    const { forcePublic = false, expiresIn = 3600 } = options;
-
-    // 如果强制使用公共URL，直接返回
-    if (forcePublic) {
-      return `${this.baseUrl}/${ossKey}`;
-    }
+    const { expiresIn = 3600 } = options;
 
     // 对于私有存储桶，使用签名URL
     try {
-      const signedUrl = await this.getSignedUrl(ossKey, expiresIn);
-      logger.info({
-        message: "Generated signed URL for private bucket access",
-        details: { ossKey, expiresIn },
-      });
+      const signedUrl = await this._getSignedUrl(ossKey, expiresIn);
       return signedUrl;
     } catch (error) {
       // 如果签名URL生成失败，回退到公共URL
@@ -550,13 +637,11 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @param {number} expiresIn - 过期时间（秒）
    * @returns {Promise<string>} 签名URL
    */
-  async getSignedUrl(ossKey, expiresIn = 3600) {
+  async _getSignedUrl(ossKey, expiresIn = 3600) {
+    await this._ensureClient();
     try {
-      const url = this.client.signatureUrl(ossKey, {
-        expires: expiresIn,
-        method: "GET",
-      });
-      return url;
+      const signer = this.signer || this.client; // 有自定义域名则优先用 signer
+      return signer.signatureUrl(ossKey, { expires: expiresIn, method: "GET" });
     } catch (error) {
       this._handleOSSError(error, "generate signed URL", { ossKey, expiresIn });
     }
@@ -572,6 +657,8 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * 4. 将签名结果进行Base64编码
    * 5. 返回包含签名、策略、回调URL等信息的对象
    *
+   * 注意：在RAM模式下，需要先获取STS临时凭证来生成签名
+   *
    * @param {Object} options - 签名选项
    * @param {string} options.storageKey - OSS存储键
    * @param {string} options.contentType - 内容类型
@@ -583,16 +670,6 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     try {
       // 生成回调URL
       const callbackUrl = buildOSSCallbackUrl();
-
-      // 记录回调URL
-      logger.info({
-        message: "生成OSS上传签名",
-        details: {
-          storageKey,
-          callbackUrl,
-          userId,
-        },
-      });
 
       // 生成回调参数 - JSON格式
       const callbackBody = JSON.stringify({
@@ -623,7 +700,34 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
       };
 
       const policyString = Buffer.from(JSON.stringify(policy)).toString("base64");
-      const signature = generatePolicySignature(policyString, this.accessKeySecret);
+
+      let signature, accessKeyId, securityToken;
+
+      const mode = (this.config.authType || OSS_AUTH_TYPES.ROLE).toLowerCase();
+      if (mode === OSS_AUTH_TYPES.ROLE) {
+        const sts = await this.credential.getCredential();
+        accessKeyId = sts.accessKeyId;
+        securityToken = sts.securityToken;
+        const accessKeySecret = sts.accessKeySecret;
+        signature = generatePolicySignature(policyString, accessKeySecret);
+
+        logger.info({
+          message: "使用 ECS 角色 STS 临时凭证生成签名",
+          details: {
+            accessKeyId: accessKeyId ? accessKeyId.substring(0, 8) + "..." : undefined,
+            expiresAt: sts.expiration,
+          },
+        });
+      } else if (mode === OSS_AUTH_TYPES.STS) {
+        // 显式 STS：使用传入的临时凭证
+        accessKeyId = this.accessKeyId;
+        securityToken = this.config.stsToken;
+        signature = generatePolicySignature(policyString, this.accessKeySecret);
+      } else {
+        // AccessKey：长期密钥（无 securityToken）
+        accessKeyId = this.accessKeyId;
+        signature = generatePolicySignature(policyString, this.accessKeySecret);
+      }
 
       // 构建OSS回调参数
       const callbackParam = {
@@ -634,15 +738,20 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
 
       const callbackBase64 = Buffer.from(JSON.stringify(callbackParam)).toString("base64");
 
-      return {
+      const resp = {
         storageKey,
         policy: policyString,
         signature,
-        accessKeyId: this.accessKeyId,
-        success_action_status: "200",
-        callback: callbackBase64, // 直接返回Base64字符串，按照官方文档
-        host: `https://${this.bucket}.${this.region}.aliyuncs.com`,
+        accessKeyId, // 固定字段名
+        successActionStatus: "200",
+        contentType, // 在 policy 里做了 eq 限制，表单必须带
+        callback: callbackBase64,
+        host: this._getBucketPublicHost(), // 直传建议走官方桶域名
       };
+      if (securityToken) {
+        resp.securityToken = securityToken;
+      }
+      return resp;
     } catch (error) {
       logger.error({
         message: "Failed to generate upload signature",
@@ -655,21 +764,12 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
   // ========== 目录操作实现 ==========
 
   /**
-   * OSS不需要创建目录，此方法为空实现
-   * @param {string} dirPath - 目录路径
-   * @returns {Promise<void>}
-   */
-  async ensureDirectory(dirPath) {
-    // OSS是对象存储，不需要创建目录
-    return Promise.resolve();
-  }
-
-  /**
    * 列出OSS中指定前缀的所有文件
    * @param {string} prefix - 文件前缀
    * @returns {Promise<Array<string>>} 文件键名数组
    */
   async listFiles(prefix) {
+    await this._ensureClient();
     try {
       const result = await this.client.list({
         prefix: prefix,
@@ -694,6 +794,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<Array<{success: boolean, key: string, url?: string, error?: string}>>}
    */
   async storeFiles(files) {
+    await this._ensureClient();
     const results = [];
 
     // OSS支持并发上传，但要控制并发数避免过载
@@ -737,6 +838,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<Array<{key: string, success: boolean, error?: string}>>}
    */
   async deleteFiles(keys) {
+    await this._ensureClient();
     try {
       // OSS支持批量删除，最多1000个对象
       const results = [];
@@ -812,27 +914,6 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     // 默认按照application/octet-stream返回 表示这个是二进制数据流
     // 当系统无法识别文件类型时，用 application/octet-stream 确保文件能正常存储和传输
     return mimeTypes[ext] || "application/octet-stream";
-  }
-
-  /**
-   * 获取OSS客户端实例（用于高级操作）
-   * @returns {OSS} OSS客户端
-   */
-  getClient() {
-    return this.client;
-  }
-
-  /**
-   * 获取Bucket信息
-   * @returns {Promise<Object>} Bucket信息
-   */
-  async getBucketInfo() {
-    try {
-      const result = await this.client.getBucketInfo();
-      return result.bucket;
-    } catch (error) {
-      this._handleOSSError(error, "get bucket info");
-    }
   }
 }
 

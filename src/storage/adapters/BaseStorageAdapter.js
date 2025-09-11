@@ -131,7 +131,7 @@ class BaseStorageAdapter {
    * @param {number} expiresIn - 过期时间（秒）
    * @returns {Promise<string>} 签名URL
    */
-  async getSignedUrl(key, expiresIn = 3600) {
+  async _getSignedUrl(key, expiresIn = 3600) {
     // 默认实现：对于不需要签名的存储（如本地存储），直接返回普通URL
     // 子类（如OSS）可以覆盖此方法实现真正的签名逻辑
     return await this.getFileUrl(key);

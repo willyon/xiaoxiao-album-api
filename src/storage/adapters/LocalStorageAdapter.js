@@ -8,13 +8,12 @@ const path = require("path");
 const fsExtra = require("fs-extra");
 const multer = require("multer");
 const BaseStorageAdapter = require("./BaseStorageAdapter");
-const { STORAGE_TYPES } = require("../constants/StorageTypes");
 const logger = require("../../utils/logger");
 
 class LocalStorageAdapter extends BaseStorageAdapter {
   constructor(config = {}) {
     super(config);
-    this.type = STORAGE_TYPES.LOCAL;
+    this.type = config.storageType;
 
     // 设置默认的 baseUrl，优先使用配置，其次使用环境变量，最后使用默认值
     // 默认端口使用常见的开发端口，可通过环境变量 PORT 动态调整

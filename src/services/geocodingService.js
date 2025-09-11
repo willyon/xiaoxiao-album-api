@@ -50,7 +50,7 @@ async function getLocationFromCoordinates(latitude, longitude) {
         {
           headers: {
             // 设置User-Agent头，便于后续排查和统计，只是为了方便日志查询，起什么名字都可以
-            "User-Agent": "XiaoXiao-Album/1.0",
+            "User-Agent": "photos.bingbingcloud.com/1.0",
           },
           timeout: 3000, // 3秒超时
         },

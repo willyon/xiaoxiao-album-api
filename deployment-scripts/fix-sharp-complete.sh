@@ -3,7 +3,7 @@
 echo "🔧 完整修复Sharp模块（从源码编译以支持HEIC格式）..."
 
 # 进入后端目录
-cd /var/www/xiaoxiao-album/backend
+cd /var/www/photos.bingbingcloud.com/backend
 
 # 测试Sharp是否正常工作
 echo "🧪 测试Sharp模块..."

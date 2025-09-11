@@ -7,194 +7,92 @@
 const LocalStorageAdapter = require("../adapters/LocalStorageAdapter");
 const AliyunOSSAdapter = require("../adapters/AliyunOSSAdapter");
 const logger = require("../../utils/logger");
-const { STORAGE_TYPES, OSS_AUTH_TYPES, getDefaultConfig, getSupportedStorageTypes } = require("../constants/StorageTypes");
+const { STORAGE_TYPES, getStorageConfig } = require("../constants/StorageTypes");
+
+let adapterContainer = {
+  [STORAGE_TYPES.LOCAL]: LocalStorageAdapter,
+  [STORAGE_TYPES.ALIYUN_OSS]: AliyunOSSAdapter,
+};
 
 class StorageAdapterFactory {
   static currentAdapter = null;
+  static backupAdapter = null;
+  static storageConfig = null;
 
   /**
-   * 根据传入的配置对象创建存储适配器（私有方法）
-   * @private
-   * @param {Object} config - 存储配置
-   * @param {string} config.type - 存储类型 ('local' | 'aliyun-oss' | 'tencent-cos')
-   * @param {Object} config.options - 存储选项
-   * @returns {LocalStorageAdapter|AliyunOSSAdapter} 存储适配器实例
-   */
-  static _createAdapterFromConfig(config) {
-    if (!config || !config.type) {
-      throw new Error("Storage config is required with type field");
-    }
-
-    const { type, options = {} } = config;
-
-    try {
-      switch (type.toLowerCase()) {
-        case STORAGE_TYPES.LOCAL:
-          return new LocalStorageAdapter(options);
-
-        case STORAGE_TYPES.ALIYUN_OSS:
-          return new AliyunOSSAdapter(options);
-
-        // 未来可扩展其他云存储
-        // case 'tencent-cos':
-        //   return new TencentCOSAdapter(options);
-        // case 'aws-s3':
-        //   return new AWSS3Adapter(options);
-
-        default:
-          throw new Error(`Unsupported storage type: ${type}. Supported types: ${getSupportedStorageTypes().join(", ")}`);
-      }
-    } catch (error) {
-      logger.error({
-        message: "Failed to create storage adapter",
-        details: { type, error: error.message },
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * 从环境变量读取配置并创建存储适配器
-   * @param {string} [storageType] - 存储类型，如果不传则使用环境变量 STORAGE_TYPE
-   * @returns {LocalStorageAdapter|AliyunOSSAdapter} 存储适配器实例
-   */
-  static _createAdapterFromEnv(storageType = null) {
-    const defaultConfig = getDefaultConfig();
-    const finalStorageType = storageType || defaultConfig.STORAGE_TYPE;
-
-    let config = {
-      type: finalStorageType,
-      options: {},
-    };
-
-    switch (finalStorageType.toLowerCase()) {
-      case STORAGE_TYPES.LOCAL:
-        config.options = {
-          baseUrl: process.env.API_BASE_URL_LOCAL,
-        };
-        break;
-
-      case STORAGE_TYPES.ALIYUN_OSS:
-        const authType = defaultConfig.OSS_AUTH_TYPE;
-
-        config.options = {
-          region: process.env.ALIYUN_OSS_REGION,
-          bucket: process.env.ALIYUN_OSS_BUCKET,
-          authType,
-          customDomain: process.env.ALIYUN_OSS_CUSTOM_DOMAIN,
-          timeout: parseInt(process.env.ALIYUN_OSS_TIMEOUT) || 60000,
-          secure: process.env.ALIYUN_OSS_SECURE !== "false",
-          uploadConcurrency: parseInt(process.env.ALIYUN_OSS_UPLOAD_CONCURRENCY) || 5,
-        };
-
-        // 根据认证方式添加相应的配置
-        switch (authType.toLowerCase()) {
-          case OSS_AUTH_TYPES.ACCESS_KEY:
-            config.options.accessKeyId = process.env.ALIYUN_OSS_ACCESS_KEY_ID;
-            config.options.accessKeySecret = process.env.ALIYUN_OSS_ACCESS_KEY_SECRET;
-            break;
-
-          case OSS_AUTH_TYPES.STS:
-            config.options.accessKeyId = process.env.ALIYUN_OSS_ACCESS_KEY_ID;
-            config.options.accessKeySecret = process.env.ALIYUN_OSS_ACCESS_KEY_SECRET;
-            config.options.stsToken = process.env.ALIYUN_OSS_STS_TOKEN;
-            break;
-
-          case OSS_AUTH_TYPES.RAM:
-          default:
-            // RAM角色授权不需要额外配置
-            break;
-        }
-        break;
-
-      default:
-        logger.warn({
-          message: `Unknown storage type ${finalStorageType}, falling back to local storage`,
-          details: { storageType: finalStorageType, supportedTypes: getSupportedStorageTypes() },
-        });
-        config = {
-          type: STORAGE_TYPES.LOCAL,
-          options: {
-            baseUrl: process.env.API_BASE_URL_LOCAL,
-          },
-        };
-    }
-
-    return StorageAdapterFactory._createAdapterFromConfig(config);
-  }
-
-  /**
-   * 创建或获取存储适配器实例
+   * 创建或获取存储适配器实例（单例模式）
    *
-   * @param {Object|string|null} [config=null] - 配置参数
-   *   - 如果传入对象：使用配置对象创建适配器
-   *   - 如果传入字符串：使用环境变量创建指定类型的适配器
-   *   - 如果传入null：使用环境变量创建默认适配器
-   * @param {boolean} [useCache=true] - 是否使用缓存，默认true
+   * 该方法实现了单例模式，确保整个应用中只有一个存储适配器实例。
+   * 首次调用时根据环境变量创建适配器，后续调用直接返回已创建的实例。
    *
-   * @param {string} config.type - 存储类型，必填
-   *   - 'local': 本地存储
-   *   - 'aliyun-oss': 阿里云OSS存储
+   * ## 工作流程
+   * 1. 检查是否已有适配器实例，如有则直接返回
+   * 2. 从环境变量读取默认配置
+   * 3. 根据存储类型创建对应的适配器实例
+   * 4. 缓存实例并返回
    *
-   * @param {Object} config.options - 存储选项，根据存储类型而定
-   *
-   * // 本地存储选项 (type: 'local')
-   * @param {string} [config.options.baseUrl] - 本地存储的基础URL，如 'http://localhost:3000'
-   *
-   * // 阿里云OSS存储选项 (type: 'aliyun-oss')
-   * @param {string} config.options.region - OSS地域，如 'oss-cn-guangzhou'
-   * @param {string} config.options.bucket - OSS存储桶名称
-   * @param {string} [config.options.authType='ram'] - 认证方式: 'ram' | 'accesskey' | 'sts'
-   * @param {string} [config.options.customDomain] - 自定义域名
-   * @param {string} [config.options.accessKeyId] - AccessKey ID (authType为'accesskey'或'sts'时必填)
-   * @param {string} [config.options.accessKeySecret] - AccessKey Secret (authType为'accesskey'或'sts'时必填)
-   * @param {string} [config.options.stsToken] - STS Token (authType为'sts'时必填)
+   * ## 配置来源
+   * - 存储类型：`STORAGE_TYPE` 环境变量
+   * - OSS认证方式：`OSS_AUTH_TYPE` 环境变量
+   * - 具体配置：从 `getStorageConfig()` 获取
    *
    * @returns {LocalStorageAdapter|AliyunOSSAdapter} 存储适配器实例
    *
    * @example
-   * // 使用环境变量配置（推荐，带缓存）
+   * // 基本使用
    * const adapter = StorageAdapterFactory.createAdapter();
+   * await adapter.storeFile(buffer, 'path/to/file.jpg');
    *
    * @example
-   * // 创建指定类型的适配器（带缓存）
-   * const localAdapter = StorageAdapterFactory.createAdapter('local');
-   * const ossAdapter = StorageAdapterFactory.createAdapter('aliyun-oss');
+   * // 获取文件URL
+   * const adapter = StorageAdapterFactory.createAdapter();
+   * const url = await adapter.getFileUrl('path/to/file.jpg');
    *
-   * @example
-   * // 创建指定类型的适配器（不使用缓存）
-   * const localAdapter = StorageAdapterFactory.createAdapter('local', false);
+   * @throws {Error} 当环境变量配置无效或存储类型不支持时抛出错误
    *
-   * @example
-   * // 使用配置对象创建适配器（不使用缓存）
-   * const localAdapter = StorageAdapterFactory.createAdapter({
-   *   type: 'local',
-   *   options: { baseUrl: 'http://localhost:3000' }
-   * }, false);
+   * @since 1.0.0
    */
-  static createAdapter(config = null, useCache = true) {
-    // 如果使用缓存且已有适配器，直接返回
-    if (useCache && StorageAdapterFactory.currentAdapter) {
+  static createAdapter() {
+    // 如果已有适配器，直接返回
+    if (StorageAdapterFactory.currentAdapter) {
       return StorageAdapterFactory.currentAdapter;
     }
 
-    let adapter;
+    // 设置配置对象
+    const storageConfig = getStorageConfig();
+    StorageAdapterFactory.storageConfig = storageConfig;
+    let Adapter = adapterContainer[storageConfig.storageType];
+    let options = storageConfig[storageConfig.storageType];
 
-    if (typeof config === "string") {
-      // 传入字符串：创建指定类型的适配器
-      adapter = StorageAdapterFactory._createAdapterFromEnv(config);
-    } else if (config && typeof config === "object") {
-      // 传入对象：使用配置对象创建适配器
-      adapter = StorageAdapterFactory._createAdapterFromConfig(config);
-    } else {
-      // 传入null或undefined：使用环境变量创建默认适配器
-      adapter = StorageAdapterFactory._createAdapterFromEnv();
+    let adapter = new Adapter(options || {});
+
+    // 根据配置对象创建存储适配器
+    StorageAdapterFactory.currentAdapter = adapter;
+
+    return adapter;
+  }
+
+  /**
+   * 创建备用存储适配器
+   * @param {string} storageType - 存储类型
+   * @returns {LocalStorageAdapter|AliyunOSSAdapter|null} 备用存储适配器实例
+   */
+  static createBackupAdapter(storageType = null) {
+    if (!storageType) return null;
+
+    // 如果已有备用适配器，直接返回
+    if (StorageAdapterFactory.backupAdapter) {
+      return StorageAdapterFactory.backupAdapter;
     }
 
-    // 如果使用缓存，保存到currentAdapter
-    if (useCache) {
-      StorageAdapterFactory.currentAdapter = adapter;
-    }
+    // 设置配置对象
+    const storageConfig = StorageAdapterFactory.storageConfig || getStorageConfig();
+    let Adapter = adapterContainer[storageType];
+    let options = storageConfig[storageType];
+    let adapter = new Adapter(options || {});
+
+    // 根据配置对象创建存储适配器
+    StorageAdapterFactory.backupAdapter = adapter;
 
     return adapter;
   }
@@ -205,14 +103,6 @@ class StorageAdapterFactory {
   static clearAdapter() {
     StorageAdapterFactory.currentAdapter = null;
     logger.info({ message: "Storage adapter cleared, will be re-initialized on next access" });
-  }
-
-  /**
-   * 获取支持的存储类型列表
-   * @returns {Array<string>} 支持的存储类型
-   */
-  static getSupportedTypes() {
-    return getSupportedStorageTypes();
   }
 }
 

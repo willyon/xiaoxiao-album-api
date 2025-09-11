@@ -6,3 +6,6 @@ logs/
 test/
 database.db
 build/
+backend-dist/
+deployment-scripts/
+scripts

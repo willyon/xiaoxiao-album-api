@@ -171,7 +171,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
     ),
     latest AS (
       -- 为每个 month_key 选最新一张（先按 creation_date DESC，再按 id DESC 保证稳定）
-      SELECT m.month_key, m.thumbnail_url, m.creation_date, m.id, m.storage_type
+      SELECT m.month_key, m.thumbnail_storage_key, m.creation_date, m.id, m.storage_type
       FROM images m
       WHERE m.user_id = ?
         AND m.id = (
@@ -186,7 +186,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
     )
     SELECT
       latest.month_key,        -- 分组键（YYYY-MM / 'unknown'）
-      latest.thumbnail_url AS latestImageUrl,
+      latest.thumbnail_storage_key AS latestImagekey,
       latest.creation_date,
       latest.storage_type,
       counts.imageCount
@@ -227,7 +227,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
     ),
     latest AS (
       -- 为每个 year_key 选最新一张（先按 creation_date DESC，再按 id DESC 保证稳定）
-      SELECT m.year_key, m.thumbnail_url, m.creation_date, m.id, m.storage_type
+      SELECT m.year_key, m.thumbnail_storage_key, m.creation_date, m.id, m.storage_type
       FROM images m
       WHERE m.user_id = ?
         AND m.id = (
@@ -242,7 +242,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
     )
     SELECT
       latest.year_key,        -- 分组键（YYYY / 'unknown'）
-      latest.thumbnail_url AS latestImageUrl,
+      latest.thumbnail_storage_key AS latestImagekey,
       latest.creation_date,
       latest.storage_type,
       counts.imageCount
