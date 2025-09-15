@@ -282,10 +282,10 @@ const _getEmailContent = (language, JWTToken) => {
       `,
     },
     zh: {
-      mailName: "冰冰云照片",
-      subject: "激活您的冰冰云照片账户",
+      mailName: "冰冰云相册",
+      subject: "激活您的冰冰云相册账户",
       html: `
-        <h1>欢迎来到 冰冰云照片！</h1>
+        <h1>欢迎注册冰冰云相册！</h1>
         <p>点击下面的按钮以激活您的账户：</p>
         <a href="${baseUrl}/verifyEmail?token=${JWTToken}&lang=zh" 
           style="display:inline-block;padding:10px 20px;background-color:#409eff;color:#fff;text-decoration:none;border-radius:4px;">

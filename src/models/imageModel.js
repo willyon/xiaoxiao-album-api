@@ -75,7 +75,7 @@ function selectImagesByPage({ pageNo, pageSize, userId }) {
 
   // 分页数据查询
   const dataQuery = db.prepare(`
-    SELECT high_res_storage_key, thumbnail_storage_key, creation_date, month_key, year_key, storage_type
+    SELECT high_res_storage_key, thumbnail_storage_key, creation_date, month_key, year_key, storage_type, gps_location
     FROM images
     WHERE user_id = ?
     ORDER BY COALESCE(creation_date, 0) DESC, id DESC
@@ -104,7 +104,7 @@ function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
 
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
-    SELECT high_res_storage_key, thumbnail_storage_key, creation_date, month_key, year_key, storage_type
+    SELECT high_res_storage_key, thumbnail_storage_key, creation_date, month_key, year_key, storage_type, gps_location
     FROM images
     WHERE user_id = ?
       AND year_key = ?
@@ -134,7 +134,7 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
 
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
-    SELECT high_res_storage_key, thumbnail_storage_key, creation_date, month_key, year_key, storage_type
+    SELECT high_res_storage_key, thumbnail_storage_key, creation_date, month_key, year_key, storage_type, gps_location
     FROM images
     WHERE user_id = ?
       AND month_key = ?
