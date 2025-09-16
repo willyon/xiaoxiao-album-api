@@ -54,7 +54,7 @@ async function processImageMeta(payload) {
 
       // 尝试获取位置描述
       try {
-        gpsLocation = await getLocationFromCoordinates(gpsLatitude, gpsLongitude);
+        thumbnailUrl = await getLocationFromCoordinates(gpsLatitude, gpsLongitude);
 
         logger.info({
           message: "GPS信息提取成功",
