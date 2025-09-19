@@ -9,6 +9,7 @@ const multer = require("multer");
 const path = require("path");
 const { DateTime } = require("luxon");
 const storageService = require("../services/storageService");
+const { isImageFile } = require("../utils/fileUtils");
 
 // 生成文件名的通用函数
 function generateFilename(req, file) {
@@ -29,7 +30,8 @@ function generateFilename(req, file) {
 const storage = storageService.storage.getMulterStorage(generateFilename);
 
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith("image/")) {
+  // 使用智能图片检测，支持HEIC等格式
+  if (isImageFile(file)) {
     cb(null, true);
   } else {
     cb(new Error("Only image files are allowed"), false);

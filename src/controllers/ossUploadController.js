@@ -8,62 +8,9 @@
 const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
 const storageService = require("../services/storageService");
-const { getRedisClient } = require("../services/redisClient");
-const { ensureUserSetReady, userSetKey } = require("../workers/userImageHashset");
 const { imageUploadQueue } = require("../queues/imageUploadQueue");
 const logger = require("../utils/logger");
 const { verifyOSSCallbackSignature, parseCallbackData } = require("../utils/ossCallbackUtils");
-
-/**
- * 预检文件是否存在
- * POST /images/checkFileExists
- * Body: { hash }
- */
-async function handleCheckFileExists(req, res, next) {
-  try {
-    const { hash } = req.body;
-    const userId = req?.user?.userId;
-
-    if (!hash) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
-        messageType: "error",
-      });
-    }
-
-    // 确保用户的 Redis hash 集合已初始化
-    await ensureUserSetReady(userId);
-
-    // 使用 Redis 检查文件是否已存在
-    const redisClient = getRedisClient();
-    const setKey = userSetKey(userId);
-    const exists = await redisClient.sismember(setKey, hash);
-
-    if (exists === 1) {
-      // 文件已存在
-      logger.info({
-        message: "File exists in Redis cache",
-        details: { userId, imageHash: hash },
-      });
-      return res.sendResponse({
-        messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-        data: {
-          exists: true,
-        },
-      });
-    }
-
-    return res.sendResponse({
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-      data: {
-        exists: false,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-}
 
 /**
  * 获取OSS直传签名
@@ -214,7 +161,6 @@ async function handleUploadCallback(req, res, next) {
 }
 
 module.exports = {
-  handleCheckFileExists,
   handleGetUploadSignature,
   handleUploadCallback,
 };

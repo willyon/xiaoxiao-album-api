@@ -13,6 +13,7 @@ const { generatePolicySignature } = require("../../utils/ossSignature");
 const { buildOSSCallbackUrl } = require("../../utils/ossCallbackUtils");
 const { OSS_AUTH_TYPES } = require("../constants/StorageTypes");
 const Credential = require("@alicloud/credentials").default;
+const { getStandardMimeType } = require("../../utils/fileUtils");
 
 /**
  * 阿里云OSS存储适配器
@@ -415,7 +416,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
       const uploadOptions = {
         // 设置Content-Type
         headers: {
-          "Content-Type": options.contentType || this._guessContentType(ossKey),
+          "Content-Type": options.contentType || getStandardMimeType(ossKey),
           // 设置缓存控制
           "Cache-Control": options.cacheControl || "public, max-age=31536000", // 默认公共缓存(允许任何浏览器、cdn、代理服务器存储这个文件) 1年有效期
           ...options.headers,
@@ -888,32 +889,6 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     } catch (error) {
       this._handleOSSError(error, "batch delete", { count: keys.length });
     }
-  }
-
-  // ========== 工具方法 ==========
-
-  /**
-   * 根据文件扩展名猜测Content-Type
-   * @param {string} ossKey - 文件键名
-   * @returns {string} Content-Type
-   * @private
-   */
-  _guessContentType(ossKey) {
-    const ext = ossKey.split(".").pop()?.toLowerCase();
-    const mimeTypes = {
-      jpg: "image/jpeg",
-      jpeg: "image/jpeg",
-      png: "image/png",
-      webp: "image/webp",
-      avif: "image/avif",
-      heic: "image/heic",
-      heif: "image/heif",
-      gif: "image/gif",
-    };
-
-    // 默认按照application/octet-stream返回 表示这个是二进制数据流
-    // 当系统无法识别文件类型时，用 application/octet-stream 确保文件能正常存储和传输
-    return mimeTypes[ext] || "application/octet-stream";
   }
 }
 

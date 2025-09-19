@@ -14,9 +14,10 @@ const {
   handleGetByCertainMonth,
   handleGroupByYear,
   handleGroupByMonth,
+  handleCheckFileExists,
 } = require("../controllers/imageController");
 const { handlePostImages } = require("../controllers/uploadController");
-const { handleCheckFileExists, handleGetUploadSignature } = require("../controllers/ossUploadController");
+const { handleGetUploadSignature } = require("../controllers/ossUploadController");
 
 //上传图片
 router.post("/postImages", upload, handlePostImages);
