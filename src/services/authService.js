@@ -114,7 +114,6 @@ const verifyEmail = async (token) => {
 
     // 验证 JWT Token 是否有效
     const { userId } = _verifyJWTToken(token);
-    console.log("解开了", userId);
 
     // 在数据库中查找与 userId 匹配的用户
     const user = await authModel.findUserById(userId);
@@ -242,9 +241,7 @@ const sendVerificationEmail = async ({ email, JWTToken, language }) => {
 
   try {
     const info = await transporter.sendMail(mailOptions);
-    console.log("邮件已发送:", info.response);
   } catch (error) {
-    console.log("这是邮箱发送失败error:", error.message);
     // 邮箱地址无效 无法发送激活信息
     if (error.message.includes("550") || error.message.toLowerCase().includes("not found")) {
       throw new CustomError({

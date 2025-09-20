@@ -160,50 +160,9 @@ function createTableImages() {
   }
 }
 
-// 添加 storageType 字段到现有表（数据库迁移）
-function addStorageTypeColumn() {
-  try {
-    // 检查字段是否已存在
-    const checkColumnSQL = `
-      SELECT COUNT(*) as count 
-      FROM pragma_table_info('images') 
-      WHERE name = 'storage_type'
-    `;
-    const result = db.prepare(checkColumnSQL).get();
-
-    if (result.count === 0) {
-      // 字段不存在，添加字段
-      const addColumnSQL = `
-        ALTER TABLE images 
-        ADD COLUMN storage_type TEXT DEFAULT 'local'
-      `;
-      db.prepare(addColumnSQL).run();
-
-      // 根据现有路径判断存储类型并更新
-      const updateStorageTypeSQL = `
-               UPDATE images 
-               SET storage_type = CASE 
-                 WHEN original_url LIKE 'localstorage/processed/%' THEN 'local'
-                 ELSE 'aliyun-oss'
-               END
-               WHERE storage_type IS NULL OR storage_type = 'local'
-             `;
-      db.prepare(updateStorageTypeSQL).run();
-
-      console.log("✅ 成功添加 storage_type 字段并更新现有数据");
-    } else {
-      console.log("ℹ️  storage_type 字段已存在，跳过迁移");
-    }
-  } catch (err) {
-    console.error("❌ 添加 storageType 字段失败：", err.message);
-    throw err;
-  }
-}
-
 module.exports = {
   deleteTableUsers,
   createTableUsers,
   deleteTableImages,
   createTableImages,
-  addStorageTypeColumn,
 };

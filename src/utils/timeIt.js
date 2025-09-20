@@ -25,10 +25,10 @@ async function timeIt(label, fn, imageHash) {
   let ret;
   try {
     const s = tNow();
-    console.log("这里开始啦", label, s);
+    console.log("timeit这里开始啦", label, s);
     ret = await fn();
     const ms = tNow() - s;
-    console.log("这里执行完啦", label, ms, "毫秒");
+    console.log("timeit这里执行完啦", label, ms, "毫秒");
     if (PROFILE) {
       logger.info({ message: `[埋点计时]${label}:jobId:${imageHash || 0}:${ms}毫秒` });
     }

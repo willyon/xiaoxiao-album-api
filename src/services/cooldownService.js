@@ -37,7 +37,6 @@ class CooldownManager {
     const key = this.getKey(type, identifier);
     try {
       const exists = await this.redis.get(key);
-      console.log("存不存在呢", exists);
       return !!exists;
     } catch (err) {
       console.warn(`[CooldownManager] Redis check failed for ${key}:`, err);
