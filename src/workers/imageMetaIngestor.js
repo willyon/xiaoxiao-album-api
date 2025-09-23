@@ -11,12 +11,13 @@ const { timestampToYearMonth, timestampToYear } = require("../utils/formatTime")
 const timeIt = require("../utils/timeIt");
 const storageService = require("../services/storageService");
 const { getLocationFromCoordinates } = require("../services/geocodingService");
+const { updateProgress } = require("../services/imageProcessingProgressService");
 
 /**
  * 处理单张图片的"后处理"：
  * 1) 读取 EXIF → creationDate/monthKey/yearKey
  * 2) 产出高清大图（默认 AVIF）
- * 3) 更新数据库（补 creationDate/monthKey/yearKey/highResUrl）
+ * 3) 更新数据库（补 creationDate/monthKey/yearKey/highResStorageKey）
  * 4) 将原图移动至 original 存储位置
  *
  * @param {Object} payload
@@ -26,9 +27,10 @@ const { getLocationFromCoordinates } = require("../services/geocodingService");
  * @param {string} payload.storageKey - 原始文件的存储键名
  * @param {string} [payload.extension]
  * @param {number} [payload.fileSize]
+ * @param {string} [payload.sessionId] - 上传会话ID
  */
 async function processImageMeta(payload) {
-  const { userId, imageHash, fileName, storageKey, extension, fileSize } = payload;
+  const { userId, imageHash, fileName, storageKey, extension, fileSize, sessionId } = payload;
 
   // 1) 解析 EXIF → creationDate 和 GPS 信息
   let creationDate = null;
@@ -133,7 +135,7 @@ async function processImageMeta(payload) {
   // 生成原图的存储键名（不传extension，直接使用fileName）
   const originalType = process.env.IMAGE_STORAGE_KEY_ORIGINAL || "original";
   const originalStorageKey = storageService.storage.generateStorageKey(originalType, fileName);
-
+  const processingStatus = "highResDone";
   try {
     await updateImageMetaAndHQ({
       userId,
@@ -153,22 +155,20 @@ async function processImageMeta(payload) {
       message: "updateImageMetaAndHQ failed in imageMetaIngestor",
       details: { imageHash, userId, err: String(e) },
     });
+    processingStatus = "errors";
   }
+  try {
+    if (sessionId) {
+      await updateProgress({
+        sessionId,
+        imageHash,
+        status: processingStatus,
+      });
+    }
+  } catch (err) {}
   // ======== 移动原图到 original 存储位置 ========
   try {
     await storageService.storage.moveFile(storageKey, originalStorageKey);
-
-    logger.info({
-      message: "Image metadata processing completed successfully",
-      details: {
-        imageHash,
-        userId,
-        fileName,
-        originalStorageKey,
-        highResStorageKey: highResStorageKey || null,
-        creationDate: creationDate || null,
-      },
-    });
   } catch (e) {
     // 记录错误，不算致命
     // 移动文件失败不应该影响元数据更新，但需要记录警告

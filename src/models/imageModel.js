@@ -5,7 +5,7 @@
  * @LastEditTime: 2025-08-17 15:07:05
  * @Description: File description
  */
-const { db } = require("../services/dbService");
+const { db } = require("../services/database");
 const { mapFields } = require("../utils/fieldMapper");
 
 //保存用户上传的图片元数据到数据库
@@ -32,7 +32,7 @@ function insertImage({
       original_storage_key,
       high_res_storage_key,
       thumbnail_storage_key,
-      creation_date,
+      image_created_at,
       year_key,  
       month_key,
       gps_latitude,
@@ -40,9 +40,13 @@ function insertImage({
       gps_altitude,
       gps_location,
       storage_type,
-      file_size
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      file_size,
+      created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+
+  const createdAt = Date.now(); // 入库时间戳（毫秒）
+
   const result = stmt.run(
     userId,
     imageHash,
@@ -58,6 +62,7 @@ function insertImage({
     gpsLocation,
     storageType,
     fileSize,
+    createdAt,
   );
   return { affectedRows: result.changes };
 }
@@ -75,10 +80,10 @@ function selectImagesByPage({ pageNo, pageSize, userId }) {
 
   // 分页数据查询
   const dataQuery = db.prepare(`
-    SELECT high_res_storage_key, thumbnail_storage_key, creation_date, month_key, year_key, storage_type, gps_location
+    SELECT high_res_storage_key, thumbnail_storage_key, image_created_at, month_key, year_key, storage_type, gps_location
     FROM images
     WHERE user_id = ?
-    ORDER BY COALESCE(creation_date, 0) DESC, id DESC
+    ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
     LIMIT ? OFFSET ?
   `);
 
@@ -104,11 +109,11 @@ function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
 
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
-    SELECT high_res_storage_key, thumbnail_storage_key, creation_date, month_key, year_key, storage_type, gps_location
+    SELECT high_res_storage_key, thumbnail_storage_key, image_created_at, month_key, year_key, storage_type, gps_location
     FROM images
     WHERE user_id = ?
       AND year_key = ?
-    ORDER BY COALESCE(creation_date, 0) DESC, id DESC
+    ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
     LIMIT ? OFFSET ?
   `);
 
@@ -134,11 +139,11 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
 
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
-    SELECT high_res_storage_key, thumbnail_storage_key, creation_date, month_key, year_key, storage_type, gps_location
+    SELECT high_res_storage_key, thumbnail_storage_key, image_created_at, month_key, year_key, storage_type, gps_location
     FROM images
     WHERE user_id = ?
       AND month_key = ?
-    ORDER BY COALESCE(creation_date, 0) DESC, id DESC
+    ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
     LIMIT ? OFFSET ?
   `);
 
@@ -170,8 +175,8 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
       GROUP BY month_key
     ),
     latest AS (
-      -- 为每个 month_key 选最新一张（先按 creation_date DESC，再按 id DESC 保证稳定）
-      SELECT m.month_key, m.thumbnail_storage_key, m.creation_date, m.id, m.storage_type
+      -- 为每个 month_key 选最新一张（先按 image_created_at DESC，再按 id DESC 保证稳定）
+      SELECT m.month_key, m.thumbnail_storage_key, m.image_created_at, m.id, m.storage_type
       FROM images m
       WHERE m.user_id = ?
         AND m.id = (
@@ -179,7 +184,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
           FROM images m2
           WHERE m2.user_id = m.user_id
             AND m2.month_key = m.month_key
-          ORDER BY COALESCE(m2.creation_date, 0) DESC, m2.id DESC
+          ORDER BY COALESCE(m2.image_created_at, 0) DESC, m2.id DESC
           LIMIT 1
         )
       GROUP BY m.month_key
@@ -187,7 +192,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
     SELECT
       latest.month_key,        -- 分组键（YYYY-MM / 'unknown'）
       latest.thumbnail_storage_key AS latestImagekey,
-      latest.creation_date,
+      latest.image_created_at,
       latest.storage_type,
       counts.imageCount
     FROM latest
@@ -226,8 +231,8 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
       GROUP BY year_key
     ),
     latest AS (
-      -- 为每个 year_key 选最新一张（先按 creation_date DESC，再按 id DESC 保证稳定）
-      SELECT m.year_key, m.thumbnail_storage_key, m.creation_date, m.id, m.storage_type
+      -- 为每个 year_key 选最新一张（先按 image_created_at DESC，再按 id DESC 保证稳定）
+      SELECT m.year_key, m.thumbnail_storage_key, m.image_created_at, m.id, m.storage_type
       FROM images m
       WHERE m.user_id = ?
         AND m.id = (
@@ -235,7 +240,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
           FROM images m2
           WHERE m2.user_id = m.user_id
             AND m2.year_key  = m.year_key
-          ORDER BY COALESCE(m2.creation_date, 0) DESC, m2.id DESC
+          ORDER BY COALESCE(m2.image_created_at, 0) DESC, m2.id DESC
           LIMIT 1
         )
       GROUP BY m.year_key
@@ -243,7 +248,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
     SELECT
       latest.year_key,        -- 分组键（YYYY / 'unknown'）
       latest.thumbnail_storage_key AS latestImagekey,
-      latest.creation_date,
+      latest.image_created_at,
       latest.storage_type,
       counts.imageCount
     FROM latest
@@ -288,7 +293,7 @@ function updateMetaAndHQ({
   const params = [];
 
   if (creationDate != null) {
-    fields.push("creation_date = ?");
+    fields.push("image_created_at = ?");
     params.push(creationDate);
   }
   if (monthKey != null) {

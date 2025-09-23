@@ -19,7 +19,7 @@ const { verifyOSSCallbackSignature, parseCallbackData } = require("../utils/ossC
  */
 async function handleGetUploadSignature(req, res, next) {
   try {
-    const { hash, contentType, contentLength } = req.body;
+    const { hash, contentType, contentLength, sessionId } = req.body;
     const userId = req?.user?.userId;
 
     if (!hash || !contentType || !contentLength) {
@@ -45,6 +45,7 @@ async function handleGetUploadSignature(req, res, next) {
       contentType,
       contentLength,
       userId,
+      sessionId,
     });
 
     return res.sendResponse({
@@ -62,7 +63,7 @@ async function handleGetUploadSignature(req, res, next) {
  * @returns {Promise<boolean>} 是否为重复任务
  */
 async function checkAndAddToQueue(callbackData) {
-  const { userId, hash, fileName, fileSize, storageKey } = callbackData;
+  const { userId, hash, fileName, fileSize, storageKey, sessionId } = callbackData;
   const jobId = `${userId}_${hash}`;
   const existingJob = await imageUploadQueue.getJob(jobId);
 
@@ -93,6 +94,7 @@ async function checkAndAddToQueue(callbackData) {
       userId,
       imageHash: hash,
       extension: process.env.IMAGE_THUMBNAIL_EXTENSION || "webp",
+      sessionId: sessionId, // 传递会话ID
     },
     {
       jobId: jobId,

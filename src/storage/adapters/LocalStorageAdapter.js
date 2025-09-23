@@ -48,8 +48,8 @@ class LocalStorageAdapter extends BaseStorageAdapter {
           const thumbnailDir = process.env.PROCESSED_THUMBNAIL_IMAGE_DIR || "localStorage/processed/thumbnails";
           return `${thumbnailDir}/${fileName}`;
         case process.env.IMAGE_STORAGE_KEY_HIGHRES || "highres":
-          const highresDir = process.env.PROCESSED_HIGH_RES_IMAGE_DIR || "localStorage/processed/highres";
-          return `${highresDir}/${fileName}`;
+          const highResDir = process.env.PROCESSED_HIGH_RES_IMAGE_DIR || "localStorage/processed/highres";
+          return `${highResDir}/${fileName}`;
         case process.env.IMAGE_STORAGE_KEY_ORIGINAL || "original":
           const originalDir = process.env.PROCESSED_ORIGINAL_IMAGE_DIR || "localStorage/processed/originals";
           return `${originalDir}/${fileName}`;
@@ -69,8 +69,8 @@ class LocalStorageAdapter extends BaseStorageAdapter {
         const thumbnailDir = process.env.PROCESSED_THUMBNAIL_IMAGE_DIR || "localStorage/processed/thumbnails";
         return `${thumbnailDir}/${baseName}.${extension}`;
       case process.env.IMAGE_STORAGE_KEY_HIGHRES || "highres":
-        const highresDir = process.env.PROCESSED_HIGH_RES_IMAGE_DIR || "localStorage/processed/highres";
-        return `${highresDir}/${baseName}.${extension}`;
+        const highResDir = process.env.PROCESSED_HIGH_RES_IMAGE_DIR || "localStorage/processed/highres";
+        return `${highResDir}/${baseName}.${extension}`;
       case process.env.IMAGE_STORAGE_KEY_ORIGINAL || "original":
         const originalDir = process.env.PROCESSED_ORIGINAL_IMAGE_DIR || "localStorage/processed/originals";
         return `${originalDir}/${baseName}.${extension}`;

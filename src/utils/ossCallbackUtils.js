@@ -397,7 +397,7 @@ function parseCallbackData(body) {
     callbackData = body;
   }
 
-  const { storageKey, fileSize, userId, imageHash } = callbackData;
+  const { storageKey, fileSize, userId, imageHash, sessionId } = callbackData;
 
   if (!userId || !imageHash || !storageKey) {
     throw new CustomError({
@@ -423,6 +423,7 @@ function parseCallbackData(body) {
     userId,
     hash: imageHash, // 统一使用 hash 字段名
     fileName,
+    sessionId, // 传递会话ID
   };
 }
 

@@ -37,6 +37,7 @@ module.exports = {
   FAILED_SELECT_BY_TIME_RANGE: "Failed to retrieve data within the specified time range",
   FAILED_SELECT_GROUPS_BY_YEAR: "Failed to retrieve data grouped by year",
   FAILED_SELECT_GROUPS_BY_MONTH: "Failed to retrieve data grouped by month",
+  UPLOAD_SESSION_NOT_FOUND: "Upload session not found",
   INVALID_EMAIL_FORMAT: "Invalid email format",
   PASSWORD_TOO_WEAK: "Password must be 8-16 characters long and include uppercase letters, lowercase letters, numbers, and special characters",
   INVALID_IMAGE_DATA: "The provided image data is invalid",

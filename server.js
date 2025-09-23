@@ -33,6 +33,7 @@ const authMiddleware = require("./src/middlewares/authMiddleware");
 const authRoutes = require("./src/routes/authRoutes");
 const imagesRoutes = require("./src/routes/imagesRoutes");
 const aliyunOssCallbackRoutes = require("./src/routes/aliyunOssCallbackRoutes");
+const uploadSessionRoutes = require("./src/routes/uploadSessionRoutes");
 
 // ========================== 创建Express实例，设置端口号 ========================== //
 
@@ -90,6 +91,9 @@ app.use("/aliyunOss", aliyunOssCallbackRoutes);
 
 // 注册图片业务路由+鉴权中间件(authMiddleware)
 app.use("/images", [authMiddleware], imagesRoutes);
+
+// 注册上传会话管理路由+鉴权中间件(authMiddleware)
+app.use("/uploads", [authMiddleware], uploadSessionRoutes);
 
 // ========================== 错误处理中间件 ========================== //
 

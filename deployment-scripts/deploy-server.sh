@@ -237,7 +237,7 @@ if [ "$REBUILD_DB" = true ]; then
 elif [ "$INIT_DB" = true ]; then
     log "🗄️ 初始化数据库..."
     log "📊 创建数据库表..."
-    if node "$(dirname "$0")/init-database.js"; then
+    if node "$(dirname "$0")/rebuild-database.js"; then
         log "✅ 数据库初始化完成"
     else
         log "❌ 数据库初始化失败"

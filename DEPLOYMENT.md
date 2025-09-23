@@ -87,7 +87,7 @@ cd /var/www/photos.bingbingcloud.com/backend
 1. **📦 本地打包**
    - 执行 `npm run build`
    - 打包到 `backend-dist/` 目录
-   - 包含：源代码、配置文件、服务器工具脚本（fix-sharp-complete.sh, init-database.js, clearAllAboutImageData.js）
+   - 包含：源代码、配置文件、服务器工具脚本（fix-sharp-complete.sh, rebuild-database.js, clearAllAboutImageData.js）
    - 不包含：本地部署脚本（deploy-complete.sh）
    - 检查必要文件是否存在
 
@@ -111,7 +111,7 @@ cd /var/www/photos.bingbingcloud.com/backend
    - 清理队列任务（clearQueues.js）
 
 6. **🗄️ 数据库初始化**
-   - 执行数据库初始化脚本（deployment-scripts/init-database.js）
+   - 执行数据库重建脚本（deployment-scripts/rebuild-database.js）
    - 创建数据库表（users, images）
    - 创建必要索引
 
@@ -163,11 +163,11 @@ cd /var/www/photos.bingbingcloud.com/backend
 - 重新编译Sharp模块
 - 验证修复结果
 
-#### 3. 数据库初始化脚本 (`init-database.js`)
+#### 3. 数据库重建脚本 (`rebuild-database.js`)
 
 ```bash
-# 初始化数据库表
-node init-database.js
+# 重建数据库表
+node rebuild-database.js
 ```
 
 **功能：**
@@ -209,10 +209,10 @@ node scripts/clearQueues.js
 
 ```bash
 # 上传文件到服务器
-scp -i /path/to/key.pem init-database.js xiaoxiao@server:/var/www/photos.bingbingcloud.com/backend/
+scp -i /path/to/key.pem rebuild-database.js xiaoxiao@server:/var/www/photos.bingbingcloud.com/backend/
 
 # 在服务器上执行数据库初始化
-ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && node init-database.js"
+ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && node rebuild-database.js"
 
 # 在服务器上修复Sharp（包含系统库安装）
 ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && ./fix-sharp-complete.sh"
@@ -253,7 +253,7 @@ ssh -i /path/to/key.pem xiaoxiao@server "pm2 logs"
 
    ```bash
    # 重新初始化数据库
-   ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && node init-database.js"
+   ssh -i /path/to/key.pem xiaoxiao@server "cd /var/www/photos.bingbingcloud.com/backend && node rebuild-database.js"
    ```
 
 4. **服务问题**

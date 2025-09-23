@@ -13,6 +13,7 @@ const { imageMetaQueue } = require("../queues/imageMetaQueue");
 const storageService = require("../services/storageService");
 const timeIt = require("../utils/timeIt");
 const { getDefaultStorageType } = require("../storage/constants/StorageTypes");
+const { updateProgress } = require("../services/imageProcessingProgressService");
 
 // 原子化：先查集合 → 抢锁 → 失败则再查集合 → 再决定 busy/重复
 async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
@@ -134,6 +135,15 @@ async function processAndSaveSingleImage(fileInfo) {
         });
       }
 
+      // 更新处理进度（失败）
+      if (fileInfo.sessionId) {
+        await updateProgress({
+          sessionId: fileInfo.sessionId,
+          imageHash,
+          status: "errors",
+        });
+      }
+
       throw error;
     }
 
@@ -151,18 +161,18 @@ async function processAndSaveSingleImage(fileInfo) {
       fileSize, // 文件大小（字节）
     };
 
-    logger.info({
-      message: "准备插入图片数据到数据库",
-      details: { imageData },
-    });
-
     try {
-      const result = await saveNewImage(imageData);
-      logger.info({
-        message: "图片数据插入成功",
-        details: { imageHash, userId, result },
-      });
+      await saveNewImage(imageData);
       await redisClient.sadd(userSetKey(userId), imageHash);
+
+      // 更新处理进度（成功）
+      if (fileInfo.sessionId) {
+        await updateProgress({
+          sessionId: fileInfo.sessionId,
+          imageHash,
+          status: "thumbDone",
+        });
+      }
     } catch (error) {
       // 数据库保存失败，将原始文件移动到失败目录并清理缩略图
       logger.error({
@@ -219,6 +229,7 @@ async function processAndSaveSingleImage(fileInfo) {
       storageKey, // 传递原始文件的存储键名
       extension: process.env.IMAGE_HIGHRES_EXTENSION || "avif",
       fileSize, // 传递文件大小
+      sessionId: fileInfo.sessionId, // 传递会话ID用于进度跟踪
     });
 
     logger.info({

@@ -88,6 +88,7 @@ async function handlePostImages(req, res, next) {
         userId,
         imageHash,
         extension: process.env.IMAGE_THUMBNAIL_EXTENSION || "webp",
+        sessionId: req.body.sessionId, // 传递会话ID
       },
       {
         jobId: jobId,

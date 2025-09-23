@@ -30,8 +30,8 @@ if [ ! -f "fix-sharp-complete.sh" ]; then
     exit 1
 fi
 
-if [ ! -f "init-database.js" ]; then
-    echo "❌ 错误：init-database.js 不存在"
+if [ ! -f "rebuild-database.js" ]; then
+    echo "❌ 错误：rebuild-database.js 不存在"
     exit 1
 fi
 

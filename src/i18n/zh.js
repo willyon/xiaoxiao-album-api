@@ -37,6 +37,7 @@ module.exports = {
   FAILED_SELECT_BY_TIME_RANGE: "获取指定时间范围内的数据失败",
   FAILED_SELECT_GROUPS_BY_YEAR: "按年份分组的数据获取失败",
   FAILED_SELECT_GROUPS_BY_MONTH: "按月份分组的数据获取失败",
+  UPLOAD_SESSION_NOT_FOUND: "上传会话不存在",
   INVALID_EMAIL_FORMAT: "邮箱格式无效",
   PASSWORD_TOO_WEAK: "密码必须为 8-16 个字符，包含大写字母、小写字母、数字和特殊字符",
   INVALID_IMAGE_DATA: "提供的图像数据无效",

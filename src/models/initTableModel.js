@@ -5,7 +5,7 @@
  * @LastEditTime: 2025-08-17 14:46:14
  * @Description: File description
  */
-const { db } = require("../services/dbService");
+const { db } = require("../services/database");
 //删除users表格
 function deleteTableUsers() {
   const createtablestmt = `
@@ -23,7 +23,7 @@ function createTableUsers() {
       password TEXT NOT NULL,
       verified_status TEXT DEFAULT 'pending',
       verification_token TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
     );
   `;
   try {
@@ -56,7 +56,7 @@ function createTableImages() {
         original_storage_key TEXT,
         high_res_storage_key TEXT,
         thumbnail_storage_key TEXT,
-        creation_date INTEGER,              -- 毫秒时间戳，可为 NULL
+        image_created_at INTEGER,              -- 毫秒时间戳，可为 NULL
         image_hash TEXT,                   -- 图片内容哈希
         year_key  TEXT,                     -- 物化：'YYYY' 或 'unknown'
         month_key TEXT,                     -- 物化：'YYYY-MM' 或 'unknown'
@@ -72,6 +72,9 @@ function createTableImages() {
         
         -- 文件大小信息
         file_size INTEGER,                  -- 文件大小（字节）
+        
+        -- 时间戳信息
+        created_at INTEGER,                 -- 缩略图入库时间戳（毫秒）
 
         -- 同一用户下，内容哈希唯一（避免跨用户互相影响）
         UNIQUE (user_id, image_hash),
@@ -111,7 +114,7 @@ function createTableImages() {
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_creation_desc
-      ON images(user_id, creation_date DESC, id DESC);
+      ON images(user_id, image_created_at DESC, id DESC);
     `,
     ).run();
 
@@ -119,7 +122,7 @@ function createTableImages() {
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_year_creation
-      ON images(user_id, year_key, creation_date DESC, id DESC);
+      ON images(user_id, year_key, image_created_at DESC, id DESC);
     `,
     ).run();
 
@@ -127,7 +130,7 @@ function createTableImages() {
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_month_creation
-      ON images(user_id, month_key, creation_date DESC, id DESC);
+      ON images(user_id, month_key, image_created_at DESC, id DESC);
     `,
     ).run();
 
@@ -135,7 +138,7 @@ function createTableImages() {
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_storage_creation
-      ON images(user_id, storage_type, creation_date DESC, id DESC);
+      ON images(user_id, storage_type, image_created_at DESC, id DESC);
     `,
     ).run();
 

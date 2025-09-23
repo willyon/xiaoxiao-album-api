@@ -205,7 +205,7 @@ class StorageService {
    * @param {string} options.userId - 用户ID
    * @returns {Promise<Object>} 上传签名信息
    */
-  async getUploadSignature({ storageKey, contentType, contentLength, userId }) {
+  async getUploadSignature({ storageKey, contentType, contentLength, userId, sessionId }) {
     try {
       // 只有OSS适配器支持签名生成
       if (this._currentStorageType !== STORAGE_TYPES.ALIYUN_OSS) {
@@ -227,6 +227,7 @@ class StorageService {
         contentType,
         contentLength,
         userId,
+        sessionId,
       });
     } catch (error) {
       logger.error({

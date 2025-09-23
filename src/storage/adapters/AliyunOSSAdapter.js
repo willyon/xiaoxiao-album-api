@@ -667,7 +667,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @param {string} options.userId - 用户ID
    * @returns {Promise<Object>} 上传签名信息
    */
-  async getUploadSignature({ storageKey, contentType, contentLength, userId }) {
+  async getUploadSignature({ storageKey, contentType, contentLength, userId, sessionId }) {
     try {
       // 生成回调URL
       const callbackUrl = buildOSSCallbackUrl();
@@ -678,6 +678,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
         storageKey,
         fileSize: contentLength,
         imageHash: storageKey.split("/").pop().split(".")[0],
+        sessionId: sessionId, // 包含会话ID
       });
 
       // 记录回调参数详情

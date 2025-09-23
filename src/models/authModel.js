@@ -5,7 +5,7 @@
  * @LastEditTime: 2025-08-13 09:08:52
  * @Description: File description
  */
-const { db } = require("../services/dbService");
+const { db } = require("../services/database");
 const { mapFields } = require("../utils/fieldMapper");
 
 const findUserById = (userId) => {
