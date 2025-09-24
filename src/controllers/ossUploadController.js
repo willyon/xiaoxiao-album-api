@@ -11,6 +11,7 @@ const storageService = require("../services/storageService");
 const { imageUploadQueue } = require("../queues/imageUploadQueue");
 const logger = require("../utils/logger");
 const { verifyOSSCallbackSignature, parseCallbackData } = require("../utils/ossCallbackUtils");
+const { updateProgress } = require("../services/imageProcessingProgressService");
 
 /**
  * 获取OSS直传签名
@@ -60,7 +61,6 @@ async function handleGetUploadSignature(req, res, next) {
 /**
  * 检查去重并添加到队列
  * @param {Object} callbackData - 回调数据
- * @returns {Promise<boolean>} 是否为重复任务
  */
 async function checkAndAddToQueue(callbackData) {
   const { userId, hash, fileName, fileSize, storageKey, sessionId } = callbackData;
@@ -81,7 +81,7 @@ async function checkAndAddToQueue(callbackData) {
         note: "OSS storage is overwrite-based, no cleanup needed",
       },
     });
-    return true; // 是重复任务
+    return; // 是重复任务，直接返回
   }
 
   // 没有重复，添加到队列进行后续处理（生成缩略图、EXIF提取等）
@@ -101,7 +101,11 @@ async function checkAndAddToQueue(callbackData) {
     },
   );
 
-  return false; // 不是重复任务
+  // 更新会话的uploadedCount（非阻塞，不影响主流程）
+  await updateProgress({
+    sessionId,
+    status: "uploadedCount",
+  });
 }
 
 /**
