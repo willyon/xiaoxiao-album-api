@@ -54,7 +54,7 @@ if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
 }
 
 // 使用绝对路径导入模块
-const { db } = require(path.join(projectRoot, "src", "services", "dbService"));
+const { db } = require(path.join(projectRoot, "src", "services", "database"));
 // 队列导入
 const { imageUploadQueue } = require(path.join(projectRoot, "src", "queues", "imageUploadQueue"));
 const { imageMetaQueue } = require(path.join(projectRoot, "src", "queues", "imageMetaQueue"));

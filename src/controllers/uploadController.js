@@ -10,6 +10,7 @@ const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
 const { imageUploadQueue } = require("../queues/imageUploadQueue");
 const { computeFileHash } = require("../utils/hash");
 const storageService = require("../services/storageService");
+const { updateProgress } = require("../services/imageProcessingProgressService");
 const logger = require("../utils/logger");
 
 async function handlePostImages(req, res, next) {
@@ -95,14 +96,10 @@ async function handlePostImages(req, res, next) {
       },
     );
 
-    logger.info({
-      message: "New image upload job added to queue",
-      details: {
-        userId,
-        fileName,
-        fileSize,
-        storageKey,
-      },
+    // 第五步：更新会话的uploadedCount（非阻塞，不影响主流程）
+    await updateProgress({
+      sessionId: req.body.sessionId,
+      status: "uploadedCount",
     });
 
     // 加入队列任务前，打印队列状态

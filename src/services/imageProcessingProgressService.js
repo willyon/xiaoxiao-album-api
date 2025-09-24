@@ -12,27 +12,25 @@ const logger = require("../utils/logger");
 const redisClient = getRedisClient();
 
 /**
- * 更新图片处理进度
+ * 更新会话进度（统一接口）
  * @param {Object} params - 参数对象
  * @param {string} params.sessionId - 会话ID
- * @param {string} params.imageHash - 图片哈希
- * @param {string} params.status - 处理状态：'thumbDone'、'highResDone' 或 'processingErrors'
+ * @param {string} params.status - 状态字段：'uploadedCount'、'thumbDone'、'highResDone' 或 'processingErrors'
+ * @param {number} params.increment - 增量值（默认为1）
  */
-async function updateProgress({ sessionId, imageHash, status }) {
+async function updateProgress({ sessionId, status, increment = 1 }) {
   if (!sessionId) return;
 
   try {
-    // 更新Redis计数：增加指定状态字段的计数值（+1）
-    await redisClient.hincrby(`upload:session:${sessionId}`, status, 1);
-
-    // 注意：不再需要检查会话完成状态，前端基于数据自动判断
+    // 更新Redis计数：增加指定状态字段的计数值
+    await redisClient.hincrby(`upload:session:${sessionId}`, status, increment);
 
     // 发布进度更新事件
     await _publishProgressUpdate(sessionId);
   } catch (error) {
     logger.error({
       message: "更新处理进度失败",
-      details: { sessionId, imageHash, status, error: error.message },
+      details: { sessionId, status, increment, error: error.message },
     });
   }
 }
@@ -50,7 +48,6 @@ async function _publishProgressUpdate(sessionId) {
       // 构建进度数据
       const progressData = {
         sessionId,
-        totalCount: parseInt(redisData.totalCount) || 0,
         uploadedCount: parseInt(redisData.uploadedCount) || 0,
         thumbDone: parseInt(redisData.thumbDone) || 0,
         highResDone: parseInt(redisData.highResDone) || 0,

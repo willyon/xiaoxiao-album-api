@@ -12,6 +12,7 @@ const path = require("path");
 const logger = require("./src/utils/logger");
 
 const express = require("express");
+const cors = require("cors");
 const { getRedisClient } = require("./src/services/redisClient");
 const initGracefulShutdown = require("./src/utils/gracefulShutdown");
 
@@ -34,6 +35,7 @@ const authRoutes = require("./src/routes/authRoutes");
 const imagesRoutes = require("./src/routes/imagesRoutes");
 const aliyunOssCallbackRoutes = require("./src/routes/aliyunOssCallbackRoutes");
 const uploadSessionRoutes = require("./src/routes/uploadSessionRoutes");
+const progressRoutes = require("./src/routes/progressRoutes");
 
 // ========================== 创建Express实例，设置端口号 ========================== //
 
@@ -63,6 +65,28 @@ app.use((req, res, next) => {
 // app.use(limiter);
 
 // ========================== 基础中间件 ========================== //
+
+// CORS跨域配置 - 允许前端访问后端API
+app.use(
+  cors({
+    // 设置允许跨域访问的源域名
+    // 开发环境：允许localhost:5173（前端）访问localhost:3000（后端）
+    // 生产环境：禁止所有跨域访问，提高安全性
+    origin: process.env.NODE_ENV === "development" ? "http://localhost:5173" : false,
+
+    // 允许跨域请求携带认证信息（cookies、Authorization头等）
+    credentials: true,
+
+    // 指定允许的HTTP方法
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+
+    // 指定允许的请求头
+    // Content-Type: 设置请求内容类型（JSON、表单等）
+    // Authorization: 发送JWT认证令牌
+    // X-Accept-Language: 发送语言偏好设置
+    allowedHeaders: ["Content-Type", "Authorization", "X-Accept-Language"],
+  }),
+);
 
 // 注册JSON请求体解析
 app.use(express.json());
@@ -94,6 +118,9 @@ app.use("/images", [authMiddleware], imagesRoutes);
 
 // 注册上传会话管理路由+鉴权中间件(authMiddleware)
 app.use("/uploads", [authMiddleware], uploadSessionRoutes);
+
+// 注册SSE进度推送路由 - 不需要鉴权（EventSource无法发送认证头）
+app.use("/progress", progressRoutes);
 
 // ========================== 错误处理中间件 ========================== //
 

@@ -7,9 +7,12 @@
  */
 const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
-const redisClient = require("../services/redisClient");
+const { getRedisClient } = require("../services/redisClient");
 const { setupProgressStream } = require("../services/imageProcessingProgressService");
 const logger = require("../utils/logger");
+
+// 获取Redis客户端实例
+const redisClient = getRedisClient();
 
 /**
  * 图片处理进度推送流（SSE）
@@ -38,20 +41,16 @@ const progressStream = async (req, res, next) => {
       });
     }
 
-    // 设置SSE响应头（根据环境判断是否允许跨域）
-    const headers = {
+    // 通过sessionId验证会话存在性
+    // 注意：这里不进行严格的用户身份验证，因为EventSource无法发送认证头
+    // 会话ID是UUID，具有足够的随机性，可以防止恶意访问
+
+    // 设置SSE响应头
+    res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
-    };
-
-    // 开发环境允许跨域，生产环境不允许
-    if (process.env.NODE_ENV === "development") {
-      headers["Access-Control-Allow-Origin"] = "*";
-      headers["Access-Control-Allow-Headers"] = "Cache-Control";
-    }
-
-    res.writeHead(200, headers);
+    });
 
     // 设置Redis实时推送
     await setupProgressStream(req, res, sessionId);

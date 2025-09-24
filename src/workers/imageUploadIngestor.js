@@ -139,7 +139,6 @@ async function processAndSaveSingleImage(fileInfo) {
       if (fileInfo.sessionId) {
         await updateProgress({
           sessionId: fileInfo.sessionId,
-          imageHash,
           status: "errors",
         });
       }
@@ -169,7 +168,6 @@ async function processAndSaveSingleImage(fileInfo) {
       if (fileInfo.sessionId) {
         await updateProgress({
           sessionId: fileInfo.sessionId,
-          imageHash,
           status: "thumbDone",
         });
       }

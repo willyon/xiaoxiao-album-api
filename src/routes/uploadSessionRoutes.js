@@ -7,19 +7,12 @@
  */
 const express = require("express");
 const router = express.Router();
-const { handleCreateSession, handleGetActiveSession, handleUpdateSessionData } = require("../controllers/uploadSessionController");
-const { progressStream } = require("../controllers/imageProcessingProgressController");
+const { handleCreateSession, handleGetActiveSession } = require("../controllers/uploadSessionController");
 
 // 创建上传会话
 router.post("/sessions", handleCreateSession);
 
-// 更新会话数据（统一接口）
-router.put("/sessions/:id/update", handleUpdateSessionData);
-
 // 获取用户的最新会话
 router.get("/sessions/active", handleGetActiveSession);
-
-// 进度推送流（SSE）
-router.get("/progress/stream", progressStream);
 
 module.exports = router;

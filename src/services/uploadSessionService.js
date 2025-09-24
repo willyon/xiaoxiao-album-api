@@ -15,16 +15,14 @@ const redisClient = getRedisClient();
 /**
  * 创建上传会话
  * @param {string} userId - 用户ID
- * @param {number} totalCount - 总文件数
  * @returns {Object} 会话对象
  */
-async function createSession(userId, totalCount) {
+async function createSession(userId) {
   // 生成会话ID
   const sessionId = uuidv4();
 
   // 在Redis中创建会话
   await redisClient.hset(`upload:session:${sessionId}`, {
-    totalCount,
     uploadedCount: 0,
     thumbDone: 0,
     highResDone: 0,
@@ -40,7 +38,6 @@ async function createSession(userId, totalCount) {
 
   return {
     sessionId,
-    totalCount,
     uploadedCount: 0,
     thumbDone: 0,
     highResDone: 0,
@@ -70,18 +67,16 @@ async function getActiveSession(userId) {
       const uploadedCount = parseInt(redisData.uploadedCount) || 0;
       const highResDone = parseInt(redisData.highResDone) || 0;
       const processingErrors = parseInt(redisData.processingErrors) || 0;
-      const isCompleted = highResDone + processingErrors >= uploadedCount && uploadedCount > 0;
+      const isActive = (highResDone + processingErrors < uploadedCount && uploadedCount > 0) || (thumbDone === 0 && uploadedCount === 0);
 
-      if (isCompleted) {
+      if (!isActive) {
         return null;
       }
 
-      const totalCount = parseInt(redisData.totalCount) || 0;
       const thumbDone = parseInt(redisData.thumbDone) || 0;
 
       return {
         sessionId: activeSessionId,
-        totalCount,
         uploadedCount,
         thumbDone,
         highResDone,
@@ -99,37 +94,7 @@ async function getActiveSession(userId) {
   }
 }
 
-/**
- * 更新会话数据
- * @param {string} sessionId - 会话ID
- * @param {Object} updateData - 要更新的数据 { uploadedCount?, totalCount? }
- * @returns {Object} 更新后的会话数据
- */
-async function updateSessionData(sessionId, updateData) {
-  // 验证会话是否存在
-  const session = await redisClient.hgetall(`upload:session:${sessionId}`);
-  if (!session || Object.keys(session).length === 0) {
-    throw new Error("Session not found");
-  }
-
-  // 如果没有要更新的数据，直接返回原会话信息
-  if (Object.keys(updateData).length) {
-    // 更新Redis缓存
-    await redisClient.hset(`upload:session:${sessionId}`, updateData);
-  }
-
-  return {
-    sessionId: sessionId,
-    totalCount: parseInt(session.totalCount) || 0,
-    uploadedCount: parseInt(session.uploadedCount) || 0,
-    thumbDone: parseInt(session.thumbDone) || 0,
-    highResDone: parseInt(session.highResDone) || 0,
-    processingErrors: parseInt(session.processingErrors) || 0,
-  };
-}
-
 module.exports = {
   createSession,
   getActiveSession,
-  updateSessionData,
 };

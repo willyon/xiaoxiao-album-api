@@ -161,7 +161,6 @@ async function processImageMeta(payload) {
     if (sessionId) {
       await updateProgress({
         sessionId,
-        imageHash,
         status: processingStatus,
       });
     }
