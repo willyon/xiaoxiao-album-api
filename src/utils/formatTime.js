@@ -78,8 +78,32 @@ function timestampToYear(timestamp) {
   return dt.isValid ? dt.toFormat("yyyy") : "unknown";
 }
 
+/**
+ * 将时间戳转换为日期格式字符串（YYYY-MM-DD格式）
+ * @param {number|null} timestamp - 时间戳（毫秒）
+ * @returns {string} 日期字符串，如 "2024-08-15" 或 "unknown"
+ */
+function timestampToDate(timestamp) {
+  if (timestamp == null) return "unknown";
+  const dt = DateTime.fromMillis(Number(timestamp)); // 使用系统默认时区，与stringToTimestamp保持一致
+  return dt.isValid ? dt.toFormat("yyyy-MM-dd") : "unknown";
+}
+
+/**
+ * 将时间戳转换为星期几格式字符串（Monday, Tuesday等格式）
+ * @param {number|null} timestamp - 时间戳（毫秒）
+ * @returns {string} 星期几字符串，如 "Monday" 或 "unknown"
+ */
+function timestampToDayOfWeek(timestamp) {
+  if (timestamp == null) return "unknown";
+  const dt = DateTime.fromMillis(Number(timestamp)); // 使用系统默认时区，与stringToTimestamp保持一致
+  return dt.isValid ? dt.toFormat("cccc") : "unknown"; // cccc 格式输出完整的星期几名称
+}
+
 module.exports = {
   stringToTimestamp,
   timestampToYearMonth,
   timestampToYear,
+  timestampToDate,
+  timestampToDayOfWeek,
 };

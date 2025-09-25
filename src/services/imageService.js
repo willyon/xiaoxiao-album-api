@@ -330,6 +330,24 @@ async function getImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
   }
 }
 
+// 分页获取用户某日期图片
+async function getImagesByDate({ pageNo, pageSize, dateKey, userId }) {
+  try {
+    const result = await imageModel.selectImagesByDate({ pageNo, pageSize, dateKey, userId });
+
+    // 添加完整URL
+    result.data = await _addFullUrlToImage(result.data);
+
+    return result;
+  } catch (error) {
+    logger.error({
+      message: "分页获取用户某日期图片失败",
+      details: { pageNo, pageSize, dateKey, userId, error: error.message },
+    });
+    throw new CustomError(ERROR_CODES.INTERNAL_SERVER_ERROR, "获取用户图片失败");
+  }
+}
+
 // 按年份获取分组信息
 async function getGroupsByYear({ userId, pageNo = 1, pageSize = 10, withFullUrls = true }) {
   // 参数校验和默认值保护
@@ -386,6 +404,34 @@ async function getGroupsByMonth({ userId, pageNo = 1, pageSize = 10, withFullUrl
   }
 }
 
+// 按日期获取分组信息
+async function getGroupsByDate({ userId, pageNo = 1, pageSize = 10, withFullUrls = true }) {
+  // 参数校验和默认值保护
+  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: "warning",
+    });
+  }
+  try {
+    const queryResult = await imageModel.selectGroupsByDate({ pageNo, pageSize, userId });
+
+    // 如果需要完整URL，则转换
+    if (withFullUrls && queryResult.data) {
+      queryResult.data = await _addFullUrlToGroupCover(queryResult.data);
+    }
+
+    return queryResult;
+  } catch (error) {
+    throw new CustomError({
+      httpStatus: 500,
+      messageCode: ERROR_CODES.FAILED_SELECT_GROUPS_BY_DATE,
+      messageType: "error",
+    });
+  }
+}
+
 module.exports = {
   // ========== 图片业务逻辑函数 ==========
   extractImageMetadata,
@@ -397,8 +443,10 @@ module.exports = {
   getAllImagesByPage,
   getImagesByYear,
   getImagesByMonth,
+  getImagesByDate,
   getGroupsByYear,
   getGroupsByMonth,
+  getGroupsByDate,
 };
 
 // ========== 备用的注释代码（保留备用） ==========

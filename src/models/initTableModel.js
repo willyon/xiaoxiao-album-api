@@ -60,6 +60,8 @@ function createTableImages() {
         image_hash TEXT,                   -- 图片内容哈希
         year_key  TEXT,                     -- 物化：'YYYY' 或 'unknown'
         month_key TEXT,                     -- 物化：'YYYY-MM' 或 'unknown'
+        date_key TEXT,                      -- 物化：'YYYY-MM-DD' 或 'unknown'
+        day_key TEXT,                       -- 物化：'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday' 或 'unknown'
         
         -- GPS 位置信息
         gps_latitude REAL,                  -- GPS纬度 (十进制格式) REAL 浮点数类型
@@ -155,6 +157,38 @@ function createTableImages() {
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_month
       ON images(user_id, month_key);
+    `,
+    ).run();
+
+    // 2.10 用户日期创建时间索引（日期分页查询）
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_date_creation
+      ON images(user_id, date_key, image_created_at DESC, id DESC);
+    `,
+    ).run();
+
+    // 2.11 用户星期创建时间索引（星期几分页查询）
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_day_creation
+      ON images(user_id, day_key, image_created_at DESC, id DESC);
+    `,
+    ).run();
+
+    // 2.12 用户日期索引（日期分组统计）
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_date
+      ON images(user_id, date_key);
+    `,
+    ).run();
+
+    // 2.13 用户星期索引（星期几分组统计）
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_day
+      ON images(user_id, day_key);
     `,
     ).run();
   } catch (err) {

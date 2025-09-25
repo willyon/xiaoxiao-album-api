@@ -24,6 +24,8 @@ const FIELD_MAPPING = {
     image_created_at: "creationDate",
     year_key: "yearKey",
     month_key: "monthKey",
+    date_key: "dateKey",
+    day_key: "dayKey",
     gps_latitude: "gpsLatitude",
     gps_longitude: "gpsLongitude",
     gps_altitude: "gpsAltitude",

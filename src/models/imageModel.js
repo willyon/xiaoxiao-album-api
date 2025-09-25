@@ -18,6 +18,8 @@ function insertImage({
   creationDate,
   yearKey,
   monthKey,
+  dateKey,
+  dayKey,
   gpsLatitude,
   gpsLongitude,
   gpsAltitude,
@@ -35,6 +37,8 @@ function insertImage({
       image_created_at,
       year_key,  
       month_key,
+      date_key,
+      day_key,
       gps_latitude,
       gps_longitude,
       gps_altitude,
@@ -42,7 +46,7 @@ function insertImage({
       storage_type,
       file_size,
       created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const createdAt = Date.now(); // 入库时间戳（毫秒）
@@ -56,6 +60,8 @@ function insertImage({
     creationDate,
     yearKey,
     monthKey,
+    dateKey,
+    dayKey,
     gpsLatitude,
     gpsLongitude,
     gpsAltitude,
@@ -80,7 +86,7 @@ function selectImagesByPage({ pageNo, pageSize, userId }) {
 
   // 分页数据查询
   const dataQuery = db.prepare(`
-    SELECT high_res_storage_key, thumbnail_storage_key, image_created_at, month_key, year_key, storage_type, gps_location
+    SELECT high_res_storage_key, thumbnail_storage_key, image_created_at, date_key, day_key, month_key, year_key, storage_type, gps_location
     FROM images
     WHERE user_id = ?
     ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
@@ -109,7 +115,7 @@ function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
 
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
-    SELECT high_res_storage_key, thumbnail_storage_key, image_created_at, month_key, year_key, storage_type, gps_location
+    SELECT high_res_storage_key, thumbnail_storage_key, image_created_at, date_key, day_key, month_key, year_key, storage_type, gps_location
     FROM images
     WHERE user_id = ?
       AND year_key = ?
@@ -139,7 +145,7 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
 
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
-    SELECT high_res_storage_key, thumbnail_storage_key, image_created_at, month_key, year_key, storage_type, gps_location
+    SELECT high_res_storage_key, thumbnail_storage_key, image_created_at, date_key, day_key, month_key, year_key, storage_type, gps_location
     FROM images
     WHERE user_id = ?
       AND month_key = ?
@@ -157,6 +163,36 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
   try {
     const data = dataQuery.all(userId, monthKey, pageSize, offset);
     const { total } = countQuery.get(userId, monthKey);
+    return { data: mapFields("images", data), total };
+  } catch (error) {
+    throw error;
+  }
+}
+
+// 分页获取用户具体某个日期的图片数据 —— 基于物化的 dateKey
+function selectImagesByDate({ pageNo, pageSize, dateKey, userId }) {
+  const offset = (pageNo - 1) * pageSize;
+
+  // 分页数据查询（与总数统计保持相同过滤条件）
+  const dataQuery = db.prepare(`
+    SELECT high_res_storage_key, thumbnail_storage_key, image_created_at, date_key, day_key, month_key, year_key, storage_type, gps_location
+    FROM images
+    WHERE user_id = ?
+      AND date_key = ?
+    ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
+    LIMIT ? OFFSET ?
+  `);
+
+  const countQuery = db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM images
+    WHERE user_id = ?
+      AND date_key = ?
+  `);
+
+  try {
+    const data = dataQuery.all(userId, dateKey, pageSize, offset);
+    const { total } = countQuery.get(userId, dateKey);
     return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;
@@ -274,6 +310,63 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
     throw error;
   }
 }
+
+// 分页获取用户按日期分组（YYYY-MM-DD / 'unknown'）数据 —— 基于物化 dateKey
+function selectGroupsByDate({ pageNo, pageSize, userId }) {
+  const offset = (pageNo - 1) * pageSize;
+
+  const dataQuery = db.prepare(`
+    WITH counts AS (
+      SELECT date_key, COUNT(*) AS imageCount
+      FROM images
+      WHERE user_id = ?
+      GROUP BY date_key
+    ),
+    latest AS (
+      -- 为每个 date_key 选最新一张（先按 image_created_at DESC，再按 id DESC 保证稳定）
+      SELECT m.date_key, m.thumbnail_storage_key, m.image_created_at, m.id, m.storage_type
+      FROM images m
+      WHERE m.user_id = ?
+        AND m.id = (
+          SELECT m2.id
+          FROM images m2
+          WHERE m2.user_id = m.user_id
+            AND m2.date_key = m.date_key
+          ORDER BY COALESCE(m2.image_created_at, 0) DESC, m2.id DESC
+          LIMIT 1
+        )
+      GROUP BY m.date_key
+    )
+    SELECT
+      latest.date_key,        -- 分组键（YYYY-MM-DD / 'unknown'）
+      latest.thumbnail_storage_key AS latestImagekey,
+      latest.image_created_at,
+      latest.storage_type,
+      counts.imageCount
+    FROM latest
+    JOIN counts ON counts.date_key = latest.date_key
+    ORDER BY
+      CASE WHEN latest.date_key = 'unknown' THEN 1 ELSE 0 END,
+      latest.date_key DESC
+    LIMIT ? OFFSET ?;
+  `);
+
+  // 组总数：直接对 date_key 去重计数
+  const countQuery = db.prepare(`
+    SELECT COUNT(DISTINCT date_key) AS groupCount
+    FROM images
+    WHERE user_id = ?;
+  `);
+
+  try {
+    const data = dataQuery.all(userId, userId, pageSize, offset);
+    const { groupCount: total } = countQuery.get(userId);
+    return { data: mapFields("images", data), total };
+  } catch (error) {
+    throw error;
+  }
+}
+
 // 仅更新有值的字段
 function updateMetaAndHQ({
   userId,
@@ -281,6 +374,8 @@ function updateMetaAndHQ({
   creationDate,
   monthKey,
   yearKey,
+  dateKey,
+  dayKey,
   highResStorageKey,
   originalStorageKey,
   gpsLatitude,
@@ -303,6 +398,14 @@ function updateMetaAndHQ({
   if (yearKey != null) {
     fields.push("year_key = ?");
     params.push(yearKey);
+  }
+  if (dateKey != null) {
+    fields.push("date_key = ?");
+    params.push(dateKey);
+  }
+  if (dayKey != null) {
+    fields.push("day_key = ?");
+    params.push(dayKey);
   }
   if (highResStorageKey != null) {
     fields.push("high_res_storage_key = ?");
@@ -359,8 +462,10 @@ module.exports = {
   selectImagesByPage,
   selectImagesByYear,
   selectImagesByMonth,
+  selectImagesByDate,
   selectGroupsByYear,
   selectGroupsByMonth,
+  selectGroupsByDate,
   selectHashesByUserId,
   checkFileExists,
 };

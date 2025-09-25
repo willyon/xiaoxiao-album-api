@@ -81,6 +81,13 @@ async function checkAndAddToQueue(callbackData) {
         note: "OSS storage is overwrite-based, no cleanup needed",
       },
     });
+
+    // 更新重复文件计数，保持前后端数据一致
+    await updateProgress({
+      sessionId,
+      status: "duplicateCount",
+    });
+
     return; // 是重复任务，直接返回
   }
 

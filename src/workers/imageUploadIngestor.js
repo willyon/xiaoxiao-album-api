@@ -146,7 +146,7 @@ async function processAndSaveSingleImage(fileInfo) {
       throw error;
     }
 
-    // ======== 先写库（creationDate 为空；monthKey/yearKey = 'unknown'；bigHigh 先留空或保留旧值）========
+    // ======== 先写库（creationDate 为空；monthKey/yearKey/dateKey/dayKey = 'unknown'；bigHigh 先留空或保留旧值）========
     const imageData = {
       originalStorageKey: "", // 先空着，待 imageMetaWorker 填充
       highResStorageKey: "", // 先空着，待 imageMetaWorker 填充
@@ -156,6 +156,8 @@ async function processAndSaveSingleImage(fileInfo) {
       userId,
       monthKey: "unknown",
       yearKey: "unknown",
+      dateKey: "unknown",
+      dayKey: "unknown",
       storageType: getDefaultStorageType(), // 动态获取当前存储类型
       fileSize, // 文件大小（字节）
     };

@@ -14,8 +14,8 @@ const projectRoot = path.resolve(scriptDir, "..");
 process.chdir(projectRoot);
 
 require("dotenv").config();
-const { db } = require(path.join(projectRoot, "src", "services", "dbService"));
-const { createTableUsers, createTableImages, createTableUploadSessions } = require(path.join(projectRoot, "src", "models", "initTableModel"));
+const { db } = require(path.join(projectRoot, "src", "services", "database"));
+const { createTableUsers, createTableImages } = require(path.join(projectRoot, "src", "models", "initTableModel"));
 
 async function rebuildDatabase() {
   try {
@@ -25,9 +25,7 @@ async function rebuildDatabase() {
     // 检查表是否存在
     const usersTableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'").get();
     const imagesTableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='images'").get();
-    const uploadSessionsTableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='upload_sessions'").get();
-
-    if (!usersTableExists && !imagesTableExists && !uploadSessionsTableExists) {
+    if (!usersTableExists && !imagesTableExists) {
       console.log("ℹ️  数据库表不存在，直接创建新表...");
     } else {
       console.log("📊 发现现有表，准备删除并重建...");
@@ -45,11 +43,6 @@ async function rebuildDatabase() {
         console.log("✅ 删除 images 表");
       }
 
-      if (uploadSessionsTableExists) {
-        db.prepare("DROP TABLE IF EXISTS upload_sessions").run();
-        console.log("✅ 删除 upload_sessions 表");
-      }
-
       if (usersTableExists) {
         db.prepare("DROP TABLE IF EXISTS users").run();
         console.log("✅ 删除 users 表");
@@ -65,13 +58,7 @@ async function rebuildDatabase() {
       // 创建 images 表
       createTableImages();
       console.log(
-        "✅ 创建 images 表（字段：original_storage_key, high_res_storage_key, thumbnail_storage_key, image_created_at, session_id, processing_state, created_at, year_key, month_key, gps_latitude, gps_longitude, gps_altitude, gps_location, storage_type, file_size）",
-      );
-
-      // 创建 upload_sessions 表
-      createTableUploadSessions();
-      console.log(
-        "✅ 创建 upload_sessions 表（字段：id, user_id, total_files, uploaded_originals, thumb_done, high_res_done, errors, status, created_at, updated_at）",
+        "✅ 创建 images 表（字段：original_storage_key, high_res_storage_key, thumbnail_storage_key, image_created_at, year_key, month_key, date_key, day_key, gps_latitude, gps_longitude, gps_altitude, gps_location, storage_type, file_size, created_at）",
       );
 
       // 提交事务

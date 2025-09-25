@@ -10,6 +10,7 @@ const CustomError = require("../errors/customError");
 const { ERROR_CODES, SUCCESS_CODES } = require("../constants/messageCodes");
 const { getRedisClient } = require("../services/redisClient");
 const { ensureUserSetReady, userSetKey } = require("../workers/userImageHashset");
+const { updateProgress } = require("../services/imageProcessingProgressService");
 const logger = require("../utils/logger");
 
 // 分页获取所有图片信息
@@ -51,6 +52,19 @@ async function handleGetByCertainMonth(req, res, next) {
   }
 }
 
+//分页获取具体某个日期的图片
+async function handleGetByCertainDate(req, res, next) {
+  const { userId } = req?.user;
+  const { pageNo, pageSize, dateKey } = req.body;
+  try {
+    const queryResult = await imageService.getImagesByDate({ userId, pageNo, pageSize, dateKey });
+
+    res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
+  } catch (error) {
+    next(error);
+  }
+}
+
 // 分页获取按年份分组数据
 async function handleGroupByYear(req, res, next) {
   const { userId } = req?.user;
@@ -79,6 +93,20 @@ async function handleGroupByMonth(req, res, next) {
   }
 }
 
+// 分页获取按日期分组数据
+async function handleGroupByDate(req, res, next) {
+  const { userId } = req?.user;
+  const { pageSize, pageNo } = req.body;
+  try {
+    // 分页获取数据
+    const queryResult = await imageService.getGroupsByDate({ userId, pageSize, pageNo });
+
+    res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
+  } catch (error) {
+    next(error);
+  }
+}
+
 /**
  * 预检文件是否存在 - 通用图片检查接口
  * POST /images/checkFileExists
@@ -88,7 +116,7 @@ async function handleGroupByMonth(req, res, next) {
  */
 async function handleCheckFileExists(req, res, next) {
   try {
-    const { hash } = req.body;
+    const { hash, sessionId } = req.body;
     const userId = req?.user?.userId;
 
     if (!hash) {
@@ -114,6 +142,14 @@ async function handleCheckFileExists(req, res, next) {
         details: { userId, imageHash: hash },
       });
 
+      // 如果有sessionId，更新已存在文件计数
+      if (sessionId) {
+        await updateProgress({
+          sessionId,
+          status: "existingFiles",
+        });
+      }
+
       return res.sendResponse({
         data: { exists: true },
         messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
@@ -134,7 +170,9 @@ module.exports = {
   handleGetAllByPage,
   handleGetByCertainYear,
   handleGetByCertainMonth,
+  handleGetByCertainDate,
   handleGroupByYear,
   handleGroupByMonth,
+  handleGroupByDate,
   handleCheckFileExists,
 };

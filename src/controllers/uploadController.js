@@ -53,6 +53,12 @@ async function handlePostImages(req, res, next) {
         await storageService.deleteFile({ fileName, storageKey: file.path });
       }
 
+      // 更新重复文件计数，保持前后端数据一致
+      await updateProgress({
+        sessionId: req.body.sessionId,
+        status: "duplicateCount",
+      });
+
       // 返回成功，用户无感知
       return res.sendResponse({ messageCode: SUCCESS_CODES.FILE_UPLOADED_SUCCESSFULLY });
     }

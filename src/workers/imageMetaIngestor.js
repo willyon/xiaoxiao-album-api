@@ -4,10 +4,9 @@
  * @Description: meta 阶段（EXIF + 高清产物 + DB 补充）的独立处理器
  */
 
-const path = require("path");
 const logger = require("../utils/logger");
 const { extractImageMetadata, updateImageMetaAndHQ } = require("../services/imageService");
-const { timestampToYearMonth, timestampToYear } = require("../utils/formatTime");
+const { timestampToYearMonth, timestampToYear, timestampToDate, timestampToDayOfWeek } = require("../utils/formatTime");
 const timeIt = require("../utils/timeIt");
 const storageService = require("../services/storageService");
 const { getLocationFromCoordinates } = require("../services/geocodingService");
@@ -56,7 +55,7 @@ async function processImageMeta(payload) {
 
       // 尝试获取位置描述
       try {
-        thumbnailUrl = await getLocationFromCoordinates(gpsLatitude, gpsLongitude);
+        gpsLocation = await getLocationFromCoordinates(gpsLatitude, gpsLongitude);
 
         logger.info({
           message: "GPS信息提取成功",
@@ -92,6 +91,8 @@ async function processImageMeta(payload) {
 
   const monthKey = timestampToYearMonth(creationDate);
   const yearKey = timestampToYear(creationDate);
+  const dateKey = timestampToDate(creationDate);
+  const dayKey = timestampToDayOfWeek(creationDate);
 
   // 2) 产出高清大图（AVIF 默认）
   // 使用存储服务生成高清图片的存储键名
@@ -143,6 +144,8 @@ async function processImageMeta(payload) {
       creationDate,
       monthKey,
       yearKey,
+      dateKey,
+      dayKey,
       highResStorageKey: highResStorageKeyResult, // 只有高清图处理成功时才不为null
       originalStorageKey,
       gpsLatitude,

@@ -12,8 +12,10 @@ const {
   handleGetAllByPage,
   handleGetByCertainYear,
   handleGetByCertainMonth,
+  handleGetByCertainDate,
   handleGroupByYear,
   handleGroupByMonth,
+  handleGroupByDate,
   handleCheckFileExists,
 } = require("../controllers/imageController");
 const { handlePostImages } = require("../controllers/uploadController");
@@ -32,9 +34,13 @@ router.post("/queryAllByPage", handleGetAllByPage);
 router.post("/queryGroupByYear", handleGroupByYear);
 // 分页获取按月份分组数据
 router.post("/queryGroupByMonth", handleGroupByMonth);
+// 分页获取按日期分组数据
+router.post("/queryGroupByDate", handleGroupByDate);
 // 分页获取具体某个年份的图片信息
 router.post("/queryByCertainYear", handleGetByCertainYear);
 // 分页获取具体某个月份的图片信息
 router.post("/queryByCertainMonth", handleGetByCertainMonth);
+// 分页获取具体某个日期的图片信息
+router.post("/queryByCertainDate", handleGetByCertainDate);
 
 module.exports = router;

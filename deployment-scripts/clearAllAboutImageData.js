@@ -43,7 +43,7 @@ if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
   console.log("选项：");
   console.log("  --clear-storage  清理存储文件（数据库表、本地文件、OSS文件）");
   console.log("  --clear-queues   清理BullMQ队列");
-  console.log("  --clear-redis    清理Redis键");
+  console.log("  --clear-redis    清理Redis键（包括用户集合、会话进度等）");
   console.log("  --clear-all      清理所有数据（等同于上述三个选项）");
   console.log("  -h, --help       显示帮助信息");
   console.log("");
@@ -182,26 +182,59 @@ async function clearAllQueueJobs() {
 clearAllQueueJobs().catch(console.error);
 // ============清空 BullMQ 队列中所有任务（等待、活跃、失败、完成、延迟）==========//
 
-// ============清空 Redis 中 readyKeyOf、lockKeyOf、userSetKey 三类键，用于开发测试环境快速重置==========//
+// ============清空 Redis 中 readyKeyOf、lockKeyOf、userSetKey 和进度 session 相关键，用于开发测试环境快速重置==========//
 const { readyKeyOf, lockKeyOf, userSetKey } = require("../src/workers/userImageHashset");
 const { getRedisClient } = require("../src/services/redisClient");
 const redisClient = getRedisClient();
 
 async function clearRedisKeys() {
-  const patterns = [readyKeyOf("*"), lockKeyOf("*"), userSetKey("*")];
+  console.log("🔑 开始清理Redis键...");
 
-  for (const pattern of patterns) {
+  // 原有的三类键：readyKeyOf、lockKeyOf、userSetKey
+  const originalPatterns = [readyKeyOf("*"), lockKeyOf("*"), userSetKey("*")];
+
+  // 新增的进度 session 相关键模式
+  const sessionPatterns = [
+    "upload:session:*", // 上传会话进度数据
+    "user:latest:session:*", // 用户最新会话ID
+    "session:*:progress", // 进度推送频道（虽然这些是频道名，但为了完整性也包含）
+  ];
+
+  // 合并所有模式
+  const allPatterns = [...originalPatterns, ...sessionPatterns];
+
+  let totalDeletedKeys = 0;
+
+  for (const pattern of allPatterns) {
+    console.log(`🔍 扫描模式: ${pattern}`);
     let cursor = "0";
+    let patternDeletedKeys = 0;
+
     do {
       const [newCursor, keys] = await redisClient.scan(cursor, "MATCH", pattern, "COUNT", 100);
       cursor = newCursor;
       if (keys.length > 0) {
         await redisClient.del(...keys);
+        patternDeletedKeys += keys.length;
+        totalDeletedKeys += keys.length;
       }
     } while (cursor !== "0");
+
+    if (patternDeletedKeys > 0) {
+      console.log(`  ✅ 删除 ${patternDeletedKeys} 个键`);
+    } else {
+      console.log(`  ℹ️  未找到匹配的键`);
+    }
   }
-  console.log("redis集合已清空");
-  console.log("OK!清空工作完毕！");
+
+  console.log(`🎉 Redis清理完成！总共删除了 ${totalDeletedKeys} 个键`);
+  console.log("📋 清理的键类型包括：");
+  console.log("  - readyKeyOf: 用户图片集合准备状态");
+  console.log("  - lockKeyOf: 用户图片集合锁定状态");
+  console.log("  - userSetKey: 用户图片集合数据");
+  console.log("  - upload:session:*: 上传会话进度数据");
+  console.log("  - user:latest:session:*: 用户最新会话ID");
+  console.log("  - session:*:progress: 进度推送频道");
 }
 
 // 主函数：根据参数协调清理操作

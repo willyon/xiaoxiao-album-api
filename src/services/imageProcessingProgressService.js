@@ -15,7 +15,7 @@ const redisClient = getRedisClient();
  * 更新会话进度（统一接口）
  * @param {Object} params - 参数对象
  * @param {string} params.sessionId - 会话ID
- * @param {string} params.status - 状态字段：'uploadedCount'、'thumbDone'、'highResDone' 或 'processingErrors'
+ * @param {string} params.status - 状态字段：'uploadedCount'、'thumbDone'、'highResDone'、'processingErrors'、'duplicateCount' 或 'existingFiles'
  * @param {number} params.increment - 增量值（默认为1）
  */
 async function updateProgress({ sessionId, status, increment = 1 }) {
@@ -52,6 +52,8 @@ async function _publishProgressUpdate(sessionId) {
         thumbDone: parseInt(redisData.thumbDone) || 0,
         highResDone: parseInt(redisData.highResDone) || 0,
         processingErrors: parseInt(redisData.processingErrors) || 0,
+        duplicateCount: parseInt(redisData.duplicateCount) || 0,
+        existingFiles: parseInt(redisData.existingFiles) || 0,
       };
 
       // 发布到Redis频道
@@ -77,22 +79,69 @@ async function setupProgressStream(req, res, sessionId) {
     const subscriber = redisClient.duplicate();
     await subscriber.subscribe(`session:${sessionId}:progress`);
 
+    // 延迟完成判断的定时器
+    let completionCheckTimer = null;
+
     // 监听Redis消息
     subscriber.on("message", (channel, message) => {
       try {
         // 直接转发Redis消息给前端
         res.write(`data: ${message}\n\n`);
 
-        // 检查是否已完成（基于数据驱动判断）
-        const progressData = JSON.parse(message);
-        const { uploadedCount, highResDone, processingErrors } = progressData;
-        const isCompleted = highResDone + processingErrors >= uploadedCount && uploadedCount > 0;
-
-        if (isCompleted) {
-          subscriber.unsubscribe();
-          subscriber.disconnect();
-          res.end();
+        // 清除之前的定时器
+        if (completionCheckTimer) {
+          clearTimeout(completionCheckTimer);
         }
+
+        // 延迟检查完成状态，避免过早断开连接
+        completionCheckTimer = setTimeout(() => {
+          try {
+            // 直接使用当前消息的数据，因为只有最后一条消息的定时器会执行
+            const progressData = JSON.parse(message);
+
+            // 集中解析所有数值字段
+            const uploadedCount = parseInt(progressData.uploadedCount) || 0;
+            const thumbDone = parseInt(progressData.thumbDone) || 0;
+            const highResDone = parseInt(progressData.highResDone) || 0;
+            const processingErrors = parseInt(progressData.processingErrors) || 0;
+            const duplicateCount = parseInt(progressData.duplicateCount) || 0;
+            const existingFiles = parseInt(progressData.existingFiles) || 0;
+
+            // 计算总文件数：实际上传 + 重复上传 + 已存在文件
+            const totalFiles = uploadedCount + duplicateCount + existingFiles;
+
+            // 完成判断逻辑：
+            // 1. 如果没有文件需要处理，不完成
+            // 2. 如果只有重复/已存在文件，立即完成
+            // 3. 如果有实际上传文件，等待处理完成
+            const isCompleted =
+              totalFiles > 0 &&
+              (uploadedCount === 0 || // 只有重复/已存在文件
+                highResDone + processingErrors >= uploadedCount); // 实际上传文件处理完成
+
+            if (isCompleted) {
+              // 发送完成确认消息，给前端时间处理
+              const completionMessage = {
+                ...progressData,
+                completed: true,
+                timestamp: Date.now(),
+              };
+              res.write(`data: ${JSON.stringify(completionMessage)}\n\n`);
+
+              // 延迟断开连接，确保前端有时间接收和处理完成消息
+              setTimeout(() => {
+                subscriber.unsubscribe();
+                subscriber.disconnect();
+                res.end();
+              }, 1000); // 1秒延迟
+            }
+          } catch (error) {
+            logger.error({
+              message: "延迟完成检查失败",
+              details: { sessionId, error: error.message },
+            });
+          }
+        }, 2000); // 2秒延迟，等待所有消息处理完毕
       } catch (error) {
         logger.error({
           message: "处理Redis消息失败",
@@ -103,6 +152,10 @@ async function setupProgressStream(req, res, sessionId) {
 
     // 监听连接关闭，清理Redis订阅
     req.on("close", () => {
+      // 清理定时器
+      if (completionCheckTimer) {
+        clearTimeout(completionCheckTimer);
+      }
       subscriber.unsubscribe();
       subscriber.disconnect();
     });
