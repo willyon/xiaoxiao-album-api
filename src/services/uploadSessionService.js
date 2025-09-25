@@ -66,14 +66,13 @@ async function getActiveSession(userId) {
       // 基于数据驱动判断会话是否完成
       const uploadedCount = parseInt(redisData.uploadedCount) || 0;
       const highResDone = parseInt(redisData.highResDone) || 0;
+      const thumbDone = parseInt(redisData.thumbDone) || 0;
       const processingErrors = parseInt(redisData.processingErrors) || 0;
       const isActive = (highResDone + processingErrors < uploadedCount && uploadedCount > 0) || (thumbDone === 0 && uploadedCount === 0);
 
       if (!isActive) {
         return null;
       }
-
-      const thumbDone = parseInt(redisData.thumbDone) || 0;
 
       return {
         sessionId: activeSessionId,

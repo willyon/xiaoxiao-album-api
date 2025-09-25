@@ -21,7 +21,7 @@ const FIELD_MAPPING = {
     original_storage_key: "originalStorageKey",
     high_res_storage_key: "highResStorageKey",
     thumbnail_storage_key: "thumbnailStorageKey",
-    image_created_at: "imageCreatedAt",
+    image_created_at: "creationDate",
     year_key: "yearKey",
     month_key: "monthKey",
     gps_latitude: "gpsLatitude",
