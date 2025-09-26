@@ -58,7 +58,7 @@ async function rebuildDatabase() {
       // 创建 images 表
       createTableImages();
       console.log(
-        "✅ 创建 images 表（字段：original_storage_key, high_res_storage_key, thumbnail_storage_key, image_created_at, year_key, month_key, date_key, day_key, gps_latitude, gps_longitude, gps_altitude, gps_location, storage_type, file_size, created_at）",
+        "✅ 创建 images 表（字段：original_storage_key, high_res_storage_key, thumbnail_storage_key, image_created_at, year_key, month_key, date_key, day_key, gps_latitude, gps_longitude, gps_altitude, gps_location, country, city, width_px, height_px, aspect_ratio, raw_orientation, layout_type, hd_width_px, hd_height_px, thumb_width_px, thumb_height_px, storage_type, file_size_bytes, mime, created_at）",
       );
 
       // 提交事务

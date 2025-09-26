@@ -13,7 +13,13 @@ const { wgs84ToGcj02 } = require("../utils/coordinateTransform");
  * 照片exif信息中获取的经纬度是WGS-84坐标系
  * @param {number} latitude - 纬度 (WGS-84坐标系)
  * @param {number} longitude - 经度 (WGS-84坐标系)
- * @returns {Promise<string|null>} 位置描述或 null
+ * @returns {Promise<{
+ *   formattedAddress: string|null,
+ *   country: string|null,
+ *   province: string|null,
+ *   city: string|null,
+ *   district: string|null
+ * }|null>} 结构化位置对象或 null
  */
 async function getLocationFromCoordinates(latitude, longitude) {
   if (!latitude || !longitude) {
@@ -84,22 +90,32 @@ async function getLocationFromCoordinates(latitude, longitude) {
 
     // 检查API响应
     if (data && data.status === "1" && data.regeocode) {
-      // 直接使用高德地图返回的格式化地址
-      const location = data.regeocode.formatted_address;
+      const formattedAddress = data.regeocode.formatted_address || null;
+      const comp = data.regeocode.addressComponent || {};
 
-      // 检查 formatted_address 是否为空
-      if (!location || typeof location !== "string" || location.trim() === "") {
+      // 提取位置信息
+      const country = comp.country || null;
+      const province = comp.province || null;
+
+      // city 字段处理：
+      // 1. 直辖市场景：city 可能为空字符串，需要用 province 兜底
+      // 2. 边界区域：city 可能为数组（如省直辖县级市、多个城市间的边界位置）
+      // 3. 正常场景：city 为字符串
+      const city = (comp.city && (typeof comp.city === "string" ? comp.city : comp.city[0])) || province || null;
+
+      const district = comp.district || null;
+
+      if (!formattedAddress || typeof formattedAddress !== "string" || formattedAddress.trim() === "") {
         logger.warn({
           message: "高德逆地理编码返回空地址",
           details: {
             latitude,
             longitude,
-            formatted_address: location,
+            formatted_address: formattedAddress,
             apiStatus: data.status,
             infoCode: data.infocode,
           },
         });
-        return null;
       }
 
       logger.info({
@@ -107,13 +123,17 @@ async function getLocationFromCoordinates(latitude, longitude) {
         details: {
           latitude,
           longitude,
-          location,
+          formattedAddress,
+          country,
+          province,
+          city,
+          district,
           apiStatus: data.status,
           infoCode: data.infocode,
         },
       });
 
-      return location;
+      return { formattedAddress, country, province, city, district };
     } else {
       logger.warn({
         message: "高德逆地理编码API返回错误",

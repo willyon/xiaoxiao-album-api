@@ -388,7 +388,9 @@ class StorageService {
    * @param {Object} [options.optimizationOptions={}] - 图片优化选项配置
    * @param {boolean} [options.optimizationOptions.enableAdaptiveQuality=false] - 是否启用自适应质量调整，根据文件大小自动调整质量参数
    * @param {boolean} [options.optimizationOptions.enableDynamicEffort=true] - 是否启用动态effort调整，根据文件大小自动调整压缩努力程度
-   * @returns {Promise<void>} 处理完成后的Promise
+   * @returns {Promise<Object>} 处理完成后的Promise，返回包含尺寸信息的对象
+   * @returns {number} result.width - 处理后图片的宽度
+   * @returns {number} result.height - 处理后图片的高度
    * @throws {Error} 当源文件不存在、格式不支持或存储失败时抛出错误
    *
    * @example
@@ -450,8 +452,17 @@ class StorageService {
     const finalOptions = { ...defaultOptions, ...optimizationOptions };
     pipeline = _applyEncoderByExt(pipeline, extension, quality, fileSize, finalOptions);
 
-    // 通过适配器存储处理后的图片
-    await this.storage.storeProcessedImage(pipeline, targetStorageKey);
+    // 一次编码拿到 { data, info }，避免回读，提高性能
+    const { data, info } = await pipeline.toBuffer({ resolveWithObject: true });
+
+    // 通过适配器上传 Buffer（OSS/本地均支持），Content-Type 由适配器按 key 推断
+    await this.storage.storeFile(data, targetStorageKey);
+
+    // 直接返回派生图真实尺寸（已旋正+已缩放）
+    return {
+      width: info.width,
+      height: info.height,
+    };
   }
 
   /**

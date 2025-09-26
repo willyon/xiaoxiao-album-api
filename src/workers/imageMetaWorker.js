@@ -19,7 +19,7 @@ const CONCURRENCY = Number(process.env.IMAGE_META_WORKER_CONCURRENCY || 2);
 const worker = new Worker(
   QUEUE_NAME,
   async (job) => {
-    await processImageMeta(job.data);
+    await processImageMeta(job);
   },
   { connection, concurrency: CONCURRENCY },
 );

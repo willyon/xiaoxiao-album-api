@@ -29,7 +29,7 @@ const worker = new Worker(
     //获取当前用户已存储在数据表中的全量hash集合 用于后续去重对比
     await ensureUserSetReady(userId);
     //图片处理
-    await processAndSaveSingleImage(job.data);
+    await processAndSaveSingleImage(job);
   },
   { connection, concurrency: CONCURRENCY }, //一次最多同时并发4个任务
 );

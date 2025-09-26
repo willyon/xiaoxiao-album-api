@@ -15,7 +15,7 @@ const redisClient = getRedisClient();
  * 更新会话进度（统一接口）
  * @param {Object} params - 参数对象
  * @param {string} params.sessionId - 会话ID
- * @param {string} params.status - 状态字段：'uploadedCount'、'thumbDone'、'highResDone'、'processingErrors'、'duplicateCount' 或 'existingFiles'
+ * @param {string} params.status - 状态字段：'uploadedCount'、'thumbDone'、'highResDone'、'thumbErrors'、'highResErrors'、'duplicateCount' 或 'existingFiles'
  * @param {number} params.increment - 增量值（默认为1）
  */
 async function updateProgress({ sessionId, status, increment = 1 }) {
@@ -51,7 +51,8 @@ async function _publishProgressUpdate(sessionId) {
         uploadedCount: parseInt(redisData.uploadedCount) || 0,
         thumbDone: parseInt(redisData.thumbDone) || 0,
         highResDone: parseInt(redisData.highResDone) || 0,
-        processingErrors: parseInt(redisData.processingErrors) || 0,
+        thumbErrors: parseInt(redisData.thumbErrors) || 0,
+        highResErrors: parseInt(redisData.highResErrors) || 0,
         duplicateCount: parseInt(redisData.duplicateCount) || 0,
         existingFiles: parseInt(redisData.existingFiles) || 0,
       };
@@ -103,7 +104,8 @@ async function setupProgressStream(req, res, sessionId) {
             const uploadedCount = parseInt(progressData.uploadedCount) || 0;
             const thumbDone = parseInt(progressData.thumbDone) || 0;
             const highResDone = parseInt(progressData.highResDone) || 0;
-            const processingErrors = parseInt(progressData.processingErrors) || 0;
+            const thumbErrors = parseInt(progressData.thumbErrors) || 0;
+            const highResErrors = parseInt(progressData.highResErrors) || 0;
             const duplicateCount = parseInt(progressData.duplicateCount) || 0;
             const existingFiles = parseInt(progressData.existingFiles) || 0;
 
@@ -117,7 +119,7 @@ async function setupProgressStream(req, res, sessionId) {
             const isCompleted =
               totalFiles > 0 &&
               (uploadedCount === 0 || // 只有重复/已存在文件
-                highResDone + processingErrors >= uploadedCount); // 实际上传文件处理完成
+                highResDone + highResErrors >= uploadedCount); // 实际上传文件处理完成
 
             if (isCompleted) {
               // 发送完成确认消息，给前端时间处理

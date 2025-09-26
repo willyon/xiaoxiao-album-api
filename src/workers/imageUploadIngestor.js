@@ -50,16 +50,116 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
 }
 
 /**
- * 独立的单张图片处理与入库方法
- * @param {Object} fileInfo - 包含图片文件信息的对象
- * @param {string} fileInfo.fileName - 文件名
- * @param {string} fileInfo.storageKey - 存储键名
- * @param {string} fileInfo.userId - 用户ID
- * @param {string} fileInfo.imageHash - 图片哈希
- * @param {number} fileInfo.fileSize - 文件大小
- * @param {string} [fileInfo.extension="webp"] - 缩略图扩展名
+ * 处理重试失败后的清理工作
+ * @param {Object} params - 参数对象
+ * @param {Object} params.job - BullMQ job对象
+ * @param {string} params.reason - 失败原因
+ * @param {string} params.storageKey - 源文件存储键
+ * @param {string} params.fileName - 文件名
+ * @param {string} params.imageHash - 图片哈希
+ * @param {string} params.userId - 用户ID
+ * @param {string} [params.thumbnailStorageKey] - 缩略图存储键（可选）
  */
-async function processAndSaveSingleImage(fileInfo) {
+async function handleRetryFailure({ job, reason, storageKey, fileName, imageHash, userId, thumbnailStorageKey }) {
+  const maxAttempts = job?.opts?.attempts || Number(process.env.IMAGE_UPLOAD_JOB_ATTEMPTS || 5);
+  const attemptsMade = job?.attemptsMade || 0;
+  const willRetry = attemptsMade < maxAttempts;
+
+  if (!willRetry) {
+    // 没有重试机会了，执行最终清理
+    try {
+      // 1. 如果有缩略图，先删除
+      if (thumbnailStorageKey) {
+        await storageService.storage.deleteFile(thumbnailStorageKey);
+      }
+
+      // 2. 移动源文件到失败目录
+      const failedType = process.env.IMAGE_STORAGE_KEY_FAILED || "failed";
+      const failedStorageKey = storageService.storage.generateStorageKey(failedType, fileName);
+      await storageService.storage.moveFile(storageKey, failedStorageKey);
+
+      logger.info({
+        message: "Failed image moved to failed directory after all retries exhausted",
+        details: {
+          imageHash,
+          userId,
+          originalLocation: storageKey,
+          failedLocation: failedStorageKey,
+          thumbnailCleaned: thumbnailStorageKey,
+          reason,
+          attemptsMade,
+          maxAttempts,
+        },
+      });
+    } catch (cleanupError) {
+      logger.warn({
+        message: "Failed to cleanup files after all retries exhausted",
+        details: {
+          thumbnailStorageKey,
+          sourceStorageKey: storageKey,
+          cleanupError: cleanupError.message,
+          fallbackAction: "manual_cleanup_required",
+        },
+      });
+    }
+
+    // 3. 更新处理进度（最终失败）
+    if (fileInfo.sessionId) {
+      await updateProgress({
+        sessionId: fileInfo.sessionId,
+        status: "thumbErrors",
+      });
+    }
+  } else {
+    // 还有重试机会，只清理缩略图（如果有），保留源文件
+    if (thumbnailStorageKey) {
+      try {
+        await storageService.storage.deleteFile(thumbnailStorageKey);
+        logger.info({
+          message: `${reason}, will retry - thumbnail cleaned`,
+          details: {
+            imageHash,
+            userId,
+            fileName,
+            thumbnailCleaned: thumbnailStorageKey,
+            attemptsMade,
+            maxAttempts,
+            nextAttempt: attemptsMade + 1,
+          },
+        });
+      } catch (cleanupError) {
+        logger.warn({
+          message: "Failed to cleanup thumbnail before retry",
+          details: {
+            thumbnailStorageKey,
+            cleanupError: cleanupError.message,
+          },
+        });
+      }
+    } else {
+      logger.info({
+        message: `${reason}, will retry`,
+        details: {
+          imageHash,
+          userId,
+          fileName,
+          attemptsMade,
+          maxAttempts,
+          nextAttempt: attemptsMade + 1,
+        },
+      });
+    }
+  }
+
+  return { willRetry };
+}
+
+/**
+ * 独立的单张图片处理与入库方法
+ * @param {Object} job - BullMQ job对象
+ */
+async function processAndSaveSingleImage(job) {
+  let fileInfo = job.data;
   const { fileName, storageKey, userId, imageHash, fileSize, extension } = fileInfo;
   logger.info({ message: "处理文件", details: { fileName } });
   const redisClient = getRedisClient();
@@ -90,12 +190,13 @@ async function processAndSaveSingleImage(fileInfo) {
             extension,
             quality: 65, // webp建议 缩略图60-70 高清图75-85
             resizeWidth: 600,
+            // resizeWidth: 512,
           });
         },
         imageHash,
       );
     } catch (error) {
-      // 缩略图处理失败，将原始文件移动到失败目录
+      // 缩略图处理失败
       logger.error({
         message: "Thumbnail generation failed",
         details: {
@@ -108,58 +209,26 @@ async function processAndSaveSingleImage(fileInfo) {
         },
       });
 
-      try {
-        // 生成失败文件存储键名并移动文件
-        const failedType = process.env.IMAGE_STORAGE_KEY_FAILED || "failed";
-        const failedStorageKey = storageService.storage.generateStorageKey(failedType, fileName);
-        await storageService.storage.moveFile(storageKey, failedStorageKey);
-
-        logger.info({
-          message: "Failed image moved to failed directory",
-          details: {
-            imageHash,
-            userId,
-            originalLocation: storageKey,
-            failedLocation: failedStorageKey,
-            reason: "thumbnail_generation_failed",
-          },
-        });
-      } catch (moveError) {
-        logger.warn({
-          message: "Failed to move source file to failed directory after thumbnail generation failure",
-          details: {
-            storageKey,
-            moveError: moveError.message,
-            fallbackAction: "file_remains_in_original_location",
-          },
-        });
-      }
-
-      // 更新处理进度（失败）
-      if (fileInfo.sessionId) {
-        await updateProgress({
-          sessionId: fileInfo.sessionId,
-          status: "errors",
-        });
-      }
+      // 处理重试失败逻辑
+      await handleRetryFailure({
+        job,
+        reason: "thumbnail_generation_failed",
+        storageKey,
+        fileName,
+        imageHash,
+        userId,
+      });
 
       throw error;
     }
 
-    // ======== 先写库（creationDate 为空；monthKey/yearKey/dateKey/dayKey = 'unknown'；bigHigh 先留空或保留旧值）========
+    // ======== 先写库（仅必要字段，其他走默认值）========
     const imageData = {
-      originalStorageKey: "", // 先空着，待 imageMetaWorker 填充
-      highResStorageKey: "", // 先空着，待 imageMetaWorker 填充
-      thumbnailStorageKey: thumbnailStorageKey, // 使用存储服务生成URL
-      creationDate: null,
-      imageHash,
       userId,
-      monthKey: "unknown",
-      yearKey: "unknown",
-      dateKey: "unknown",
-      dayKey: "unknown",
-      storageType: getDefaultStorageType(), // 动态获取当前存储类型
-      fileSize, // 文件大小（字节）
+      imageHash,
+      thumbnailStorageKey,
+      storageType: getDefaultStorageType(),
+      fileSizeBytes: fileSize, // 使用新字段名
     };
 
     try {
@@ -174,9 +243,9 @@ async function processAndSaveSingleImage(fileInfo) {
         });
       }
     } catch (error) {
-      // 数据库保存失败，将原始文件移动到失败目录并清理缩略图
+      // 数据库保存失败
       logger.error({
-        message: "Database save failed, moving to failed directory and cleaning up thumbnail",
+        message: "Database save failed",
         details: {
           imageHash,
           userId,
@@ -186,37 +255,16 @@ async function processAndSaveSingleImage(fileInfo) {
         },
       });
 
-      try {
-        // 1. 先删除已生成的缩略图
-        await storageService.storage.deleteFile(thumbnailStorageKey);
-
-        // 2. 生成失败文件存储键名并移动文件
-        const failedType = process.env.IMAGE_STORAGE_KEY_FAILED || "failed";
-        const failedStorageKey = storageService.storage.generateStorageKey(failedType, fileName);
-        await storageService.storage.moveFile(storageKey, failedStorageKey);
-
-        logger.info({
-          message: "Failed image moved to failed directory after database save failure",
-          details: {
-            imageHash,
-            userId,
-            originalLocation: storageKey,
-            failedLocation: failedStorageKey,
-            thumbnailCleaned: thumbnailStorageKey,
-            reason: "database_save_failed",
-          },
-        });
-      } catch (cleanupError) {
-        logger.warn({
-          message: "Failed to cleanup files after database save failure",
-          details: {
-            thumbnailStorageKey,
-            sourceStorageKey: storageKey,
-            cleanupError: cleanupError.message,
-            fallbackAction: "manual_cleanup_required",
-          },
-        });
-      }
+      // 处理重试失败逻辑
+      await handleRetryFailure({
+        job,
+        reason: "database_save_failed",
+        storageKey,
+        fileName,
+        imageHash,
+        userId,
+        thumbnailStorageKey, // 数据库保存失败时，需要清理已生成的缩略图
+      });
 
       throw error;
     }
@@ -231,18 +279,9 @@ async function processAndSaveSingleImage(fileInfo) {
       fileSize, // 传递文件大小
       sessionId: fileInfo.sessionId, // 传递会话ID用于进度跟踪
     });
-
-    logger.info({
-      message: "Image processing completed successfully",
-      details: {
-        imageHash,
-        userId,
-        fileName,
-        thumbnailStorageKey,
-      },
-    });
   } catch (error) {
     // 最外层错误处理 - 记录完整的失败信息
+    // 注意：内层catch已经处理了重试逻辑，这里只记录日志
     logger.error({
       message: "Image processing failed completely",
       details: {

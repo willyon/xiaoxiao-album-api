@@ -26,7 +26,8 @@ async function createSession(userId) {
     uploadedCount: 0,
     thumbDone: 0,
     highResDone: 0,
-    processingErrors: 0,
+    thumbErrors: 0,
+    highResErrors: 0,
     duplicateCount: 0,
     existingFiles: 0,
   });
@@ -43,7 +44,8 @@ async function createSession(userId) {
     uploadedCount: 0,
     thumbDone: 0,
     highResDone: 0,
-    processingErrors: 0,
+    thumbErrors: 0,
+    highResErrors: 0,
     duplicateCount: 0,
     existingFiles: 0,
   };
@@ -71,14 +73,15 @@ async function getActiveSession(userId) {
       const uploadedCount = parseInt(redisData.uploadedCount) || 0;
       const highResDone = parseInt(redisData.highResDone) || 0;
       const thumbDone = parseInt(redisData.thumbDone) || 0;
-      const processingErrors = parseInt(redisData.processingErrors) || 0;
+      const thumbErrors = parseInt(redisData.thumbErrors) || 0;
+      const highResErrors = parseInt(redisData.highResErrors) || 0;
       const duplicateCount = parseInt(redisData.duplicateCount) || 0;
       const existingFiles = parseInt(redisData.existingFiles) || 0;
 
       // 活跃状态判断逻辑：
       // 1. 如果有实际上传文件且未处理完成，活跃
       // 2. 如果只有重复/已存在文件，不活跃（立即完成）
-      const isActive = uploadedCount > 0 && highResDone + processingErrors < uploadedCount;
+      const isActive = uploadedCount > 0 && highResDone + highResErrors < uploadedCount;
 
       if (!isActive) {
         return null;
@@ -89,7 +92,8 @@ async function getActiveSession(userId) {
         uploadedCount,
         thumbDone,
         highResDone,
-        processingErrors,
+        thumbErrors,
+        highResErrors,
         duplicateCount,
         existingFiles,
       };

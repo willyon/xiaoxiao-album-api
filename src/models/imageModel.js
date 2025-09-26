@@ -8,68 +8,42 @@
 const { db } = require("../services/database");
 const { mapFields } = require("../utils/fieldMapper");
 
-//保存用户上传的图片元数据到数据库
-function insertImage({
-  userId,
-  imageHash,
-  originalStorageKey,
-  highResStorageKey,
-  thumbnailStorageKey,
-  creationDate,
-  yearKey,
-  monthKey,
-  dateKey,
-  dayKey,
-  gpsLatitude,
-  gpsLongitude,
-  gpsAltitude,
-  gpsLocation,
-  storageType, // 默认本地存储
-  fileSize, // 文件大小（字节）
-}) {
-  const stmt = db.prepare(`
-    INSERT OR IGNORE INTO images (
-      user_id,
-      image_hash,
-      original_storage_key,
-      high_res_storage_key,
-      thumbnail_storage_key,
-      image_created_at,
-      year_key,  
-      month_key,
-      date_key,
-      day_key,
-      gps_latitude,
-      gps_longitude,
-      gps_altitude,
-      gps_location,
-      storage_type,
-      file_size,
-      created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+//保存用户上传的图片元数据到数据库（初始上传时的必要字段）
+function insertImage({ userId, imageHash, thumbnailStorageKey, storageType, fileSizeBytes }) {
+  // 构建动态SQL，只插入有值的字段
+  const fields = [];
+  const values = [];
+  const placeholders = [];
 
-  const createdAt = Date.now(); // 入库时间戳（毫秒）
+  // 必需字段
+  fields.push("user_id", "image_hash", "created_at");
+  values.push(userId, imageHash, Date.now());
+  placeholders.push("?", "?", "?");
 
-  const result = stmt.run(
-    userId,
-    imageHash,
-    originalStorageKey,
-    highResStorageKey,
-    thumbnailStorageKey,
-    creationDate,
-    yearKey,
-    monthKey,
-    dateKey,
-    dayKey,
-    gpsLatitude,
-    gpsLongitude,
-    gpsAltitude,
-    gpsLocation,
-    storageType,
-    fileSize,
-    createdAt,
-  );
+  // 初始上传时的必要字段
+  if (thumbnailStorageKey != null) {
+    fields.push("thumbnail_storage_key");
+    values.push(thumbnailStorageKey);
+    placeholders.push("?");
+  }
+  if (storageType != null) {
+    fields.push("storage_type");
+    values.push(storageType);
+    placeholders.push("?");
+  }
+  if (fileSizeBytes != null) {
+    fields.push("file_size_bytes");
+    values.push(fileSizeBytes);
+    placeholders.push("?");
+  }
+
+  const sql = `
+    INSERT OR IGNORE INTO images (${fields.join(", ")})
+    VALUES (${placeholders.join(", ")})
+  `;
+
+  const stmt = db.prepare(sql);
+  const result = stmt.run(...values);
   return { affectedRows: result.changes };
 }
 
@@ -382,7 +356,19 @@ function updateMetaAndHQ({
   gpsLongitude,
   gpsAltitude,
   gpsLocation,
+  country,
+  city,
+  widthPx,
+  heightPx,
+  aspectRatio,
+  rawOrientation,
+  layoutType,
+  hdWidthPx,
+  hdHeightPx,
+  thumbWidthPx,
+  thumbHeightPx,
   storageType,
+  mime,
 }) {
   const fields = [];
   const params = [];
@@ -433,9 +419,62 @@ function updateMetaAndHQ({
     fields.push("gps_location = ?");
     params.push(gpsLocation);
   }
+  if (country != null) {
+    fields.push("country = ?");
+    params.push(country);
+  }
+  if (city != null) {
+    fields.push("city = ?");
+    params.push(city);
+  }
+
+  // 图片尺寸和方向信息更新
+  if (widthPx != null) {
+    fields.push("width_px = ?");
+    params.push(widthPx);
+  }
+  if (heightPx != null) {
+    fields.push("height_px = ?");
+    params.push(heightPx);
+  }
+  if (aspectRatio != null) {
+    fields.push("aspect_ratio = ?");
+    params.push(aspectRatio);
+  }
+  if (rawOrientation != null) {
+    fields.push("raw_orientation = ?");
+    params.push(rawOrientation);
+  }
+  if (layoutType != null) {
+    fields.push("layout_type = ?");
+    params.push(layoutType);
+  }
+
+  // 高清图和缩略图尺寸更新
+  if (hdWidthPx != null) {
+    fields.push("hd_width_px = ?");
+    params.push(hdWidthPx);
+  }
+  if (hdHeightPx != null) {
+    fields.push("hd_height_px = ?");
+    params.push(hdHeightPx);
+  }
+  if (thumbWidthPx != null) {
+    fields.push("thumb_width_px = ?");
+    params.push(thumbWidthPx);
+  }
+  if (thumbHeightPx != null) {
+    fields.push("thumb_height_px = ?");
+    params.push(thumbHeightPx);
+  }
+
   if (storageType != null) {
     fields.push("storage_type = ?");
     params.push(storageType);
+  }
+  if (mime != null) {
+    fields.push("mime = ?");
+    params.push(mime);
   }
 
   if (!fields.length) return { affectedRows: 0 };
