@@ -1,37 +1,102 @@
 /*
  * @Author: zhangshouchang
- * @Date: 2025-08-04 17:05:12
- * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-20 08:17:53
- * @Description: File description
+ * @Date: 2025-01-27
+ * @Description: 完整服务 PM2 配置 - 开发环境
+ *
+ * 🚀 包含服务:
+ * • Node.js API 服务 (开发版)
+ * • Node.js Workers (开发版)
+ * • Python AI 服务 (开发版 - 人脸识别、OCR等)
  */
-// ecosystem.config.js
-// 开发环境配置 主要用于开发环境测试 pm2 start ecosystem.dev.config.js
 module.exports = {
   apps: [
+    // ========== Node.js 服务 (开发版) ==========
     {
-      name: "app-service",
+      name: "app-service-dev",
       script: "server.js",
+      // cwd: 未设置，使用 PM2 启动目录
+      cwd: ".", // 相对路径
       watch: false,
+      max_restarts: 5,
       env: {
         NODE_ENV: "development",
       },
     },
     {
-      name: "image-upload-worker",
+      name: "image-upload-worker-dev",
       script: "src/workers/imageUploadWorker.js",
+      // cwd: 未设置，使用 PM2 启动目录
+      cwd: ".", // 相对路径
       watch: false,
+      max_restarts: 5,
       env: {
         NODE_ENV: "development",
       },
     },
     {
-      name: "image-meta-worker",
+      name: "image-meta-worker-dev",
       script: "src/workers/imageMetaWorker.js",
+      // cwd: 未设置，使用 PM2 启动目录
+      cwd: ".", // 相对路径
       watch: false,
+      max_restarts: 5,
       env: {
         NODE_ENV: "development",
       },
     },
+    {
+      name: "search-index-worker-dev",
+      script: "src/workers/searchIndexWorker.js",
+      // cwd: 未设置，使用 PM2 启动目录
+      cwd: ".", // 相对路径
+      watch: false,
+      max_restarts: 5,
+      env: {
+        NODE_ENV: "development",
+      },
+    },
+
+    // ========== Python AI 服务 (开发版) ==========
+    // {
+    //   name: "python-ai-service-dev",
+    //   script: "start.py",
+    //   interpreter: "./python-ai-service/venv/bin/python",
+    //   cwd: "./python-ai-service",
+    //   watch: false,
+    //   max_restarts: 5,
+    //   env: {
+    //     PYTHON_ENV: "development",
+    //     // 其他环境变量从 .env 文件读取
+    //   },
+    // },
   ],
 };
+
+/*
+🚀 使用说明:
+
+📋 开发环境启动:
+pm2 start ecosystem.dev.config.js
+
+📋 本地开发 (如果需要指定 Python 路径):
+export PYTHON_SERVICE_PATH="/System/Volumes/Data/Volumes/Personal-Files/projects/xiaoxiao-album/xiaoxiao-project-service/python-face-service"
+pm2 start ecosystem.dev.config.js
+
+📋 常用命令:
+- 启动所有开发服务: pm2 start ecosystem.dev.config.js
+- 重启所有开发服务: pm2 restart all
+- 停止所有开发服务: pm2 stop all
+- 查看状态: pm2 list
+- 查看日志: pm2 logs
+
+📋 单独管理开发服务:
+- 重启 API 服务: pm2 restart app-service-dev
+- 重启 Python AI 服务: pm2 restart python-ai-service-dev
+- 重启所有 Workers: pm2 restart image-upload-worker-dev image-meta-worker-dev search-index-worker-dev
+
+📋 开发调试:
+- 查看 API 日志: pm2 logs app-service-dev
+- 查看 Python AI 日志: pm2 logs python-ai-service-dev
+- 查看 Worker 日志: pm2 logs image-upload-worker-dev
+- 实时监控: pm2 monit
+*/

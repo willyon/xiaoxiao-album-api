@@ -83,6 +83,10 @@ worker.on("failed", (job, error) => {
   });
 });
 
+worker.on("stalled", (job) => {
+  logger.warn(`imageUploadWorker stalled: ${job?.id}`);
+});
+
 // 注册优雅退出：先停止领取新任务，再关闭底层 Redis 连接
 initGracefulShutdown({
   // worker 进程没有 HTTP server，可不传

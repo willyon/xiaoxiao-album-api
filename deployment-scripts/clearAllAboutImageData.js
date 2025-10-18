@@ -58,15 +58,26 @@ const { db } = require(path.join(projectRoot, "src", "services", "database"));
 // 队列导入
 const { imageUploadQueue } = require(path.join(projectRoot, "src", "queues", "imageUploadQueue"));
 const { imageMetaQueue } = require(path.join(projectRoot, "src", "queues", "imageMetaQueue"));
+const { searchIndexQueue } = require(path.join(projectRoot, "src", "queues", "searchIndexQueue"));
 const StorageAdapterFactory = require(path.join(projectRoot, "src", "storage", "factory", "StorageAdapterFactory"));
 const { STORAGE_TYPES } = require(path.join(projectRoot, "src", "storage", "constants", "StorageTypes"));
 
-// ============清空数据库 images 表所有数据==========//
+// ============清空数据库相关表所有数据==========//
 function clearImagesTable() {
   db.prepare("DELETE FROM images").run();
   console.log("images数据表已清空");
 }
-// ============清空数据库 images 表所有数据==========//
+
+function clearFaceEmbeddingsTable() {
+  db.prepare("DELETE FROM face_embeddings").run();
+  console.log("face_embeddings数据表已清空");
+}
+
+function clearFaceClustersTable() {
+  db.prepare("DELETE FROM face_clusters").run();
+  console.log("face_clusters数据表已清空");
+}
+// ============清空数据库相关表所有数据==========//
 
 // ============清空图片转换过程中涉及的所有目标文件夹的所有图片==========//
 function deleteFolderSync(folderPath) {
@@ -116,6 +127,8 @@ async function clearStorageFiles() {
   // 1. 清空数据库表数据
   console.log("\n📊 第一步：清空数据库表数据");
   clearImagesTable();
+  clearFaceEmbeddingsTable();
+  clearFaceClustersTable();
 
   // 2. 清空本地存储文件
   console.log("\n📁 第二步：清空本地存储文件");
@@ -170,6 +183,21 @@ async function clearAllQueueJobs() {
 
     console.log(
       `元数据队列清理完成: 等待${metaStats.waiting} | 活跃${metaStats.active} | 完成${metaStats.completed} | 失败${metaStats.failed} | 延迟${metaStats.delayed}`,
+    );
+
+    // 清空搜索索引队列
+    console.log("清空搜索索引队列...");
+    const searchStats = {
+      waiting: await searchIndexQueue.clean(0, 1000, "waiting"),
+      active: await searchIndexQueue.clean(0, 1000, "active"),
+      completed: await searchIndexQueue.clean(0, 1000, "completed"),
+      failed: await searchIndexQueue.clean(0, 1000, "failed"),
+      delayed: await searchIndexQueue.clean(0, 1000, "delayed"),
+    };
+    await searchIndexQueue.drain(true); // 清空剩余的等待任务
+
+    console.log(
+      `搜索索引队列清理完成: 等待${searchStats.waiting} | 活跃${searchStats.active} | 完成${searchStats.completed} | 失败${searchStats.failed} | 延迟${searchStats.delayed}`,
     );
 
     console.log("✅ BullMQ 队列所有任务已清空");

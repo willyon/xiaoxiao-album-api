@@ -75,9 +75,26 @@ async function _publishProgressUpdate(sessionId) {
  * @param {string} sessionId - 会话ID
  */
 async function setupProgressStream(req, res, sessionId) {
+  let subscriber = null;
   try {
     // 创建一个新的、独立的Redis连接（因为同一个redis连接不能同时用于命令执行和订阅）
-    const subscriber = redisClient.duplicate();
+    subscriber = redisClient.duplicate();
+
+    // 添加连接错误处理
+    subscriber.on("error", (err) => {
+      logger.error({
+        message: "Redis订阅连接错误",
+        details: { sessionId, error: err.message },
+      });
+    });
+
+    subscriber.on("close", () => {
+      logger.info({
+        message: "图片处理进度推送Redis订阅连接已关闭",
+        details: { sessionId },
+      });
+    });
+
     await subscriber.subscribe(`session:${sessionId}:progress`);
 
     // 延迟完成判断的定时器
@@ -132,9 +149,23 @@ async function setupProgressStream(req, res, sessionId) {
 
               // 延迟断开连接，确保前端有时间接收和处理完成消息
               setTimeout(() => {
-                subscriber.unsubscribe();
-                subscriber.disconnect();
-                res.end();
+                try {
+                  // 检查连接状态，避免在已断开的连接上执行操作
+                  if (subscriber.status === "ready" || subscriber.status === "connecting") {
+                    subscriber.unsubscribe();
+                    subscriber.disconnect();
+                  }
+                  res.end();
+                } catch (error) {
+                  logger.error({
+                    message: "断开Redis订阅连接失败",
+                    details: { sessionId, error: error.message },
+                  });
+                  // 确保响应结束
+                  if (!res.headersSent) {
+                    res.end();
+                  }
+                }
               }, 1000); // 1秒延迟
             }
           } catch (error) {
@@ -154,18 +185,49 @@ async function setupProgressStream(req, res, sessionId) {
 
     // 监听连接关闭，清理Redis订阅
     req.on("close", () => {
-      // 清理定时器
-      if (completionCheckTimer) {
-        clearTimeout(completionCheckTimer);
+      try {
+        // 清理定时器
+        if (completionCheckTimer) {
+          clearTimeout(completionCheckTimer);
+        }
+
+        // 检查连接状态，避免在已断开的连接上执行操作
+        if (subscriber.status === "ready" || subscriber.status === "connecting") {
+          subscriber.unsubscribe();
+          subscriber.disconnect();
+        }
+      } catch (error) {
+        logger.error({
+          message: "清理Redis订阅连接失败",
+          details: { sessionId, error: error.message },
+        });
       }
-      subscriber.unsubscribe();
-      subscriber.disconnect();
     });
   } catch (error) {
     logger.error({
       message: "设置Redis进度推送失败",
       details: { sessionId, error: error.message },
     });
+
+    // 确保在错误情况下也清理资源
+    if (subscriber) {
+      try {
+        if (subscriber.status === "ready" || subscriber.status === "connecting") {
+          subscriber.unsubscribe();
+          subscriber.disconnect();
+        }
+      } catch (cleanupError) {
+        logger.error({
+          message: "清理Redis订阅连接失败（错误处理中）",
+          details: { sessionId, error: cleanupError.message },
+        });
+      }
+    }
+
+    // 确保响应结束，但不发送错误消息给前端
+    if (!res.headersSent) {
+      res.end();
+    }
   }
 }
 

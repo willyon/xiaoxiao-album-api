@@ -10,40 +10,21 @@ const { mapFields } = require("../utils/fieldMapper");
 
 //保存用户上传的图片元数据到数据库（初始上传时的必要字段）
 function insertImage({ userId, imageHash, thumbnailStorageKey, storageType, fileSizeBytes }) {
-  // 构建动态SQL，只插入有值的字段
-  const fields = [];
-  const values = [];
-  const placeholders = [];
-
-  // 必需字段
-  fields.push("user_id", "image_hash", "created_at");
-  values.push(userId, imageHash, Date.now());
-  placeholders.push("?", "?", "?");
-
-  // 初始上传时的必要字段
-  if (thumbnailStorageKey != null) {
-    fields.push("thumbnail_storage_key");
-    values.push(thumbnailStorageKey);
-    placeholders.push("?");
-  }
-  if (storageType != null) {
-    fields.push("storage_type");
-    values.push(storageType);
-    placeholders.push("?");
-  }
-  if (fileSizeBytes != null) {
-    fields.push("file_size_bytes");
-    values.push(fileSizeBytes);
-    placeholders.push("?");
-  }
-
+  // 使用固定 SQL，NULL 值会自动使用数据库 DEFAULT 值
   const sql = `
-    INSERT OR IGNORE INTO images (${fields.join(", ")})
-    VALUES (${placeholders.join(", ")})
+    INSERT OR IGNORE INTO images (
+      user_id, 
+      image_hash, 
+      created_at,
+      thumbnail_storage_key,
+      storage_type,
+      file_size_bytes
+    ) VALUES (?, ?, ?, ?, ?, ?)
   `;
 
   const stmt = db.prepare(sql);
-  const result = stmt.run(...values);
+  const result = stmt.run(userId, imageHash, Date.now(), thumbnailStorageKey || null, storageType || null, fileSizeBytes || null);
+
   return { affectedRows: result.changes };
 }
 
@@ -341,8 +322,8 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
   }
 }
 
-// 仅更新有值的字段
-function updateMetaAndHQ({
+// 更新图片元数据（EXIF、GPS、尺寸、存储键等）
+function updateImageMetadata({
   userId,
   imageHash,
   creationDate,
@@ -365,123 +346,68 @@ function updateMetaAndHQ({
   layoutType,
   hdWidthPx,
   hdHeightPx,
-  thumbWidthPx,
-  thumbHeightPx,
-  storageType,
   mime,
+  colorTheme,
 }) {
-  const fields = [];
-  const params = [];
+  const sql = `
+    UPDATE images SET 
+      image_created_at = COALESCE(?, image_created_at),
+      month_key = COALESCE(?, month_key),
+      year_key = COALESCE(?, year_key),
+      date_key = COALESCE(?, date_key),
+      day_key = COALESCE(?, day_key),
+      high_res_storage_key = COALESCE(?, high_res_storage_key),
+      original_storage_key = COALESCE(?, original_storage_key),
+      gps_latitude = COALESCE(?, gps_latitude),
+      gps_longitude = COALESCE(?, gps_longitude),
+      gps_altitude = COALESCE(?, gps_altitude),
+      gps_location = COALESCE(?, gps_location),
+      country = COALESCE(?, country),
+      city = COALESCE(?, city),
+      width_px = COALESCE(?, width_px),
+      height_px = COALESCE(?, height_px),
+      aspect_ratio = COALESCE(?, aspect_ratio),
+      raw_orientation = COALESCE(?, raw_orientation),
+      layout_type = COALESCE(?, layout_type),
+      hd_width_px = COALESCE(?, hd_width_px),
+      hd_height_px = COALESCE(?, hd_height_px),
+      mime = COALESCE(?, mime),
+      color_theme = COALESCE(?, color_theme)
+    WHERE user_id = ? AND image_hash = ? RETURNING id
+  `;
 
-  if (creationDate != null) {
-    fields.push("image_created_at = ?");
-    params.push(creationDate);
-  }
-  if (monthKey != null) {
-    fields.push("month_key = ?");
-    params.push(monthKey);
-  }
-  if (yearKey != null) {
-    fields.push("year_key = ?");
-    params.push(yearKey);
-  }
-  if (dateKey != null) {
-    fields.push("date_key = ?");
-    params.push(dateKey);
-  }
-  if (dayKey != null) {
-    fields.push("day_key = ?");
-    params.push(dayKey);
-  }
-  if (highResStorageKey != null) {
-    fields.push("high_res_storage_key = ?");
-    params.push(highResStorageKey);
-  }
-  if (originalStorageKey != null) {
-    fields.push("original_storage_key = ?");
-    params.push(originalStorageKey);
-  }
+  const stmt = db.prepare(sql);
+  const result = stmt.get(
+    creationDate,
+    monthKey,
+    yearKey,
+    dateKey,
+    dayKey,
+    highResStorageKey,
+    originalStorageKey,
+    gpsLatitude,
+    gpsLongitude,
+    gpsAltitude,
+    gpsLocation,
+    country,
+    city,
+    widthPx,
+    heightPx,
+    aspectRatio,
+    rawOrientation,
+    layoutType,
+    hdWidthPx,
+    hdHeightPx,
+    mime,
+    colorTheme,
+    userId,
+    imageHash,
+  );
 
-  // GPS 信息更新
-  if (gpsLatitude != null) {
-    fields.push("gps_latitude = ?");
-    params.push(gpsLatitude);
-  }
-  if (gpsLongitude != null) {
-    fields.push("gps_longitude = ?");
-    params.push(gpsLongitude);
-  }
-  if (gpsAltitude != null) {
-    fields.push("gps_altitude = ?");
-    params.push(gpsAltitude);
-  }
-  if (gpsLocation != null) {
-    fields.push("gps_location = ?");
-    params.push(gpsLocation);
-  }
-  if (country != null) {
-    fields.push("country = ?");
-    params.push(country);
-  }
-  if (city != null) {
-    fields.push("city = ?");
-    params.push(city);
-  }
-
-  // 图片尺寸和方向信息更新
-  if (widthPx != null) {
-    fields.push("width_px = ?");
-    params.push(widthPx);
-  }
-  if (heightPx != null) {
-    fields.push("height_px = ?");
-    params.push(heightPx);
-  }
-  if (aspectRatio != null) {
-    fields.push("aspect_ratio = ?");
-    params.push(aspectRatio);
-  }
-  if (rawOrientation != null) {
-    fields.push("raw_orientation = ?");
-    params.push(rawOrientation);
-  }
-  if (layoutType != null) {
-    fields.push("layout_type = ?");
-    params.push(layoutType);
-  }
-
-  // 高清图和缩略图尺寸更新
-  if (hdWidthPx != null) {
-    fields.push("hd_width_px = ?");
-    params.push(hdWidthPx);
-  }
-  if (hdHeightPx != null) {
-    fields.push("hd_height_px = ?");
-    params.push(hdHeightPx);
-  }
-  if (thumbWidthPx != null) {
-    fields.push("thumb_width_px = ?");
-    params.push(thumbWidthPx);
-  }
-  if (thumbHeightPx != null) {
-    fields.push("thumb_height_px = ?");
-    params.push(thumbHeightPx);
-  }
-
-  if (storageType != null) {
-    fields.push("storage_type = ?");
-    params.push(storageType);
-  }
-  if (mime != null) {
-    fields.push("mime = ?");
-    params.push(mime);
-  }
-
-  if (!fields.length) return { affectedRows: 0 };
-
-  params.push(userId, imageHash);
-  const sql = `UPDATE images SET ${fields.join(", ")} WHERE user_id = ? AND image_hash = ?`;
-  return db.prepare(sql).run(...params);
+  return {
+    affectedRows: result ? 1 : 0,
+    imageId: result?.id || null,
+  };
 }
 
 // 检查文件是否已存在（用于预检）
@@ -495,9 +421,217 @@ function checkFileExists({ imageHash, userId }) {
   return stmt.get(imageHash, userId);
 }
 
+/**
+ * 更新图片的搜索相关字段
+ */
+/**
+ * 📝 更新图片搜索元数据到images表
+ *
+ * 功能说明:
+ * • 存储人脸识别分析结果的汇总信息
+ * • 支持增量更新：null值不更新，保持原有值
+ *
+ * @function updateImageSearchMetadata
+ * @param {Object} params - 更新参数对象
+ * @param {number} params.imageId - 图片ID（必须）
+ * @param {string} [params.altText] - AI图片描述（待启用）
+ * @param {string} [params.ocrText] - OCR识别的文字内容
+ * @param {string} [params.keywords] - 关键词（待启用）
+ * @param {string} [params.sceneTags] - 场景标签（待启用）
+ * @param {string} [params.objectTags] - 物体标签（待启用）
+ * @param {number} [params.faceCount] - 人脸数量
+ * @param {string} [params.expressionTags] - 表情标签（逗号分隔）如："happy,neutral"
+ * @param {string} [params.ageTags] - 年龄段标签（逗号分隔）如："20-29,0-2"
+ * @param {string} [params.genderTags] - 性别标签（逗号分隔）如："female,male"
+ * @param {number} [params.primaryExpressionConfidence] - 主要人物表情置信度 (0-1)
+ * @param {number} [params.primaryFaceQuality] - 主要人脸质量 (0-1)
+ * @param {boolean} [params.hasYoung] - 是否包含青少年（0-19岁，快速筛选用）
+ * @param {boolean} [params.hasAdult] - 是否包含成人（20岁以上，快速筛选用）
+ * @param {string} [params.analysisVersion='1.0'] - 分析版本号，默认'1.0'
+ *
+ * @returns {Object} 返回对象 { affectedRows: 更新的行数 }
+ *
+ * 💡 使用场景:
+ * • 人脸识别完成后，存储汇总信息
+ * • 支持按标签快速筛选照片
+ * • 支持按质量排序照片
+ *
+ * ⚠️ 注意事项:
+ * • 传入null不会更新该字段（使用COALESCE保护）
+ * • 传入undefined会被转为null
+ * • hasYoung和hasAdult会自动转换为0/1
+ * • analysisVersion默认为'1.0'，可传入其他版本如'2.0'
+ */
+function updateImageSearchMetadata({
+  imageId,
+  altText,
+  ocrText,
+  keywords,
+  sceneTags,
+  objectTags,
+  faceCount,
+  expressionTags,
+  ageTags,
+  genderTags,
+  primaryExpressionConfidence,
+  primaryFaceQuality,
+  hasYoung,
+  hasAdult,
+  analysisVersion = "1.0",
+}) {
+  //  COALESCE 如果传入null，则不更新该字段 保持原有值
+  const updateSQL = `
+    UPDATE images SET 
+      alt_text = COALESCE(?, alt_text),
+      ocr_text = COALESCE(?, ocr_text),
+      keywords = COALESCE(?, keywords),
+      scene_tags = COALESCE(?, scene_tags),
+      object_tags = COALESCE(?, object_tags),
+      face_count = COALESCE(?, face_count),
+      expression_tags = COALESCE(?, expression_tags),
+      age_tags = COALESCE(?, age_tags),
+      gender_tags = COALESCE(?, gender_tags),
+      primary_expression_confidence = COALESCE(?, primary_expression_confidence),
+      primary_face_quality = COALESCE(?, primary_face_quality),
+      has_young = COALESCE(?, has_young),
+      has_adult = COALESCE(?, has_adult),
+      analysis_version = COALESCE(?, analysis_version)
+    WHERE id = ?
+  `;
+
+  const stmt = db.prepare(updateSQL);
+  const result = stmt.run(
+    altText,
+    ocrText,
+    keywords,
+    sceneTags,
+    objectTags,
+    faceCount,
+    expressionTags,
+    ageTags,
+    genderTags,
+    primaryExpressionConfidence,
+    primaryFaceQuality,
+    hasYoung !== undefined ? (hasYoung ? 1 : 0) : null,
+    hasAdult !== undefined ? (hasAdult ? 1 : 0) : null,
+    analysisVersion,
+    imageId,
+  );
+
+  return { affectedRows: result.changes };
+}
+
+// 异步更新图片位置信息
+function updateLocationInfo(imageId, { gpsLocation, country, city }) {
+  const sql = `
+    UPDATE images SET 
+      gps_location = COALESCE(?, gps_location),
+      country = COALESCE(?, country),
+      city = COALESCE(?, city)
+    WHERE id = ?
+  `;
+
+  const stmt = db.prepare(sql);
+  const result = stmt.run(gpsLocation, country, city, imageId);
+
+  return { affectedRows: result.changes };
+}
+
+/**
+ * 👤 插入人脸特征向量数据到face_embeddings表
+ *
+ * 功能说明:
+ * • 存储图片中每个人脸的详细信息和512维特征向量
+ * • 支持人脸识别、聚类、相似度计算
+ * • 采用先删除再插入策略，保证数据一致性
+ *
+ * @function insertFaceEmbeddings
+ * @param {number} imageId - 图片ID
+ * @param {Array<Object>} faceData - 人脸数据数组
+ * @param {number} faceData[].face_index - 人脸序号（同一张图片中的第几个人脸）
+ * @param {Array<number>} faceData[].embedding - 512维特征向量（InsightFace提取）
+ * @param {number} faceData[].age - 年龄段中间值（用于数值计算）如：25代表20-29岁段
+ * @param {string} faceData[].gender - 性别："male" 或 "female"
+ * @param {string} faceData[].expression - 表情："happy", "neutral", "sad"等
+ * @param {number} faceData[].confidence - 人脸检测置信度 (0-1)
+ *
+ * @returns {Object} 返回对象 { affectedRows: 插入的行数 }
+ *
+ * 📊 数据用途:
+ * • 人脸识别：通过embedding计算余弦相似度
+ * • 人脸聚类：将相似人脸分组（同一个人）
+ * • 人物搜索：按年龄、性别、表情筛选人脸
+ * • 人物相册：按聚类ID查看某个人的所有照片
+ *
+ * 🔄 处理策略:
+ * 1. 先删除该图片的旧人脸数据（避免重复）
+ * 2. 批量插入新的人脸数据
+ * 3. embedding存储为BLOB（JSON序列化后的512维数组）
+ *
+ * ⚠️ 注意事项:
+ * • embedding是512维float数组，需要JSON.stringify后存储
+ * • age字段存储的是年龄段中间值，不是age_bucket字符串
+ * • 如果faceData为空，只执行删除操作
+ * • 重复调用会覆盖旧数据（幂等性）
+ *
+ * 💡 使用示例:
+ * ```javascript
+ * const faces = [
+ *   {
+ *     face_index: 0,
+ *     embedding: [...512维数组...],
+ *     age: 25,  // 代表20-29岁段
+ *     gender: 'female',
+ *     expression: 'happy',
+ *     confidence: 0.95
+ *   }
+ * ];
+ * await insertFaceEmbeddings(imageId, faces);
+ * ```
+ */
+function insertFaceEmbeddings(imageId, faceData) {
+  try {
+    // 先删除该图片的旧人脸数据
+    // 原因：1. 避免重复数据 2. 支持重试机制 3. 确保数据一致性
+    const deleteSql = `DELETE FROM face_embeddings WHERE image_id = ?`;
+    const deleteStmt = db.prepare(deleteSql);
+    deleteStmt.run(imageId);
+
+    if (!faceData || faceData.length === 0) {
+      return { affectedRows: 0 };
+    }
+
+    // 批量插入新的人脸数据
+    const insertSql = `
+      INSERT INTO face_embeddings (
+        image_id, face_index, embedding, age, gender, expression, confidence
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+    const insertStmt = db.prepare(insertSql);
+
+    let totalAffected = 0;
+    for (const face of faceData) {
+      // 将embedding数组转换为Buffer存储
+      const embeddingBuffer = Buffer.from(JSON.stringify(face.embedding));
+
+      const result = insertStmt.run(imageId, face.face_index, embeddingBuffer, face.age, face.gender, face.expression, face.confidence);
+      totalAffected += result.changes;
+    }
+
+    return { affectedRows: totalAffected };
+  } catch (error) {
+    console.error("插入人脸特征向量失败:", error);
+    throw error;
+  }
+}
+
 module.exports = {
+  checkFileExists,
   insertImage,
-  updateMetaAndHQ,
+  updateImageMetadata,
+  updateImageSearchMetadata,
+  updateLocationInfo,
+  insertFaceEmbeddings,
   selectImagesByPage,
   selectImagesByYear,
   selectImagesByMonth,
@@ -506,5 +640,4 @@ module.exports = {
   selectGroupsByMonth,
   selectGroupsByDate,
   selectHashesByUserId,
-  checkFileExists,
 };

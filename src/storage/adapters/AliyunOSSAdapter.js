@@ -480,10 +480,13 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     try {
       // OSS没有原生的move操作，需要通过copy + delete实现
       await this.client.copy(targetKey, sourceKey);
-      logger.info(`OSS文件复制成功: ${sourceKey} -> ${targetKey}`);
+      logger.info({
+        message: `OSS文件复制成功: ${sourceKey} -> ${targetKey}`,
+        details: { sourceKey, targetKey },
+      });
 
       await this.client.delete(sourceKey);
-      logger.info(`OSS源文件删除成功: ${sourceKey}`);
+      logger.info({ message: `OSS源文件删除成功: ${sourceKey}` });
 
       return true;
     } catch (error) {

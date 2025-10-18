@@ -60,7 +60,7 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
  * @param {string} params.userId - 用户ID
  * @param {string} [params.thumbnailStorageKey] - 缩略图存储键（可选）
  */
-async function handleRetryFailure({ job, reason, storageKey, fileName, imageHash, userId, thumbnailStorageKey }) {
+async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHash, userId, thumbnailStorageKey }) {
   const maxAttempts = job?.opts?.attempts || Number(process.env.IMAGE_UPLOAD_JOB_ATTEMPTS || 5);
   const attemptsMade = job?.attemptsMade || 0;
   const willRetry = attemptsMade < maxAttempts;
@@ -150,8 +150,6 @@ async function handleRetryFailure({ job, reason, storageKey, fileName, imageHash
       });
     }
   }
-
-  return { willRetry };
 }
 
 /**
@@ -210,7 +208,7 @@ async function processAndSaveSingleImage(job) {
       });
 
       // 处理重试失败逻辑
-      await handleRetryFailure({
+      await _handleRetryFailure({
         job,
         reason: "thumbnail_generation_failed",
         storageKey,
@@ -256,7 +254,7 @@ async function processAndSaveSingleImage(job) {
       });
 
       // 处理重试失败逻辑
-      await handleRetryFailure({
+      await _handleRetryFailure({
         job,
         reason: "database_save_failed",
         storageKey,

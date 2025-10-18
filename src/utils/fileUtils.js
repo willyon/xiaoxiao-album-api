@@ -63,12 +63,19 @@ function isImageFile(file) {
 /**
  * 从文件名获取标准化的MIME类型
  * 用于修正错误的MIME类型（如HEIC文件的application/octet-stream）
+ * 支持文件名和扩展名输入
  *
- * @param {string} fileName - 文件名
+ * @param {string} input - 文件名（如 "test.jpg"）或扩展名（如 "jpg" 或 ".jpg"）
  * @returns {string} 标准化的MIME类型
  */
-function getStandardMimeType(fileName) {
-  const extension = fileName.toLowerCase().split(".").pop();
+function getStandardMimeType(input) {
+  // 支持文件名（如 "test.jpg"）和扩展名（如 "jpg" 或 ".jpg"）
+  let extension = input.toLowerCase().trim();
+
+  // 如果包含点号，提取扩展名
+  if (extension.includes(".")) {
+    extension = extension.split(".").pop();
+  }
 
   const mimeTypes = {
     jpg: "image/jpeg",

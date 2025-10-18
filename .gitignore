@@ -9,3 +9,23 @@ build/
 backend-dist/
 deployment-scripts/
 scripts
+
+# Python 基础文件
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# 构建和分发
+dist/
+*.egg-info/
+
+# 日志文件
+*.log

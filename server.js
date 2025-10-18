@@ -18,6 +18,7 @@ const initGracefulShutdown = require("./src/utils/gracefulShutdown");
 
 const { closeImageUploadQueue } = require("./src/queues/imageUploadQueue");
 const { closeImageMetaQueue } = require("./src/queues/imageMetaQueue");
+const { closeSearchIndexQueue } = require("./src/queues/searchIndexQueue");
 
 // 应用服务安全中间件
 const xss = require("xss");
@@ -36,6 +37,7 @@ const imagesRoutes = require("./src/routes/imagesRoutes");
 const aliyunOssCallbackRoutes = require("./src/routes/aliyunOssCallbackRoutes");
 const uploadSessionRoutes = require("./src/routes/uploadSessionRoutes");
 const progressRoutes = require("./src/routes/progressRoutes");
+const searchRoutes = require("./src/routes/searchRoutes");
 
 // ========================== 创建Express实例，设置端口号 ========================== //
 
@@ -122,6 +124,9 @@ app.use("/uploads", [authMiddleware], uploadSessionRoutes);
 // 注册SSE进度推送路由 - 不需要鉴权（EventSource无法发送认证头）
 app.use("/progress", progressRoutes);
 
+// 注册搜索功能路由+鉴权中间件(authMiddleware)
+app.use("/search", [authMiddleware], searchRoutes);
+
 // ========================== 错误处理中间件 ========================== //
 
 // 注册错误处理器 必须在所有路由之后挂载
@@ -141,5 +146,6 @@ initGracefulShutdown({
     // 关闭 BullMQ 的 Queue 及其底层连接（API 进程只负责入队）
     async () => closeImageUploadQueue(),
     async () => closeImageMetaQueue(),
+    async () => closeSearchIndexQueue(),
   ],
 });

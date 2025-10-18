@@ -5,25 +5,25 @@
  */
 
 const logger = require("../utils/logger");
-const { extractImageMetadata, updateImageMetaAndHQ, calculateOrientationInfo } = require("../services/imageService");
+const { saveProcessedImageMetadata } = require("../services/imageService");
 const { timestampToYearMonth, timestampToYear, timestampToDate, timestampToDayOfWeek } = require("../utils/formatTime");
 const timeIt = require("../utils/timeIt");
 const storageService = require("../services/storageService");
-const { getLocationFromCoordinates } = require("../services/geocodingService");
 const { updateProgress } = require("../services/imageProcessingProgressService");
+const { searchIndexQueue } = require("../queues/searchIndexQueue");
+const imageMetadataService = require("../services/imageMetadataService");
 
 /**
  * 处理重试失败后的清理工作（用于imageMetaIngestor）
  * @param {Object} params - 参数对象
  * @param {Object} params.job - BullMQ job对象
  * @param {string} params.reason - 失败原因
- * @param {string} params.storageKey - 源文件存储键
  * @param {string} params.fileName - 文件名
  * @param {string} params.imageHash - 图片哈希
  * @param {string} params.userId - 用户ID
  * @param {string} [params.highResStorageKey] - 高清图存储键（可选）
  */
-async function handleMetaRetryFailure({ job, reason, storageKey, fileName, imageHash, userId, highResStorageKey }) {
+async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userId, highResStorageKey }) {
   const maxAttempts = job?.opts?.attempts || Number(process.env.IMAGE_META_JOB_ATTEMPTS || 5);
   const attemptsMade = job?.attemptsMade || 0;
   const willRetry = attemptsMade < maxAttempts;
@@ -97,8 +97,6 @@ async function handleMetaRetryFailure({ job, reason, storageKey, fileName, image
       },
     });
   }
-
-  return { willRetry };
 }
 
 /**
@@ -116,111 +114,54 @@ async function processImageMeta(job) {
   const highResType = process.env.IMAGE_STORAGE_KEY_HIGHRES || "highres";
   const originalType = process.env.IMAGE_STORAGE_KEY_ORIGINAL || "original";
 
-  // 1) 解析 EXIF → creationDate、GPS信息、图片尺寸、方向、MIME类型
-  let creationDate = null;
-  let gpsLatitude = null;
-  let gpsLongitude = null;
-  let gpsAltitude = null;
-  let gpsLocation = null; // 位置全文描述
-  let country = null;
-  let city = null;
-  let widthPx = null;
-  let heightPx = null;
-  let aspectRatio = null;
-  let rawOrientation = null;
-  let layoutType = null;
-  let mime = null;
-
-  // 时间分组相关变量
-  let monthKey = null;
-  let yearKey = null;
-  let dateKey = null;
-  let dayKey = null;
-
   // 高清图相关变量
   let highResStorageKeyResult = null; // 只有成功处理时才设置高清图存储键
   let hdWidthPx = null;
   let hdHeightPx = null;
 
-  // 通过存储服务获取文件数据进行 EXIF 读取
+  // 通过存储服务获取文件数据
+  let fileData = null;
   try {
-    const fileData = await storageService.storage.getFileData(storageKey);
-    const exifData = await extractImageMetadata(fileData);
-
-    // 图片拍摄时间戳
-    // extractImageMetadata 已经返回时间戳格式
-    creationDate = exifData?.captureTime || null;
-
-    // MIME类型提取
-    mime = exifData?.mime || null;
-
-    // 图片尺寸、图片横竖以及宽高比提取
-    if (exifData?.width && exifData?.height) {
-      const originalWidth = exifData.width;
-      const originalHeight = exifData.height;
-      rawOrientation = exifData.orientation || 1; // 默认为1（正常方向）
-
-      // 根据 orientation 计算实际显示尺寸和方向分类
-      const displayInfo = calculateOrientationInfo(originalWidth, originalHeight, rawOrientation);
-
-      // 存储旋正后的尺寸
-      widthPx = displayInfo.displayWidth;
-      heightPx = displayInfo.displayHeight;
-      layoutType = displayInfo.layoutType;
-      aspectRatio = displayInfo.aspectRatio;
-    }
-
-    // GPS 信息提取
-    if (exifData?.latitude && exifData?.longitude) {
-      gpsLatitude = exifData.latitude;
-      gpsLongitude = exifData.longitude;
-      gpsAltitude = exifData.altitude || null;
-
-      // 尝试获取位置描述
-      try {
-        const locationObj = await getLocationFromCoordinates(gpsLatitude, gpsLongitude);
-        if (locationObj) {
-          gpsLocation = locationObj.formattedAddress || null;
-          country = locationObj.country || null;
-          city = locationObj.city || null;
-        }
-      } catch (error) {
-        logger.warn({
-          message: "逆地理编码失败，继续处理图片",
-          details: {
-            imageHash,
-            userId,
-            gpsLatitude,
-            gpsLongitude,
-            error: error.message,
-          },
-        });
-      }
-    }
+    fileData = await storageService.storage.getFileData(storageKey);
   } catch (err) {
-    // EXIF 读取失败
-    logger.error({
-      message: "EXIF read failed in imageMetaIngestor",
-      details: { imageHash, userId, storageKey, err },
-    });
-
-    // 处理重试失败逻辑
-    await handleMetaRetryFailure({
-      job,
-      reason: "exif_read_failed",
-      storageKey,
-      fileName,
-      imageHash,
-      userId,
-    });
-
+    await _handleMetaRetryFailure({ job, reason: "file_read_failed", fileName, imageHash, userId });
     throw err;
   }
 
-  monthKey = timestampToYearMonth(creationDate);
-  yearKey = timestampToYear(creationDate);
-  dateKey = timestampToDate(creationDate);
-  dayKey = timestampToDayOfWeek(creationDate);
+  // 综合分析图片元数据（包含位置描述）
+  let metadata = null;
+  try {
+    metadata = await imageMetadataService.analyzeImageMetadata(fileData, {
+      includeLocation: true, // 包含位置描述
+    });
+  } catch (err) {
+    await _handleMetaRetryFailure({ job, reason: "metadata_analysis_failed", fileName, imageHash, userId });
+    throw err;
+  }
+
+  // 从分析结果中提取所需字段
+  const {
+    colorTheme,
+    captureTime,
+    latitude,
+    longitude,
+    altitude,
+    gpsLocation,
+    country,
+    city,
+    width,
+    height,
+    aspectRatio,
+    orientation,
+    layoutType,
+    mime,
+  } = metadata;
+
+  // 时间分组（基于元数据分析结果）
+  const monthKey = timestampToYearMonth(captureTime);
+  const yearKey = timestampToYear(captureTime);
+  const dateKey = timestampToDate(captureTime);
+  const dayKey = timestampToDayOfWeek(captureTime);
 
   // 使用存储服务生成高清图片的存储键名
   const highResStorageKey = storageService.storage.generateStorageKey(highResType, fileName, extension);
@@ -255,13 +196,13 @@ async function processImageMeta(job) {
     });
 
     // 处理重试失败逻辑
-    await handleMetaRetryFailure({
+    await _handleMetaRetryFailure({
       job,
       reason: "highres_generation_failed",
-      storageKey,
       fileName,
       imageHash,
       userId,
+      highResStorageKey: highResStorageKeyResult,
     });
 
     throw e;
@@ -269,33 +210,36 @@ async function processImageMeta(job) {
 
   // 生成原图的存储键名（不传extension，直接使用fileName）
   const originalStorageKey = storageService.storage.generateStorageKey(originalType, fileName);
-  // 更新数据库
+  // 更新数据库并获取imageId
+  let imageId = null;
   try {
-    await updateImageMetaAndHQ({
+    const result = await saveProcessedImageMetadata({
       userId,
       imageHash,
-      creationDate,
+      creationDate: captureTime,
       monthKey,
       yearKey,
       dateKey,
       dayKey,
       highResStorageKey: highResStorageKeyResult, // 只有高清图处理成功时才不为null
       originalStorageKey,
-      gpsLatitude,
-      gpsLongitude,
-      gpsAltitude,
-      gpsLocation, // 使用逆地理编码获取的位置描述
-      country,
-      city,
-      widthPx,
-      heightPx,
+      gpsLatitude: latitude,
+      gpsLongitude: longitude,
+      gpsAltitude: altitude,
+      gpsLocation, // 位置描述（如"北京市朝阳区三里屯街道"）
+      country, // 国家（如"中国"）
+      city, // 城市（如"北京市"）
+      widthPx: width,
+      heightPx: height,
       aspectRatio,
-      rawOrientation,
+      rawOrientation: orientation,
       layoutType,
       hdWidthPx,
       hdHeightPx,
       mime,
+      colorTheme,
     });
+    imageId = result.imageId;
   } catch (e) {
     // 数据库更新失败
     logger.error({
@@ -304,10 +248,9 @@ async function processImageMeta(job) {
     });
 
     // 处理重试失败逻辑
-    await handleMetaRetryFailure({
+    await _handleMetaRetryFailure({
       job,
       reason: "database_update_failed",
-      storageKey,
       fileName,
       imageHash,
       userId,
@@ -324,6 +267,7 @@ async function processImageMeta(job) {
       });
     }
   } catch (err) {}
+
   // ======== 移动原图到 original 存储位置 ========
   try {
     await storageService.storage.moveFile(storageKey, originalStorageKey);
@@ -342,6 +286,45 @@ async function processImageMeta(job) {
     });
 
     // 不抛出错误，让任务正常完成
+  }
+
+  // ======== 添加到搜索索引队列 ========
+  try {
+    if (imageId) {
+      await searchIndexQueue.add(process.env.SEARCH_INDEX_QUEUE_NAME, {
+        imageId,
+        userId,
+        highResStorageKey: highResStorageKeyResult,
+        originalStorageKey, // 移动后的原图路径
+      });
+      // 加入队列任务前，打印队列状态
+      const jobCounts = await searchIndexQueue.getJobCounts();
+      console.log("当前队列状态：", jobCounts);
+
+      const waitingJobs = await searchIndexQueue.getWaiting();
+      console.log("当前队列等待状态：", waitingJobs);
+      waitingJobs.forEach((job, index) => {
+        console.log(`等待任务 ${index + 1}:`);
+        console.log("任务 ID:", job.id);
+        console.log("任务名称:", job.name);
+        console.log("任务数据:", job.data);
+      });
+    } else {
+      logger.warn({
+        message: "Cannot add to search queue - imageId is null",
+        details: { imageHash, userId },
+      });
+    }
+  } catch (searchQueueError) {
+    // 搜索索引失败不影响主流程
+    logger.warn({
+      message: "Failed to add image to search index queue",
+      details: {
+        imageHash,
+        userId,
+        error: searchQueueError.message,
+      },
+    });
   }
 }
 
