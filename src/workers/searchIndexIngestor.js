@@ -23,9 +23,8 @@
  * • expressionTags - 表情标签（逗号分隔）
  * • ageTags - 年龄段标签（逗号分隔）
  * • genderTags - 性别标签（逗号分隔）
- * • primaryAgeConfidence - 主要人物年龄置信度
- * • primaryGenderConfidence - 主要人物性别置信度
  * • primaryExpressionConfidence - 主要人物表情置信度
+ * • primaryFaceQuality - 主要人脸质量
  * • hasYoung - 是否包含青少年（0-19岁，快速筛选）
  * • hasAdult - 是否包含成人（20岁以上，快速筛选）
  * • avgFaceQuality - 平均人脸质量

@@ -131,6 +131,9 @@ class Settings:
     MAX_YAW_ANGLE = float(os.getenv("MAX_YAW_ANGLE", "45"))  # 最大偏航角
     MAX_PITCH_ANGLE = float(os.getenv("MAX_PITCH_ANGLE", "30"))  # 最大俯仰角
     
+    # 表情识别置信度阈值
+    MIN_EXPRESSION_CONFIDENCE = float(os.getenv("MIN_EXPRESSION_CONFIDENCE", "0.5"))  # 最低表情置信度（低于此值视为neutral）
+    
     # 年龄段定义（FairFace标准）
     # 注意：这是固定数组，与模型输出索引对应，不应修改
     AGE_BUCKETS = ['0-2', '3-9', '10-19', '20-29', '30-39', '40-49', '50-59', '60-69', '70+']

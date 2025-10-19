@@ -206,8 +206,6 @@ async function clearAllQueueJobs() {
     throw err;
   }
 }
-
-clearAllQueueJobs().catch(console.error);
 // ============清空 BullMQ 队列中所有任务（等待、活跃、失败、完成、延迟）==========//
 
 // ============清空 Redis 中 readyKeyOf、lockKeyOf、userSetKey 和进度 session 相关键，用于开发测试环境快速重置==========//

@@ -41,7 +41,28 @@ function selectImagesByPage({ pageNo, pageSize, userId }) {
 
   // 分页数据查询
   const dataQuery = db.prepare(`
-    SELECT high_res_storage_key, thumbnail_storage_key, image_created_at, date_key, day_key, month_key, year_key, storage_type, gps_location
+    SELECT 
+      high_res_storage_key, 
+      thumbnail_storage_key, 
+      image_created_at, 
+      date_key, 
+      day_key, 
+      month_key, 
+      year_key, 
+      storage_type, 
+      gps_location,
+      width_px,
+      height_px,
+      aspect_ratio,
+      layout_type,
+      color_theme,
+      file_size_bytes,
+      face_count,
+      age_tags,
+      gender_tags,
+      expression_tags,
+      has_young,
+      has_adult
     FROM images
     WHERE user_id = ?
     ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
@@ -70,7 +91,28 @@ function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
 
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
-    SELECT high_res_storage_key, thumbnail_storage_key, image_created_at, date_key, day_key, month_key, year_key, storage_type, gps_location
+    SELECT 
+      high_res_storage_key, 
+      thumbnail_storage_key, 
+      image_created_at, 
+      date_key, 
+      day_key, 
+      month_key, 
+      year_key, 
+      storage_type, 
+      gps_location,
+      width_px,
+      height_px,
+      aspect_ratio,
+      layout_type,
+      color_theme,
+      file_size_bytes,
+      face_count,
+      age_tags,
+      gender_tags,
+      expression_tags,
+      has_young,
+      has_adult
     FROM images
     WHERE user_id = ?
       AND year_key = ?
@@ -100,7 +142,28 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
 
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
-    SELECT high_res_storage_key, thumbnail_storage_key, image_created_at, date_key, day_key, month_key, year_key, storage_type, gps_location
+    SELECT 
+      high_res_storage_key, 
+      thumbnail_storage_key, 
+      image_created_at, 
+      date_key, 
+      day_key, 
+      month_key, 
+      year_key, 
+      storage_type, 
+      gps_location,
+      width_px,
+      height_px,
+      aspect_ratio,
+      layout_type,
+      color_theme,
+      file_size_bytes,
+      face_count,
+      age_tags,
+      gender_tags,
+      expression_tags,
+      has_young,
+      has_adult
     FROM images
     WHERE user_id = ?
       AND month_key = ?
@@ -130,7 +193,28 @@ function selectImagesByDate({ pageNo, pageSize, dateKey, userId }) {
 
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
-    SELECT high_res_storage_key, thumbnail_storage_key, image_created_at, date_key, day_key, month_key, year_key, storage_type, gps_location
+    SELECT 
+      high_res_storage_key, 
+      thumbnail_storage_key, 
+      image_created_at, 
+      date_key, 
+      day_key, 
+      month_key, 
+      year_key, 
+      storage_type, 
+      gps_location,
+      width_px,
+      height_px,
+      aspect_ratio,
+      layout_type,
+      color_theme,
+      file_size_bytes,
+      face_count,
+      age_tags,
+      gender_tags,
+      expression_tags,
+      has_young,
+      has_adult
     FROM images
     WHERE user_id = ?
       AND date_key = ?
@@ -155,18 +239,21 @@ function selectImagesByDate({ pageNo, pageSize, dateKey, userId }) {
 }
 
 // 分页获取用户按月分组（YYYY-MM / 'unknown'）数据 —— 基于物化 monthKey
+// 🎯 功能：按月分组显示相册封面，智能选择最开心最清晰的照片作为封面
 function selectGroupsByMonth({ pageNo, pageSize, userId }) {
   const offset = (pageNo - 1) * pageSize;
 
   const dataQuery = db.prepare(`
     WITH counts AS (
+      -- 📊 统计每个月份的照片数量
       SELECT month_key, COUNT(*) AS imageCount
       FROM images
       WHERE user_id = ?
       GROUP BY month_key
     ),
     latest AS (
-      -- 为每个 month_key 选最新一张（先按 image_created_at DESC，再按 id DESC 保证稳定）
+      -- 🎨 为每个月份智能选择最佳封面照片
+      -- 选择策略：最开心 > 最清晰 > 有人脸 > 时间最新
       SELECT m.month_key, m.thumbnail_storage_key, m.image_created_at, m.id, m.storage_type
       FROM images m
       WHERE m.user_id = ?
@@ -175,26 +262,43 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
           FROM images m2
           WHERE m2.user_id = m.user_id
             AND m2.month_key = m.month_key
-          ORDER BY COALESCE(m2.image_created_at, 0) DESC, m2.id DESC
+          ORDER BY 
+            -- 🥰 第一优先级：表情开心且置信度高（>70%）
+            CASE 
+              WHEN m2.expression_tags LIKE '%happy%' AND m2.primary_expression_confidence > 0.7 THEN 1
+              -- 📸 第二优先级：人脸质量优秀（>80%）
+              WHEN m2.primary_face_quality > 0.8 THEN 2  
+              -- 👤 第三优先级：包含人脸的图片
+              WHEN m2.face_count > 0 THEN 3
+              -- ⏰ 第四优先级：其他所有图片（兜底策略）
+              ELSE 4
+            END,
+            -- 🔢 同优先级内的精细排序：
+            COALESCE(m2.primary_expression_confidence, 0) DESC,  -- 表情置信度高的优先
+            COALESCE(m2.primary_face_quality, 0) DESC,           -- 人脸质量好的优先
+            COALESCE(m2.face_count, 0) DESC,                   -- 人脸数量多的优先（更热闹）
+            COALESCE(m2.image_created_at, 0) DESC,             -- 时间最新的优先
+            m2.id DESC                                          -- ID最大的优先（保证排序稳定）
           LIMIT 1
         )
       GROUP BY m.month_key
     )
     SELECT
       latest.month_key,        -- 分组键（YYYY-MM / 'unknown'）
-      latest.thumbnail_storage_key AS latestImagekey,
-      latest.image_created_at,
-      latest.storage_type,
-      counts.imageCount
+      latest.thumbnail_storage_key AS latestImagekey,  -- 封面图片的缩略图存储键
+      latest.image_created_at,  -- 封面图片的拍摄时间
+      latest.storage_type,      -- 封面图片的存储类型
+      counts.imageCount         -- 该月份的照片总数
     FROM latest
     JOIN counts ON counts.month_key = latest.month_key
     ORDER BY
+      -- 📅 排序：未知月份放最后，其他按月份倒序（最新的在前）
       CASE WHEN latest.month_key = 'unknown' THEN 1 ELSE 0 END,
       latest.month_key DESC
     LIMIT ? OFFSET ?;
   `);
 
-  // 组总数：直接对 month_key 去重计数
+  // 📊 组总数：直接对 month_key 去重计数
   const countQuery = db.prepare(`
     SELECT COUNT(DISTINCT month_key) AS groupCount
     FROM images
@@ -222,7 +326,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
       GROUP BY year_key
     ),
     latest AS (
-      -- 为每个 year_key 选最新一张（先按 image_created_at DESC，再按 id DESC 保证稳定）
+      -- 为每个 year_key 选最开心最清晰的一张作为封面
       SELECT m.year_key, m.thumbnail_storage_key, m.image_created_at, m.id, m.storage_type
       FROM images m
       WHERE m.user_id = ?
@@ -231,7 +335,18 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
           FROM images m2
           WHERE m2.user_id = m.user_id
             AND m2.year_key  = m.year_key
-          ORDER BY COALESCE(m2.image_created_at, 0) DESC, m2.id DESC
+          ORDER BY 
+            CASE 
+              WHEN m2.expression_tags LIKE '%happy%' AND m2.primary_expression_confidence > 0.7 THEN 1
+              WHEN m2.primary_face_quality > 0.8 THEN 2  
+              WHEN m2.face_count > 0 THEN 3
+              ELSE 4
+            END,
+            COALESCE(m2.primary_expression_confidence, 0) DESC,
+            COALESCE(m2.primary_face_quality, 0) DESC,
+            COALESCE(m2.face_count, 0) DESC,
+            COALESCE(m2.image_created_at, 0) DESC,
+            m2.id DESC
           LIMIT 1
         )
       GROUP BY m.year_key
@@ -278,7 +393,7 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
       GROUP BY date_key
     ),
     latest AS (
-      -- 为每个 date_key 选最新一张（先按 image_created_at DESC，再按 id DESC 保证稳定）
+      -- 为每个 date_key 选最开心最清晰的一张作为封面
       SELECT m.date_key, m.thumbnail_storage_key, m.image_created_at, m.id, m.storage_type
       FROM images m
       WHERE m.user_id = ?
@@ -287,7 +402,18 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
           FROM images m2
           WHERE m2.user_id = m.user_id
             AND m2.date_key = m.date_key
-          ORDER BY COALESCE(m2.image_created_at, 0) DESC, m2.id DESC
+          ORDER BY 
+            CASE 
+              WHEN m2.expression_tags LIKE '%happy%' AND m2.primary_expression_confidence > 0.7 THEN 1
+              WHEN m2.primary_face_quality > 0.8 THEN 2  
+              WHEN m2.face_count > 0 THEN 3
+              ELSE 4
+            END,
+            COALESCE(m2.primary_expression_confidence, 0) DESC,
+            COALESCE(m2.primary_face_quality, 0) DESC,
+            COALESCE(m2.face_count, 0) DESC,
+            COALESCE(m2.image_created_at, 0) DESC,
+            m2.id DESC
           LIMIT 1
         )
       GROUP BY m.date_key

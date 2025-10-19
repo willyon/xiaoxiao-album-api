@@ -31,45 +31,65 @@ class FaceDetector:
             image: OpenCV格式的图片(numpy array)
         
         Returns:
-            list[dict]: 人脸列表，每个包含：
-                - bbox: [x1, y1, x2, y2]
-                - kps: [[x, y], ...] 5个关键点
-                - quality_score: 质量评分 0-1
-                - pose: {yaw, pitch, roll} 姿态角度
-                - embedding: 512维特征向量
-                - det_score: 检测置信度
-                - passed_quality: 是否通过质量检测
-                - face_size: 人脸尺寸(最小边)
+            dict: 包含以下字段的字典：
+                - high_quality_faces: list[dict] - 通过质量检测的人脸（用于属性分析）
+                - all_faces_count: int - 检测到的所有人脸数量（用于face_count统计）
+                - detected_faces: list[dict] - 所有人脸的完整信息（用于调试）
+        
+        设计说明：
+        - high_quality_faces: 只包含通过质量检测的人脸，用于年龄、性别、表情分析
+        - all_faces_count: 包含所有人脸数量，用于face_count统计（包括侧面、远距离等）
+        - detected_faces: 包含所有人脸的完整信息，用于调试和日志
         """
         try:
             if image is None or image.size == 0:
                 logger.warning('输入图片为空')
-                return []
+                return {
+                    'high_quality_faces': [],
+                    'all_faces_count': 0,
+                    'detected_faces': []
+                }
             
-            # 使用InsightFace检测人脸
+            # 使用InsightFace检测所有人脸
             faces = self.face_app.get(image)
             
             if not faces:
-                return []
+                return {
+                    'high_quality_faces': [],
+                    'all_faces_count': 0,
+                    'detected_faces': []
+                }
             
-            # 质量评估和过滤（只返回高质量人脸）
-            result = []
+            # 分离高质量人脸和所有人脸
+            high_quality_faces = []  # 用于属性分析
+            all_detected_faces = []   # 用于统计和调试
+            
             for face in faces:
                 face_info = self._evaluate_quality(face)
-                # 只保留通过质量检测的人脸
+                all_detected_faces.append(face_info)  # 所有人脸都加入统计
+                
+                # 只有通过质量检测的人脸才用于属性分析
                 if face_info['passed_quality']:
-                    result.append(face_info)
+                    high_quality_faces.append(face_info)
             
             # 按质量分数排序（高质量优先）
-            result.sort(key=lambda x: x['quality_score'], reverse=True)
+            high_quality_faces.sort(key=lambda x: x['quality_score'], reverse=True)
             
-            logger.info(f'检测到 {len(faces)} 张人脸，通过质量检测: {len(result)}张')
+            logger.info(f'检测到 {len(faces)} 张人脸，通过质量检测: {len(high_quality_faces)}张，统计数量: {len(all_detected_faces)}张')
             
-            return result
+            return {
+                'high_quality_faces': high_quality_faces,  # 用于属性分析
+                'all_faces_count': len(all_detected_faces),  # 用于face_count统计
+                'detected_faces': all_detected_faces  # 完整信息用于调试
+            }
             
         except Exception as e:
             logger.error(f'人脸检测失败: {e}', exc_info=True)
-            return []
+            return {
+                'high_quality_faces': [],
+                'all_faces_count': 0,
+                'detected_faces': []
+            }
     
     def _evaluate_quality(self, face):
         """

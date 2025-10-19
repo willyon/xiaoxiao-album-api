@@ -143,10 +143,16 @@ class ExpressionAnalyzer:
             # 6. 映射到标准表情名称（使用配置的统一映射表）
             standard_expression = settings.EXPRESSION_MAP.get(expression_name, 'neutral')
             
-            # 7. 返回真实的模型输出
+            # 7. 置信度过滤：低于阈值的结果视为neutral（避免低置信度的误判）
+            # 例如：宝宝张嘴睡觉被误判为"厌恶"（30%置信度）应该被过滤
+            if confidence < settings.MIN_EXPRESSION_CONFIDENCE:
+                standard_expression = 'neutral'
+                logger.warning(f'表情置信度过低({confidence:.1%} < {settings.MIN_EXPRESSION_CONFIDENCE:.0%})，降级为neutral')
+            
+            # 8. 返回过滤后的结果
             return {
                 'value': standard_expression,
-                'confidence': confidence  # 真实的置信度，即使很低也如实返回
+                'confidence': confidence  # 保留原始置信度用于调试
             }
             
         except Exception as e:

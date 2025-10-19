@@ -111,6 +111,7 @@ function createTableImages() {
         has_adult INTEGER DEFAULT 0,        -- 是否有成人（20岁+）：0或1
         primary_face_quality REAL DEFAULT NULL, -- 主要人脸质量分数（0-1）
         primary_expression_confidence REAL DEFAULT NULL, -- 主要表情置信度（0-1）
+        analysis_version TEXT DEFAULT '1.0', -- 分析版本号
 
         -- 同一用户下，内容哈希唯一（避免跨用户互相影响）
         UNIQUE (user_id, image_hash),

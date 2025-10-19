@@ -81,12 +81,14 @@ def _analyze_image(image):
         # 获取分析器
         face_detector, attribute_analyzer, expression_analyzer = _get_face_analyzers()
         
-        # 1. 人脸检测（SCRFD）
-        faces = face_detector.detect(image)
+        # 1. 人脸检测（SCRFD）- 返回分离的结果
+        detection_result = face_detector.detect(image)
+        high_quality_faces = detection_result['high_quality_faces']
+        all_faces_count = detection_result['all_faces_count']
         
-        if len(faces) == 0:
+        if all_faces_count == 0:
             return {
-                'face_count': 0,
+                'face_count': 0,  # 使用所有人脸数量进行统计
                 'faces': [],
                 'summary': {
                     'expressions': [],
@@ -95,24 +97,24 @@ def _analyze_image(image):
                 }
             }
         
-        # 2. 属性分析（FairFace：年龄段 + 性别） fairface还可以获取种族race 但我们目前暂不需要
-        attributes = attribute_analyzer.analyze(image, faces)
+        # 2. 属性分析（FairFace：年龄段 + 性别）- 只对高质量人脸进行分析
+        attributes = attribute_analyzer.analyze(image, high_quality_faces)
         
-        # 3. 表情分析
-        expressions = expression_analyzer.analyze(image, faces)
+        # 3. 表情分析 - 只对高质量人脸进行分析
+        expressions = expression_analyzer.analyze(image, high_quality_faces)
         
         # 确保三个列表长度一致（用于 zip 遍历）
-        if len(faces) != len(attributes) or len(faces) != len(expressions):
-            logger.error(f'列表长度不一致！faces={len(faces)}, attributes={len(attributes)}, expressions={len(expressions)}')
-            raise ValueError(f'人脸分析结果长度不一致：faces={len(faces)}, attributes={len(attributes)}, expressions={len(expressions)}')
+        if len(high_quality_faces) != len(attributes) or len(high_quality_faces) != len(expressions):
+            logger.error(f'列表长度不一致！high_quality_faces={len(high_quality_faces)}, attributes={len(attributes)}, expressions={len(expressions)}')
+            raise ValueError(f'人脸分析结果长度不一致：high_quality_faces={len(high_quality_faces)}, attributes={len(attributes)}, expressions={len(expressions)}')
         
-        # 4. 合并结果（传入的faces已经都是高质量人脸）
+        # 4. 合并结果（只处理高质量人脸）
         face_results = []
         summary_expressions = []
         summary_ages = []
         summary_genders = []
         
-        for i, (face, attr, expr) in enumerate(zip(faces, attributes, expressions)):
+        for i, (face, attr, expr) in enumerate(zip(high_quality_faces, attributes, expressions)):
             # 构建单个人脸结果
             face_result = {
                 'face_index': i,
@@ -161,8 +163,8 @@ def _analyze_image(image):
         
         # 5. 返回结果（转换所有numpy类型为Python原生类型）
         result = {
-            'face_count': len(face_results),
-            'faces': face_results,
+            'face_count': all_faces_count,  # 使用所有人脸数量进行统计（包括侧面、远距离等）
+            'faces': face_results,  # 只包含高质量人脸的详细信息
             'summary': {
                 'expressions': summary_expressions,
                 'ages': summary_ages,
@@ -173,7 +175,7 @@ def _analyze_image(image):
         # 转换numpy类型，确保JSON序列化兼容
         result = _convert_to_native_types(result)
         
-        logger.info(f"✅ 人脸分析完成: {len(face_results)}张人脸（detector已过滤低质量）")
+        logger.info(f"✅ 人脸分析完成: 检测到{all_faces_count}张人脸，分析{len(face_results)}张高质量人脸")
         
         return result
         
