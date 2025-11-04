@@ -13,6 +13,7 @@ const {
   handleIndexImage,
   handleGetQueueStatus,
   handleAdvancedSearch,
+  handleGetFilterOptionsPaginated,
 } = require("../controllers/searchController");
 
 // 应用认证中间件
@@ -26,6 +27,9 @@ router.post("/advanced", handleAdvancedSearch);
 
 // 搜索建议
 router.get("/suggestions", handleGetSearchSuggestions);
+
+// 分页获取筛选选项（用于滚动加载）
+router.get("/filter-options-paginated", handleGetFilterOptionsPaginated);
 
 // 手动索引单个图片
 router.post("/index-image", handleIndexImage);

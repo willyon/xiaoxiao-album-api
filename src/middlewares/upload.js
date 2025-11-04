@@ -2,11 +2,12 @@
  * @Author: zhangshouchang
  * @Date: 2025-08-04 12:06:10
  * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-04 22:07:45
+ * @LastEditTime: 2025-11-03 12:00:00
  * @Description: 智能上传中间件 - 根据环境配置自动选择存储策略
  */
 const multer = require("multer");
 const path = require("path");
+const crypto = require("crypto");
 const { DateTime } = require("luxon");
 const storageService = require("../services/storageService");
 const { isImageFile } = require("../utils/fileUtils");
@@ -14,16 +15,15 @@ const { isImageFile } = require("../utils/fileUtils");
 // 生成文件名的通用函数
 function generateFilename(req, file) {
   const ext = path.extname(file.originalname);
-  const base = path.basename(file.originalname, ext);
-
-  // 使用 Luxon 生成时间戳，支持时区配置
-  // const timezone = process.env.TIMEZONE || "local";
-  // const now = timezone.toLowerCase() === "utc" ? DateTime.utc() : DateTime.local();
   const now = DateTime.local();
-
   const dateTime = now.toFormat("yyyyMMdd-HHmmss");
   const userId = req?.user?.userId || "nobody";
-  return `${userId}-${dateTime}-${base}${ext}`;
+
+  // ✅ 使用 UUID 生成唯一标识符，避免中文文件名乱码和冲突问题
+  // 取 UUID 的前12位（去掉连字符），保持文件名简洁
+  const uuid = crypto.randomUUID().replace(/-/g, "").substring(0, 12);
+
+  return `${userId}-${dateTime}-${uuid}${ext}`;
 }
 
 // 通过存储服务获取Multer存储配置

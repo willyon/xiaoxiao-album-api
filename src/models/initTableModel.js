@@ -95,20 +95,21 @@ function createTableImages() {
         -- 时间戳信息
         created_at INTEGER,                 -- 缩略图入库时间戳（毫秒）
 
-        -- 自然语言搜索字段
-        alt_text TEXT DEFAULT '',           -- 自动生成的图片描述
-        ocr_text TEXT DEFAULT '',           -- OCR识别的文字
-        keywords TEXT DEFAULT '',           -- 关键词（逗号分隔）
-        scene_tags TEXT DEFAULT '',         -- 场景标签（逗号分隔）
-        object_tags TEXT DEFAULT '',        -- 物体标签（逗号分隔）
+        -- 自然语言搜索字段（AI 内容理解）
+        alt_text TEXT DEFAULT NULL,         -- 自动生成的图片描述（NULL=未处理，''=已处理但无描述）
+        ocr_text TEXT DEFAULT NULL,         -- OCR识别的文字（NULL=未处理，''=已处理但无文字）
+        keywords TEXT DEFAULT NULL,         -- 关键词（NULL=未处理，''=已处理但无关键词）
+        scene_tags TEXT DEFAULT NULL,       -- 场景标签（NULL=未处理，''=已处理但无场景）
+        object_tags TEXT DEFAULT NULL,      -- 物体标签（NULL=未处理，''=已处理但无物体）
         
-        -- 人脸分析字段（v2.0）
-        face_count INTEGER DEFAULT 0,       -- 人脸数量
-        expression_tags TEXT DEFAULT '',    -- 表情标签：happy、sad、neutral等
-        age_tags TEXT DEFAULT '',           -- 年龄段标签：20-29、30-39等
-        gender_tags TEXT DEFAULT '',        -- 性别标签：male、female
-        has_young INTEGER DEFAULT 0,        -- 是否有儿童（0-19岁）：0或1
-        has_adult INTEGER DEFAULT 0,        -- 是否有成人（20岁+）：0或1
+        -- 人脸分析字段（v2.0 - AI 人脸识别）
+        face_count INTEGER DEFAULT NULL,    -- 人脸数量（NULL=未分析，0=已分析但无人脸，>0=有人脸）
+        person_count INTEGER DEFAULT NULL,  -- 人物数量（NULL=未分析，0=已分析但无人物，>0=有人物）
+        expression_tags TEXT DEFAULT NULL,  -- 表情标签（NULL=未分析，''=已分析但无表情）
+        age_tags TEXT DEFAULT NULL,         -- 年龄段标签（NULL=未分析，''=已分析但无年龄数据）
+        gender_tags TEXT DEFAULT NULL,      -- 性别标签（NULL=未分析，''=已分析但无性别数据）
+        has_young INTEGER DEFAULT NULL,     -- 是否有儿童（NULL=未分析，0=无儿童，1=有儿童）
+        has_adult INTEGER DEFAULT NULL,     -- 是否有成人（NULL=未分析，0=无成人，1=有成人）
         primary_face_quality REAL DEFAULT NULL, -- 主要人脸质量分数（0-1）
         primary_expression_confidence REAL DEFAULT NULL, -- 主要表情置信度（0-1）
         analysis_version TEXT DEFAULT '1.0', -- 分析版本号
@@ -267,8 +268,8 @@ function createTableImages() {
     `,
     ).run();
 
-    // 3) 创建搜索相关索引
-    // 3.1 人脸数量索引（用于人脸数量筛选，FTS5 不包含数值字段）
+    // ==================== 筛选功能专用索引 ====================
+    // 2.19 人脸数量筛选索引（用于按人脸数量筛选照片）
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_face_count
@@ -276,28 +277,59 @@ function createTableImages() {
     `,
     ).run();
 
-    // 3.2 儿童照片索引（用于快速筛选儿童照片）
+    // 2.19.1 人物数量筛选索引（用于按人物数量筛选照片，包括背面/远景）
     db.prepare(
       `
-      CREATE INDEX IF NOT EXISTS idx_images_has_young
-      ON images(has_young);
+      CREATE INDEX IF NOT EXISTS idx_images_user_person_count
+      ON images(user_id, person_count);
     `,
     ).run();
 
-    // 3.3 成人照片索引（用于快速筛选成人照片）
+    // 2.20 颜色主题筛选索引（用于按颜色主题筛选照片）
     db.prepare(
       `
-      CREATE INDEX IF NOT EXISTS idx_images_has_adult
-      ON images(has_adult);
+      CREATE INDEX IF NOT EXISTS idx_images_user_color_theme
+      ON images(user_id, color_theme);
     `,
     ).run();
 
-    // 3.4 主要人脸质量索引（用于高质量照片筛选）
+    // 2.21 年龄段筛选复合索引（用于快速筛选儿童/成人照片）
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_age_flags
+      ON images(user_id, has_young, has_adult);
+    `,
+    ).run();
+
+    // 2.22 城市筛选索引（虽然city在FTS5中，但精确匹配查询仍需索引）
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_city
+      ON images(user_id, city)
+      WHERE city IS NOT NULL AND city != '';
+    `,
+    ).run();
+
+    // 2.23 图片版式筛选索引（虽然layout_type在FTS5中，但精确匹配查询仍需索引）
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_layout_type
+      ON images(user_id, layout_type)
+      WHERE layout_type IS NOT NULL;
+    `,
+    ).run();
+
+    // 注：expression_tags、gender_tags 为逗号分隔字符串，使用 LIKE 查询，索引效果有限，不建立索引
+
+    // 注：人脸相关索引（face_count、has_young、has_adult）已在上面的"筛选功能专用索引"部分创建，无需重复
+
+    // 3) 创建搜索相关索引
+    // 3.1 主要人脸质量索引（用于高质量照片筛选和排序）
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_primary_face_quality
       ON images(primary_face_quality);
-    `,
+`,
     ).run();
 
     // 4) 创建全文搜索索引（FTS5）

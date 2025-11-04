@@ -15,6 +15,7 @@ process.chdir(projectRoot);
 require("dotenv").config();
 const { imageUploadQueue } = require(path.join(projectRoot, "src", "queues", "imageUploadQueue"));
 const { imageMetaQueue } = require(path.join(projectRoot, "src", "queues", "imageMetaQueue"));
+const { searchIndexQueue } = require(path.join(projectRoot, "src", "queues", "searchIndexQueue"));
 
 async function clearAllQueueJobs() {
   try {
@@ -50,7 +51,22 @@ async function clearAllQueueJobs() {
       `✅ 元数据队列清理完成: 等待${metaStats.waiting} | 活跃${metaStats.active} | 完成${metaStats.completed} | 失败${metaStats.failed} | 延迟${metaStats.delayed}`,
     );
 
-    console.log("🎉 BullMQ 队列所有任务已清空");
+    // 清空人脸识别队列
+    console.log("👤 清空人脸识别队列...");
+    const searchStats = {
+      waiting: await searchIndexQueue.clean(0, 1000, "waiting"),
+      active: await searchIndexQueue.clean(0, 1000, "active"),
+      completed: await searchIndexQueue.clean(0, 1000, "completed"),
+      failed: await searchIndexQueue.clean(0, 1000, "failed"),
+      delayed: await searchIndexQueue.clean(0, 1000, "delayed"),
+    };
+    await searchIndexQueue.drain(true); // 清空剩余的等待任务
+
+    console.log(
+      `✅ 人脸识别队列清理完成: 等待${searchStats.waiting} | 活跃${searchStats.active} | 完成${searchStats.completed} | 失败${searchStats.failed} | 延迟${searchStats.delayed}`,
+    );
+
+    console.log("🎉 BullMQ 所有队列任务已清空");
   } catch (err) {
     console.error("❌ 清空 BullMQ 队列任务失败：", err);
     throw err;

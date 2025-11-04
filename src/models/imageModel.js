@@ -58,6 +58,7 @@ function selectImagesByPage({ pageNo, pageSize, userId }) {
       color_theme,
       file_size_bytes,
       face_count,
+      person_count,
       age_tags,
       gender_tags,
       expression_tags,
@@ -108,6 +109,7 @@ function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
       color_theme,
       file_size_bytes,
       face_count,
+      person_count,
       age_tags,
       gender_tags,
       expression_tags,
@@ -159,6 +161,7 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
       color_theme,
       file_size_bytes,
       face_count,
+      person_count,
       age_tags,
       gender_tags,
       expression_tags,
@@ -210,6 +213,7 @@ function selectImagesByDate({ pageNo, pageSize, dateKey, userId }) {
       color_theme,
       file_size_bytes,
       face_count,
+      person_count,
       age_tags,
       gender_tags,
       expression_tags,
@@ -264,19 +268,25 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
             AND m2.month_key = m.month_key
           ORDER BY 
             -- 🥰 第一优先级：表情开心且置信度高（>70%）
+            -- 注意：expression_tags/face_count/person_count为NULL时表示未分析
+            -- SQLite中NULL与任何值比较都返回NULL，在CASE WHEN中被视为FALSE
+            -- 因此未分析的图片会自动落入第五优先级（兜底策略）
             CASE 
               WHEN m2.expression_tags LIKE '%happy%' AND m2.primary_expression_confidence > 0.7 THEN 1
               -- 📸 第二优先级：人脸质量优秀（>80%）
               WHEN m2.primary_face_quality > 0.8 THEN 2  
-              -- 👤 第三优先级：包含人脸的图片
+              -- 👤 第三优先级：有人脸的图片（正脸、侧脸）
               WHEN m2.face_count > 0 THEN 3
-              -- ⏰ 第四优先级：其他所有图片（兜底策略）
-              ELSE 4
+              -- 🚶 第四优先级：有人物但无人脸（背影、远景）
+              WHEN m2.person_count > 0 THEN 4
+              -- ⏰ 第五优先级：其他所有图片（包括未分析的图片，兜底策略）
+              ELSE 5
             END,
             -- 🔢 同优先级内的精细排序：
             COALESCE(m2.primary_expression_confidence, 0) DESC,  -- 表情置信度高的优先
             COALESCE(m2.primary_face_quality, 0) DESC,           -- 人脸质量好的优先
-            COALESCE(m2.face_count, 0) DESC,                   -- 人脸数量多的优先（更热闹）
+            COALESCE(m2.face_count, 0) DESC,                     -- 人脸数量多的优先（更热闹）
+            COALESCE(m2.person_count, 0) DESC,                   -- 人物数量多的优先
             COALESCE(m2.image_created_at, 0) DESC,             -- 时间最新的优先
             m2.id DESC                                          -- ID最大的优先（保证排序稳定）
           LIMIT 1
@@ -336,15 +346,18 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
           WHERE m2.user_id = m.user_id
             AND m2.year_key  = m.year_key
           ORDER BY 
+            -- 注意：AI字段为NULL时表示未分析，会自动落入最低优先级
             CASE 
               WHEN m2.expression_tags LIKE '%happy%' AND m2.primary_expression_confidence > 0.7 THEN 1
               WHEN m2.primary_face_quality > 0.8 THEN 2  
               WHEN m2.face_count > 0 THEN 3
-              ELSE 4
+              WHEN m2.person_count > 0 THEN 4
+              ELSE 5
             END,
             COALESCE(m2.primary_expression_confidence, 0) DESC,
             COALESCE(m2.primary_face_quality, 0) DESC,
             COALESCE(m2.face_count, 0) DESC,
+            COALESCE(m2.person_count, 0) DESC,
             COALESCE(m2.image_created_at, 0) DESC,
             m2.id DESC
           LIMIT 1
@@ -403,15 +416,18 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
           WHERE m2.user_id = m.user_id
             AND m2.date_key = m.date_key
           ORDER BY 
+            -- 注意：AI字段为NULL时表示未分析，会自动落入最低优先级
             CASE 
               WHEN m2.expression_tags LIKE '%happy%' AND m2.primary_expression_confidence > 0.7 THEN 1
               WHEN m2.primary_face_quality > 0.8 THEN 2  
               WHEN m2.face_count > 0 THEN 3
-              ELSE 4
+              WHEN m2.person_count > 0 THEN 4
+              ELSE 5
             END,
             COALESCE(m2.primary_expression_confidence, 0) DESC,
             COALESCE(m2.primary_face_quality, 0) DESC,
             COALESCE(m2.face_count, 0) DESC,
+            COALESCE(m2.person_count, 0) DESC,
             COALESCE(m2.image_created_at, 0) DESC,
             m2.id DESC
           LIMIT 1
@@ -566,6 +582,7 @@ function checkFileExists({ imageHash, userId }) {
  * @param {string} [params.sceneTags] - 场景标签（待启用）
  * @param {string} [params.objectTags] - 物体标签（待启用）
  * @param {number} [params.faceCount] - 人脸数量
+ * @param {number} [params.personCount] - 人物总数（包括背面、远景）【2025-10-27 新增】
  * @param {string} [params.expressionTags] - 表情标签（逗号分隔）如："happy,neutral"
  * @param {string} [params.ageTags] - 年龄段标签（逗号分隔）如："20-29,0-2"
  * @param {string} [params.genderTags] - 性别标签（逗号分隔）如："female,male"
@@ -596,6 +613,7 @@ function updateImageSearchMetadata({
   sceneTags,
   objectTags,
   faceCount,
+  personCount,
   expressionTags,
   ageTags,
   genderTags,
@@ -614,6 +632,7 @@ function updateImageSearchMetadata({
       scene_tags = COALESCE(?, scene_tags),
       object_tags = COALESCE(?, object_tags),
       face_count = COALESCE(?, face_count),
+      person_count = COALESCE(?, person_count),
       expression_tags = COALESCE(?, expression_tags),
       age_tags = COALESCE(?, age_tags),
       gender_tags = COALESCE(?, gender_tags),
@@ -633,13 +652,15 @@ function updateImageSearchMetadata({
     sceneTags,
     objectTags,
     faceCount,
+    personCount,
     expressionTags,
     ageTags,
     genderTags,
     primaryExpressionConfidence,
     primaryFaceQuality,
-    hasYoung !== undefined ? (hasYoung ? 1 : 0) : null,
-    hasAdult !== undefined ? (hasAdult ? 1 : 0) : null,
+    // 布尔值转换：true→1, false→0, null/undefined→null
+    hasYoung != null ? (hasYoung ? 1 : 0) : null,
+    hasAdult != null ? (hasAdult ? 1 : 0) : null,
     analysisVersion,
     imageId,
   );

@@ -14,7 +14,7 @@ const { processImageMeta } = require("./imageMetaIngestor");
 const connection = new IORedis({ maxRetriesPerRequest: null });
 
 const QUEUE_NAME = process.env.IMAGE_META_QUEUE_NAME;
-const CONCURRENCY = Number(process.env.IMAGE_META_WORKER_CONCURRENCY || 2);
+const CONCURRENCY = Number(process.env.IMAGE_META_WORKER_CONCURRENCY || 1);
 
 const worker = new Worker(
   QUEUE_NAME,

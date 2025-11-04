@@ -26,7 +26,11 @@ const imageMetadataService = require("../services/imageMetadataService");
 async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userId, highResStorageKey }) {
   const maxAttempts = job?.opts?.attempts || Number(process.env.IMAGE_META_JOB_ATTEMPTS || 5);
   const attemptsMade = job?.attemptsMade || 0;
-  const willRetry = attemptsMade < maxAttempts;
+  // 修复：判断失败后 BullMQ 是否还会重试
+  // BullMQ 会在失败后将 attemptsMade 递增，然后判断是否 < maxAttempts
+  // 我们需要预测递增后的判断结果：(attemptsMade + 1) < maxAttempts
+  // 例如：第5次失败时 attemptsMade = 4 → (4+1) < 5 = false → 不会重试
+  const willRetry = attemptsMade + 1 < maxAttempts;
 
   if (!willRetry) {
     // 没有重试机会了，执行最终清理
@@ -288,27 +292,45 @@ async function processImageMeta(job) {
     // 不抛出错误，让任务正常完成
   }
 
-  // ======== 添加到搜索索引队列 ========
+  // ======== 添加到搜索索引队列（可选） ========
+  // 🎯 策略说明：
+  // • 方案1（自动入队）：上传后自动触发AI分析
+  // • 方案2（手动入队）：使用 batchEnqueueAIAnalysis.js 批量分析
+  //
+
+  const enableAutoEnqueue = process.env.ENABLE_AUTO_AI_ENQUEUE !== "false"; // 默认启用
+  const enableAI = process.env.ENABLE_AI_ANALYSIS !== "false";
+
+  if (!enableAutoEnqueue) {
+    logger.info({
+      message: "自动AI分析入队已禁用，请使用 batchEnqueueAIAnalysis.js 手动触发",
+      details: { imageHash, userId, imageId },
+    });
+    return;
+  }
+
+  if (!enableAI) {
+    logger.info({
+      message: "AI分析功能已禁用，跳过搜索索引队列",
+      details: { imageHash, userId, imageId },
+    });
+    return;
+  }
+
   try {
     if (imageId) {
-      await searchIndexQueue.add(process.env.SEARCH_INDEX_QUEUE_NAME, {
-        imageId,
-        userId,
-        highResStorageKey: highResStorageKeyResult,
-        originalStorageKey, // 移动后的原图路径
-      });
-      // 加入队列任务前，打印队列状态
-      const jobCounts = await searchIndexQueue.getJobCounts();
-      console.log("当前队列状态：", jobCounts);
-
-      const waitingJobs = await searchIndexQueue.getWaiting();
-      console.log("当前队列等待状态：", waitingJobs);
-      waitingJobs.forEach((job, index) => {
-        console.log(`等待任务 ${index + 1}:`);
-        console.log("任务 ID:", job.id);
-        console.log("任务名称:", job.name);
-        console.log("任务数据:", job.data);
-      });
+      await searchIndexQueue.add(
+        process.env.SEARCH_INDEX_QUEUE_NAME,
+        {
+          imageId,
+          userId,
+          highResStorageKey: highResStorageKeyResult,
+          originalStorageKey, // 移动后的原图路径
+        },
+        {
+          jobId: `${userId}:${imageId}`, // 使用 imageId 作为去重标识
+        },
+      );
     } else {
       logger.warn({
         message: "Cannot add to search queue - imageId is null",

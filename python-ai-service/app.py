@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 AI图片分析服务
-使用 InsightFace + DeepFace + PaddleOCR以及千问大模型进行高精度图片分析
-功能：人脸识别、OCR文字识别、人脸聚类、图片内容理解
+使用 InsightFace + FairFace + EmotiEffLib + YOLOv11x + RTMW + PaddleOCR 进行高精度图片分析
+功能：人物分析（人脸+人体检测）、OCR文字识别、人脸聚类、图片内容理解
 """
 
 import uvicorn                                    # ASGI 服务器，用于运行 FastAPI 应用
@@ -12,18 +12,18 @@ from config import settings                        # 应用配置，包含所有
 from logger import logger                          # 日志记录器，用于记录应用日志
 
 # 导入路由模块
-from routes import health, face, ocr, face_cluster     # 导入各个 API 路由：健康检查、人脸识别、OCR、人脸聚类
+from routes import health, person, ocr, face_cluster     # 导入各个 API 路由：健康检查、人物分析、OCR、人脸聚类
 
 # 导入模型加载器
-from loaders.face_loader import load_all_models    # 统一加载所有AI模型
+from loaders.model_loader import load_all_models    # 统一加载所有AI模型
 
 
 def create_app():
     """创建 FastAPI 应用"""
     app = FastAPI(
         title="AI图片分析服务",
-        description="使用 InsightFace + DeepFace + PaddleOCR以及千问大模型进行高精度图片分析",
-        version="1.0.0"
+        description="使用 InsightFace + FairFace + EmotiEffLib + YOLOv11x + RTMW + PaddleOCR 进行高精度图片分析",
+        version="2.0.0"
     )
     
     # 增加文件上传大小限制 (50MB)
@@ -48,7 +48,7 @@ def create_app():
     
     # 注册路由
     app.include_router(health.router, tags=["健康检查"])
-    app.include_router(face.router, tags=["人脸识别"])
+    app.include_router(person.router, tags=["人物分析"])
     app.include_router(ocr.router, tags=["OCR识别"])
     app.include_router(face_cluster.router, tags=["人脸聚类"])
     
@@ -66,7 +66,7 @@ def main():
         logger.info(f"📡 服务地址: http://{settings.HOST}:{settings.PORT}")
         logger.info("🔍 可用接口:")
         logger.info("  - GET  /health - 健康检查")
-        logger.info("  - POST /analyze_face - 人脸识别")
+        logger.info("  - POST /analyze_person - 人物分析（人脸+人体检测）")
         # logger.info("  - POST /ocr - OCR文字识别")
         logger.info("  - POST /cluster_faces - 人脸聚类")
         

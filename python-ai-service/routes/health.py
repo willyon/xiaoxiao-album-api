@@ -5,7 +5,7 @@
 """
 
 from fastapi import APIRouter
-from loaders.face_loader import all_face_models_loaded
+from loaders.model_loader import all_face_models_loaded
 from loaders.ocr_loader import is_ocr_loaded
 
 

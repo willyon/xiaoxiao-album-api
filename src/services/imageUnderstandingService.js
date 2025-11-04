@@ -26,7 +26,7 @@ const sharp = require("sharp");
 const { createHash } = require("crypto");
 const logger = require("../utils/logger");
 const axios = require("axios");
-const { getStandardMimeType } = require("../utils/fileUtils");
+const { getMimeTypeByMagicBytes } = require("../utils/fileUtils");
 
 // 年龄段常量定义
 const YOUNG_AGE_BUCKETS = ["0-2", "3-9", "10-19"]; // 儿童/青少年年龄段
@@ -401,20 +401,28 @@ class ImageUnderstandingService {
    *
    * 🔗 外部依赖: Python人脸识别微服务
    * 📊 返回格式: { faceCount, descriptions, emotions, ages, genders }
+   *
+   * ⚡ 优化说明（2025-10-27）:
+   * • Python 端已支持 AVIF/HEIC/HEIF 格式直接解码（pillow-heif）
+   * • 不再在 Node.js 端转换为 JPEG，避免重压缩损失
+   * • 支持格式：JPEG, PNG, WebP, AVIF, HEIC, HEIF
    */
   async _extractFaceInfo(imageData, storageKey) {
     try {
-      // 调用 Python 服务进行人脸识别
+      // 准备表单数据
       const formData = new FormData();
 
-      // 从storageKey提取文件格式
-      const mimeType = getStandardMimeType(storageKey);
+      // 🎯 通过魔数检测实际图片格式（更准确，零额外开销）
+      // imageData 已在内存，直接检测文件头即可
+      const mimeType = getMimeTypeByMagicBytes(imageData);
       const fileName = this._getFileNameFromStorageKey(storageKey);
 
+      // 🚀 直接传递原始图片数据给 Python 服务
+      // Python 端会自动处理所有格式（包括 AVIF/HEIC/HEIF）
       const imageBlob = new Blob([imageData], { type: mimeType });
       formData.append("image", imageBlob, fileName);
 
-      const response = await axios.post(`${this.pythonServiceUrl}/analyze_face`, formData, {
+      const response = await axios.post(`${this.pythonServiceUrl}/analyze_person`, formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
@@ -424,21 +432,45 @@ class ImageUnderstandingService {
       const result = response.data;
       logger.info({ message: "人脸识别结果", details: result });
 
-      if (result.face_count === 0) {
+      // 提取数据（person_count 和 face_count）
+      const faceCount = result.face_count || 0;
+      const personCount = result.person_count || 0;
+
+      // 如果没有人物（既没有人脸也没有人体），返回空结果
+      // 注意：已分析但无数据，返回空字符串''而不是null
+      if (faceCount === 0 && personCount === 0) {
         return {
           faceCount: 0,
-          expressionTags: "",
-          ageTags: "",
-          genderTags: "",
+          personCount: 0,
+          expressionTags: "", // 已分析但无表情数据
+          ageTags: "", // 已分析但无年龄数据
+          genderTags: "", // 已分析但无性别数据
           faces: [],
           primaryExpressionConfidence: null,
-          hasYoung: false,
-          hasAdult: false,
+          hasYoung: false, // 已分析，确认无儿童（布尔值）
+          hasAdult: false, // 已分析，确认无成人（布尔值）
           primaryFaceQuality: null,
         };
       }
 
-      // Python已经返回了summary，直接使用
+      // 如果有人体但无人脸（背面/远景），返回基础结果
+      // 注意：已分析但无人脸数据，返回空字符串''而不是null
+      if (faceCount === 0 && personCount > 0) {
+        return {
+          faceCount: 0,
+          personCount: personCount,
+          expressionTags: "", // 已分析但无表情数据（无人脸）
+          ageTags: "", // 已分析但无年龄数据（无人脸）
+          genderTags: "", // 已分析但无性别数据（无人脸）
+          faces: [],
+          primaryExpressionConfidence: null,
+          hasYoung: false, // 已分析，确认无儿童（布尔值）
+          hasAdult: false, // 已分析，确认无成人（布尔值）
+          primaryFaceQuality: null,
+        };
+      }
+
+      // 有人脸的情况，解析详细属性
       const { expressions = [], ages = [], genders = [] } = result.summary || {};
 
       // Python已经按质量排序，faces[0]就是主要人脸
@@ -449,10 +481,14 @@ class ImageUnderstandingService {
       const hasAdult = result.faces.some((face) => face.age_bucket && face.age_bucket !== "unknown" && !YOUNG_AGE_BUCKETS.includes(face.age_bucket));
 
       return {
-        faceCount: result.face_count,
-        expressionTags: expressions.join(","),
-        ageTags: ages.join(","),
-        genderTags: genders.join(","),
+        faceCount: faceCount,
+        personCount: personCount,
+        // 注意：已分析但无数据时返回空字符串''，而不是null
+        // '' = 已分析但无该属性数据
+        // null = 未分析（由数据库默认值提供）
+        expressionTags: expressions.length > 0 ? expressions.join(",") : "",
+        ageTags: ages.length > 0 ? ages.join(",") : "",
+        genderTags: genders.length > 0 ? genders.join(",") : "",
         faces: result.faces,
         primaryExpressionConfidence: primaryFace?.expression_confidence || null,
         primaryFaceQuality: primaryFace?.quality_score || null,

@@ -28,7 +28,8 @@ async function createSession(userId) {
     highResDone: 0,
     thumbErrors: 0,
     highResErrors: 0,
-    duplicateCount: 0,
+    duplicateCount: 0, // Controller层检测的重复（不加入队列）
+    workerSkippedCount: 0, // Worker层检测的重复（已加入队列但跳过）
     existingFiles: 0,
   });
 
@@ -47,6 +48,7 @@ async function createSession(userId) {
     thumbErrors: 0,
     highResErrors: 0,
     duplicateCount: 0,
+    workerSkippedCount: 0,
     existingFiles: 0,
   };
 }

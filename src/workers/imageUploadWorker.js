@@ -20,7 +20,7 @@ const connection = new Redis({
 });
 
 const QUEUE_NAME = process.env.IMAGE_UPLOAD_QUEUE_NAME;
-const CONCURRENCY = Number(process.env.IMAGE_UPLOAD_WORKER_CONCURRENCY || 4);
+const CONCURRENCY = Number(process.env.IMAGE_UPLOAD_WORKER_CONCURRENCY || 1);
 
 const worker = new Worker(
   QUEUE_NAME,

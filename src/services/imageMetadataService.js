@@ -13,7 +13,7 @@ const path = require("path");
 const os = require("os");
 const { randomUUID } = require("crypto");
 const { stringToTimestamp } = require("../utils/formatTime");
-const { getStandardMimeType } = require("../utils/fileUtils");
+const { getMimeTypeByMagicBytes } = require("../utils/fileUtils");
 const { getLocationFromCoordinates } = require("./geocodingService");
 const imageModel = require("../models/imageModel");
 
@@ -34,6 +34,35 @@ const ORIENTATION_MAP = {
  * 统一处理所有图片元数据提取、分析和处理逻辑
  */
 class ImageMetadataService {
+  // P1-3：颜色主题判定阈值配置（便于后续调整和数据驱动优化）
+  constructor() {
+    this.colorThresholds = {
+      // 亮度阈值（归一化到 0-1）
+      BRIGHT_LUMA: 0.65, // 🔧 调优：从0.7降到0.65（2025-10-26）让更多图片判为明快
+      DARK_LUMA: 0.3, // 昏暗阈值（从0.35降到0.3，更清晰定义"暗"）
+
+      // 饱和度阈值（归一化到 0-1）
+      SAT_HIGH_MED: 0.5, // 高饱和度阈值-中位数（从0.45提升到0.5）
+      SAT_HIGH_P80: 0.5, // 🔧 调优：从0.55降到0.50（2025-10-26）让更多图片判为鲜艳
+      SAT_LOW: 0.15, // 低饱和度阈值（从0.25降到0.15，更清晰判断灰度）
+      SAT_GRAY: 0.12, // 灰度图判定阈值
+
+      // 色彩丰度阈值
+      CF_HIGH: 0.25, // 🔧 调优：从0.3降到0.25（2025-10-26）让更多图片判为色彩丰富
+      CF_GRAY: 0.12, // 灰度图色彩丰度阈值
+
+      // 占比阈值（新增）
+      BRIGHT_SHARE: 0.3, // 🔧 调优：从0.35降到0.30（2025-10-26）降低亮像素占比要求
+      DARK_SHARE: 0.35, // 暗像素占比阈值
+      SAT_SHARE_HIGH: 0.2, // 🔧 调优：从0.25降到0.20（2025-10-26）降低饱和像素占比要求
+      SAT_SHARE_LOW: 0.15, // 高饱和像素占比-低阈值
+
+      // 动态范围阈值
+      DYN_RANGE_LOW: 0.22, // 低对比度阈值（从0.25降到0.22）
+      DYN_RANGE_HIGH: 0.4, // 高对比度阈值（新增，用于黑白高对比图）
+    };
+  }
+
   /**
    * 综合分析图片元数据
    * @param {Buffer|string} fileData - 图片文件数据（Buffer 或文件路径字符串）
@@ -162,11 +191,9 @@ class ImageMetadataService {
           if (needHeight && sharpMeta?.height) std.height = sharpMeta.height;
 
           if (needMime) {
-            if (sharpMeta?.format) {
-              std.mime = getStandardMimeType(sharpMeta.format);
-            } else if (filePath) {
-              std.mime = getStandardMimeType(filePath);
-            }
+            // 优先使用魔数检测（buffer 已在内存，零开销）
+            // Sharp 的 format 对 AVIF/HEIC/HEIF 不够精确（统一返回 heif）
+            std.mime = getMimeTypeByMagicBytes(buffer);
           }
         }
 
@@ -308,18 +335,21 @@ class ImageMetadataService {
   /**
    * 分析图片颜色主题
    * @param {Buffer} fileData - 图片文件数据
-   * @param {Object} metadata - 基础元数据
+   * @param {Object} metadata - 基础元数据（仅用于日志，不影响分析）
    * @returns {Promise<Object>} {colorTheme}
    */
   async analyzeColor(fileData, metadata) {
-    if (!fileData || !metadata.width || !metadata.height || !metadata.mime) {
+    // P0-1 修复：只检查 fileData，让 sharp 自己处理尺寸和格式
+    if (!fileData) {
       return { colorTheme: "neutral" };
     }
 
     try {
       // 只处理一次图像，使用更小的尺寸提升性能
+      // 显式转换为 sRGB 色彩空间，确保颜色分析的一致性
       const { data, info } = await sharp(fileData)
         .resize(64, 64, { fit: "inside", withoutEnlargement: true })
+        .toColorspace("srgb") // 显式确保 sRGB 色彩空间
         .raw()
         .toBuffer({ resolveWithObject: true });
 
@@ -338,74 +368,105 @@ class ImageMetadataService {
 
   /**
    * 基于已处理图像数据计算颜色主题
-   * 使用中位数统计、感知亮度计算和色彩丰度分析，提升分类准确性
-   * @param {Buffer} data - 已处理的像素数据（RGB格式，64x64缩放后）
+   * P0-3/P1-2 重构：增加灰度快速通道，使用双轨统计指标（中位数+占比+上分位数）
+   * @param {Buffer} data - 已处理的像素数据（RGB/RGBA格式，64x64缩放后）
    * @param {Object} info - 图片信息 {width, height, channels}
    * @returns {string} 颜色主题:
    *   - 'vibrant' | 'bright' | 'neutral' | 'muted' | 'dim'
    *   对应中文: '鲜艳' | '明亮' | '中性' | '柔和' | '暗淡'
    */
   calculateColorTheme(data, info) {
-    // 获取颜色分析结果
-    const { medLuma, medSat, dynRange, colorfulnessNorm } = this.analyzeColorsRobust(data, info);
+    // 获取颜色分析结果（包含新增的双轨统计指标）
+    const { medLuma, medSat, satP80, dynRange, colorfulnessNorm, brightShare, darkShare, satShare } = this._analyzeColorsRobust(data, info);
 
-    // 亮度阈值（归一化到 0-1）
-    const BRIGHT_T = 0.75; // 明亮阈值：75% 亮度以上
-    const DARK_T = 0.35; // 昏暗阈值：35% 亮度以下
+    // 从配置中获取阈值
+    const T = this.colorThresholds;
 
-    // 饱和度阈值（归一化到 0-1）
-    const SAT_HIGH = 0.45; // 高饱和度阈值
-    const SAT_LOW = 0.25; // 低饱和度阈值
+    // ========== P0-3：灰度/低饱和图像快速通道 ==========
+    // 若整体低饱和（satP80 和 colorfulnessNorm 都很低），判定为灰度图
+    if (satP80 < T.SAT_GRAY && colorfulnessNorm < T.CF_GRAY) {
+      // 灰度图：只看亮度和对比度
+      // 1. 亮像素占比高或中位数亮度高 → bright
+      if (brightShare >= T.BRIGHT_SHARE || medLuma >= T.BRIGHT_LUMA) {
+        return "bright";
+      }
+      // 2. 暗像素占比高或中位数亮度低 → dim
+      if (darkShare >= T.DARK_SHARE || medLuma <= T.DARK_LUMA) {
+        return "dim";
+      }
+      // 3. 中间灰度 → neutral
+      return "neutral";
+    }
 
-    // 色彩丰度阈值（辅助判断 vibrant）
-    const CF_HIGH = 0.35; // 高色彩丰度阈值
+    // ========== P1-2：有色彩图像 - 使用双轨判定逻辑 ==========
 
-    // 分类逻辑：先判断明暗，再判断色彩特征
-
-    // 1. 明亮图片（亮度 >= 75%）
-    if (medLuma >= BRIGHT_T) {
-      // 高饱和度或高色彩丰度 → vibrant（鲜艳）
+    // 【分支1】明亮图片：亮像素占比高 或 中位数亮度高
+    if (brightShare >= T.BRIGHT_SHARE || medLuma >= T.BRIGHT_LUMA) {
+      // 高饱和像素占比高 或 高色彩丰度 → vibrant（鲜艳）
+      if (satShare >= T.SAT_SHARE_HIGH || colorfulnessNorm >= T.CF_HIGH) {
+        return "vibrant";
+      }
       // 否则 → bright（明亮）
-      return medSat >= SAT_HIGH || colorfulnessNorm >= CF_HIGH ? "vibrant" : "bright";
+      return "bright";
     }
 
-    // 2. 昏暗图片（亮度 <= 35%）
-    if (medLuma <= DARK_T) {
-      // 有一定饱和度 → muted（柔和）
+    // 【分支2】昏暗图片：暗像素占比高 或 中位数亮度低
+    if (darkShare >= T.DARK_SHARE || medLuma <= T.DARK_LUMA) {
+      // 有一定饱和度（用P80捕捉显著区域）或色彩丰度 → muted（柔和）
+      if (satShare >= T.SAT_SHARE_LOW || colorfulnessNorm >= T.CF_HIGH * 0.8) {
+        return "muted";
+      }
       // 否则 → dim（暗淡）
-      return medSat >= SAT_LOW ? "muted" : "dim";
+      return "dim";
     }
 
-    // 3. 中间亮度区间（35% < 亮度 < 75%）
-    // 高饱和度或高色彩丰度 → vibrant（鲜艳）
-    if (medSat >= SAT_HIGH || colorfulnessNorm >= CF_HIGH) return "vibrant";
+    // 【分支3】中间亮度区间
+    // 3.1 高饱和P80分位数 或 高色彩丰度 → vibrant（鲜艳）
+    if (satP80 >= T.SAT_HIGH_P80 || colorfulnessNorm >= T.CF_HIGH) {
+      return "vibrant";
+    }
 
-    // 低饱和度且动态范围很小 → dim（暗淡）
-    if (medSat <= SAT_LOW && dynRange < 0.25) return "dim";
+    // 3.2 低饱和且低对比度 → dim（暗淡）
+    if (medSat <= T.SAT_LOW && dynRange < T.DYN_RANGE_LOW) {
+      return "dim";
+    }
 
-    // 其他情况 → neutral（中性）
+    // 3.3 低饱和但高对比度（黑白高对比图）→ bright
+    if (medSat <= T.SAT_LOW && dynRange >= T.DYN_RANGE_HIGH) {
+      return "bright";
+    }
+
+    // 3.4 其他情况 → neutral（中性）
     return "neutral";
   }
 
   /**
    * 稳健的颜色分析算法
    * 使用中位数统计、感知亮度计算和色彩丰度分析，提升分析准确性
-   * @param {Buffer} data - RGB像素数据（uint8格式，64x64缩放后）
+   * @param {Buffer} data - RGB/RGBA像素数据（uint8格式，64x64缩放后）
    * @param {Object} info - 图片信息 {width, height, channels}
    * @returns {Object} 颜色分析结果
    *   - medLuma: 亮度中位数 (0-1)
    *   - medSat: 饱和度中位数 (0-1)
+   *   - satP80: 饱和度80分位数 (0-1) 【新增】
    *   - dynRange: 动态范围 (P90-P10, 0-1)
    *   - colorfulnessNorm: 归一化色彩丰度 (0-1)
+   *   - brightShare: 亮像素占比 (luma >= 0.8) 【新增】
+   *   - darkShare: 暗像素占比 (luma <= 0.2) 【新增】
+   *   - satShare: 高饱和像素占比 (sat >= 0.6) 【新增】
    */
-  analyzeColorsRobust(data, info) {
+  _analyzeColorsRobust(data, info) {
     const W = info.width,
       H = info.height,
       C = info.channels;
 
+    // P0-2 修复：处理不同通道数
+    const hasAlpha = C === 4;
+    const isGrayscale = C === 1 || C === 2;
+
     // 存储每个像素的亮度和饱和度
-    const lumas = new Float32Array(W * H);
-    const sats = new Float32Array(W * H);
+    const lumas = [];
+    const sats = [];
 
     // 色彩丰度计算：使用 opponent color channels (rg, yb)
     let rgMean = 0,
@@ -414,23 +475,59 @@ class ImageMetadataService {
       ybM2 = 0; // 用于计算方差（Welford算法）
     let n = 0;
 
+    // P1-1 新增：占比统计计数器
+    let brightCount = 0,
+      darkCount = 0,
+      satCount = 0;
+    let validPixels = 0;
+
     // 遍历所有像素，计算各项指标
-    for (let y = 0, i = 0, k = 0; y < H; y++) {
-      for (let x = 0; x < W; x++, i += C, k++) {
-        const r = data[i],
-          g = data[i + 1],
+    for (let y = 0, i = 0; y < H; y++) {
+      for (let x = 0; x < W; x++, i += C) {
+        let r, g, b, a;
+
+        // P0-2：处理不同通道数
+        if (isGrayscale) {
+          // 灰度图：r=g=b
+          r = g = b = data[i];
+          a = 255;
+        } else if (hasAlpha) {
+          // RGBA：读取alpha通道
+          r = data[i];
+          g = data[i + 1];
           b = data[i + 2];
+          a = data[i + 3];
+
+          // P0-2 关键修复：跳过透明像素（alpha < 10）
+          if (a < 10) continue;
+        } else {
+          // RGB
+          r = data[i];
+          g = data[i + 1];
+          b = data[i + 2];
+          a = 255;
+        }
+
+        validPixels++;
 
         // 1. 感知亮度计算（sRGB luma，更符合人眼感知）
         // 公式：Y' = 0.2126*R + 0.7152*G + 0.0722*B
         const yPrime = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        lumas[k] = yPrime / 255; // 归一化到 [0,1]
+        const luma = yPrime / 255; // 归一化到 [0,1]
+        lumas.push(luma);
+
+        // P1-1：统计亮暗像素占比
+        if (luma >= 0.8) brightCount++;
+        if (luma <= 0.2) darkCount++;
 
         // 2. HSV 饱和度计算
         const maxv = Math.max(r, g, b),
           minv = Math.min(r, g, b);
         const S = maxv === 0 ? 0 : (maxv - minv) / maxv; // 0~1
-        sats[k] = S;
+        sats.push(S);
+
+        // P1-1：统计高饱和像素占比
+        if (S >= 0.6) satCount++;
 
         // 3. 色彩丰度计算（Hasler–Süsstrunk算法）
         // opponent color channels: rg = R-G, yb = 0.5*(R+G) - B
@@ -448,7 +545,21 @@ class ImageMetadataService {
       }
     }
 
-    // 计算分位数（中位数、P10、P90）
+    // 处理边缘情况：没有有效像素
+    if (validPixels === 0) {
+      return {
+        medLuma: 0.5,
+        medSat: 0,
+        satP80: 0,
+        dynRange: 0,
+        colorfulnessNorm: 0,
+        brightShare: 0,
+        darkShare: 0,
+        satShare: 0,
+      };
+    }
+
+    // 计算分位数（中位数、P10、P90、P80）
     const quantile = (arr, q) => {
       const tmp = Array.from(arr).sort((a, b) => a - b);
       const pos = (tmp.length - 1) * q;
@@ -463,8 +574,9 @@ class ImageMetadataService {
     const p90 = quantile(lumas, 0.9); // 90%分位数
     const dynRange = Math.max(0, p90 - p10); // 动态范围
 
-    // 计算饱和度中位数
+    // 计算饱和度中位数和P80分位数
     const medSat = quantile(sats, 0.5); // 饱和度中位数
+    const satP80 = quantile(sats, 0.8); // P1-1 新增：饱和度80分位数（捕捉显著区域）
 
     // 色彩丰度计算（Hasler–Süsstrunk）
     const rgStd = Math.sqrt(rgM2 / Math.max(1, n - 1));
@@ -474,11 +586,20 @@ class ImageMetadataService {
     // 经验归一化：大约 /100 映射到 0~1 左右（64x64 缩放后经验值）
     const colorfulnessNorm = Math.min(1, colorfulness / 100);
 
+    // P1-1 新增：计算占比指标（解决"少量但显著"问题）
+    const brightShare = brightCount / validPixels; // 亮像素占比
+    const darkShare = darkCount / validPixels; // 暗像素占比
+    const satShare = satCount / validPixels; // 高饱和像素占比
+
     return {
       medLuma, // 亮度中位数 (0-1)
       medSat, // 饱和度中位数 (0-1)
+      satP80, // P1-1 新增：饱和度80分位数 (0-1)
       dynRange, // 动态范围 (0-1)
       colorfulnessNorm, // 归一化色彩丰度 (0-1)
+      brightShare, // P1-1 新增：亮像素占比 (0-1)
+      darkShare, // P1-1 新增：暗像素占比 (0-1)
+      satShare, // P1-1 新增：高饱和像素占比 (0-1)
     };
   }
 

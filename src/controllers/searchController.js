@@ -6,10 +6,312 @@
 
 const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
-const { searchImagesByText, getSearchSuggestions } = require("../models/searchModel");
+const { searchImagesByText, getSearchResultsCount, getSearchSuggestions, getFilterOptionsPaginated } = require("../models/searchModel");
 const { updateImageSearchMetadata } = require("../models/imageModel");
+const { addFullUrlToImage } = require("../services/imageService");
 // 移除队列引用，简化控制器
 const logger = require("../utils/logger");
+
+/**
+ * 构建 FTS 查询和 WHERE 条件
+ * @param {string} query - 用户搜索关键词
+ * @param {Object} filters - 筛选条件
+ * @returns {Object} { ftsQuery, whereConditions, whereParams }
+ */
+function buildSearchConditions(query, filters) {
+  // FTS 查询部分（用于 MATCH 子句）
+  const ftsConditions = [];
+  const isWildcardQuery = !query || query.trim() === "" || query.trim() === "*";
+
+  // WHERE 条件部分（用于数值和范围查询）
+  const whereConditions = [];
+  const whereParams = [];
+
+  // ========== 处理 FTS 支持的字段 ==========
+
+  // 1. 地点（city 字段在 FTS 中，支持 'unknown' 表示无地点信息）
+  if (filters.location && Array.isArray(filters.location) && filters.location.length > 0) {
+    const hasUnknown = filters.location.includes("unknown");
+    const knownCities = filters.location.filter((city) => city !== "unknown");
+
+    if (knownCities.length > 0 && hasUnknown) {
+      // 同时选择了具体城市和"地点未知"：需要在 WHERE 子句中处理，不使用 FTS
+      // 因为 FTS 无法处理 OR (city IN (...) OR city IS NULL) 这种混合条件
+      const cityPlaceholders = knownCities.map(() => "?").join(",");
+      whereConditions.push(`(i.city IN (${cityPlaceholders}) OR i.city IS NULL OR i.city = '' OR i.city = 'unknown')`);
+      whereParams.push(...knownCities);
+    } else if (knownCities.length > 0) {
+      // 只选择了具体城市：使用 FTS
+      const cityConditions = knownCities.map((city) => `city:${city}`).join(" OR ");
+      ftsConditions.push(`(${cityConditions})`);
+    } else if (hasUnknown) {
+      // 只选择了"地点未知"：使用 WHERE 条件
+      whereConditions.push("(i.city IS NULL OR i.city = '' OR i.city = 'unknown')");
+    }
+  }
+
+  // 2. 表情（expression_tags 字段在 FTS 中）
+  // 🎯 优雅方案：数据源已改为 NULL 而不是空字符串，FTS5 不会索引 NULL
+  // 注意：expression_tags 是逗号分隔的字符串，如 "happy,neutral"，但 FTS 可以直接匹配
+  if (filters.expression && Array.isArray(filters.expression) && filters.expression.length > 0) {
+    // 前端已经将 disgusted 展开为 ['disgust', 'contempt']，直接使用 FTS 查询
+    const exprConditions = filters.expression.map((expr) => `expression_tags:${expr}`).join(" OR ");
+    ftsConditions.push(`(${exprConditions})`);
+  }
+
+  // 3. 性别（gender_tags 字段在 FTS 中）
+  // 🎯 优雅方案：数据源已改为 NULL 而不是空字符串，FTS5 不会索引 NULL
+  if (filters.gender && filters.gender !== "" && filters.gender !== "all") {
+    ftsConditions.push(`gender_tags:${filters.gender}`);
+  }
+
+  // 4. 图片版式（layout_type 字段在 FTS 中）
+  if (filters.imageOrientation && Array.isArray(filters.imageOrientation) && filters.imageOrientation.length > 0) {
+    const layoutConditions = filters.imageOrientation.map((layout) => `layout_type:${layout}`).join(" OR ");
+    ftsConditions.push(`(${layoutConditions})`);
+  }
+
+  // 构建最终的 FTS 查询字符串
+  let ftsQuery;
+  let useFts = true;
+
+  if (isWildcardQuery) {
+    // 如果是通配符查询（查询所有）
+    if (ftsConditions.length > 0) {
+      // 有 FTS 筛选条件，只使用筛选条件
+      ftsQuery = ftsConditions.join(" AND ");
+      useFts = true;
+    } else {
+      // 没有 FTS 筛选条件，不使用 FTS，直接查询 images 表
+      ftsQuery = null;
+      useFts = false;
+    }
+  } else {
+    // 有具体的搜索关键词
+    ftsQuery = query.trim();
+    if (ftsConditions.length > 0) {
+      ftsQuery += " AND " + ftsConditions.join(" AND ");
+    }
+    useFts = true;
+  }
+
+  // ========== 处理 WHERE 子句字段 ==========
+
+  // 5. AI分析状态（新增筛选项）
+  if (filters.aiAnalysisStatus && filters.aiAnalysisStatus !== "" && filters.aiAnalysisStatus !== "all") {
+    if (filters.aiAnalysisStatus === "analyzed") {
+      // 已识别：face_count不为NULL（已完成AI分析）
+      whereConditions.push("i.face_count IS NOT NULL");
+    } else if (filters.aiAnalysisStatus === "notAnalyzed") {
+      // 待识别：face_count为NULL（未进行AI分析）
+      whereConditions.push("i.face_count IS NULL");
+    }
+  }
+
+  // 6. 时间维度 + 选中的时间值（支持 'unknown' 表示无时间信息）
+  if (filters.timeDimension && filters.selectedTimeValues && filters.selectedTimeValues.length > 0) {
+    const hasUnknown = filters.selectedTimeValues.includes("unknown");
+    const knownValues = filters.selectedTimeValues.filter((val) => val !== "unknown");
+
+    // 特殊处理：如果 timeDimension === 'all' 且选择了 'unknown'
+    if (filters.timeDimension === "all" && hasUnknown) {
+      if (knownValues.length === 0) {
+        // 只筛选时间未知的图片（所有时间字段都是 unknown）
+        whereConditions.push("(i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown')");
+      } else {
+        // 边界情况：timeDimension='all' 但有具体值（理论上不应该发生，但做容错处理）
+        // 忽略具体值，只处理 unknown
+        whereConditions.push("(i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown')");
+        logger.warn({
+          message: "异常情况：timeDimension='all' 但 selectedTimeValues 包含具体值",
+          details: { selectedTimeValues: filters.selectedTimeValues },
+        });
+      }
+    } else if (filters.timeDimension === "year") {
+      const conditions = [];
+      if (knownValues.length > 0) {
+        const placeholders = knownValues.map(() => "?").join(",");
+        conditions.push(`i.year_key IN (${placeholders})`);
+        whereParams.push(...knownValues);
+      }
+      if (hasUnknown) {
+        conditions.push("(i.year_key IS NULL OR i.year_key = '' OR i.year_key = 'unknown')");
+      }
+      if (conditions.length > 0) {
+        whereConditions.push(`(${conditions.join(" OR ")})`);
+      }
+    } else if (filters.timeDimension === "month") {
+      const conditions = [];
+      if (knownValues.length > 0) {
+        const placeholders = knownValues.map(() => "?").join(",");
+        conditions.push(`i.month_key IN (${placeholders})`);
+        whereParams.push(...knownValues);
+      }
+      if (hasUnknown) {
+        conditions.push("(i.month_key IS NULL OR i.month_key = '' OR i.month_key = 'unknown')");
+      }
+      if (conditions.length > 0) {
+        whereConditions.push(`(${conditions.join(" OR ")})`);
+      }
+    } else if (filters.timeDimension === "day") {
+      const conditions = [];
+      if (knownValues.length > 0) {
+        const placeholders = knownValues.map(() => "?").join(",");
+        conditions.push(`i.date_key IN (${placeholders})`);
+        whereParams.push(...knownValues);
+      }
+      if (hasUnknown) {
+        conditions.push("(i.date_key IS NULL OR i.date_key = '' OR i.date_key = 'unknown')");
+      }
+      if (conditions.length > 0) {
+        whereConditions.push(`(${conditions.join(" OR ")})`);
+      }
+    } else if (filters.timeDimension === "weekday") {
+      const conditions = [];
+      if (knownValues.length > 0) {
+        const placeholders = knownValues.map(() => "?").join(",");
+        conditions.push(`i.day_key IN (${placeholders})`);
+        whereParams.push(...knownValues);
+      }
+      if (hasUnknown) {
+        conditions.push("(i.day_key IS NULL OR i.day_key = '' OR i.day_key = 'unknown')");
+      }
+      if (conditions.length > 0) {
+        whereConditions.push(`(${conditions.join(" OR ")})`);
+      }
+    }
+  }
+
+  // 7. 自定义日期范围（支持包含时间未知的照片）
+  if (filters.customDateRange && Array.isArray(filters.customDateRange) && filters.customDateRange.length === 2) {
+    if (filters.includeUnknownTime) {
+      // 包含时间未知：日期范围 OR 时间未知
+      whereConditions.push(
+        "(i.date_key BETWEEN ? AND ? OR (i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown'))",
+      );
+      whereParams.push(filters.customDateRange[0], filters.customDateRange[1]);
+    } else {
+      // 只选日期范围，不包含时间未知
+      whereConditions.push("i.date_key BETWEEN ? AND ?");
+      whereParams.push(filters.customDateRange[0], filters.customDateRange[1]);
+    }
+  } else if (filters.includeUnknownTime && filters.timeDimension === "custom") {
+    // 只选择了"时间未知"，没有选择日期范围
+    whereConditions.push("(i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown')");
+  }
+
+  // 8. 人物数量（基于 person_count，多选）
+  // 注意：person_count = NULL 表示未分析，只统计已分析的图片
+  if (filters.personCount && Array.isArray(filters.personCount) && filters.personCount.length > 0) {
+    const personConditions = [];
+    filters.personCount.forEach((count) => {
+      if (count === "zero") {
+        // 无人物：已分析且结果为0
+        personConditions.push("i.person_count = 0");
+      } else if (count === "one") {
+        personConditions.push("i.person_count = 1");
+      } else if (count === "two") {
+        personConditions.push("i.person_count = 2");
+      } else if (count === "threePlus") {
+        personConditions.push("i.person_count >= 3");
+      }
+    });
+    if (personConditions.length > 0) {
+      whereConditions.push(`(${personConditions.join(" OR ")})`);
+    }
+  }
+
+  // 9. 人脸可见性（基于 face_count，单选）
+  // 注意：face_count = NULL 表示未分析，只统计已分析的图片
+  if (filters.faceVisibility) {
+    if (filters.faceVisibility === "visible") {
+      // 清晰人脸：有人脸（已分析且>0）
+      whereConditions.push("i.face_count > 0");
+    } else if (filters.faceVisibility === "notVisible") {
+      // 无清晰人脸：已分析且无人脸
+      whereConditions.push("i.face_count = 0");
+    }
+  }
+
+  // 10. 年龄段（多选，前端5分类 → 后端9分类）
+  // 注意：由于 age_tags 包含连字符（如 "0-2"），FTS5 无法正确解析
+  // 因此使用 WHERE 条件和 LIKE 查询，而不是 FTS MATCH
+  if (filters.ageGroup && Array.isArray(filters.ageGroup) && filters.ageGroup.length > 0) {
+    const ageConditions = [];
+
+    // 为每个年龄段添加 LIKE 条件
+    filters.ageGroup.forEach((age) => {
+      // 使用 LIKE 查询，精确匹配逗号分隔的标签
+      // 匹配情况：
+      // 1. 完全匹配：age_tags = "0-2"
+      // 2. 开头匹配：age_tags = "0-2,20-29"
+      // 3. 中间匹配：age_tags = "20-29,0-2,30-39"
+      // 4. 结尾匹配：age_tags = "20-29,0-2"
+      ageConditions.push(`(i.age_tags = ? OR i.age_tags LIKE ? OR i.age_tags LIKE ? OR i.age_tags LIKE ?)`);
+      whereParams.push(`${age}`, `${age},%`, `%,${age},%`, `%,${age}`);
+    });
+
+    // 将所有年龄段条件用 OR 连接
+    if (ageConditions.length > 0) {
+      whereConditions.push(`(${ageConditions.join(" OR ")})`);
+    }
+  }
+
+  // 11. 分辨率
+  if (filters.resolution && Array.isArray(filters.resolution) && filters.resolution.length > 0) {
+    const resConditions = [];
+    filters.resolution.forEach((res) => {
+      if (res === "hd") {
+        // HD/标清：低于FHD标准（不满足1920×1080或1080×1920）
+        resConditions.push("(NOT ((i.width_px >= 1920 AND i.height_px >= 1080) OR (i.width_px >= 1080 AND i.height_px >= 1920)))");
+      } else if (res === "fhd1080p") {
+        resConditions.push("((i.width_px >= 1920 AND i.height_px >= 1080) OR (i.width_px >= 1080 AND i.height_px >= 1920))");
+      } else if (res === "4k") {
+        resConditions.push("((i.width_px >= 3840 AND i.height_px >= 2160) OR (i.width_px >= 2160 AND i.height_px >= 3840))");
+      } else if (res === "8k") {
+        resConditions.push("((i.width_px >= 7680 AND i.height_px >= 4320) OR (i.width_px >= 4320 AND i.height_px >= 7680))");
+      }
+    });
+    if (resConditions.length > 0) {
+      whereConditions.push(`(${resConditions.join(" OR ")})`);
+    }
+  }
+
+  // 12. 颜色主题
+  if (filters.colorTheme && Array.isArray(filters.colorTheme) && filters.colorTheme.length > 0) {
+    const placeholders = filters.colorTheme.map(() => "?").join(",");
+    whereConditions.push(`i.color_theme IN (${placeholders})`);
+    whereParams.push(...filters.colorTheme);
+  }
+
+  // 13. 上传时间
+  if (filters.uploadTime && filters.uploadTime !== "" && filters.uploadTime !== "all") {
+    const now = Date.now();
+    let timeThreshold;
+
+    if (filters.uploadTime === "last24hours") {
+      timeThreshold = now - 86400000; // 24小时
+    } else if (filters.uploadTime === "lastWeek") {
+      timeThreshold = now - 604800000; // 7天
+    } else if (filters.uploadTime === "lastMonth") {
+      timeThreshold = now - 2592000000; // 30天
+    } else if (filters.uploadTime === "lastYear") {
+      timeThreshold = now - 31536000000; // 365天
+    }
+
+    if (timeThreshold) {
+      whereConditions.push("i.created_at >= ?");
+      whereParams.push(timeThreshold);
+    }
+  }
+
+  return {
+    ftsQuery,
+    useFts,
+    whereConditions,
+    whereParams,
+  };
+}
 
 /**
  * 搜索图片
@@ -26,81 +328,70 @@ async function handleSearchImages(req, res, next) {
       searchType = "hybrid", // 'text', 'vector', 'hybrid'
     } = req.body;
 
-    if (!query || query.trim().length === 0) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
-        messageType: "error",
-        message: "搜索关键词不能为空",
-      });
-    }
+    // 允许空查询或通配符查询（用于纯筛选或查询所有图片）
+    let searchQuery = query && query.trim() ? query.trim() : "*";
 
     logger.info({
       message: `用户搜索: ${userId}`,
-      details: { query, filters, pageNo, pageSize, searchType },
+      details: { query: searchQuery, filters, pageNo, pageSize, searchType },
     });
 
-    // 构建搜索查询
-    let searchQuery = query.trim();
+    // 构建搜索条件
+    const { ftsQuery, useFts, whereConditions, whereParams } = buildSearchConditions(searchQuery, filters);
 
-    // 添加过滤条件
-    if (filters.year) {
-      searchQuery += ` AND year_key:${filters.year}`;
-    }
-    if (filters.month) {
-      searchQuery += ` AND month_key:${filters.month}`;
-    }
-    if (filters.location) {
-      searchQuery += ` AND gps_location:${filters.location}`;
-    }
-    if (filters.scene) {
-      searchQuery += ` AND scene_tags:${filters.scene}`;
-    }
+    logger.info({
+      message: "搜索条件构建完成",
+      details: { ftsQuery, useFts, whereConditionsCount: whereConditions.length, whereParamsCount: whereParams.length },
+    });
 
     // 执行搜索
     const offset = (pageNo - 1) * pageSize;
-    const searchResults = await searchImagesByText({
-      userId,
-      query: searchQuery,
-      limit: pageSize,
-      offset,
-    });
 
-    // 格式化结果
-    const formattedResults = searchResults.map((result) => ({
-      id: result.id,
-      thumbnailStorageKey: result.thumbnail_storage_key,
-      highResStorageKey: result.high_res_storage_key,
-      creationDate: result.image_created_at,
-      dateKey: result.date_key,
-      monthKey: result.month_key,
-      yearKey: result.year_key,
-      gpsLocation: result.gps_location,
-      storageType: result.storage_type,
-      altText: result.alt_text,
-      ocrText: result.ocr_text,
-      keywords: result.keywords,
-      sceneTags: result.scene_tags,
-      objectTags: result.object_tags,
-      relevanceScore: result.rank || 0,
-    }));
+    // 并行查询：获取结果列表和总数
+    const [searchResults, totalCount] = await Promise.all([
+      searchImagesByText({
+        userId,
+        query: ftsQuery,
+        useFts,
+        whereConditions,
+        whereParams,
+        limit: pageSize,
+        offset,
+      }),
+      getSearchResultsCount({
+        userId,
+        query: ftsQuery,
+        useFts,
+        whereConditions,
+        whereParams,
+      }),
+    ]);
+
+    // 添加完整URL（thumbnailUrl 和 highResUrl）
+    // searchResults 已经通过 mapFields 转换为 camelCase
+    const resultsWithUrls = await addFullUrlToImage(searchResults);
 
     logger.info({
       message: `搜索完成: ${userId}`,
       details: {
         query,
-        resultCount: formattedResults.length,
-        totalResults: searchResults.length,
+        resultCount: resultsWithUrls.length,
+        totalCount,
+        appliedFilters: Object.keys(filters).filter((key) => {
+          const value = filters[key];
+          if (Array.isArray(value)) return value.length > 0;
+          return value && value !== "" && value !== "all";
+        }),
       },
     });
 
     res.sendResponse({
       data: {
-        list: formattedResults,
-        total: formattedResults.length,
+        list: resultsWithUrls,
+        total: totalCount,
         pageNo,
         pageSize,
-        hasMore: formattedResults.length === pageSize,
+        hasMore: offset + resultsWithUrls.length < totalCount,
       },
       messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
     });
@@ -260,32 +551,17 @@ async function handleAdvancedSearch(req, res, next) {
       offset,
     });
 
-    // 格式化结果
-    const formattedResults = searchResults.map((result) => ({
-      id: result.id,
-      thumbnailStorageKey: result.thumbnail_storage_key,
-      highResStorageKey: result.high_res_storage_key,
-      creationDate: result.image_created_at,
-      dateKey: result.date_key,
-      monthKey: result.month_key,
-      yearKey: result.year_key,
-      gpsLocation: result.gps_location,
-      storageType: result.storage_type,
-      altText: result.alt_text,
-      ocrText: result.ocr_text,
-      keywords: result.keywords,
-      sceneTags: result.scene_tags,
-      objectTags: result.object_tags,
-      relevanceScore: result.rank || 0,
-    }));
+    // 添加完整URL（thumbnailUrl 和 highResUrl）
+    // searchResults 已经通过 mapFields 转换为 camelCase
+    const resultsWithUrls = await addFullUrlToImage(searchResults);
 
     res.sendResponse({
       data: {
-        list: formattedResults,
-        total: formattedResults.length,
+        list: resultsWithUrls,
+        total: resultsWithUrls.length,
         pageNo,
         pageSize,
-        hasMore: formattedResults.length === pageSize,
+        hasMore: resultsWithUrls.length === pageSize,
         searchQuery,
         appliedFilters: filters,
       },
@@ -296,10 +572,56 @@ async function handleAdvancedSearch(req, res, next) {
   }
 }
 
+/**
+ * 分页获取筛选选项（用于滚动加载）
+ * GET /api/search/filter-options-paginated?type=city&pageNo=1&pageSize=20
+ */
+async function handleGetFilterOptionsPaginated(req, res, next) {
+  try {
+    const { userId } = req.user;
+    const { type, pageNo = 1, pageSize = 20, timeDimension = null } = req.query;
+
+    if (!type || !["city", "year", "month", "day", "weekday"].includes(type)) {
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
+        messageType: "error",
+        message: "type 参数必须是 city、year、month、day 或 weekday",
+      });
+    }
+
+    logger.info({
+      message: `分页获取筛选选项: ${userId}`,
+      details: { type, pageNo, pageSize },
+    });
+
+    const result = await getFilterOptionsPaginated({
+      userId,
+      type,
+      pageNo: parseInt(pageNo),
+      pageSize: parseInt(pageSize),
+      timeDimension,
+    });
+
+    res.sendResponse({
+      data: result,
+      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
+    });
+  } catch (error) {
+    logger.error({
+      message: "分页获取筛选选项失败",
+      error: error.message,
+      stack: error.stack,
+    });
+    next(error);
+  }
+}
+
 module.exports = {
   handleSearchImages,
   handleGetSearchSuggestions,
   handleIndexImage,
   handleGetQueueStatus,
   handleAdvancedSearch,
+  handleGetFilterOptionsPaginated,
 };

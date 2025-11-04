@@ -2,9 +2,10 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 python-dotenv==1.0.0
-opencv-python==4.8.1.78
+opencv-python>=4.10.0  # 注意：4.10 仍不支持 AVIF，需要 pillow-heif 补充
 numpy>=1.24.0
 Pillow>=10.0.0
+pillow-heif>=0.13.0  # AVIF/HEIC/HEIF 格式支持（避免 Node.js 端重压缩）
 insightface==0.7.3
 scikit-learn>=1.3.0
 onnxruntime>=1.16.0
@@ -19,3 +20,4 @@ scikit-image>=0.25.2
 # 表情识别（使用EmotiEffLib ONNX后端，避免PyTorch 2.6+兼容性问题）
 emotiefflib>=1.1.1
 onnx>=1.19.0
+# 人体检测（2025-10-27 新增）- 使用 ONNX 格式，不需要 ultralytics

@@ -3,7 +3,7 @@
  * @Date: 2025-02-15 00:43:34
  * @LastEditors: zhangshouchang
  * @LastEditTime: 2025-08-09 21:37:28
- * @Description: File description
+ * @Description: JWT认证中间件
  */
 const jwt = require("jsonwebtoken");
 const CustomError = require("../errors/customError");
@@ -24,7 +24,7 @@ const authMiddleware = async (req, res, next) => {
 
   const jwtToken = authHeader.split(" ")[1];
   try {
-    // 若鉴权失败 则会跳到后面catch中 不会执行req.user......
+    // 验证token的有效性（签名、过期时间）
     const decoded = jwt.verify(jwtToken, process.env.JWT_SECRET);
 
     req.user = decoded; // req.user格式为{userId:userId}

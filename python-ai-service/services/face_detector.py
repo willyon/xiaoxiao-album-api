@@ -7,7 +7,7 @@
 
 from logger import logger
 from config import settings
-from loaders.face_loader import get_insightface_model
+from loaders.model_loader import get_insightface_model
 
 
 class FaceDetector:
@@ -32,63 +32,74 @@ class FaceDetector:
         
         Returns:
             dict: 包含以下字段的字典：
-                - high_quality_faces: list[dict] - 通过质量检测的人脸（用于属性分析）
+                - all_faces: list[dict] - 所有检测到的人脸（用于属性分析和统计）
                 - all_faces_count: int - 检测到的所有人脸数量（用于face_count统计）
-                - detected_faces: list[dict] - 所有人脸的完整信息（用于调试）
         
-        设计说明：
-        - high_quality_faces: 只包含通过质量检测的人脸，用于年龄、性别、表情分析
-        - all_faces_count: 包含所有人脸数量，用于face_count统计（包括侧面、远距离等）
-        - detected_faces: 包含所有人脸的完整信息，用于调试和日志
+        设计说明（2025-10-27 优化）：
+        - all_faces: 包含所有检测到的人脸，每个人脸都会进行属性分析
+        - 质量差的人脸分析失败时使用默认值（age=unknown, gender=unknown, expression=neutral）
+        - 通过 quality_score 字段标记质量，让前端决定如何展示
+        - 只有高质量人脸的 embedding 会用于聚类（避免低质量特征污染）
         """
         try:
             if image is None or image.size == 0:
                 logger.warning('输入图片为空')
                 return {
-                    'high_quality_faces': [],
-                    'all_faces_count': 0,
-                    'detected_faces': []
+                    'all_faces': [],
+                    'all_faces_count': 0
                 }
             
             # 使用InsightFace检测所有人脸
             faces = self.face_app.get(image)
             
+            # 输出原始检测数据（调试用）
+            logger.info(f'InsightFace原始检测: 共 {len(faces)} 张人脸候选')
+            for i, face in enumerate(faces, 1):
+                bbox = face.bbox.astype(int)
+                det_score = float(face.det_score)
+                face_w = bbox[2] - bbox[0]
+                face_h = bbox[3] - bbox[1]
+                face_size = int(min(face_w, face_h))
+                logger.info(f'  原始候选{i}: det_score={det_score:.3f}, size={face_size}px, bbox={bbox.tolist()}')
+            
             if not faces:
                 return {
-                    'high_quality_faces': [],
-                    'all_faces_count': 0,
-                    'detected_faces': []
+                    'all_faces': [],
+                    'all_faces_count': 0
                 }
             
-            # 分离高质量人脸和所有人脸
-            high_quality_faces = []  # 用于属性分析
-            all_detected_faces = []   # 用于统计和调试
+            # 评估所有人脸的质量（不再过滤，全部返回）
+            all_faces = []
             
             for face in faces:
                 face_info = self._evaluate_quality(face)
-                all_detected_faces.append(face_info)  # 所有人脸都加入统计
-                
-                # 只有通过质量检测的人脸才用于属性分析
-                if face_info['passed_quality']:
-                    high_quality_faces.append(face_info)
+                all_faces.append(face_info)
             
-            # 按质量分数排序（高质量优先）
-            high_quality_faces.sort(key=lambda x: x['quality_score'], reverse=True)
+            # 按质量分数排序（高质量优先，方便后续处理）
+            all_faces.sort(key=lambda x: x['quality_score'], reverse=True)
             
-            logger.info(f'检测到 {len(faces)} 张人脸，通过质量检测: {len(high_quality_faces)}张，统计数量: {len(all_detected_faces)}张')
+            high_quality_count = sum(1 for f in all_faces if f['passed_quality'])
+            
+            # 输出每张人脸的详细信息（调试用）
+            for i, face_info in enumerate(all_faces, 1):
+                logger.info(f'  人脸{i}: size={face_info["face_size"]}px, '
+                          f'quality={face_info["quality_score"]:.2f}, '
+                          f'yaw={face_info["pose"]["yaw"]:.1f}°, '
+                          f'pitch={face_info["pose"]["pitch"]:.1f}°, '
+                          f'passed={face_info["passed_quality"]}')
+            
+            logger.info(f'检测到 {len(faces)} 张人脸，高质量: {high_quality_count}张，全部返回进行分析')
             
             return {
-                'high_quality_faces': high_quality_faces,  # 用于属性分析
-                'all_faces_count': len(all_detected_faces),  # 用于face_count统计
-                'detected_faces': all_detected_faces  # 完整信息用于调试
+                'all_faces': all_faces,  # 所有人脸都返回，用于属性分析
+                'all_faces_count': len(all_faces)
             }
             
         except Exception as e:
             logger.error(f'人脸检测失败: {e}', exc_info=True)
             return {
-                'high_quality_faces': [],
-                'all_faces_count': 0,
-                'detected_faces': []
+                'all_faces': [],
+                'all_faces_count': 0
             }
     
     def _evaluate_quality(self, face):
@@ -130,7 +141,7 @@ class FaceDetector:
         3. 检测置信度：InsightFace模型对该人脸的确信程度
         
         质量过滤标准（同时满足以下条件才通过）：
-        - 人脸尺寸 >= MIN_FACE_SIZE (默认80px)
+        - 人脸尺寸 >= MIN_FACE_SIZE (默认120px)
         - 综合质量分 >= MIN_QUALITY_SCORE (默认0.6)
         - 偏航角绝对值 <= MAX_YAW_ANGLE (默认45度)
         - 俯仰角绝对值 <= MAX_PITCH_ANGLE (默认30度)
@@ -240,7 +251,7 @@ class FaceDetector:
         # ========== 第6步：判断是否通过质量检测 ==========
         # 同时满足以下4个条件才算通过（AND逻辑）：
         # 1. 人脸尺寸足够大 (>= 80px，可配置)
-        # 2. 综合质量分足够高 (>= 0.6，可配置)
+        # 2. 综合质量分足够高 (>= 0.5，可配置)
         # 3. 偏航角不要太大 (<= 45°，可配置)
         # 4. 俯仰角不要太大 (<= 30°，可配置)
         passed = (
@@ -249,6 +260,19 @@ class FaceDetector:
             abs(yaw) <= settings.MAX_YAW_ANGLE and            # 条件3：左右转头检查
             abs(pitch) <= settings.MAX_PITCH_ANGLE            # 条件4：上下点头检查
         )
+        
+        # 记录未通过质量检查的原因（用于调试）
+        if not passed:
+            reasons = []
+            if face_size < settings.MIN_FACE_SIZE:
+                reasons.append(f"尺寸{face_size}px < {settings.MIN_FACE_SIZE}px")
+            if quality_score < settings.MIN_QUALITY_SCORE:
+                reasons.append(f"质量{quality_score:.2f} < {settings.MIN_QUALITY_SCORE}")
+            if abs(yaw) > settings.MAX_YAW_ANGLE:
+                reasons.append(f"|yaw|={abs(yaw):.1f}° > {settings.MAX_YAW_ANGLE}°")
+            if abs(pitch) > settings.MAX_PITCH_ANGLE:
+                reasons.append(f"|pitch|={abs(pitch):.1f}° > {settings.MAX_PITCH_ANGLE}°")
+            logger.info(f'❌ 人脸未通过质量检查: {", ".join(reasons)}')
         # 示例判断：
         #   face_size=100, quality_score=0.7, yaw=30°, pitch=20°
         #   → 100>=80 ✅, 0.7>=0.6 ✅, 30<=45 ✅, 20<=30 ✅

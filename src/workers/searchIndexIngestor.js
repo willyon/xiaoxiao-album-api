@@ -130,22 +130,29 @@ async function processFaceRecognition(job) {
   const { imageId, userId, highResStorageKey, originalStorageKey } = job.data;
 
   try {
-    // 1. 获取图片数据，优先使用原图，如果没有则使用高清图，都不存在则不处理
+    // 1. 获取图片数据
+    // 策略：优先使用高清图（AVIF/WebP格式，imageUnderstandingService会自动转换）
+    // 原图可能是HEIC格式，也会自动转换，但文件更大
+    // 2048px高清图对人脸识别完全足够（模型本身会缩放到640x640）
     let imageData = null;
     let storageKey = null;
 
-    if (originalStorageKey) {
-      storageKey = originalStorageKey;
-      imageData = await _getImageData(storageKey);
-    }
-
-    if (!imageData && highResStorageKey) {
+    // 优先使用高清图（如果存在）
+    if (highResStorageKey) {
       storageKey = highResStorageKey;
       imageData = await _getImageData(storageKey);
+      logger.info({ message: `使用高清图进行人脸识别: ${imageId}` });
+    }
+
+    // 降级：如果高清图不存在，使用原图
+    if (!imageData && originalStorageKey) {
+      storageKey = originalStorageKey;
+      imageData = await _getImageData(storageKey);
+      logger.info({ message: `使用原图进行人脸识别: ${imageId}` });
     }
 
     if (!imageData) {
-      throw new Error(`无法找到图片文件: 原图(${originalStorageKey}) 和 高清图(${highResStorageKey}) 都不存在`);
+      throw new Error(`无法找到图片文件: 高清图(${highResStorageKey}) 和 原图(${originalStorageKey}) 都不存在`);
     }
 
     // 2. 人脸识别处理
@@ -156,12 +163,24 @@ async function processFaceRecognition(job) {
     });
 
     // 解构出需要的数据
-    const { faceCount, expressionTags, ageTags, genderTags, primaryExpressionConfidence, primaryFaceQuality, hasYoung, hasAdult, faces } = faceResult;
+    const {
+      faceCount,
+      personCount,
+      expressionTags,
+      ageTags,
+      genderTags,
+      primaryExpressionConfidence,
+      primaryFaceQuality,
+      hasYoung,
+      hasAdult,
+      faces,
+    } = faceResult;
 
     // 3. 更新数据库 - 更新images表的人脸识别相关字段
     await updateImageSearchMetadata({
       imageId,
       faceCount,
+      personCount, // 2025-10-27 新增：人体检测数量（包括背面、远景）
       expressionTags,
       ageTags,
       genderTags,
@@ -171,10 +190,28 @@ async function processFaceRecognition(job) {
       hasAdult,
     });
 
-    // 4. 插入人脸特征向量到face_embeddings表（Python已过滤，只返回高质量人脸）
+    // 4. 插入人脸特征向量到face_embeddings表
+    // 优化（2025-10-27）：只存储高质量人脸的 embedding（用于聚类）
+    // 原因：低质量人脸的 embedding 不准确，会污染聚类结果
     if (faces && faces.length) {
-      await insertFaceEmbeddings(imageId, faces);
-      logger.info({ message: `✅ 人脸特征向量已存储 imageid: ${imageId}, 共 ${faces.length} 个` });
+      const highQualityFaces = faces.filter((face) => face.is_high_quality);
+
+      if (highQualityFaces.length > 0) {
+        await insertFaceEmbeddings(imageId, highQualityFaces);
+        logger.info({
+          message: `✅ 人脸特征向量已存储 imageid: ${imageId}`,
+          details: {
+            total: faces.length,
+            highQuality: highQualityFaces.length,
+            lowQuality: faces.length - highQualityFaces.length,
+          },
+        });
+      } else {
+        logger.info({
+          message: `⚠️ 检测到 ${faces.length} 张人脸，但无高质量人脸，跳过 embedding 存储`,
+          details: { imageId },
+        });
+      }
     }
 
     logger.info({

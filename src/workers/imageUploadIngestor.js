@@ -23,6 +23,24 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
   // 1) 快路径：集合命中，立即按重复处理
   const already = await redisClient.sismember(setKey, imageHash);
   if (already === 1) {
+    logger.info({
+      message: "Worker检测到重复图片，跳过处理",
+      details: {
+        imageHash,
+        userId,
+        fileName: fileInfo.fileName,
+        action: "duplicate_skipped_in_worker",
+      },
+    });
+
+    // 更新 Worker 层跳过计数（已加入队列但被跳过）
+    if (fileInfo.sessionId) {
+      await updateProgress({
+        sessionId: fileInfo.sessionId,
+        status: "workerSkippedCount",
+      });
+    }
+
     await storageService.deleteFile(fileInfo);
     return { proceed: false }; // 不继续处理
   }
@@ -36,6 +54,24 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
     // 3) 抢锁失败：复查集合（可能另一 worker 已经完成并写入）
     const nowExists = await redisClient.sismember(setKey, imageHash);
     if (nowExists === 1) {
+      logger.info({
+        message: "抢锁失败后检测到重复图片，跳过处理",
+        details: {
+          imageHash,
+          userId,
+          fileName: fileInfo.fileName,
+          action: "duplicate_skipped_after_lock_failed",
+        },
+      });
+
+      // 更新 Worker 层跳过计数
+      if (fileInfo.sessionId) {
+        await updateProgress({
+          sessionId: fileInfo.sessionId,
+          status: "workerSkippedCount",
+        });
+      }
+
       await storageService.deleteFile(fileInfo);
       return { proceed: false };
     }
@@ -63,7 +99,9 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
 async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHash, userId, thumbnailStorageKey }) {
   const maxAttempts = job?.opts?.attempts || Number(process.env.IMAGE_UPLOAD_JOB_ATTEMPTS || 5);
   const attemptsMade = job?.attemptsMade || 0;
-  const willRetry = attemptsMade < maxAttempts;
+  // 修复：判断失败后 BullMQ 是否还会重试
+  // BullMQ 会在失败后将 attemptsMade 递增，然后判断是否 < maxAttempts
+  const willRetry = attemptsMade + 1 < maxAttempts;
 
   if (!willRetry) {
     // 没有重试机会了，执行最终清理
@@ -104,9 +142,9 @@ async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHas
     }
 
     // 3. 更新处理进度（最终失败）
-    if (fileInfo.sessionId) {
+    if (job.data.sessionId) {
       await updateProgress({
-        sessionId: fileInfo.sessionId,
+        sessionId: job.data.sessionId,
         status: "thumbErrors",
       });
     }
@@ -268,15 +306,21 @@ async function processAndSaveSingleImage(job) {
     }
 
     // ======== 入 Meta 队列做"慢活"（EXIF + 高清 AVIF + DB 更新）========
-    await imageMetaQueue.add(process.env.IMAGE_META_QUEUE_NAME, {
-      userId,
-      imageHash,
-      fileName,
-      storageKey, // 传递原始文件的存储键名
-      extension: process.env.IMAGE_HIGHRES_EXTENSION || "avif",
-      fileSize, // 传递文件大小
-      sessionId: fileInfo.sessionId, // 传递会话ID用于进度跟踪
-    });
+    await imageMetaQueue.add(
+      process.env.IMAGE_META_QUEUE_NAME,
+      {
+        userId,
+        imageHash,
+        fileName,
+        storageKey, // 传递原始文件的存储键名
+        extension: process.env.IMAGE_HIGHRES_EXTENSION || "avif",
+        fileSize, // 传递文件大小
+        sessionId: fileInfo.sessionId, // 传递会话ID用于进度跟踪
+      },
+      {
+        jobId: `${userId}:${imageHash}`, // 添加 jobId 防止重复加入队列
+      },
+    );
   } catch (error) {
     // 最外层错误处理 - 记录完整的失败信息
     // 注意：内层catch已经处理了重试逻辑，这里只记录日志

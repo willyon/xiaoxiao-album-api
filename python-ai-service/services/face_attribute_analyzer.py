@@ -29,7 +29,7 @@ import cv2  # OpenCV：图像处理（裁剪、颜色转换、调整大小）
 import numpy as np  # NumPy：数组操作（图像数据处理）
 from logger import logger  # 日志记录器
 from config import settings  # 配置管理器（阈值、年龄段定义等）
-from loaders.face_loader import get_fairface_session  # 统一模型加载器
+from loaders.model_loader import get_fairface_session  # 统一模型加载器
 
 
 class FaceAttributeAnalyzer:
@@ -107,17 +107,19 @@ class FaceAttributeAnalyzer:
                       } 或 None
                   }
         
-        处理流程：
+        处理流程（2025-10-27 优化）：
         1. 检查模型是否已加载、是否有人脸
         2. 遍历每个人脸：
-           - 如果低质量 → 跳过分析，返回 None
-           - 如果高质量 → 裁剪、预测、返回结果
+           - 所有人脸都尝试分析（不再跳过低质量人脸）
+           - 分析失败时返回默认值（age=None, gender=None）
+           - 上层会将 None 转换为 'unknown'
         3. 返回完整的结果列表
         
-        设计考虑：
-        - 低质量人脸跳过分析，节省计算资源
+        设计考虑（新）：
+        - 所有检测到的人脸都进行分析，确保 face_count 和 faces 数量匹配
+        - 质量差的人脸可能分析失败，但仍返回默认值而不是跳过
+        - 通过 quality_score 让前端决定如何展示
         - 即使部分人脸失败，也返回完整列表（保持索引对应）
-        - 使用 None 表示"无结果"，方便上层判断
         """
         # ========== 第1步：前置检查 ==========
         # 检查1：模型是否已加载？
@@ -130,7 +132,7 @@ class FaceAttributeAnalyzer:
         
         try:
             # ========== 第3步：遍历每个人脸进行分析 ==========
-            # 注意：传入的faces都是高质量人脸（已在detector中过滤）
+            # 优化（2025-10-27）：对所有人脸都尝试分析，不再跳过低质量人脸
             for face in faces:
                 # 裁剪人脸区域
                 # 从原图中裁剪出人脸区域（带15%扩展边界）
@@ -140,15 +142,17 @@ class FaceAttributeAnalyzer:
                 # 检查裁剪是否成功
                 if face_img is None:
                     # 裁剪失败（可能原因：边界框超出图像、裁剪区域为空）
+                    # 使用默认值，而不是跳过
                     results.append({'age': None, 'gender': None})
                     continue
                 
-                # 3.3 预测年龄和性别
+                # 预测年龄和性别
                 # 使用ONNX模型推理
                 # 返回：(age_info, gender_info) 或 (None, None)
                 age_info, gender_info = self._predict(face_img)
                 
-                # 3.4 添加到结果列表
+                # 添加到结果列表
+                # 即使是 None 也添加（保持索引对应）
                 results.append({
                     'age': age_info,      # 年龄信息（dict或None）
                     'gender': gender_info  # 性别信息（dict或None）

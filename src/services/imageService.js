@@ -80,7 +80,7 @@ async function _addFullUrls(items, type = "image") {
 }
 
 // 为图片数据添加完整URL的方法
-async function _addFullUrlToImage(data) {
+async function addFullUrlToImage(data) {
   return await _addFullUrls(data, "image");
 }
 
@@ -157,7 +157,7 @@ async function getAllImagesByPage({ pageNo, pageSize, userId }) {
     });
 
     // 添加完整URL
-    result.data = await _addFullUrlToImage(result.data);
+    result.data = await addFullUrlToImage(result.data);
 
     return result;
   } catch (error) {
@@ -180,7 +180,7 @@ async function getImagesByYear({ pageNo, pageSize, yearKey, userId }) {
     });
 
     // 添加完整URL
-    result.data = await _addFullUrlToImage(result.data);
+    result.data = await addFullUrlToImage(result.data);
 
     return result;
   } catch (error) {
@@ -198,7 +198,7 @@ async function getImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
     const result = await imageModel.selectImagesByMonth({ pageNo, pageSize, monthKey, userId });
 
     // 添加完整URL
-    result.data = await _addFullUrlToImage(result.data);
+    result.data = await addFullUrlToImage(result.data);
 
     return result;
   } catch (error) {
@@ -216,7 +216,7 @@ async function getImagesByDate({ pageNo, pageSize, dateKey, userId }) {
     const result = await imageModel.selectImagesByDate({ pageNo, pageSize, dateKey, userId });
 
     // 添加完整URL
-    result.data = await _addFullUrlToImage(result.data);
+    result.data = await addFullUrlToImage(result.data);
 
     return result;
   } catch (error) {
@@ -326,6 +326,7 @@ module.exports = {
   getGroupsByYear,
   getGroupsByMonth,
   getGroupsByDate,
+  addFullUrlToImage,
 };
 
 // ========== 备用的注释代码（保留备用） ==========

@@ -37,7 +37,6 @@ const imagesRoutes = require("./src/routes/imagesRoutes");
 const aliyunOssCallbackRoutes = require("./src/routes/aliyunOssCallbackRoutes");
 const uploadSessionRoutes = require("./src/routes/uploadSessionRoutes");
 const progressRoutes = require("./src/routes/progressRoutes");
-const searchRoutes = require("./src/routes/searchRoutes");
 
 // ========================== 创建Express实例，设置端口号 ========================== //
 
@@ -123,9 +122,6 @@ app.use("/uploads", [authMiddleware], uploadSessionRoutes);
 
 // 注册SSE进度推送路由 - 不需要鉴权（EventSource无法发送认证头）
 app.use("/progress", progressRoutes);
-
-// 注册搜索功能路由+鉴权中间件(authMiddleware)
-app.use("/search", [authMiddleware], searchRoutes);
 
 // ========================== 错误处理中间件 ========================== //
 

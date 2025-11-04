@@ -45,6 +45,7 @@ const FIELD_MAPPING = {
     mime: "mime",
     country: "country",
     city: "city",
+    person_count: "personCount", // 新增：人物数量（YOLOv10检测）
   },
 };
 

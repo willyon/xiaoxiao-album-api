@@ -1,2 +1,2 @@
 # Routes package
-from . import health, face, ocr, face_cluster
+from . import health, person, ocr, face_cluster

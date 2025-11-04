@@ -65,8 +65,6 @@ module.exports = {
     //   watch: false,
     //   max_restarts: 5,
     //   env: {
-    //     PYTHON_ENV: "development",
-    //     // 其他环境变量从 .env 文件读取
     //   },
     // },
   ],

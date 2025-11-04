@@ -28,17 +28,6 @@ class Settings:
     # 字符串类型，不需要转换
     HOST = os.getenv("AI_SERVICE_HOST", "0.0.0.0")
     
-    # 环境配置
-    PYTHON_ENV = os.getenv("PYTHON_ENV", "development")
-    
-    # ========== 图片处理配置 ==========
-    
-    # 最大图片字节数配置
-    # float() - 将字符串转换为浮点数
-    # * 1024 * 1024 - 将MB转换为字节数(1MB = 1024*1024字节)
-    # int() - 最后转换为整数
-    MAX_IMAGE_BYTES = int(float(os.getenv("MAX_IMAGE_MB", "50")) * 1024 * 1024)
-    
     # ========== GPU 配置 ==========
     
     # GPU使用配置
@@ -79,57 +68,13 @@ class Settings:
     # 例如：FACE_DET_SIZE=800,600 或 FACE_DET_SIZE=640,640
     FACE_DET_SIZE = tuple(map(int, os.getenv("FACE_DET_SIZE", "640,640").split(",")))
     
-    # 人脸属性分析最大数量配置
-    # 
-    # 重要说明：这个参数不是限制检测的人脸总数，而是限制进行属性分析的人脸数量
-    # 工作流程：
-    # 1. 检测所有人脸（不受此限制）
-    # 2. 按检测置信度排序（置信度高的优先）
-    # 3. 只对前N个人脸进行年龄、性别、情绪、种族等属性分析
-    # 4. 其他人脸只返回位置信息（bbox）、置信度和特征向量
-    # 
-    # 性能考虑：
-    # - 人脸检测：快速（毫秒级）
-    # - 属性分析：较慢（每人脸几百毫秒）
-    # - 10个人脸检测：~100ms
-    # - 5个人脸属性分析：~1000ms
-    # - 10个人脸属性分析：~2000ms
-    # 
-    # 建议设置：
-    # - 实时应用：1-3
-    # - 相册批量处理：5-10  
-    # - 专业分析：20+
-    # - 移动端：3-5
-    # 
-    # 当前设置为20，适合相册应用分析所有人脸属性
-    # 如果照片中人数超过20人，建议分批处理或增加服务器资源
-    FACE_ATTR_MAX = int(os.getenv("FACE_ATTR_MAX", "20"))
-    
-    # 人脸检测置信度阈值配置
-    # 
-    # 置信度说明：
-    # - 范围：0.0 - 1.0 (0% - 100% 确信度)
-    # - 影响因素：人脸大小、清晰度、角度、光照、遮挡等
-    # - 高置信度：大脸、清晰、正面、光照良好、无遮挡
-    # - 低置信度：小人脸、模糊、侧面、光照差、有遮挡
-    # 
-    # 阈值建议：
-    # - 实时应用：0.7-0.8 (平衡速度和准确性)
-    # - 相册应用：0.6-0.7 (不遗漏重要人脸，推荐)
-    # - 安全监控：0.8-0.9 (高准确性要求)
-    # - 移动端：0.7-0.8 (资源限制)
-    # - 专业分析：0.5-0.6 (不遗漏任何人脸)
-    # 
-    # 当前设置0.6，适合相册应用，能检测到大部分人脸包括一些模糊的
-    FACE_DET_CONFIDENCE_THRESHOLD = float(os.getenv("FACE_DET_CONFIDENCE_THRESHOLD", "0.6"))
-    
-    # ========== 人脸识别配置 ==========
+    # ========== 人脸质量控制配置 ==========
     
     # 质量控制阈值
-    MIN_FACE_SIZE = int(os.getenv("MIN_FACE_SIZE", "120"))  # 最小人脸尺寸（像素）
-    MIN_QUALITY_SCORE = float(os.getenv("MIN_QUALITY_SCORE", "0.6"))  # 最低质量分
-    MAX_YAW_ANGLE = float(os.getenv("MAX_YAW_ANGLE", "45"))  # 最大偏航角
-    MAX_PITCH_ANGLE = float(os.getenv("MAX_PITCH_ANGLE", "30"))  # 最大俯仰角
+    MIN_FACE_SIZE = int(os.getenv("MIN_FACE_SIZE", "60"))  # 最小人脸尺寸（像素）- 降低到60px，符合行业标准（识别最低门槛50px），平衡召回率和识别准确度
+    MIN_QUALITY_SCORE = float(os.getenv("MIN_QUALITY_SCORE", "0.5"))  # 最低质量分 - 降低到0.5，接受质量稍差的人脸
+    MAX_YAW_ANGLE = float(os.getenv("MAX_YAW_ANGLE", "75"))  # 最大偏航角（左右转头）- 提高到75°，在保证识别准确度的前提下接受更大的侧面角度
+    MAX_PITCH_ANGLE = float(os.getenv("MAX_PITCH_ANGLE", "85"))  # 最大俯仰角（上下点头）- 提高到85°，容忍姿态估计误差（特别是婴儿和抓拍场景）
     
     # 表情识别置信度阈值
     MIN_EXPRESSION_CONFIDENCE = float(os.getenv("MIN_EXPRESSION_CONFIDENCE", "0.5"))  # 最低表情置信度（低于此值视为neutral）
@@ -156,11 +101,94 @@ class Settings:
         'Surprise': 'surprise'
     }
     
+    # ========== 人体检测配置 ==========
+    
+    # YOLOv11x 初始检测阈值
+    # 说明：后处理时保留候选框的最低置信度
+    # YOLOv11x 精度更高，提高到0.30，过滤低置信度误检框（0.25-0.30区间）
+    # 置信度在 [INITIAL_THRESHOLD, HIGH_CONF_THRESHOLD) 区间的框，需要通过姿态验证
+    YOLOV11X_INITIAL_THRESHOLD = float(os.getenv("YOLOV11X_INITIAL_THRESHOLD", "0.30"))
+    
+    # YOLOv11x 高置信度阈值
+    # 说明：检测框置信度 >= 此值时，直接接受（不做额外验证）
+    # YOLOv11x 高置信度检测更可靠，提高到0.50，直接信任更多检测
+    # 置信度在 [INITIAL_THRESHOLD, HIGH_CONF_THRESHOLD) 区间的框，需要通过姿态验证
+    YOLOV11X_HIGH_CONF_THRESHOLD = float(os.getenv("YOLOV11X_HIGH_CONF_THRESHOLD", "0.50"))
+    
+    # 人体框尺寸过滤阈值（相对图像短边的比例）
+    # 说明：人体框短边 >= 图像短边 * 此比例，用于过滤远景小人
+    # 6% 配合后续的关键点部位判断、姿态验证、NMS去重，既能检测小人物又能过滤误检
+    PERSON_BOX_MIN_SIZE_RATIO = float(os.getenv("PERSON_BOX_MIN_SIZE_RATIO", "0.06"))  # 6%
+    
+    # NMS 去重 IoU 阈值
+    # 说明：两个框的 IoU >= 此值时，视为同一人物，保留置信度更高的
+    # 设置为0.55：平衡"大人抱宝宝"场景和避免误检的折中值
+    # - 0.55阈值可以去除高度重叠的重复检测（IoU≥0.55）
+    # - 同时保留真实重叠的人物（IoU通常在0.40-0.55之间）
+    PERSON_NMS_IOU_THRESHOLD = float(os.getenv("PERSON_NMS_IOU_THRESHOLD", "0.55"))  # 0.55
+    
+    # ========== 姿态估计配置 ==========
+    
+    # RTMW 姿态验证阈值
+    # 说明：用于判断低置信度检测框是否为真实人物（提高要求，减少误检）
+    POSE_MIN_VALID_RATIO = float(os.getenv("POSE_MIN_VALID_RATIO", "0.7"))  # 有效关键点最小比例（提高到0.7，更严格）
+    POSE_MIN_SCORE = float(os.getenv("POSE_MIN_SCORE", "0.50"))              # 关键点平均置信度最小值（提高到0.50，更严格）
+    
+    # RTMW 关键点置信度阈值（用于各种判断）
+    POSE_KEYPOINT_CONF_THRESHOLD = float(os.getenv("POSE_KEYPOINT_CONF_THRESHOLD", "0.3"))  # 关键点置信度阈值（用于姿态质量评估）
+    POSE_BODY_PART_CONF_THRESHOLD = float(os.getenv("POSE_BODY_PART_CONF_THRESHOLD", "0.4"))  # 身体部位判断的关键点置信度阈值
+    
+    # RTMW 检测框扩展比例
+    # 说明：对检测框进行仿射变换前，先扩展框以包含更多上下文信息
+    POSE_BBOX_PADDING = float(os.getenv("POSE_BBOX_PADDING", "1.25"))  # 检测框扩展比例（1.25 = 125%）
+    
+    # ========== 人脸聚类配置 ==========
+    
+    # DBSCAN 聚类阈值（eps）
+    # 说明：两个人脸特征向量的最大距离阈值
+    # - 越小：聚类越严格（同一人的不同照片可能被分到不同类）
+    # - 越大：聚类越宽松（不同人的照片可能被分到同一类）
+    FACE_CLUSTERING_THRESHOLD = float(os.getenv("FACE_CLUSTERING_THRESHOLD", "0.4"))  # 默认0.4
+    
     # ========== OCR 配置 ==========
     
     # OCR功能开关配置
     OCR_ENABLED = os.getenv("OCR_ENABLED", "false").lower() in ("true", "1", "yes")
     
+    # ========== ONNX Runtime 配置 ==========
+    
+    # ONNX Runtime 执行提供者配置
+    # 根据平台自动选择最优的执行提供者，避免 CUDA 警告
+    @staticmethod
+    def get_onnx_providers():
+        """
+        获取 ONNX Runtime 执行提供者列表
+        
+        返回值：
+        - macOS: ['CoreMLExecutionProvider', 'CPUExecutionProvider']
+        - Linux/Windows with GPU: ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        - Linux/Windows without GPU: ['CPUExecutionProvider']
+        """
+        import platform
+        import onnxruntime as ort
+        
+        available_providers = ort.get_available_providers()
+        
+        # macOS 暂时禁用CoreML（频繁重启会导致临时文件冲突/I/O错误）
+        # 直接使用CPU执行提供者，更稳定
+        if platform.system() == 'Darwin':
+            # if 'CoreMLExecutionProvider' in available_providers:
+            #     return ['CoreMLExecutionProvider', 'CPUExecutionProvider']
+            # else:
+                # return ['CPUExecutionProvider']
+            return ['CPUExecutionProvider']
+        
+        # 其他平台：如果启用 GPU 且 CUDA 可用，则使用 CUDA
+        if Settings.USE_GPU and 'CUDAExecutionProvider' in available_providers:
+            return ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        
+        # 默认使用 CPU
+        return ['CPUExecutionProvider']
 
 # ========== 创建全局配置实例 ==========
 

@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 from logger import logger
 from config import settings
-from loaders.face_loader import get_expression_model
+from loaders.model_loader import get_expression_model
 
 
 class ExpressionAnalyzer:

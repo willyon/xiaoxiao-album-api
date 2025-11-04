@@ -13,7 +13,7 @@ const { generatePolicySignature } = require("../../utils/ossSignature");
 const { buildOSSCallbackUrl } = require("../../utils/ossCallbackUtils");
 const { OSS_AUTH_TYPES } = require("../constants/StorageTypes");
 const Credential = require("@alicloud/credentials").default;
-const { getStandardMimeType } = require("../../utils/fileUtils");
+const { getMimeTypeByMagicBytes } = require("../../utils/fileUtils");
 
 /**
  * 阿里云OSS存储适配器
@@ -413,10 +413,18 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
   async storeFile(fileData, ossKey, options = {}) {
     await this._ensureClient();
     try {
+      // 智能检测 Content-Type（优先魔数，降级扩展名）
+      let contentType = options.contentType;
+      if (!contentType) {
+        // Buffer → 魔数检测（零开销，准确）
+        // String → 扩展名检测（兼容本地文件路径）
+        contentType = getMimeTypeByMagicBytes(Buffer.isBuffer(fileData) ? fileData : ossKey);
+      }
+
       const uploadOptions = {
         // 设置Content-Type
         headers: {
-          "Content-Type": options.contentType || getStandardMimeType(ossKey),
+          "Content-Type": contentType,
           // 设置缓存控制
           "Cache-Control": options.cacheControl || "public, max-age=31536000", // 默认公共缓存(允许任何浏览器、cdn、代理服务器存储这个文件) 1年有效期
           ...options.headers,

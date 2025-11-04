@@ -12,6 +12,7 @@ const { imageUploadQueue } = require("../queues/imageUploadQueue");
 const logger = require("../utils/logger");
 const { verifyOSSCallbackSignature, parseCallbackData } = require("../utils/ossCallbackUtils");
 const { updateProgress } = require("../services/imageProcessingProgressService");
+const { SUPPORTED_IMAGE_MIME_TYPES, getExtensionFromMimeType } = require("../utils/fileUtils");
 
 /**
  * 获取OSS直传签名
@@ -31,8 +32,20 @@ async function handleGetUploadSignature(req, res, next) {
       });
     }
 
-    // 生成基于时间的storageKey（预检已处理去重，这里按时间组织便于管理）
-    const fileExtension = contentType.split("/")[1] || "jpg";
+    // 验证 contentType 有效性（防止前端伪造）
+    if (!SUPPORTED_IMAGE_MIME_TYPES.has(contentType)) {
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
+        messageType: "error",
+        message: `不支持的图片格式: ${contentType}`,
+      });
+    }
+
+    // 从 MIME 类型提取文件扩展名（使用公共方法）
+    const fileExtension = getExtensionFromMimeType(contentType);
+
+    // 生成基于时间的storageKey
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -64,7 +77,8 @@ async function handleGetUploadSignature(req, res, next) {
  */
 async function checkAndAddToQueue(callbackData) {
   const { userId, hash, fileName, fileSize, storageKey, sessionId } = callbackData;
-  const jobId = `${userId}_${hash}`;
+  // 统一使用冒号格式，与 uploadController 保持一致
+  const jobId = `${userId}:${hash}`;
   const existingJob = await imageUploadQueue.getJob(jobId);
 
   if (existingJob) {

@@ -7,7 +7,8 @@
 
 import numpy as np
 from logger import logger
-from loaders.face_loader import get_insightface_model
+from config import settings
+from loaders.model_loader import get_insightface_model
 
 
 def ensure_model_loaded():
@@ -20,7 +21,7 @@ def ensure_model_loaded():
         return False
 
 
-def perform_clustering(embeddings, threshold=0.4):
+def perform_clustering(embeddings, threshold=None):
     """执行人脸聚类
     
     Args:
@@ -28,6 +29,7 @@ def perform_clustering(embeddings, threshold=0.4):
         threshold: 聚类阈值，用于判断两个特征向量是否属于同一类
                   值越小聚类越严格（同一人的不同照片可能被分到不同类）
                   值越大聚类越宽松（不同人的照片可能被分到同一类）
+                  默认值从配置文件读取
     
     Returns:
         list: 聚类结果列表，每个元素包含一个聚类组的信息
@@ -37,6 +39,10 @@ def perform_clustering(embeddings, threshold=0.4):
     """
     try:
         from sklearn.cluster import DBSCAN
+        
+        # 使用配置文件中的默认值（如果未提供）
+        if threshold is None:
+            threshold = settings.FACE_CLUSTERING_THRESHOLD
         
         # 转换为 numpy 数组
         # embeddings 是 Python 列表，需要转换为 NumPy 数组供 scikit-learn 使用
