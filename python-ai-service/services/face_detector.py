@@ -141,10 +141,10 @@ class FaceDetector:
         3. 检测置信度：InsightFace模型对该人脸的确信程度
         
         质量过滤标准（同时满足以下条件才通过）：
-        - 人脸尺寸 >= MIN_FACE_SIZE (默认120px)
-        - 综合质量分 >= MIN_QUALITY_SCORE (默认0.6)
-        - 偏航角绝对值 <= MAX_YAW_ANGLE (默认45度)
-        - 俯仰角绝对值 <= MAX_PITCH_ANGLE (默认30度)
+        - 人脸尺寸 >= MIN_FACE_SIZE (默认60px)
+        - 综合质量分 >= MIN_QUALITY_SCORE (默认0.5)
+        - 偏航角绝对值 <= MAX_YAW_ANGLE (默认75度)
+        - 俯仰角绝对值 <= MAX_PITCH_ANGLE (默认85度)
         """
         # ========== 第1步：提取人脸边界框 ==========
         # bbox格式: [x1, y1, x2, y2]
@@ -250,10 +250,10 @@ class FaceDetector:
         
         # ========== 第6步：判断是否通过质量检测 ==========
         # 同时满足以下4个条件才算通过（AND逻辑）：
-        # 1. 人脸尺寸足够大 (>= 80px，可配置)
+        # 1. 人脸尺寸足够大 (>= 60px，可配置)
         # 2. 综合质量分足够高 (>= 0.5，可配置)
-        # 3. 偏航角不要太大 (<= 45°，可配置)
-        # 4. 俯仰角不要太大 (<= 30°，可配置)
+        # 3. 偏航角不要太大 (<= 75°，可配置)
+        # 4. 俯仰角不要太大 (<= 85°，可配置)
         passed = (
             face_size >= settings.MIN_FACE_SIZE and           # 条件1：尺寸检查
             quality_score >= settings.MIN_QUALITY_SCORE and   # 条件2：质量检查
@@ -275,7 +275,7 @@ class FaceDetector:
             logger.info(f'❌ 人脸未通过质量检查: {", ".join(reasons)}')
         # 示例判断：
         #   face_size=100, quality_score=0.7, yaw=30°, pitch=20°
-        #   → 100>=80 ✅, 0.7>=0.6 ✅, 30<=45 ✅, 20<=30 ✅
+        #   → 100>=60 ✅, 0.7>=0.5 ✅, 30<=75 ✅, 20<=85 ✅
         #   → passed=True
         
         # ========== 第7步：构建返回结果 ==========

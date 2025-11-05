@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI图片分析服务
-使用 InsightFace + FairFace + EmotiEffLib + YOLOv11x + RTMW + PaddleOCR 进行高精度图片分析
-功能：人物分析（人脸+人体检测）、OCR文字识别、人脸聚类、图片内容理解
+AI图片分析服务（严格模式）
+使用 InsightFace + FairFace + EmotiEffLib + YOLOv11x 进行高精度图片分析
+功能：人物分析（人脸+人体检测）、人脸聚类、图片内容理解
+
+严格模式：所有模型必须加载成功，否则服务无法启动，确保数据完整性
 """
 
 import uvicorn                                    # ASGI 服务器，用于运行 FastAPI 应用
@@ -21,9 +23,9 @@ from loaders.model_loader import load_all_models    # 统一加载所有AI模型
 def create_app():
     """创建 FastAPI 应用"""
     app = FastAPI(
-        title="AI图片分析服务",
-        description="使用 InsightFace + FairFace + EmotiEffLib + YOLOv11x + RTMW + PaddleOCR 进行高精度图片分析",
-        version="2.0.0"
+        title="AI图片分析服务（严格模式）",
+        description="使用 InsightFace + FairFace + EmotiEffLib + YOLOv11x 进行高精度图片分析。所有模型必须加载成功，确保数据完整性。",
+        version="2.1.0"
     )
     
     # 增加文件上传大小限制 (50MB)
@@ -40,11 +42,19 @@ def create_app():
     )
     
     
-    # 启动时加载所有AI模型（人脸检测、年龄性别、表情）
+    # 启动时加载所有AI模型（人脸检测、年龄性别、人体检测）
+    # 严格模式：关键模型必须加载成功，否则阻止服务启动
     try:
         load_all_models()
+        logger.info("✅ 所有关键模型加载成功，服务可以启动")
     except Exception as e:
-        logger.warning(f"启动时AI模型加载失败，将在首次请求时重试: {str(e)}")
+        logger.error(f"❌ 模型加载失败，服务无法启动: {str(e)}")
+        logger.error(f"💡 请检查模型文件是否完整：")
+        logger.error(f"   - InsightFace 模型文件（~/.insightface/）")
+        logger.error(f"   - models/fairface.onnx")
+        logger.error(f"   - models/yolo11x.onnx")
+        logger.error(f"   - EmotiEffLib 模型文件")
+        raise RuntimeError(f"AI模型加载失败，服务无法启动: {str(e)}") from e
     
     # 注册路由
     app.include_router(health.router, tags=["健康检查"])
