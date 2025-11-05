@@ -267,20 +267,32 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
           WHERE m2.user_id = m.user_id
             AND m2.month_key = m.month_key
           ORDER BY 
-            -- 🥰 第一优先级：表情开心且置信度高（>70%）
+            -- 🥰 封面选择策略：综合考虑表情和清晰度
             -- 注意：expression_tags/face_count/person_count为NULL时表示未分析
             -- SQLite中NULL与任何值比较都返回NULL，在CASE WHEN中被视为FALSE
-            -- 因此未分析的图片会自动落入第五优先级（兜底策略）
+            -- 因此未分析的图片会自动落入最低优先级（兜底策略）
             CASE 
-              WHEN m2.expression_tags LIKE '%happy%' AND m2.primary_expression_confidence > 0.7 THEN 1
-              -- 📸 第二优先级：人脸质量优秀（>80%）
-              WHEN m2.primary_face_quality > 0.8 THEN 2  
-              -- 👤 第三优先级：有人脸的图片（正脸、侧脸）
-              WHEN m2.face_count > 0 THEN 3
-              -- 🚶 第四优先级：有人物但无人脸（背影、远景）
-              WHEN m2.person_count > 0 THEN 4
-              -- ⏰ 第五优先级：其他所有图片（包括未分析的图片，兜底策略）
-              ELSE 5
+              -- 🏆 第一优先级：开心且清晰（综合最优，有人脸）
+              WHEN m2.expression_tags LIKE 'happy%' 
+                   AND m2.primary_expression_confidence > 0.7 
+                   AND m2.primary_face_quality > 0.7 
+                   AND m2.face_count > 0 
+                   THEN 1
+              -- 😊 第二优先级：主要是开心（有人脸即可）
+              WHEN m2.expression_tags LIKE 'happy%' 
+                   AND m2.primary_expression_confidence > 0.7 
+                   AND m2.face_count > 0 
+                   THEN 2
+              -- 📸 第三优先级：清晰度高（有人脸，不限表情）
+              WHEN m2.primary_face_quality > 0.8 
+                   AND m2.face_count > 0 
+                   THEN 3
+              -- 👤 第四优先级：有人脸的图片（不限表情和质量）
+              WHEN m2.face_count > 0 THEN 4
+              -- 🚶 第五优先级：有人物但无人脸（背影、远景）
+              WHEN m2.person_count > 0 THEN 5
+              -- ⏰ 第六优先级：其他所有图片（包括未分析的图片，兜底策略）
+              ELSE 6
             END,
             -- 🔢 同优先级内的精细排序：
             COALESCE(m2.primary_expression_confidence, 0) DESC,  -- 表情置信度高的优先
@@ -346,13 +358,30 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
           WHERE m2.user_id = m.user_id
             AND m2.year_key  = m.year_key
           ORDER BY 
+            -- 🥰 封面选择策略：综合考虑表情和清晰度
             -- 注意：AI字段为NULL时表示未分析，会自动落入最低优先级
             CASE 
-              WHEN m2.expression_tags LIKE '%happy%' AND m2.primary_expression_confidence > 0.7 THEN 1
-              WHEN m2.primary_face_quality > 0.8 THEN 2  
-              WHEN m2.face_count > 0 THEN 3
-              WHEN m2.person_count > 0 THEN 4
-              ELSE 5
+              -- 🏆 第一优先级：开心且清晰（综合最优，有人脸）
+              WHEN m2.expression_tags LIKE 'happy%' 
+                   AND m2.primary_expression_confidence > 0.7 
+                   AND m2.primary_face_quality > 0.7 
+                   AND m2.face_count > 0 
+                   THEN 1
+              -- 😊 第二优先级：主要是开心（有人脸即可）
+              WHEN m2.expression_tags LIKE 'happy%' 
+                   AND m2.primary_expression_confidence > 0.7 
+                   AND m2.face_count > 0 
+                   THEN 2
+              -- 📸 第三优先级：清晰度高（有人脸，不限表情）
+              WHEN m2.primary_face_quality > 0.8 
+                   AND m2.face_count > 0 
+                   THEN 3
+              -- 👤 第四优先级：有人脸的图片（不限表情和质量）
+              WHEN m2.face_count > 0 THEN 4
+              -- 🚶 第五优先级：有人物但无人脸（背影、远景）
+              WHEN m2.person_count > 0 THEN 5
+              -- ⏰ 第六优先级：其他所有图片（包括未分析的图片，兜底策略）
+              ELSE 6
             END,
             COALESCE(m2.primary_expression_confidence, 0) DESC,
             COALESCE(m2.primary_face_quality, 0) DESC,
@@ -416,13 +445,30 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
           WHERE m2.user_id = m.user_id
             AND m2.date_key = m.date_key
           ORDER BY 
+            -- 🥰 封面选择策略：综合考虑表情和清晰度
             -- 注意：AI字段为NULL时表示未分析，会自动落入最低优先级
             CASE 
-              WHEN m2.expression_tags LIKE '%happy%' AND m2.primary_expression_confidence > 0.7 THEN 1
-              WHEN m2.primary_face_quality > 0.8 THEN 2  
-              WHEN m2.face_count > 0 THEN 3
-              WHEN m2.person_count > 0 THEN 4
-              ELSE 5
+              -- 🏆 第一优先级：开心且清晰（综合最优，有人脸）
+              WHEN m2.expression_tags LIKE 'happy%' 
+                   AND m2.primary_expression_confidence > 0.7 
+                   AND m2.primary_face_quality > 0.7 
+                   AND m2.face_count > 0 
+                   THEN 1
+              -- 😊 第二优先级：主要是开心（有人脸即可）
+              WHEN m2.expression_tags LIKE 'happy%' 
+                   AND m2.primary_expression_confidence > 0.7 
+                   AND m2.face_count > 0 
+                   THEN 2
+              -- 📸 第三优先级：清晰度高（有人脸，不限表情）
+              WHEN m2.primary_face_quality > 0.8 
+                   AND m2.face_count > 0 
+                   THEN 3
+              -- 👤 第四优先级：有人脸的图片（不限表情和质量）
+              WHEN m2.face_count > 0 THEN 4
+              -- 🚶 第五优先级：有人物但无人脸（背影、远景）
+              WHEN m2.person_count > 0 THEN 5
+              -- ⏰ 第六优先级：其他所有图片（包括未分析的图片，兜底策略）
+              ELSE 6
             END,
             COALESCE(m2.primary_expression_confidence, 0) DESC,
             COALESCE(m2.primary_face_quality, 0) DESC,
