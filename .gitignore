@@ -9,6 +9,7 @@ build/
 backend-dist/
 deployment-scripts/
 scripts
+docs
 
 # Python 基础文件
 __pycache__/
