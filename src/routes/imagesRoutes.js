@@ -28,6 +28,7 @@ const {
   handleAdvancedSearch,
   handleGetFilterOptionsPaginated,
 } = require("../controllers/searchController");
+const cleanupRoutes = require("./cleanupRoutes");
 
 //上传图片
 router.post("/postImages", upload, handlePostImages);
@@ -69,5 +70,8 @@ router.post("/search/index-image", handleIndexImage);
 
 // 获取队列状态
 router.get("/search/queue-status", handleGetQueueStatus);
+
+// 智能清理相关路由
+router.use("/cleanup", cleanupRoutes);
 
 module.exports = router;

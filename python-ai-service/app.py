@@ -14,7 +14,7 @@ from config import settings                        # 应用配置，包含所有
 from logger import logger                          # 日志记录器，用于记录应用日志
 
 # 导入路由模块
-from routes import health, person, ocr, face_cluster     # 导入各个 API 路由：健康检查、人物分析、OCR、人脸聚类
+from routes import cleanup, face_cluster, health, ocr, person     # 导入各个 API 路由：健康检查、人物分析、OCR、人脸聚类、清理指标
 
 # 导入模型加载器
 from loaders.model_loader import load_all_models    # 统一加载所有AI模型
@@ -61,6 +61,7 @@ def create_app():
     app.include_router(person.router, tags=["人物分析"])
     app.include_router(ocr.router, tags=["OCR识别"])
     app.include_router(face_cluster.router, tags=["人脸聚类"])
+    app.include_router(cleanup.router, tags=["智能清理"])
     
     return app
 
@@ -77,6 +78,7 @@ def main():
         logger.info("🔍 可用接口:")
         logger.info("  - GET  /health - 健康检查")
         logger.info("  - POST /analyze_person - 人物分析（人脸+人体检测）")
+        logger.info("  - POST /analyze_cleanup - 图片清理指标")
         # logger.info("  - POST /ocr - OCR文字识别")
         logger.info("  - POST /cluster_faces - 人脸聚类")
         

@@ -11,6 +11,7 @@ const timeIt = require("../utils/timeIt");
 const storageService = require("../services/storageService");
 const { updateProgress } = require("../services/imageProcessingProgressService");
 const { searchIndexQueue } = require("../queues/searchIndexQueue");
+const { cleanupQueue } = require("../queues/cleanupQueue");
 const imageMetadataService = require("../services/imageMetadataService");
 
 /**
@@ -299,7 +300,6 @@ async function processImageMeta(job) {
   //
 
   const enableAutoEnqueue = process.env.ENABLE_AUTO_AI_ENQUEUE !== "false"; // 默认启用
-  const enableAI = process.env.ENABLE_AI_ANALYSIS !== "false";
 
   if (!enableAutoEnqueue) {
     logger.info({
@@ -309,16 +309,8 @@ async function processImageMeta(job) {
     return;
   }
 
-  if (!enableAI) {
-    logger.info({
-      message: "AI分析功能已禁用，跳过搜索索引队列",
-      details: { imageHash, userId, imageId },
-    });
-    return;
-  }
-
-  try {
-    if (imageId) {
+  if (imageId) {
+    try {
       await searchIndexQueue.add(
         process.env.SEARCH_INDEX_QUEUE_NAME,
         {
@@ -331,21 +323,43 @@ async function processImageMeta(job) {
           jobId: `${userId}:${imageId}`, // 使用 imageId 作为去重标识
         },
       );
-    } else {
+    } catch (searchQueueError) {
+      // 搜索索引失败不影响主流程
       logger.warn({
-        message: "Cannot add to search queue - imageId is null",
-        details: { imageHash, userId },
+        message: "Failed to add image to search index queue",
+        details: {
+          imageHash,
+          userId,
+          error: searchQueueError.message,
+        },
       });
     }
-  } catch (searchQueueError) {
-    // 搜索索引失败不影响主流程
+
+    try {
+      await cleanupQueue.add(
+        process.env.CLEANUP_QUEUE_NAME,
+        {
+          userId,
+          imageId,
+          highResStorageKey: highResStorageKeyResult,
+          originalStorageKey,
+        },
+        { jobId: `cleanup:${userId}:${imageId}` },
+      );
+    } catch (cleanupQueueError) {
+      logger.warn({
+        message: "Failed to add image to cleanup queue",
+        details: {
+          imageHash,
+          userId,
+          error: cleanupQueueError.message,
+        },
+      });
+    }
+  } else {
     logger.warn({
-      message: "Failed to add image to search index queue",
-      details: {
-        imageHash,
-        userId,
-        error: searchQueueError.message,
-      },
+      message: "Cannot add to queues - imageId is null",
+      details: { imageHash, userId },
     });
   }
 }
