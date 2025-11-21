@@ -5,9 +5,11 @@ localStorage/
 logs/
 test/
 database.db
+database.db.*
 build/
 backend-dist/
 deployment-scripts/
+migrations
 scripts
 docs
 
