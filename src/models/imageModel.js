@@ -31,7 +31,7 @@ function insertImage({ userId, imageHash, thumbnailStorageKey, storageType, file
 // 获取用户所有图片hash
 function selectHashesByUserId(userId) {
   // pluck() 会让返回值从对象([{hash:'123'}, {hash:'2323'}])变为单列值(取结果的第一列也就是这里的{hash:'123'})['123', '2323']，
-  const stmt = db.prepare(`SELECT image_hash FROM images WHERE user_id = ?`).pluck();
+  const stmt = db.prepare(`SELECT image_hash FROM images WHERE user_id = ? AND deleted_at IS NULL`).pluck();
   return stmt.all(userId);
 }
 
@@ -42,6 +42,7 @@ function selectImagesByPage({ pageNo, pageSize, userId }) {
   // 分页数据查询
   const dataQuery = db.prepare(`
     SELECT 
+      id,
       high_res_storage_key, 
       thumbnail_storage_key, 
       image_created_at, 
@@ -66,6 +67,7 @@ function selectImagesByPage({ pageNo, pageSize, userId }) {
       has_adult
     FROM images
     WHERE user_id = ?
+      AND deleted_at IS NULL
     ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
     LIMIT ? OFFSET ?
   `);
@@ -75,6 +77,7 @@ function selectImagesByPage({ pageNo, pageSize, userId }) {
     SELECT COUNT(*) AS total
     FROM images
     WHERE user_id = ?
+      AND deleted_at IS NULL
   `);
 
   try {
@@ -93,6 +96,7 @@ function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
     SELECT 
+      id,
       high_res_storage_key, 
       thumbnail_storage_key, 
       image_created_at, 
@@ -118,6 +122,7 @@ function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
     FROM images
     WHERE user_id = ?
       AND year_key = ?
+      AND deleted_at IS NULL
     ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
     LIMIT ? OFFSET ?
   `);
@@ -127,6 +132,7 @@ function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
     FROM images
     WHERE user_id = ?
       AND year_key = ?
+      AND deleted_at IS NULL
   `);
 
   try {
@@ -145,6 +151,7 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
     SELECT 
+      id,
       high_res_storage_key, 
       thumbnail_storage_key, 
       image_created_at, 
@@ -170,6 +177,7 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
     FROM images
     WHERE user_id = ?
       AND month_key = ?
+      AND deleted_at IS NULL
     ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
     LIMIT ? OFFSET ?
   `);
@@ -179,6 +187,7 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
     FROM images
     WHERE user_id = ?
       AND month_key = ?
+      AND deleted_at IS NULL
   `);
 
   try {
@@ -197,6 +206,7 @@ function selectImagesByDate({ pageNo, pageSize, dateKey, userId }) {
   // 分页数据查询（与总数统计保持相同过滤条件）
   const dataQuery = db.prepare(`
     SELECT 
+      id,
       high_res_storage_key, 
       thumbnail_storage_key, 
       image_created_at, 
@@ -222,6 +232,7 @@ function selectImagesByDate({ pageNo, pageSize, dateKey, userId }) {
     FROM images
     WHERE user_id = ?
       AND date_key = ?
+      AND deleted_at IS NULL
     ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
     LIMIT ? OFFSET ?
   `);
@@ -231,6 +242,7 @@ function selectImagesByDate({ pageNo, pageSize, dateKey, userId }) {
     FROM images
     WHERE user_id = ?
       AND date_key = ?
+      AND deleted_at IS NULL
   `);
 
   try {
@@ -248,24 +260,16 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
   const offset = (pageNo - 1) * pageSize;
 
   const dataQuery = db.prepare(`
-    WITH counts AS (
-      -- 📊 统计每个月份的照片数量
-      SELECT month_key, COUNT(*) AS imageCount
-      FROM images
-      WHERE user_id = ?
-      GROUP BY month_key
-    ),
-    latest AS (
-      -- 🎨 为每个月份智能选择最佳封面照片
-      -- 选择策略：最开心 > 最清晰 > 有人脸 > 时间最新
-      SELECT m.month_key, m.thumbnail_storage_key, m.image_created_at, m.id, m.storage_type
-      FROM images m
-      WHERE m.user_id = ?
-        AND m.id = (
-          SELECT m2.id
-          FROM images m2
-          WHERE m2.user_id = m.user_id
-            AND m2.month_key = m.month_key
+    WITH ranked_images AS (
+      -- 为所有图片按月份分组并排序，使用窗口函数避免N+1查询
+      SELECT 
+        month_key,
+        thumbnail_storage_key,
+        image_created_at,
+        id,
+        storage_type,
+        ROW_NUMBER() OVER (
+          PARTITION BY month_key 
           ORDER BY 
             -- 🥰 封面选择策略：综合考虑表情和清晰度
             -- 注意：expression_tags/face_count/person_count为NULL时表示未分析
@@ -273,37 +277,57 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
             -- 因此未分析的图片会自动落入最低优先级（兜底策略）
             CASE 
               -- 🏆 第一优先级：开心且清晰（综合最优，有人脸）
-              WHEN m2.expression_tags LIKE 'happy%' 
-                   AND m2.primary_expression_confidence > 0.7 
-                   AND m2.primary_face_quality > 0.7 
-                   AND m2.face_count > 0 
+              WHEN expression_tags LIKE 'happy%' 
+                   AND primary_expression_confidence > 0.7 
+                   AND primary_face_quality > 0.7 
+                   AND face_count > 0 
                    THEN 1
               -- 😊 第二优先级：主要是开心（有人脸即可）
-              WHEN m2.expression_tags LIKE 'happy%' 
-                   AND m2.primary_expression_confidence > 0.7 
-                   AND m2.face_count > 0 
+              WHEN expression_tags LIKE 'happy%' 
+                   AND primary_expression_confidence > 0.7 
+                   AND face_count > 0 
                    THEN 2
               -- 📸 第三优先级：清晰度高（有人脸，不限表情）
-              WHEN m2.primary_face_quality > 0.8 
-                   AND m2.face_count > 0 
+              WHEN primary_face_quality > 0.8 
+                   AND face_count > 0 
                    THEN 3
               -- 👤 第四优先级：有人脸的图片（不限表情和质量）
-              WHEN m2.face_count > 0 THEN 4
+              WHEN face_count > 0 THEN 4
               -- 🚶 第五优先级：有人物但无人脸（背影、远景）
-              WHEN m2.person_count > 0 THEN 5
+              WHEN person_count > 0 THEN 5
               -- ⏰ 第六优先级：其他所有图片（包括未分析的图片，兜底策略）
               ELSE 6
             END,
             -- 🔢 同优先级内的精细排序：
-            COALESCE(m2.primary_expression_confidence, 0) DESC,  -- 表情置信度高的优先
-            COALESCE(m2.primary_face_quality, 0) DESC,           -- 人脸质量好的优先
-            COALESCE(m2.face_count, 0) DESC,                     -- 人脸数量多的优先（更热闹）
-            COALESCE(m2.person_count, 0) DESC,                   -- 人物数量多的优先
-            COALESCE(m2.image_created_at, 0) DESC,             -- 时间最新的优先
-            m2.id DESC                                          -- ID最大的优先（保证排序稳定）
-          LIMIT 1
-        )
-      GROUP BY m.month_key
+            COALESCE(primary_expression_confidence, 0) DESC,  -- 表情置信度高的优先
+            COALESCE(primary_face_quality, 0) DESC,           -- 人脸质量好的优先
+            COALESCE(face_count, 0) DESC,                     -- 人脸数量多的优先（更热闹）
+            COALESCE(person_count, 0) DESC,                   -- 人物数量多的优先
+            COALESCE(image_created_at, 0) DESC,             -- 时间最新的优先
+            id DESC                                          -- ID最大的优先（保证排序稳定）
+        ) AS rn
+      FROM images
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+    ),
+    latest AS (
+      -- 选择每个月份的第一张图片作为封面
+      SELECT 
+        month_key,
+        thumbnail_storage_key,
+        image_created_at,
+        id,
+        storage_type
+      FROM ranked_images
+      WHERE rn = 1
+    ),
+    counts AS (
+      -- 📊 统计每个月份的照片数量
+      SELECT month_key, COUNT(*) AS imageCount
+      FROM images
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+      GROUP BY month_key
     )
     SELECT
       latest.month_key,        -- 分组键（YYYY-MM / 'unknown'）
@@ -324,7 +348,8 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
   const countQuery = db.prepare(`
     SELECT COUNT(DISTINCT month_key) AS groupCount
     FROM images
-    WHERE user_id = ?;
+    WHERE user_id = ?
+      AND deleted_at IS NULL;
   `);
 
   try {
@@ -341,57 +366,71 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
   const offset = (pageNo - 1) * pageSize;
 
   const dataQuery = db.prepare(`
-    WITH counts AS (
-      SELECT year_key, COUNT(*) AS imageCount
-      FROM images
-      WHERE user_id = ?
-      GROUP BY year_key
-    ),
-    latest AS (
-      -- 为每个 year_key 选最开心最清晰的一张作为封面
-      SELECT m.year_key, m.thumbnail_storage_key, m.image_created_at, m.id, m.storage_type
-      FROM images m
-      WHERE m.user_id = ?
-        AND m.id = (
-          SELECT m2.id
-          FROM images m2
-          WHERE m2.user_id = m.user_id
-            AND m2.year_key  = m.year_key
+    WITH ranked_images AS (
+      -- 为所有图片按年份分组并排序，使用窗口函数避免N+1查询
+      SELECT 
+        year_key,
+        thumbnail_storage_key,
+        image_created_at,
+        id,
+        storage_type,
+        ROW_NUMBER() OVER (
+          PARTITION BY year_key 
           ORDER BY 
             -- 🥰 封面选择策略：综合考虑表情和清晰度
             -- 注意：AI字段为NULL时表示未分析，会自动落入最低优先级
             CASE 
               -- 🏆 第一优先级：开心且清晰（综合最优，有人脸）
-              WHEN m2.expression_tags LIKE 'happy%' 
-                   AND m2.primary_expression_confidence > 0.7 
-                   AND m2.primary_face_quality > 0.7 
-                   AND m2.face_count > 0 
+              WHEN expression_tags LIKE 'happy%' 
+                   AND primary_expression_confidence > 0.7 
+                   AND primary_face_quality > 0.7 
+                   AND face_count > 0 
                    THEN 1
               -- 😊 第二优先级：主要是开心（有人脸即可）
-              WHEN m2.expression_tags LIKE 'happy%' 
-                   AND m2.primary_expression_confidence > 0.7 
-                   AND m2.face_count > 0 
+              WHEN expression_tags LIKE 'happy%' 
+                   AND primary_expression_confidence > 0.7 
+                   AND face_count > 0 
                    THEN 2
               -- 📸 第三优先级：清晰度高（有人脸，不限表情）
-              WHEN m2.primary_face_quality > 0.8 
-                   AND m2.face_count > 0 
+              WHEN primary_face_quality > 0.8 
+                   AND face_count > 0 
                    THEN 3
               -- 👤 第四优先级：有人脸的图片（不限表情和质量）
-              WHEN m2.face_count > 0 THEN 4
+              WHEN face_count > 0 THEN 4
               -- 🚶 第五优先级：有人物但无人脸（背影、远景）
-              WHEN m2.person_count > 0 THEN 5
+              WHEN person_count > 0 THEN 5
               -- ⏰ 第六优先级：其他所有图片（包括未分析的图片，兜底策略）
               ELSE 6
             END,
-            COALESCE(m2.primary_expression_confidence, 0) DESC,
-            COALESCE(m2.primary_face_quality, 0) DESC,
-            COALESCE(m2.face_count, 0) DESC,
-            COALESCE(m2.person_count, 0) DESC,
-            COALESCE(m2.image_created_at, 0) DESC,
-            m2.id DESC
-          LIMIT 1
-        )
-      GROUP BY m.year_key
+            COALESCE(primary_expression_confidence, 0) DESC,
+            COALESCE(primary_face_quality, 0) DESC,
+            COALESCE(face_count, 0) DESC,
+            COALESCE(person_count, 0) DESC,
+            COALESCE(image_created_at, 0) DESC,
+            id DESC
+        ) AS rn
+      FROM images
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+    ),
+    latest AS (
+      -- 选择每个年份的第一张图片作为封面
+      SELECT 
+        year_key,
+        thumbnail_storage_key,
+        image_created_at,
+        id,
+        storage_type
+      FROM ranked_images
+      WHERE rn = 1
+    ),
+    counts AS (
+      -- 统计每个年份的图片数量
+      SELECT year_key, COUNT(*) AS imageCount
+      FROM images
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+      GROUP BY year_key
     )
     SELECT
       latest.year_key,        -- 分组键（YYYY / 'unknown'）
@@ -411,7 +450,8 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
   const countQuery = db.prepare(`
     SELECT COUNT(DISTINCT year_key) AS groupCount
     FROM images
-    WHERE user_id = ?;
+    WHERE user_id = ?
+      AND deleted_at IS NULL;
   `);
 
   try {
@@ -428,57 +468,71 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
   const offset = (pageNo - 1) * pageSize;
 
   const dataQuery = db.prepare(`
-    WITH counts AS (
-      SELECT date_key, COUNT(*) AS imageCount
-      FROM images
-      WHERE user_id = ?
-      GROUP BY date_key
-    ),
-    latest AS (
-      -- 为每个 date_key 选最开心最清晰的一张作为封面
-      SELECT m.date_key, m.thumbnail_storage_key, m.image_created_at, m.id, m.storage_type
-      FROM images m
-      WHERE m.user_id = ?
-        AND m.id = (
-          SELECT m2.id
-          FROM images m2
-          WHERE m2.user_id = m.user_id
-            AND m2.date_key = m.date_key
+    WITH ranked_images AS (
+      -- 为所有图片按日期分组并排序，使用窗口函数避免N+1查询
+      SELECT 
+        date_key,
+        thumbnail_storage_key,
+        image_created_at,
+        id,
+        storage_type,
+        ROW_NUMBER() OVER (
+          PARTITION BY date_key 
           ORDER BY 
             -- 🥰 封面选择策略：综合考虑表情和清晰度
             -- 注意：AI字段为NULL时表示未分析，会自动落入最低优先级
             CASE 
               -- 🏆 第一优先级：开心且清晰（综合最优，有人脸）
-              WHEN m2.expression_tags LIKE 'happy%' 
-                   AND m2.primary_expression_confidence > 0.7 
-                   AND m2.primary_face_quality > 0.7 
-                   AND m2.face_count > 0 
+              WHEN expression_tags LIKE 'happy%' 
+                   AND primary_expression_confidence > 0.7 
+                   AND primary_face_quality > 0.7 
+                   AND face_count > 0 
                    THEN 1
               -- 😊 第二优先级：主要是开心（有人脸即可）
-              WHEN m2.expression_tags LIKE 'happy%' 
-                   AND m2.primary_expression_confidence > 0.7 
-                   AND m2.face_count > 0 
+              WHEN expression_tags LIKE 'happy%' 
+                   AND primary_expression_confidence > 0.7 
+                   AND face_count > 0 
                    THEN 2
               -- 📸 第三优先级：清晰度高（有人脸，不限表情）
-              WHEN m2.primary_face_quality > 0.8 
-                   AND m2.face_count > 0 
+              WHEN primary_face_quality > 0.8 
+                   AND face_count > 0 
                    THEN 3
               -- 👤 第四优先级：有人脸的图片（不限表情和质量）
-              WHEN m2.face_count > 0 THEN 4
+              WHEN face_count > 0 THEN 4
               -- 🚶 第五优先级：有人物但无人脸（背影、远景）
-              WHEN m2.person_count > 0 THEN 5
+              WHEN person_count > 0 THEN 5
               -- ⏰ 第六优先级：其他所有图片（包括未分析的图片，兜底策略）
               ELSE 6
             END,
-            COALESCE(m2.primary_expression_confidence, 0) DESC,
-            COALESCE(m2.primary_face_quality, 0) DESC,
-            COALESCE(m2.face_count, 0) DESC,
-            COALESCE(m2.person_count, 0) DESC,
-            COALESCE(m2.image_created_at, 0) DESC,
-            m2.id DESC
-          LIMIT 1
-        )
-      GROUP BY m.date_key
+            COALESCE(primary_expression_confidence, 0) DESC,
+            COALESCE(primary_face_quality, 0) DESC,
+            COALESCE(face_count, 0) DESC,
+            COALESCE(person_count, 0) DESC,
+            COALESCE(image_created_at, 0) DESC,
+            id DESC
+        ) AS rn
+      FROM images
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+    ),
+    latest AS (
+      -- 选择每个日期的第一张图片作为封面
+      SELECT 
+        date_key,
+        thumbnail_storage_key,
+        image_created_at,
+        id,
+        storage_type
+      FROM ranked_images
+      WHERE rn = 1
+    ),
+    counts AS (
+      -- 统计每个日期的图片数量
+      SELECT date_key, COUNT(*) AS imageCount
+      FROM images
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+      GROUP BY date_key
     )
     SELECT
       latest.date_key,        -- 分组键（YYYY-MM-DD / 'unknown'）
@@ -498,7 +552,8 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
   const countQuery = db.prepare(`
     SELECT COUNT(DISTINCT date_key) AS groupCount
     FROM images
-    WHERE user_id = ?;
+    WHERE user_id = ?
+      AND deleted_at IS NULL;
   `);
 
   try {

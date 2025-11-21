@@ -55,12 +55,8 @@ if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
 
 // 使用绝对路径导入模块
 const { db } = require(path.join(projectRoot, "src", "services", "database"));
-// 队列导入
-const { imageUploadQueue } = require(path.join(projectRoot, "src", "queues", "imageUploadQueue"));
-const { imageMetaQueue } = require(path.join(projectRoot, "src", "queues", "imageMetaQueue"));
-const { searchIndexQueue } = require(path.join(projectRoot, "src", "queues", "searchIndexQueue"));
-const StorageAdapterFactory = require(path.join(projectRoot, "src", "storage", "factory", "StorageAdapterFactory"));
-const { STORAGE_TYPES } = require(path.join(projectRoot, "src", "storage", "constants", "StorageTypes"));
+// 注意：不再导入队列模块，避免初始化 IORedis 连接时尝试连接 ECS 元数据服务
+// 队列清理将直接通过 Redis 客户端操作
 
 // ============清空数据库相关表所有数据==========//
 function clearImagesTable() {
@@ -151,56 +147,48 @@ async function clearStorageFiles() {
 // ============清空图片转换过程中涉及的所有目标文件夹的所有图片==========//
 
 // ============清空 BullMQ 队列中所有任务（等待、活跃、失败、完成、延迟）==========//
+// 🟢 优化：直接通过 Redis 客户端清理队列，避免初始化 BullMQ 队列对象时连接 ECS 元数据服务
 async function clearAllQueueJobs() {
   try {
     console.log("📋 开始清空 BullMQ 队列...");
 
-    // 清空上传队列
-    console.log("清空图片上传队列...");
-    const uploadStats = {
-      waiting: await imageUploadQueue.clean(0, 1000, "waiting"),
-      active: await imageUploadQueue.clean(0, 1000, "active"),
-      completed: await imageUploadQueue.clean(0, 1000, "completed"),
-      failed: await imageUploadQueue.clean(0, 1000, "failed"),
-      delayed: await imageUploadQueue.clean(0, 1000, "delayed"),
-    };
-    await imageUploadQueue.drain(true); // 清空剩余的等待任务
+    // 使用已在文件顶部导入的 Redis 客户端（redisClient）
 
-    console.log(
-      `上传队列清理完成: 等待${uploadStats.waiting} | 活跃${uploadStats.active} | 完成${uploadStats.completed} | 失败${uploadStats.failed} | 延迟${uploadStats.delayed}`,
-    );
+    // BullMQ 队列键格式：bull:{queueName}:*
+    // 需要清理的队列名称（从环境变量获取，如果没有则使用默认值）
+    const queueNames = [
+      process.env.IMAGE_UPLOAD_QUEUE_NAME || "imageUploadQueue",
+      process.env.IMAGE_META_QUEUE_NAME || "imageMetaQueue",
+      process.env.SEARCH_INDEX_QUEUE_NAME || "searchIndexQueue",
+      process.env.CLEANUP_QUEUE_NAME || "cleanupQueue",
+    ];
 
-    // 清空元数据队列
-    console.log("清空图片元数据队列...");
-    const metaStats = {
-      waiting: await imageMetaQueue.clean(0, 1000, "waiting"),
-      active: await imageMetaQueue.clean(0, 1000, "active"),
-      completed: await imageMetaQueue.clean(0, 1000, "completed"),
-      failed: await imageMetaQueue.clean(0, 1000, "failed"),
-      delayed: await imageMetaQueue.clean(0, 1000, "delayed"),
-    };
-    await imageMetaQueue.drain(true); // 清空剩余的等待任务
+    let totalDeletedKeys = 0;
 
-    console.log(
-      `元数据队列清理完成: 等待${metaStats.waiting} | 活跃${metaStats.active} | 完成${metaStats.completed} | 失败${metaStats.failed} | 延迟${metaStats.delayed}`,
-    );
+    for (const queueName of queueNames) {
+      console.log(`清空队列: ${queueName}...`);
+      const queuePattern = `bull:${queueName}:*`;
+      let cursor = "0";
+      let queueDeletedKeys = 0;
 
-    // 清空搜索索引队列
-    console.log("清空搜索索引队列...");
-    const searchStats = {
-      waiting: await searchIndexQueue.clean(0, 1000, "waiting"),
-      active: await searchIndexQueue.clean(0, 1000, "active"),
-      completed: await searchIndexQueue.clean(0, 1000, "completed"),
-      failed: await searchIndexQueue.clean(0, 1000, "failed"),
-      delayed: await searchIndexQueue.clean(0, 1000, "delayed"),
-    };
-    await searchIndexQueue.drain(true); // 清空剩余的等待任务
+      do {
+        const [newCursor, keys] = await redisClient.scan(cursor, "MATCH", queuePattern, "COUNT", 100);
+        cursor = newCursor;
+        if (keys.length > 0) {
+          await redisClient.del(...keys);
+          queueDeletedKeys += keys.length;
+          totalDeletedKeys += keys.length;
+        }
+      } while (cursor !== "0");
 
-    console.log(
-      `搜索索引队列清理完成: 等待${searchStats.waiting} | 活跃${searchStats.active} | 完成${searchStats.completed} | 失败${searchStats.failed} | 延迟${searchStats.delayed}`,
-    );
+      if (queueDeletedKeys > 0) {
+        console.log(`  ✅ ${queueName} 队列清理完成，删除了 ${queueDeletedKeys} 个键`);
+      } else {
+        console.log(`  ℹ️  ${queueName} 队列为空，无需清理`);
+      }
+    }
 
-    console.log("✅ BullMQ 队列所有任务已清空");
+    console.log(`✅ BullMQ 队列所有任务已清空，总共删除了 ${totalDeletedKeys} 个键`);
   } catch (err) {
     console.error("❌ 清空 BullMQ 队列任务失败：", err);
     throw err;

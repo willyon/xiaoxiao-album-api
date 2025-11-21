@@ -69,6 +69,7 @@ async function handleGetByCertainDate(req, res, next) {
 async function handleGroupByYear(req, res, next) {
   const { userId } = req?.user;
   const { pageSize, pageNo } = req.body;
+
   try {
     // 分页获取数据
     const queryResult = await imageService.getGroupsByYear({ userId, pageSize, pageNo });

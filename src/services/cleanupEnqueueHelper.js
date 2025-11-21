@@ -59,7 +59,7 @@ async function enqueueCleanupJobs(records = []) {
     const jobId = `cleanup:${record.user_id}:${record.id}`;
     try {
       const job = await cleanupQueue.add(
-        cleanupQueue.name,
+        process.env.CLEANUP_QUEUE_NAME || "cleanupQueue",
         {
           userId: record.user_id,
           imageId: record.id,

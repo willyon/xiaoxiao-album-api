@@ -135,7 +135,7 @@ class Settings:
     # - 越小：聚类越严格（同一人的不同照片可能被分到不同类）
     # - 越大：聚类越宽松（不同人的照片可能被分到同一类）
     FACE_CLUSTERING_THRESHOLD = float(os.getenv("FACE_CLUSTERING_THRESHOLD", "0.4"))  # 默认0.4
-    
+     
     # ========== OCR 配置 ==========
     
     # OCR功能开关配置

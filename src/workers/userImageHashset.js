@@ -13,9 +13,6 @@ const readyKeyOf = (uid) => `images:hashset:ready:${uid}`;
 const lockKeyOf = (uid) => `lock:images:hashset:init:${uid}`;
 const userSetKey = (uid) => `images:hashset:user:${uid}`;
 
-// 进程内缓存：该 userId 是否已“就绪” 不用每次开始时都是直接到redis去查找 节省资源
-const userReadyCache = new Map(); // userId -> true
-
 async function ensureUserSetReady(userId) {
   const redis = getRedisClient();
 
@@ -23,7 +20,6 @@ async function ensureUserSetReady(userId) {
   const ready = await redis.get(readyKeyOf(userId));
   if (ready) {
     // ready 标记存在，说明已初始化完成
-    userReadyCache.set(userId, true);
     return;
   }
 
@@ -31,8 +27,7 @@ async function ensureUserSetReady(userId) {
   // 1. 从未初始化过，或
   // 2. Redis 被清空了，或
   // 3. ready 标记过期了（TTL 1小时）
-  // 无论哪种情况，都清除进程内缓存，重新初始化
-  userReadyCache.delete(userId);
+  // 需要重新初始化
 
   // 分布式锁，避免并发初始化 gotLock结果为nulh或非null
   // NX(Only Set If Not Exists)：只有当 key 不存在时才会设置（防止多个进程同时初始化）。
@@ -47,7 +42,6 @@ async function ensureUserSetReady(userId) {
       await new Promise((r) => setTimeout(r, 400));
       const ok = await redis.get(readyKeyOf(userId));
       if (ok) {
-        userReadyCache.set(userId, true);
         return;
       }
     }
@@ -58,7 +52,8 @@ async function ensureUserSetReady(userId) {
         message: "等待超时但 Set 已存在，标记为就绪",
         details: { userId },
       });
-      userReadyCache.set(userId, true);
+      // 重新设置 ready 标记，避免每次都检查 Set
+      await redis.set(readyKeyOf(userId), "1", "EX", 3600);
       return;
     }
     // Set 也不存在，记录错误并返回
@@ -88,8 +83,6 @@ async function ensureUserSetReady(userId) {
       message: "用户图片 Hash Set 初始化完成",
       details: { userId, hashCount: hashes?.length || 0 },
     });
-
-    userReadyCache.set(userId, true);
   } finally {
     // 只有获得锁的进程才释放锁
     if (gotLock) {

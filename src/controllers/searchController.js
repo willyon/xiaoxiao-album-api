@@ -29,23 +29,24 @@ function buildSearchConditions(query, filters) {
 
   // ========== 处理 FTS 支持的字段 ==========
 
-  // 1. 地点（city 字段在 FTS 中，支持 'unknown' 表示无地点信息）
+  // 1. 地点（city 字段：使用 WHERE 条件进行精确匹配，不使用 FTS）
+  // 原因：城市名称是精确值，FTS5 对中文分词可能导致误匹配（如"深圳市"可能匹配到"广州市"）
   if (filters.location && Array.isArray(filters.location) && filters.location.length > 0) {
     const hasUnknown = filters.location.includes("unknown");
     const knownCities = filters.location.filter((city) => city !== "unknown");
 
     if (knownCities.length > 0 && hasUnknown) {
-      // 同时选择了具体城市和"地点未知"：需要在 WHERE 子句中处理，不使用 FTS
-      // 因为 FTS 无法处理 OR (city IN (...) OR city IS NULL) 这种混合条件
+      // 同时选择了具体城市和"地点未知"
       const cityPlaceholders = knownCities.map(() => "?").join(",");
       whereConditions.push(`(i.city IN (${cityPlaceholders}) OR i.city IS NULL OR i.city = '' OR i.city = 'unknown')`);
       whereParams.push(...knownCities);
     } else if (knownCities.length > 0) {
-      // 只选择了具体城市：使用 FTS
-      const cityConditions = knownCities.map((city) => `city:${city}`).join(" OR ");
-      ftsConditions.push(`(${cityConditions})`);
+      // 只选择了具体城市：使用 WHERE 条件进行精确匹配
+      const cityPlaceholders = knownCities.map(() => "?").join(",");
+      whereConditions.push(`i.city IN (${cityPlaceholders})`);
+      whereParams.push(...knownCities);
     } else if (hasUnknown) {
-      // 只选择了"地点未知"：使用 WHERE 条件
+      // 只选择了"地点未知"
       whereConditions.push("(i.city IS NULL OR i.city = '' OR i.city = 'unknown')");
     }
   }

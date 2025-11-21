@@ -148,38 +148,25 @@ async function getCleanupGroups({ userId, type, pageNo = 1, pageSize = 12 }) {
     }),
   );
 
-  const groups = rawGroups.map((group) => {
-    const members = membersByGroup.get(group.id) || [];
-    members.sort((a, b) => {
-      const aRecommended = a.isRecommendedKeep ? 1 : 0;
-      const bRecommended = b.isRecommendedKeep ? 1 : 0;
-      if (aRecommended !== bRecommended) return bRecommended - aRecommended;
-      const aRank = a.rankScore ?? -Number.MAX_VALUE;
-      const bRank = b.rankScore ?? -Number.MAX_VALUE;
-      if (aRank !== bRank) return bRank - aRank;
-      return Number(b.imageId) - Number(a.imageId);
-    });
+  const groups = rawGroups
+    .map((group) => {
+      const members = membersByGroup.get(group.id) || [];
 
-    const primaryImage =
-      members.find((member) => member.imageId === group.primary_image_id) || members.find((member) => member.isRecommendedKeep) || members[0] || null;
+      // 对于相似图和重复图，如果只有1张图片，过滤掉这个分组
+      if ((groupType === CLEANUP_TYPES.SIMILAR || groupType === CLEANUP_TYPES.DUPLICATE) && members.length <= 1) {
+        return null;
+      }
 
-    const previewList = members.map((member) => ({
-      imageId: member.imageId,
-      thumbnailUrl: member.thumbnailUrl,
-      highResUrl: member.highResUrl,
-      similarity: member.similarity,
-    }));
-
-    return {
-      id: group.id,
-      groupType: group.group_type,
-      memberCount: group.member_count,
-      updatedAt: _formatTimestamp(group.updated_at),
-      primaryImage,
-      members,
-      previewList,
-    };
-  });
+      // 后端已经按照 rankScore 和 image_created_at 排序好了，并且第一个就是推荐图片
+      // 前端直接使用后端返回的顺序，第一个成员就是推荐图片
+      return {
+        id: group.id,
+        groupType: group.group_type,
+        updatedAt: _formatTimestamp(group.updated_at),
+        members,
+      };
+    })
+    .filter((group) => group !== null); // 过滤掉 null（只有1张图片的分组）
 
   const hasMore = offset + rawGroups.length < totalCount;
   const nextCursor = hasMore ? `${groupType}:${safePageNo + 1}` : null;
@@ -262,15 +249,15 @@ async function _getBlurryGroups({ userId, pageNo = 1, pageSize = 20 }) {
     }),
   );
 
-  // 排序成员（已在 SQL 中排序，这里保持一致性）
-  members.sort((a, b) => {
-    const aRank = a.rankScore ?? -Number.MAX_VALUE;
-    const bRank = b.rankScore ?? -Number.MAX_VALUE;
-    if (aRank !== bRank) return bRank - aRank;
-    return Number(b.imageId) - Number(a.imageId);
-  });
+  // 模糊图只需要基本字段：imageId, thumbnailUrl, highResUrl
+  // 移除 rankScore, similarity 等不需要的字段
+  const blurryMembers = members.map((member) => ({
+    imageId: member.imageId,
+    thumbnailUrl: member.thumbnailUrl,
+    highResUrl: member.highResUrl,
+  }));
 
-  const hasMore = offset + members.length < totalCount;
+  const hasMore = offset + blurryMembers.length < totalCount;
   const nextCursor = hasMore ? `${CLEANUP_TYPES.BLURRY}:${safePageNo + 1}` : null;
 
   return {
@@ -278,7 +265,8 @@ async function _getBlurryGroups({ userId, pageNo = 1, pageSize = 20 }) {
       {
         id: group.id,
         groupType: group.group_type, // 前端需要通过 groupType 来查找模糊图分组
-        members, // 当前页的成员数据
+        updatedAt: _formatTimestamp(group.updated_at), // 添加更新时间字段，用于前端显示
+        members: blurryMembers, // 当前页的成员数据（只包含必要字段）
       },
     ],
     total: totalCount, // 返回成员总数，与相似图/重复图的 total 含义保持一致（成员总数）
@@ -301,6 +289,16 @@ async function deleteImages({ userId, groupId, imageIds }) {
   // 验证图片权限
   const images = cleanupModel.selectImagesByIds(normalizedIds);
   if (images.length !== normalizedIds.length) {
+    logger.warn({
+      message: "删除图片时，部分图片未找到",
+      details: {
+        userId,
+        groupId,
+        requestedIds: normalizedIds,
+        foundIds: images.map((img) => img.id),
+        missingIds: normalizedIds.filter((id) => !images.some((img) => img.id === id)),
+      },
+    });
     throw new CustomError({
       httpStatus: 404,
       messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
@@ -380,19 +378,11 @@ async function deleteImages({ userId, groupId, imageIds }) {
 
 function _mapMemberRow(row) {
   return {
-    groupId: row.group_id,
     imageId: row.image_id,
     rankScore: row.rank_score,
-    isRecommendedKeep: Number(row.is_recommended_keep || 0) === 1,
     similarity: row.similarity,
-    aestheticScore: row.aesthetic_score ?? row.image_aesthetic_score ?? null,
-    sharpnessScore: row.sharpness_score ?? row.image_sharpness_score ?? null,
     thumbnailUrl: null,
     highResUrl: null,
-    fileSizeBytes: row.file_size_bytes,
-    createdAt: _formatTimestamp(row.created_at),
-    updatedAt: _formatTimestamp(row.updated_at),
-    imageCreatedAt: _formatTimestamp(row.image_created_at),
   };
 }
 

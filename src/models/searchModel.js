@@ -27,20 +27,14 @@ function searchImagesByText({ userId, query, useFts = true, whereConditions = []
     // 使用 FTS 查询
     sql = `
       SELECT 
+        i.id,
         i.thumbnail_storage_key,
         i.high_res_storage_key,
         i.image_created_at,
         i.date_key,
         i.month_key,
-        i.year_key,
         i.day_key,
         i.gps_location,
-        i.storage_type,
-        i.alt_text,
-        i.ocr_text,
-        i.keywords,
-        i.scene_tags,
-        i.object_tags,
         i.width_px,
         i.height_px,
         i.aspect_ratio,
@@ -53,11 +47,11 @@ function searchImagesByText({ userId, query, useFts = true, whereConditions = []
         i.gender_tags,
         i.expression_tags,
         i.has_young,
-        i.has_adult,
-        fts.rank
+        i.has_adult
       FROM images_fts fts
       JOIN images i ON fts.rowid = i.id
       WHERE i.user_id = ? 
+        AND i.deleted_at IS NULL
         AND images_fts MATCH ?
     `;
 
@@ -76,20 +70,14 @@ function searchImagesByText({ userId, query, useFts = true, whereConditions = []
     // 不使用 FTS，直接查询 images 表（用于纯筛选或查询所有图片）
     sql = `
       SELECT 
+        i.id,
         i.thumbnail_storage_key,
         i.high_res_storage_key,
         i.image_created_at,
         i.date_key,
         i.month_key,
-        i.year_key,
         i.day_key,
         i.gps_location,
-        i.storage_type,
-        i.alt_text,
-        i.ocr_text,
-        i.keywords,
-        i.scene_tags,
-        i.object_tags,
         i.width_px,
         i.height_px,
         i.aspect_ratio,
@@ -102,10 +90,10 @@ function searchImagesByText({ userId, query, useFts = true, whereConditions = []
         i.gender_tags,
         i.expression_tags,
         i.has_young,
-        i.has_adult,
-        0 as rank
+        i.has_adult
       FROM images i
       WHERE i.user_id = ?
+        AND i.deleted_at IS NULL
     `;
 
     // 添加 WHERE 条件
@@ -147,6 +135,7 @@ function getSearchResultsCount({ userId, query, useFts = true, whereConditions =
       FROM images_fts fts
       JOIN images i ON fts.rowid = i.id
       WHERE i.user_id = ? 
+        AND i.deleted_at IS NULL
         AND images_fts MATCH ?
     `;
 
@@ -162,6 +151,7 @@ function getSearchResultsCount({ userId, query, useFts = true, whereConditions =
       SELECT COUNT(*) as total
       FROM images i
       WHERE i.user_id = ?
+        AND i.deleted_at IS NULL
     `;
 
     // 添加 WHERE 条件

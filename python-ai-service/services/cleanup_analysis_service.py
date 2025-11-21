@@ -28,22 +28,28 @@ from logger import logger
 import time
 from utils.images import convert_to_opencv
 from loaders.model_loader import get_siglip2_components, get_aesthetic_head_session
+from config import settings
 
 
-def analyze_image_from_bytes(image_bytes: bytes) -> Dict[str, object]:
+def analyze_image_from_bytes(image_bytes: bytes, existing_embedding: Optional[list] = None, embedding_model: str = "siglip2") -> Dict[str, object]:
     """
     路由层入口：从上传的原始字节解析图片并生成清理指标。
     - 输入：原始图片字节（任意常见格式）
     - 输出：见 analyze_image 的返回结构
+    
+    Args:
+        image_bytes: 图片字节数据
+        existing_embedding: 已有的 embedding 向量（如果提供，将跳过 SigLIP 计算）
+        embedding_model: embedding 模型 ID（默认 "siglip2"）
     """
     t0 = time.perf_counter()
     image_bgr, error = convert_to_opencv(image_bytes)
     if error:
         raise ValueError(error)
     try:
-        result = analyze_image(image_bgr)
+        result = analyze_image(image_bgr, existing_embedding, embedding_model)
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
-        logger.info("cleanup.decode_and_analyze.ok", details={"elapsed_ms": elapsed_ms})
+        logger.info("cleanup.decode_and_analyze.ok", details={"elapsed_ms": elapsed_ms, "skipped_embedding": existing_embedding is not None})
         return result
     except Exception as exc:
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
@@ -51,15 +57,21 @@ def analyze_image_from_bytes(image_bytes: bytes) -> Dict[str, object]:
         raise
 
 
-def analyze_image(image_bgr: np.ndarray) -> Dict[str, object]:
+def analyze_image(image_bgr: np.ndarray, existing_embedding: Optional[list] = None, embedding_model: str = "siglip2") -> Dict[str, object]:
     """
     针对 OpenCV BGR 图片生成清理指标。
     返回字段：
       - perceptual_hash: 主哈希（phash）
       - hashes: 包含 phash 与 dhash
-      - sharpness_score: 清晰度综合分（0~1，汇总指标）
       - aesthetic_score: 审美分（0~1，SigLIP 向量经审美回归头推理）
       - embedding: SigLIP 图像向量及元信息（见 _compute_siglip_embedding）
+      - sharpness_score: 清晰度分数（0~1，值越大越清晰）
+                         注意：模糊图判断逻辑在 Node.js 服务中进行，便于灵活调整阈值
+    
+    Args:
+        image_bgr: OpenCV BGR 格式图片
+        existing_embedding: 已有的 embedding 向量（如果提供，将跳过 SigLIP 计算）
+        embedding_model: embedding 模型 ID（默认 "siglip2"）
     """
     if image_bgr is None or not isinstance(image_bgr, np.ndarray):
         raise ValueError("无效的图片数据")
@@ -70,32 +82,51 @@ def analyze_image(image_bgr: np.ndarray) -> Dict[str, object]:
     t_prep = int((time.perf_counter() - t0) * 1000)
     logger.info("cleanup.stage.preprocess", details={"elapsed_ms": t_prep})
 
-    t1 = time.perf_counter()
-    sharpness = _compute_sharpness_metrics(gray)
-    t_sharp = int((time.perf_counter() - t1) * 1000)
-    logger.info("cleanup.stage.sharpness", details={"elapsed_ms": t_sharp, "sharpness_score": sharpness.get("score")})
-
-    t2 = time.perf_counter()
-    embedding_payload = _compute_siglip_embedding(rgb_image)
-    t_embed = int((time.perf_counter() - t2) * 1000)
-    logger.info(
-        "cleanup.stage.embedding",
-        details={"elapsed_ms": t_embed, "has_vector": bool(embedding_payload and embedding_payload.get("vector"))},
-    )
-
-    # 使用已计算的向量，避免重复计算 SigLIP embedding
-    embedding_vector = np.asarray(embedding_payload["vector"], dtype=np.float32) if embedding_payload and embedding_payload.get("vector") else None
+    # 如果提供了已有的 embedding，跳过 SigLIP 计算
+    embedding_payload = None
+    embedding_vector = None
+    if existing_embedding and isinstance(existing_embedding, list) and len(existing_embedding) > 0:
+        # 使用已有的 embedding，确保归一化（数据库中存储的应该已经是归一化的，但为了安全再次归一化）
+        embedding_vector = np.asarray(existing_embedding, dtype=np.float32)
+        norm = np.linalg.norm(embedding_vector)
+        if norm > 0:
+            embedding_vector = embedding_vector / norm
+        embedding_payload = {"vector": embedding_vector.tolist(), "model": embedding_model}
+        logger.info("cleanup.stage.embedding", details={"elapsed_ms": 0, "has_vector": True, "source": "existing"})
+    else:
+        # 计算新的 embedding
+        t2 = time.perf_counter()
+        embedding_payload = _compute_siglip_embedding(rgb_image)
+        t_embed = int((time.perf_counter() - t2) * 1000)
+        logger.info(
+            "cleanup.stage.embedding",
+            details={"elapsed_ms": t_embed, "has_vector": bool(embedding_payload and embedding_payload.get("vector")), "source": "computed"},
+        )
+        embedding_vector = np.asarray(embedding_payload["vector"], dtype=np.float32) if embedding_payload and embedding_payload.get("vector") else None
     
     t3 = time.perf_counter()
-    aesthetic_score = _compute_aesthetic_score(embedding_vector, sharpness["score"])
+    aesthetic_score = _compute_aesthetic_score(embedding_vector)
     t_aes = int((time.perf_counter() - t3) * 1000)
     logger.info("cleanup.stage.aesthetic", details={"elapsed_ms": t_aes, "aesthetic_score": aesthetic_score})
 
+    # 计算清晰度分数（使用传统清晰度检测方法）
+    # 注意：模糊图判断逻辑在 Node.js 服务中进行，便于灵活调整阈值
+    t4 = time.perf_counter()
+    sharpness_metrics = _compute_sharpness_metrics(gray)
+    sharpness_score = float(sharpness_metrics["score"])
+    t_sharpness = int((time.perf_counter() - t4) * 1000)
+    
+    logger.info("cleanup.stage.sharpness", details={
+        "elapsed_ms": t_sharpness,
+        "sharpness_score": sharpness_score,
+        })
+
     payload = {
         "hashes": _compute_hashes(gray),
-        "sharpness_score": sharpness["score"],
         "aesthetic_score": aesthetic_score,
         "embedding": embedding_payload,
+        # 清晰度分数（模糊图判断在 Node.js 服务中进行）
+        "sharpness_score": sharpness_score,
     }
     total_ms = int((time.perf_counter() - t0) * 1000)
     logger.info(
@@ -103,8 +134,8 @@ def analyze_image(image_bgr: np.ndarray) -> Dict[str, object]:
         details={
             "elapsed_ms": total_ms,
             "has_hashes": True,
-            "sharpness_score": sharpness.get("score"),
             "aesthetic_score": aesthetic_score,
+            "sharpness_score": sharpness_score,
         },
     )
     return _convert_to_native_types(payload)
@@ -151,26 +182,134 @@ def _binary_array_to_hex(binary_array: np.ndarray) -> str:
 
 
 # ===========================
-# 清晰度指标
+# 清晰度指标（优化版：多指标融合 + 边缘区域检测）
 # ===========================
 
 def _compute_sharpness_metrics(gray_image: np.ndarray) -> Dict[str, float]:
-    """计算清晰度相关指标：拉普拉斯方差、Tenengrad，并归一化汇总为 score。"""
-    laplacian_var = float(cv2.Laplacian(gray_image, cv2.CV_64F).var())
-
-    sobel_x = cv2.Sobel(gray_image, cv2.CV_64F, 1, 0, ksize=3)
-    sobel_y = cv2.Sobel(gray_image, cv2.CV_64F, 0, 1, ksize=3)
+    """
+    计算清晰度分数（行业主流多指标融合算法）。
+    
+    算法流程：
+    1. 预处理：resize + 轻微高斯去噪（减少噪声干扰）
+    2. 边缘区域检测：使用 Canny 边缘检测，只计算边缘区域的清晰度（更准确）
+    3. 多指标计算：
+       - Laplacian variance（拉普拉斯方差，二阶导数）
+       - Tenengrad（Sobel 梯度平方均值，一阶导数）
+       - Brenner gradient（Brenner 梯度，相邻像素差分）
+       - SMD（Sum of Modified Differences，改进差分和）
+    4. 自适应归一化：使用对数归一化处理大动态范围
+    5. 加权融合：根据指标稳定性分配权重
+    
+    参考：
+    - Laplacian variance: Pech-Pacheco et al. (2000)
+    - Tenengrad: Krotkov (1987)
+    - Brenner gradient: Brenner et al. (1976)
+    - SMD: 改进的差分方法，对噪声更鲁棒
+    """
+    # Step 1: 预处理 - resize 到标准尺寸（512px 短边）
+    # 优化：当图片短边小于512时，不放大（避免放大低分辨率图片导致计算不准确）
+    h, w = gray_image.shape[:2]
+    target_short = 512
+    short = min(h, w)
+    
+    if short > 0 and short > target_short:
+        # 只缩小，不放大（短边 > 512 时才 resize）
+        scale = target_short / short
+        new_w = int(round(w * scale))
+        new_h = int(round(h * scale))
+        gray_resized = cv2.resize(gray_image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    else:
+        # 短边 <= 512，保持原尺寸（不放大）
+        gray_resized = gray_image
+    
+    # Step 1.5: 轻微高斯去噪（减少噪声对清晰度检测的干扰）
+    # 使用小核（3x3）和低sigma（0.5），只去除高频噪声，保留边缘信息
+    gray_denoised = cv2.GaussianBlur(gray_resized, (3, 3), 0.5)
+    
+    # Step 2: 边缘区域检测（只计算边缘区域的清晰度，更准确）
+    # 使用 Canny 边缘检测，创建边缘掩码
+    edges = cv2.Canny(gray_denoised, 50, 150)
+    edge_mask = edges > 0
+    
+    # 如果边缘像素太少（<5%），可能是纯色图或低对比度图，使用全图计算
+    edge_ratio = np.sum(edge_mask) / edge_mask.size
+    if edge_ratio < 0.05:
+        edge_mask = np.ones_like(edge_mask, dtype=bool)
+    
+    # Step 3: 计算多种清晰度指标
+    
+    # 3.1 Laplacian variance（拉普拉斯方差，二阶导数）
+    # 优点：对模糊敏感，计算快速
+    laplacian = cv2.Laplacian(gray_denoised, cv2.CV_64F)
+    laplacian_var = float(np.var(laplacian[edge_mask])) if np.any(edge_mask) else float(np.var(laplacian))
+    
+    # 3.2 Tenengrad（Sobel 梯度平方均值，一阶导数）
+    # 优点：对边缘敏感，鲁棒性好
+    sobel_x = cv2.Sobel(gray_denoised, cv2.CV_64F, 1, 0, ksize=3)
+    sobel_y = cv2.Sobel(gray_denoised, cv2.CV_64F, 0, 1, ksize=3)
     gradient_magnitude = np.sqrt(sobel_x ** 2 + sobel_y ** 2)
-    tenengrad = float(np.mean(gradient_magnitude ** 2))
-
-    laplacian_norm = _normalize_metric(laplacian_var, lower=30.0, upper=900.0)
-    tenengrad_norm = _normalize_metric(tenengrad, lower=50.0, upper=1200.0)
-
-    score = 0.7 * laplacian_norm + 0.3 * tenengrad_norm
+    tenengrad = float(np.mean(gradient_magnitude[edge_mask] ** 2)) if np.any(edge_mask) else float(np.mean(gradient_magnitude ** 2))
+    
+    # 3.3 Brenner gradient（Brenner 梯度，相邻像素差分）
+    # 优点：计算简单，对运动模糊敏感
+    diff_x = np.diff(gray_denoised.astype(np.float64), axis=1)
+    diff_y = np.diff(gray_denoised.astype(np.float64), axis=0)
+    brenner_x = float(np.mean(diff_x ** 2))
+    brenner_y = float(np.mean(diff_y ** 2))
+    brenner = (brenner_x + brenner_y) / 2.0
+    
+    # 3.4 SMD（Sum of Modified Differences，改进差分和）
+    # 优点：对噪声更鲁棒，适合低对比度图像
+    # 计算水平和垂直方向的改进差分
+    h, w = gray_denoised.shape
+    smd_h = np.sum(np.abs(np.diff(gray_denoised.astype(np.float64), axis=1))) / (h * (w - 1))
+    smd_v = np.sum(np.abs(np.diff(gray_denoised.astype(np.float64), axis=0))) / ((h - 1) * w)
+    smd = float((smd_h + smd_v) / 2.0)
+    
+    # Step 4: 自适应归一化（使用对数归一化处理大动态范围）
+    # 使用经验阈值范围（基于512px resize后的统计）
+    def log_normalize(value, lower, upper):
+        """对数归一化，处理大动态范围"""
+        if value <= lower:
+            return 0.0
+        if value >= upper:
+            return 1.0
+        # 使用对数尺度归一化
+        log_value = np.log1p(value - lower)
+        log_range = np.log1p(upper - lower)
+        return float(log_value / log_range)
+    
+    # 归一化各指标（使用对数归一化）
+    laplacian_norm = log_normalize(laplacian_var, lower=10.0, upper=1000.0)
+    tenengrad_norm = log_normalize(tenengrad, lower=20.0, upper=2000.0)
+    brenner_norm = log_normalize(brenner, lower=5.0, upper=500.0)
+    smd_norm = log_normalize(smd, lower=1.0, upper=50.0)
+    
+    # Step 5: 加权融合（根据指标稳定性和重要性分配权重）
+    # Laplacian: 40% (最稳定，对模糊最敏感)
+    # Tenengrad: 30% (鲁棒性好，对边缘敏感)
+    # Brenner: 20% (对运动模糊敏感)
+    # SMD: 10% (对噪声鲁棒，适合低对比度图)
+    score = (
+        0.40 * laplacian_norm +
+        0.30 * tenengrad_norm +
+        0.20 * brenner_norm +
+        0.10 * smd_norm
+    )
     score = float(np.clip(score, 0.0, 1.0))
-
-    # 仅返回最终 score（中间量不再对外暴露）
-    return {"score": score}
+    
+    return {
+        "score": score,
+        "laplacian_var": laplacian_var,
+        "tenengrad": tenengrad,
+        "brenner": brenner,
+        "smd": smd,
+        "laplacian_norm": laplacian_norm,
+        "tenengrad_norm": tenengrad_norm,
+        "brenner_norm": brenner_norm,
+        "smd_norm": smd_norm,
+        "edge_ratio": float(edge_ratio),
+    }
 
 
 def _normalize_metric(value: float, *, lower: float, upper: float) -> float:
@@ -184,13 +323,12 @@ def _normalize_metric(value: float, *, lower: float, upper: float) -> float:
 # 美学评分（仅使用 SigLIP + 小头）
 # ===========================
 
-def _compute_aesthetic_score(embedding_vector: np.ndarray, sharpness_score: float) -> float:
+def _compute_aesthetic_score(embedding_vector: np.ndarray) -> float:
     """
     使用 SigLIP 向量 + 审美回归头推理得到 0~100 分，并归一化到 0~1。
     
     Args:
         embedding_vector: SigLIP 向量（1152 维），已计算好的向量，避免重复计算
-        sharpness_score: 清晰度分数（0~1），为后续可能的多模态加权预留，当前实现未参与计算
     
     Returns:
         美学分数（0~1）

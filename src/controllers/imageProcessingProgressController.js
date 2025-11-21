@@ -55,7 +55,25 @@ const progressStream = async (req, res, next) => {
     // 设置Redis实时推送
     await setupProgressStream(req, res, sessionId);
   } catch (error) {
-    next(error);
+    // 如果响应头已设置（SSE格式），需要以SSE格式返回错误，而不是JSON
+    if (res.headersSent || res.getHeader("Content-Type") === "text/event-stream") {
+      try {
+        const errorMessage = error instanceof CustomError ? error.messageCode || ERROR_CODES.SERVER_ERROR : ERROR_CODES.SERVER_ERROR;
+        res.write(`event: error\ndata: ${JSON.stringify({ error: errorMessage })}\n\n`);
+        res.end();
+      } catch (writeError) {
+        logger.error({
+          message: "SSE错误响应写入失败",
+          details: { sessionId: req.query.sessionId, error: writeError.message },
+        });
+        if (!res.headersSent) {
+          res.end();
+        }
+      }
+    } else {
+      // 响应头未设置，交给错误处理中间件处理（返回JSON）
+      next(error);
+    }
   }
 };
 

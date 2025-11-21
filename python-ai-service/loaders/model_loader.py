@@ -212,6 +212,7 @@ def get_aesthetic_head_session():
         load_all_models()
     return aesthetic_head_session
 
+
 def _ensure_siglip2_components(providers, *, raise_on_failure: bool = False):
     global siglip_image_session, siglip_text_session, siglip_tokenizer, siglip_metadata
 

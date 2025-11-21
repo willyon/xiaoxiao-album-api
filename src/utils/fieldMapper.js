@@ -18,6 +18,7 @@ const FIELD_MAPPING = {
 
   // images表字段映射
   images: {
+    id: "imageId", // 图片ID映射为 imageId
     original_storage_key: "originalStorageKey",
     high_res_storage_key: "highResStorageKey",
     thumbnail_storage_key: "thumbnailStorageKey",

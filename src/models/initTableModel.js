@@ -118,7 +118,7 @@ function createTableImages() {
         analysis_version TEXT DEFAULT '1.0', -- 分析版本号
         -- 智能清理指标字段
         aesthetic_score REAL DEFAULT NULL,   -- 美学评分（0-1）
-        sharpness_score REAL DEFAULT NULL,   -- 清晰度评分（0-1）
+        sharpness_score REAL DEFAULT NULL    -- 清晰度分数（0-1，值越大越清晰，模糊图判断在业务逻辑中进行）
 
         -- 同一用户下，内容哈希唯一（避免跨用户互相影响）
         UNIQUE (user_id, image_hash),
@@ -334,12 +334,6 @@ function createTableImages() {
     ).run();
 
     // 2.25 用户清晰度索引
-    db.prepare(
-      `
-      CREATE INDEX IF NOT EXISTS idx_images_user_sharpness
-      ON images(user_id, sharpness_score);
-    `,
-    ).run();
 
     // 2.26 感知哈希索引（pHash）
     db.prepare(
@@ -358,10 +352,43 @@ function createTableImages() {
     ).run();
 
     // 2.30 用户软删除索引（过滤与清理任务）
+    // 部分索引：只索引未删除的记录，提高查询效率
+    // 由于几乎所有查询都过滤 deleted_at IS NULL，这个索引可以显著提升性能
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_deleted
-      ON images(user_id, deleted_at);
+      ON images(user_id, deleted_at)
+      WHERE deleted_at IS NULL;
+      `,
+    ).run();
+
+    // 2.20.1 优化年份查询的部分索引（包含 deleted_at 过滤）
+    // 用于查询：WHERE user_id = ? AND year_key = ? AND deleted_at IS NULL
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_year_deleted
+      ON images(user_id, year_key, image_created_at DESC, id DESC)
+      WHERE deleted_at IS NULL;
+      `,
+    ).run();
+
+    // 2.20.2 优化月份查询的部分索引（包含 deleted_at 过滤）
+    // 用于查询：WHERE user_id = ? AND month_key = ? AND deleted_at IS NULL
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_month_deleted
+      ON images(user_id, month_key, image_created_at DESC, id DESC)
+      WHERE deleted_at IS NULL;
+      `,
+    ).run();
+
+    // 2.20.3 优化日期查询的部分索引（包含 deleted_at 过滤）
+    // 用于查询：WHERE user_id = ? AND date_key = ? AND deleted_at IS NULL
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_date_deleted
+      ON images(user_id, date_key, image_created_at DESC, id DESC)
+      WHERE deleted_at IS NULL;
       `,
     ).run();
 
@@ -609,10 +636,8 @@ function createTableCleanupGroupMembers() {
         group_id INTEGER NOT NULL,
         image_id INTEGER NOT NULL,
         rank_score REAL,
-        is_recommended_keep INTEGER DEFAULT 0,
         similarity REAL,
         aesthetic_score REAL,
-        sharpness_score REAL,
         created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
         updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
         PRIMARY KEY (group_id, image_id),

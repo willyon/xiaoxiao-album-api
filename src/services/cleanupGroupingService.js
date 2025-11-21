@@ -3,7 +3,6 @@ const cleanupModel = require("../models/cleanupModel");
 const logger = require("../utils/logger");
 
 const DEFAULT_SIMILAR_HAMMING_THRESHOLD = Number(process.env.CLEANUP_SIMILAR_HAMMING_THRESHOLD || 8);
-const BLURRY_SHARPNESS_THRESHOLD = Number(process.env.CLEANUP_BLURRY_SHARPNESS_THRESHOLD || 0.25); // retained for compatibility if referenced elsewhere
 
 function rebuildCleanupGroups({ userId }) {
   if (!userId) {
@@ -254,15 +253,18 @@ function _buildSimilarGroups(images, duplicateGroups) {
 
 /**
  * 构建模糊图片分组
- * 所有模糊图放在一个分组中，按清晰度（sharpness_score）降序排序
+ * 所有模糊图放在一个分组中，按清晰度分数（sharpness_score）升序排序（最模糊的在前）
  */
 function _buildBlurryGroups(images) {
-  const blurryThreshold = Number(process.env.CLEANUP_BLURRY_SHARPNESS_THRESHOLD || 0.25);
+  // 使用清晰度分数和阈值判断模糊图
+  // 阈值配置：在 .env 文件中设置 BLURRY_SHARPNESS_THRESHOLD
+  const blurryThreshold = Number(process.env.BLURRY_SHARPNESS_THRESHOLD || 0.25);
 
-  // 过滤出模糊图：sharpness_score < threshold 且未删除
+  // 过滤出模糊图：sharpness_score < 阈值
   const blurryImages = images.filter((img) => {
-    if (img.sharpness_score == null) return false;
-    if (img.sharpness_score < 0) return false;
+    if (img.sharpness_score === null || img.sharpness_score === undefined) {
+      return false; // 未分析的图片不参与模糊图分组
+    }
     return img.sharpness_score < blurryThreshold;
   });
 
@@ -270,13 +272,14 @@ function _buildBlurryGroups(images) {
     return [];
   }
 
-  // 按清晰度降序排序（最清晰的在前），如果清晰度相同，按 aesthetic_score 排序
+  // 按清晰度分数升序排序（清晰度分数越低，越模糊，最模糊的排在前面）
+  // 如果清晰度分数相同，按 aesthetic_score 降序排序
   const sorted = [...blurryImages].sort((a, b) => {
     const aSharpness = a.sharpness_score ?? 0;
     const bSharpness = b.sharpness_score ?? 0;
-    if (aSharpness !== bSharpness) return bSharpness - aSharpness;
+    if (aSharpness !== bSharpness) return aSharpness - bSharpness;
 
-    // 清晰度相同，按 aesthetic_score 排序
+    // 清晰度分数相同，按 aesthetic_score 降序排序
     const aAesthetic = a.aesthetic_score ?? 0;
     const bAesthetic = b.aesthetic_score ?? 0;
     if (aAesthetic !== bAesthetic) return bAesthetic - aAesthetic;
@@ -286,15 +289,12 @@ function _buildBlurryGroups(images) {
   });
 
   // 创建单个分组，包含所有模糊图
-  // 注意：模糊图不需要推荐保留逻辑，isRecommendedKeep 统一设为 false
   const primary = sorted[0];
   const members = sorted.map((image) => ({
     imageId: image.id,
     rankScore: _computeRankScore(image),
-    isRecommendedKeep: false, // 模糊图不需要推荐保留逻辑
     similarity: 1.0, // 模糊图之间没有相似度概念，统一设为 1.0
     aestheticScore: image.aesthetic_score ?? null,
-    sharpnessScore: image.sharpness_score ?? null,
   }));
 
   const totalSizeBytes = sorted.reduce((acc, img) => acc + (img.file_size_bytes || 0), 0);
@@ -322,10 +322,8 @@ function _createGroupFromMembers(members, { similarityResolver }) {
     return {
       imageId: image.id,
       rankScore: _computeRankScore(image),
-      isRecommendedKeep: image.id === primary.id,
       similarity,
       aestheticScore: image.aesthetic_score ?? null,
-      sharpnessScore: image.sharpness_score ?? null,
     };
   });
 
@@ -340,9 +338,9 @@ function _createGroupFromMembers(members, { similarityResolver }) {
 
 function _computeRankScore(image) {
   const aesthetic = typeof image.aesthetic_score === "number" ? image.aesthetic_score : 0;
-  const sharpness = typeof image.sharpness_score === "number" ? image.sharpness_score : 0;
   const faceQuality = typeof image.primary_face_quality === "number" ? image.primary_face_quality : 0;
-  return Number((0.6 * aesthetic + 0.3 * sharpness + 0.1 * faceQuality).toFixed(6));
+  // 移除 sharpness_score 权重，仅使用 aesthetic_score 和 faceQuality
+  return Number((0.8 * aesthetic + 0.2 * faceQuality).toFixed(6));
 }
 
 function _hammingDistance(hashA, hashB) {

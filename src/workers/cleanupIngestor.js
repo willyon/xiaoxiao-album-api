@@ -4,7 +4,7 @@
 const axios = require("axios");
 const logger = require("../utils/logger");
 const cleanupModel = require("../models/cleanupModel");
-const { upsertImageEmbedding } = require("../models/imageEmbeddingModel");
+const { upsertImageEmbedding, getImageEmbedding } = require("../models/imageEmbeddingModel");
 const storageService = require("../services/storageService");
 const { scheduleUserRebuild } = require("../services/cleanupGroupingScheduler");
 
@@ -24,6 +24,9 @@ async function processCleanupScan(job) {
   }
 
   try {
+    // 先检查是否已有 embedding，如果有则传递给 Python 服务，跳过 SigLIP 计算
+    const existingEmbedding = getImageEmbedding(imageId);
+
     const buffer = await _loadImageBuffer({ hintHighRes, hintOriginal });
     if (!buffer) {
       logger.warn({
@@ -33,11 +36,12 @@ async function processCleanupScan(job) {
       return { userId, imageId, processed: false, reason: "load_buffer_failed" };
     }
 
-    const analysis = await _requestCleanupAnalysis(buffer, `image-${imageId}`);
+    const analysis = await _requestCleanupAnalysis(buffer, `image-${imageId}`, existingEmbedding);
 
     // 记录从接收 Python 结果到数据库存储完成的时间
     const t0 = Date.now();
 
+    // 直接存储清晰度分数，模糊图判断逻辑在分组服务中进行
     const round2 = (v) => (typeof v === "number" ? Number(v.toFixed(2)) : null);
     cleanupModel.updateImageCleanupMetrics(imageId, {
       imagePhash: analysis?.hashes?.phash ?? null,
@@ -97,10 +101,18 @@ async function _loadImageBuffer({ hintHighRes, hintOriginal }) {
   return null;
 }
 
-async function _requestCleanupAnalysis(buffer, fileName) {
+async function _requestCleanupAnalysis(buffer, fileName, existingEmbedding = null) {
   const formData = new FormData();
   const blob = buffer instanceof Blob ? buffer : new Blob([buffer], { type: "application/octet-stream" });
   formData.append("image", blob, `${fileName || "image"}.bin`);
+
+  // 如果已有 embedding，通过 form data 传递，让 Python 服务跳过 SigLIP 计算
+  if (existingEmbedding && existingEmbedding.vector && Array.isArray(existingEmbedding.vector)) {
+    formData.append("skip_embedding", "true");
+    // 将 embedding 向量作为 JSON 字符串传递
+    formData.append("existing_embedding", JSON.stringify(existingEmbedding.vector));
+    formData.append("embedding_model", existingEmbedding.modelId || "siglip2");
+  }
 
   const response = await axios.post(`${PYTHON_SERVICE_URL}/analyze_cleanup`, formData, {
     timeout: Number(process.env.CLEANUP_ANALYSIS_TIMEOUT || 300000),
