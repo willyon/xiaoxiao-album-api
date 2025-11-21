@@ -362,6 +362,17 @@ function createTableImages() {
       `,
     ).run();
 
+    // 2.30.1 回收站查询索引（用于已删除图片查询）
+    // 部分索引：只索引已删除的记录（deleted_at IS NOT NULL）
+    // 用于回收站页面的分页查询，可以显著提升查询性能
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_deleted_at
+      ON images(user_id, deleted_at)
+      WHERE deleted_at IS NOT NULL;
+      `,
+    ).run();
+
     // 2.20.1 优化年份查询的部分索引（包含 deleted_at 过滤）
     // 用于查询：WHERE user_id = ? AND year_key = ? AND deleted_at IS NULL
     db.prepare(

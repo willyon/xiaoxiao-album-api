@@ -273,7 +273,7 @@ async function _getBlurryGroups({ userId, pageNo = 1, pageSize = 20 }) {
   };
 }
 
-// 删除图片（软删除，移至垃圾箱）
+// 删除图片（软删除，移至回收站）
 // groupId: 可选，如果提供则从分组中获取类型（duplicate/similar/blurry），如果不提供则视为 'all' 类型
 async function deleteImages({ userId, groupId, imageIds }) {
   const normalizedIds = _normalizeIdList(imageIds);
