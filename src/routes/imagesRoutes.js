@@ -18,6 +18,7 @@ const {
   handleGroupByDate,
   handleCheckFileExists,
 } = require("../controllers/imageController");
+const { handleDownloadSingleImage, handleDownloadBatchImages } = require("../controllers/downloadController");
 const { handlePostImages } = require("../controllers/uploadController");
 const { handleGetUploadSignature } = require("../controllers/ossUploadController");
 const {
@@ -37,6 +38,10 @@ router.post("/postImages", upload, handlePostImages);
 // 预检和直传相关路由
 router.post("/checkFileExists", handleCheckFileExists);
 router.post("/getUploadSignature", handleGetUploadSignature);
+
+// 图片下载相关路由
+router.get("/download/:imageId", handleDownloadSingleImage);
+router.post("/download/batch", handleDownloadBatchImages);
 
 // 分页获取图片信息
 router.post("/queryAllByPage", handleGetAllByPage);

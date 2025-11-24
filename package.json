@@ -13,6 +13,7 @@
   "dependencies": {
     "@alicloud/credentials": "^2.4.4",
     "ali-oss": "^6.23.0",
+    "archiver": "^7.0.1",
     "async": "^3.2.6",
     "axios": "^1.12.2",
     "bcrypt": "^5.1.1",
