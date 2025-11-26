@@ -369,7 +369,7 @@ async function handleSearchImages(req, res, next) {
     ]);
 
     // 添加完整URL（thumbnailUrl 和 highResUrl）
-    // searchResults 已经通过 mapFields 转换为 camelCase
+    // isFavorite字段已从数据库直接返回，searchResults 已经通过 mapFields 转换为 camelCase
     const resultsWithUrls = await addFullUrlToImage(searchResults);
 
     logger.info({
@@ -553,7 +553,7 @@ async function handleAdvancedSearch(req, res, next) {
     });
 
     // 添加完整URL（thumbnailUrl 和 highResUrl）
-    // searchResults 已经通过 mapFields 转换为 camelCase
+    // isFavorite字段已从数据库直接返回，searchResults 已经通过 mapFields 转换为 camelCase
     const resultsWithUrls = await addFullUrlToImage(searchResults);
 
     res.sendResponse({

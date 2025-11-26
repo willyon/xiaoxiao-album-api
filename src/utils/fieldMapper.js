@@ -27,6 +27,7 @@ const FIELD_MAPPING = {
     month_key: "monthKey",
     date_key: "dateKey",
     day_key: "dayKey",
+    album_title: "albumTitle",
     gps_latitude: "gpsLatitude",
     gps_longitude: "gpsLongitude",
     gps_altitude: "gpsAltitude",
@@ -47,6 +48,22 @@ const FIELD_MAPPING = {
     country: "country",
     city: "city",
     person_count: "personCount", // 新增：人物数量（YOLOv10检测）
+    added_at: "addedAt", // 添加到相册的时间
+    is_favorite: "isFavorite", // 是否已喜欢
+  },
+
+  // albums表字段映射
+  albums: {
+    id: "albumId",
+    user_id: "userId",
+    name: "name",
+    description: "description",
+    cover_image_id: "coverImageId",
+    album_type: "albumType",
+    image_count: "imageCount",
+    created_at: "createdAt",
+    updated_at: "updatedAt",
+    deleted_at: "deletedAt",
   },
 };
 

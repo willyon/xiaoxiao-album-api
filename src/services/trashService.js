@@ -7,6 +7,8 @@
 const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
 const trashModel = require("../models/trashModel");
+const albumModel = require("../models/albumModel");
+const cleanupModel = require("../models/cleanupModel");
 const storageService = require("./storageService");
 const StorageAdapterFactory = require("../storage/factory/StorageAdapterFactory");
 const { STORAGE_TYPES } = require("../storage/constants/StorageTypes");
@@ -341,10 +343,12 @@ async function getDeletedImages({ userId, pageNo, pageSize }) {
         }
 
         // 返回精简后的字段（只包含前端需要的）
+        // isFavorite字段已从数据库直接返回
         return {
           imageId: item.imageId,
           thumbnailUrl,
           highResUrl,
+          isFavorite: item.isFavorite || false,
           creationDate: item.creationDate,
           gpsLocation: item.gpsLocation,
           dayKey: item.dayKey,
@@ -419,6 +423,9 @@ async function restoreImages({ userId, imageIds }) {
   // 执行恢复操作
   const result = trashModel.restoreImages(normalizedIds);
 
+  // 更新包含这些图片的相册统计（图片数量、封面）
+  albumModel.updateAlbumsStatsForImages(normalizedIds);
+
   logger.info({
     message: "trash.restore.completed",
     details: {
@@ -470,11 +477,43 @@ async function permanentlyDeleteImages({ userId, imageIds }) {
     });
   }
 
+  // 在物理删除之前，获取包含这些图片的相册和分组ID
+  // 注意：需要在 CASCADE 删除之前获取ID
+  const albumIds = albumModel.getAlbumsContainingImages(normalizedIds);
+  const groupIds = cleanupModel.getGroupsContainingImages(normalizedIds);
+
   // 删除存储文件（根据存储类型使用对应适配器）
   const fileDeleteResult = await _deleteImagesFiles(images);
 
-  // 物理删除数据库记录
+  // 物理删除数据库记录（会触发 CASCADE 删除 album_images 和 cleanup_group_members）
   const dbResult = trashModel.permanentlyDeleteImages(normalizedIds);
+
+  // 更新相册统计（图片数量、封面）
+  // 注意：album_images 已被 CASCADE 删除，所以需要更新相册统计
+  if (albumIds.length > 0) {
+    const now = Date.now();
+    albumIds.forEach((albumId) => {
+      albumModel.updateAlbumImageCount(albumId);
+      albumModel.updateAlbumCover(albumId);
+    });
+  }
+
+  // 更新 cleanup 分组统计（member_count、primary_image_id、total_size_bytes）
+  // 注意：cleanup_group_members 已被 CASCADE 删除，所以需要更新分组统计
+  if (groupIds.length > 0) {
+    const now = Date.now();
+    groupIds.forEach((groupId) => {
+      try {
+        cleanupModel.refreshGroupStats(groupId, { updatedAt: now });
+      } catch (error) {
+        // 如果分组已被删除（refreshGroupStats 会删除空分组），忽略错误
+        logger.warn({
+          message: "更新 cleanup 分组统计失败",
+          details: { groupId, error: error.message },
+        });
+      }
+    });
+  }
 
   logger.info({
     message: "trash.permanentlyDelete.completed",

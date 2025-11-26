@@ -31,6 +31,7 @@ const {
 } = require("../controllers/searchController");
 const cleanupRoutes = require("./cleanupRoutes");
 const trashRoutes = require("./trashRoutes");
+const albumRoutes = require("./albumRoutes");
 
 //上传图片
 router.post("/postImages", upload, handlePostImages);
@@ -82,5 +83,8 @@ router.use("/cleanup", cleanupRoutes);
 
 // 回收站相关路由
 router.use("/trash", trashRoutes);
+
+// 相册相关路由
+router.use("/albums", albumRoutes);
 
 module.exports = router;

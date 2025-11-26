@@ -118,7 +118,9 @@ function createTableImages() {
         analysis_version TEXT DEFAULT '1.0', -- 分析版本号
         -- 智能清理指标字段
         aesthetic_score REAL DEFAULT NULL,   -- 美学评分（0-1）
-        sharpness_score REAL DEFAULT NULL    -- 清晰度分数（0-1，值越大越清晰，模糊图判断在业务逻辑中进行）
+        sharpness_score REAL DEFAULT NULL,   -- 清晰度分数（0-1，值越大越清晰，模糊图判断在业务逻辑中进行）
+        -- 喜欢状态字段
+        is_favorite INTEGER DEFAULT 0 NOT NULL -- 是否已喜欢（0=未喜欢，1=已喜欢）
 
         -- 同一用户下，内容哈希唯一（避免跨用户互相影响）
         UNIQUE (user_id, image_hash),
@@ -334,6 +336,14 @@ function createTableImages() {
     ).run();
 
     // 2.25 用户清晰度索引
+
+    // 2.25.1 用户喜欢状态索引（用于快速查询喜欢的图片）
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_is_favorite
+      ON images(user_id, is_favorite);
+    `,
+    ).run();
 
     // 2.26 感知哈希索引（pHash）
     db.prepare(
@@ -679,6 +689,107 @@ function createTableCleanupGroupMembers() {
   }
 }
 
+/**
+ * 创建相册表
+ */
+function createTableAlbums() {
+  try {
+    const sql = `
+      CREATE TABLE IF NOT EXISTS albums (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        cover_image_id INTEGER,
+        album_type TEXT DEFAULT 'custom',
+        image_count INTEGER DEFAULT 0,
+        created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+        updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+        deleted_at INTEGER,
+        
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (cover_image_id) REFERENCES images(id) ON DELETE SET NULL
+      );
+    `;
+    db.prepare(sql).run();
+
+    // 创建索引
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_albums_user_id ON albums(user_id);
+    `,
+    ).run();
+
+    // 创建部分唯一索引（实现软删除后的唯一性约束）
+    db.prepare(
+      `
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_albums_user_name_unique ON albums(user_id, name) WHERE deleted_at IS NULL;
+    `,
+    ).run();
+
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_albums_user_type ON albums(user_id, album_type);
+    `,
+    ).run();
+
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_albums_user_created ON albums(user_id, created_at DESC);
+    `,
+    ).run();
+
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_albums_user_deleted ON albums(user_id, deleted_at) WHERE deleted_at IS NULL;
+    `,
+    ).run();
+
+    console.log("✅ 创建 albums 表及索引");
+  } catch (err) {
+    console.error("创建 albums 表失败：", err.message);
+    throw err;
+  }
+}
+
+/**
+ * 创建相册-图片关联表
+ */
+function createTableAlbumImages() {
+  try {
+    const sql = `
+      CREATE TABLE IF NOT EXISTS album_images (
+        album_id INTEGER NOT NULL,
+        image_id INTEGER NOT NULL,
+        added_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+        
+        PRIMARY KEY (album_id, image_id),
+        FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE,
+        FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE
+      );
+    `;
+    db.prepare(sql).run();
+
+    // 创建索引
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_album_images_album_id ON album_images(album_id, added_at DESC);
+    `,
+    ).run();
+
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_album_images_image_id ON album_images(image_id);
+    `,
+    ).run();
+
+    console.log("✅ 创建 album_images 表及索引");
+  } catch (err) {
+    console.error("创建 album_images 表失败：", err.message);
+    throw err;
+  }
+}
+
 module.exports = {
   deleteTableUsers,
   createTableUsers,
@@ -689,4 +800,6 @@ module.exports = {
   createTableFaceClusters,
   createTableCleanupGroups,
   createTableCleanupGroupMembers,
+  createTableAlbums,
+  createTableAlbumImages,
 };

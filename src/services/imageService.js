@@ -80,6 +80,7 @@ async function _addFullUrls(items, type = "image") {
 }
 
 // 为图片数据添加完整URL的方法
+// 注意：isFavorite 字段现在直接从数据库查询返回，无需额外处理
 async function addFullUrlToImage(data) {
   return await _addFullUrls(data, "image");
 }
@@ -156,7 +157,7 @@ async function getAllImagesByPage({ pageNo, pageSize, userId }) {
       userId,
     });
 
-    // 添加完整URL
+    // 添加完整URL（isFavorite字段已从数据库直接返回）
     result.data = await addFullUrlToImage(result.data);
 
     return result;
@@ -179,7 +180,7 @@ async function getImagesByYear({ pageNo, pageSize, yearKey, userId }) {
       userId,
     });
 
-    // 添加完整URL
+    // 添加完整URL（isFavorite字段已从数据库直接返回）
     result.data = await addFullUrlToImage(result.data);
 
     return result;
@@ -197,7 +198,7 @@ async function getImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
   try {
     const result = await imageModel.selectImagesByMonth({ pageNo, pageSize, monthKey, userId });
 
-    // 添加完整URL
+    // 添加完整URL（isFavorite字段已从数据库直接返回）
     result.data = await addFullUrlToImage(result.data);
 
     return result;
@@ -215,7 +216,7 @@ async function getImagesByDate({ pageNo, pageSize, dateKey, userId }) {
   try {
     const result = await imageModel.selectImagesByDate({ pageNo, pageSize, dateKey, userId });
 
-    // 添加完整URL
+    // 添加完整URL（isFavorite字段已从数据库直接返回）
     result.data = await addFullUrlToImage(result.data);
 
     return result;

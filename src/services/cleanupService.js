@@ -2,6 +2,7 @@ const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
 const { CLEANUP_TYPES, CLEANUP_TYPE_LIST } = require("../constants/cleanupTypes");
 const cleanupModel = require("../models/cleanupModel");
+const albumModel = require("../models/albumModel");
 const cleanupEnqueueHelper = require("./cleanupEnqueueHelper");
 const storageService = require("./storageService");
 const logger = require("../utils/logger");
@@ -113,7 +114,7 @@ async function getCleanupGroups({ userId, type, pageNo = 1, pageSize = 12 }) {
     membersByGroup.get(memberRow.group_id).push(_mapMemberRow(memberRow));
   }
 
-  // 批量补齐缩略图和高清图 URL
+  // 批量补齐缩略图和高清图 URL（isFavorite字段已从数据库直接返回）
   await Promise.all(
     rawMembers.map(async (row) => {
       const members = membersByGroup.get(row.group_id);
@@ -144,6 +145,12 @@ async function getCleanupGroups({ userId, type, pageNo = 1, pageSize = 12 }) {
             details: { storageKey: row.high_res_storage_key, error: error.message },
           });
         }
+      }
+
+      // isFavorite字段已从数据库直接返回，通过 _mapMemberRow 映射
+      // 如果 target 中没有 isFavorite，从 row 中读取
+      if (target.isFavorite === undefined) {
+        target.isFavorite = row.is_favorite === 1 || row.is_favorite === true;
       }
     }),
   );
@@ -215,7 +222,7 @@ async function _getBlurryGroups({ userId, pageNo = 1, pageSize = 20 }) {
   // 映射成员数据
   const members = rawMembers.map((row) => _mapMemberRow(row));
 
-  // 批量补齐缩略图和高清图 URL
+  // 批量补齐缩略图和高清图 URL（isFavorite字段已从数据库直接返回）
   await Promise.all(
     rawMembers.map(async (row, index) => {
       const target = members[index];
@@ -245,6 +252,12 @@ async function _getBlurryGroups({ userId, pageNo = 1, pageSize = 20 }) {
             details: { storageKey: row.high_res_storage_key, error: error.message },
           });
         }
+      }
+
+      // isFavorite字段已从数据库直接返回，通过 _mapMemberRow 映射
+      // 如果 target 中没有 isFavorite，从 row 中读取
+      if (target.isFavorite === undefined) {
+        target.isFavorite = row.is_favorite === 1 || row.is_favorite === true;
       }
     }),
   );
@@ -347,10 +360,14 @@ async function deleteImages({ userId, groupId, imageIds }) {
   // 执行删除操作：软删除，标记 deleted_at
   cleanupModel.markImagesDeleted(normalizedIds, now);
 
-  // 如果有分组，从分组成员表移除
-  if (group) {
-    cleanupModel.deleteGroupMembersByImageIds(normalizedIds);
-  }
+  // 更新包含这些图片的相册统计（图片数量、封面）
+  albumModel.updateAlbumsStatsForImages(normalizedIds);
+
+  // 从所有包含这些图片的分组中移除成员记录
+  cleanupModel.deleteGroupMembersByImageIds(normalizedIds);
+
+  // 更新所有相关分组的统计（member_count、primary_image_id、total_size_bytes）
+  cleanupModel.refreshGroupsStatsForImages(normalizedIds);
 
   logger.info({
     message: "cleanup.delete.completed",
@@ -363,7 +380,7 @@ async function deleteImages({ userId, groupId, imageIds }) {
     },
   });
 
-  // 如果有分组，刷新分组统计
+  // 如果指定了分组，检查该分组是否还存在（可能已被删除）
   if (group) {
     const refreshResult = cleanupModel.refreshGroupStats(group.id, { updatedAt: now });
     return {
@@ -383,6 +400,7 @@ function _mapMemberRow(row) {
     similarity: row.similarity,
     thumbnailUrl: null,
     highResUrl: null,
+    isFavorite: row.is_favorite === 1 || row.is_favorite === true,
   };
 }
 

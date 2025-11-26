@@ -64,7 +64,8 @@ function selectImagesByPage({ pageNo, pageSize, userId }) {
       gender_tags,
       expression_tags,
       has_young,
-      has_adult
+      has_adult,
+      is_favorite
     FROM images
     WHERE user_id = ?
       AND deleted_at IS NULL
@@ -118,7 +119,8 @@ function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
       gender_tags,
       expression_tags,
       has_young,
-      has_adult
+      has_adult,
+      is_favorite
     FROM images
     WHERE user_id = ?
       AND year_key = ?
@@ -173,7 +175,8 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
       gender_tags,
       expression_tags,
       has_young,
-      has_adult
+      has_adult,
+      is_favorite
     FROM images
     WHERE user_id = ?
       AND month_key = ?
@@ -228,7 +231,8 @@ function selectImagesByDate({ pageNo, pageSize, dateKey, userId }) {
       gender_tags,
       expression_tags,
       has_young,
-      has_adult
+      has_adult,
+      is_favorite
     FROM images
     WHERE user_id = ?
       AND date_key = ?
@@ -331,6 +335,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
     )
     SELECT
       latest.month_key,        -- 分组键（YYYY-MM / 'unknown'）
+      latest.month_key AS album_title,  -- 相册标题（用于显示）
       latest.thumbnail_storage_key AS latestImagekey,  -- 封面图片的缩略图存储键
       latest.image_created_at,  -- 封面图片的拍摄时间
       latest.storage_type,      -- 封面图片的存储类型
@@ -434,6 +439,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
     )
     SELECT
       latest.year_key,        -- 分组键（YYYY / 'unknown'）
+      latest.year_key AS album_title,  -- 相册标题（用于显示）
       latest.thumbnail_storage_key AS latestImagekey,
       latest.image_created_at,
       latest.storage_type,
@@ -536,6 +542,7 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
     )
     SELECT
       latest.date_key,        -- 分组键（YYYY-MM-DD / 'unknown'）
+      latest.date_key AS album_title,  -- 相册标题（用于显示）
       latest.thumbnail_storage_key AS latestImagekey,
       latest.image_created_at,
       latest.storage_type,
@@ -873,6 +880,36 @@ function insertFaceEmbeddings(imageId, faceData) {
   }
 }
 
+/**
+ * 根据ID获取图片存储信息（用于获取封面等场景）
+ */
+function getImageStorageInfo(imageId) {
+  const sql = `
+    SELECT 
+      id,
+      thumbnail_storage_key,
+      high_res_storage_key,
+      storage_type
+    FROM images
+    WHERE id = ? AND deleted_at IS NULL
+    LIMIT 1
+  `;
+
+  const stmt = db.prepare(sql);
+  const image = stmt.get(imageId);
+
+  if (!image) {
+    return null;
+  }
+
+  return {
+    id: image.id,
+    thumbnailStorageKey: image.thumbnail_storage_key,
+    highResStorageKey: image.high_res_storage_key,
+    storageType: image.storage_type,
+  };
+}
+
 module.exports = {
   checkFileExists,
   insertImage,
@@ -888,4 +925,5 @@ module.exports = {
   selectGroupsByMonth,
   selectGroupsByDate,
   selectHashesByUserId,
+  getImageStorageInfo,
 };

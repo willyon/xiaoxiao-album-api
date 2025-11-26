@@ -47,7 +47,8 @@ function searchImagesByText({ userId, query, useFts = true, whereConditions = []
         i.gender_tags,
         i.expression_tags,
         i.has_young,
-        i.has_adult
+        i.has_adult,
+        i.is_favorite
       FROM images_fts fts
       JOIN images i ON fts.rowid = i.id
       WHERE i.user_id = ? 
@@ -90,7 +91,8 @@ function searchImagesByText({ userId, query, useFts = true, whereConditions = []
         i.gender_tags,
         i.expression_tags,
         i.has_young,
-        i.has_adult
+        i.has_adult,
+        i.is_favorite
       FROM images i
       WHERE i.user_id = ?
         AND i.deleted_at IS NULL
