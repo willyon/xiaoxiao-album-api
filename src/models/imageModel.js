@@ -91,7 +91,7 @@ function selectImagesByPage({ pageNo, pageSize, userId }) {
 }
 
 // 分页获取用户具体某年份的图片数据 —— 基于物化的 yearKey
-function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
+function selectImagesByYear({ pageNo, pageSize, albumKey, userId }) {
   const offset = (pageNo - 1) * pageSize;
 
   // 分页数据查询（与总数统计保持相同过滤条件）
@@ -138,8 +138,8 @@ function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
   `);
 
   try {
-    const data = dataQuery.all(userId, yearKey, pageSize, offset);
-    const { total } = countQuery.get(userId, yearKey);
+    const data = dataQuery.all(userId, albumKey, pageSize, offset);
+    const { total } = countQuery.get(userId, albumKey);
     return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;
@@ -147,7 +147,7 @@ function selectImagesByYear({ pageNo, pageSize, yearKey, userId }) {
 }
 
 // 分页获取用户具体某月份的图片数据 —— 基于物化的 monthKey
-function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
+function selectImagesByMonth({ pageNo, pageSize, albumKey, userId }) {
   const offset = (pageNo - 1) * pageSize;
 
   // 分页数据查询（与总数统计保持相同过滤条件）
@@ -194,8 +194,8 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
   `);
 
   try {
-    const data = dataQuery.all(userId, monthKey, pageSize, offset);
-    const { total } = countQuery.get(userId, monthKey);
+    const data = dataQuery.all(userId, albumKey, pageSize, offset);
+    const { total } = countQuery.get(userId, albumKey);
     return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;
@@ -203,7 +203,7 @@ function selectImagesByMonth({ pageNo, pageSize, monthKey, userId }) {
 }
 
 // 分页获取用户具体某个日期的图片数据 —— 基于物化的 dateKey
-function selectImagesByDate({ pageNo, pageSize, dateKey, userId }) {
+function selectImagesByDate({ pageNo, pageSize, albumKey, userId }) {
   const offset = (pageNo - 1) * pageSize;
 
   // 分页数据查询（与总数统计保持相同过滤条件）
@@ -250,8 +250,8 @@ function selectImagesByDate({ pageNo, pageSize, dateKey, userId }) {
   `);
 
   try {
-    const data = dataQuery.all(userId, dateKey, pageSize, offset);
-    const { total } = countQuery.get(userId, dateKey);
+    const data = dataQuery.all(userId, albumKey, pageSize, offset);
+    const { total } = countQuery.get(userId, albumKey);
     return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;

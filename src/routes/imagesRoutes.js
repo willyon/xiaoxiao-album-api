@@ -32,6 +32,7 @@ const {
 const cleanupRoutes = require("./cleanupRoutes");
 const trashRoutes = require("./trashRoutes");
 const albumRoutes = require("./albumRoutes");
+const { queryByCustomAlbum } = require("../controllers/albumController");
 
 //上传图片
 router.post("/postImages", upload, handlePostImages);
@@ -58,6 +59,8 @@ router.post("/queryByCertainYear", handleGetByCertainYear);
 router.post("/queryByCertainMonth", handleGetByCertainMonth);
 // 分页获取具体某个日期的图片信息
 router.post("/queryByCertainDate", handleGetByCertainDate);
+// 分页获取具体某个自定义相册的图片信息（在 albumController 中处理）
+router.post("/queryByCustomAlbum", queryByCustomAlbum);
 
 // ========== 搜索相关路由 ========== //
 // 基础搜索

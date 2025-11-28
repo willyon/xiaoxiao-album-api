@@ -30,9 +30,9 @@ async function handleGetAllByPage(req, res, next) {
 //分页获取具体某个年份的图片
 async function handleGetByCertainYear(req, res, next) {
   const { userId } = req?.user;
-  const { pageNo, pageSize, yearKey } = req.body;
+  const { pageNo, pageSize, albumKey } = req.body;
   try {
-    const queryResult = await imageService.getImagesByYear({ userId, pageNo, pageSize, yearKey });
+    const queryResult = await imageService.getImagesByYear({ userId, pageNo, pageSize, albumKey });
 
     res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
   } catch (error) {
@@ -42,9 +42,9 @@ async function handleGetByCertainYear(req, res, next) {
 //分页获取具体某个月份的图片
 async function handleGetByCertainMonth(req, res, next) {
   const { userId } = req?.user;
-  const { pageNo, pageSize, monthKey } = req.body;
+  const { pageNo, pageSize, albumKey } = req.body;
   try {
-    const queryResult = await imageService.getImagesByMonth({ userId, pageNo, pageSize, monthKey });
+    const queryResult = await imageService.getImagesByMonth({ userId, pageNo, pageSize, albumKey });
 
     res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
   } catch (error) {
@@ -55,9 +55,9 @@ async function handleGetByCertainMonth(req, res, next) {
 //分页获取具体某个日期的图片
 async function handleGetByCertainDate(req, res, next) {
   const { userId } = req?.user;
-  const { pageNo, pageSize, dateKey } = req.body;
+  const { pageNo, pageSize, albumKey } = req.body;
   try {
-    const queryResult = await imageService.getImagesByDate({ userId, pageNo, pageSize, dateKey });
+    const queryResult = await imageService.getImagesByDate({ userId, pageNo, pageSize, albumKey });
 
     res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
   } catch (error) {

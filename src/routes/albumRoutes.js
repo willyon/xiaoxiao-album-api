@@ -11,7 +11,7 @@ const {
   getAlbumById,
   updateAlbum,
   deleteAlbum,
-  getAlbumImages,
+  queryByCustomAlbum,
   addImagesToAlbum,
   removeImagesFromAlbum,
   setAlbumCover,
@@ -26,9 +26,6 @@ router.get("/", getAlbumsList);
 
 // 创建相册
 router.post("/", createAlbum);
-
-// 获取相册中的图片列表（必须在 /:albumId 之前，避免被匹配）
-router.get("/:albumId/images", getAlbumImages);
 
 // 获取相册详情
 router.get("/:albumId", getAlbumById);

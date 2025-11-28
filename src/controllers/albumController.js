@@ -118,23 +118,21 @@ async function deleteAlbum(req, res, next) {
 }
 
 /**
- * 获取相册中的图片列表
+ * 获取自定义相册中的图片列表（POST方式，统一接口风格）
  */
-async function getAlbumImages(req, res, next) {
+async function queryByCustomAlbum(req, res, next) {
   try {
     const userId = req.user.userId;
-    const { albumId } = req.params;
-    const pageNo = parseInt(req.query.pageNo) || 1;
-    const pageSize = parseInt(req.query.pageSize) || 20;
+    const { pageNo, pageSize, albumKey } = req.body;
 
     const result = await albumService.getAlbumImagesList({
       userId,
-      albumId: parseInt(albumId),
+      albumId: parseInt(albumKey),
       pageNo,
       pageSize,
     });
 
-    res.sendResponse({ data: result });
+    res.sendResponse({ data: { list: result.list, total: result.total } });
   } catch (error) {
     next(error);
   }
@@ -265,7 +263,7 @@ module.exports = {
   getAlbumById,
   updateAlbum,
   deleteAlbum,
-  getAlbumImages,
+  queryByCustomAlbum,
   addImagesToAlbum,
   removeImagesFromAlbum,
   setAlbumCover,
