@@ -27,7 +27,7 @@ const FIELD_MAPPING = {
     month_key: "monthKey",
     date_key: "dateKey",
     day_key: "dayKey",
-    album_title: "albumTitle",
+    album_id: "albumId", // 统一映射：album_id -> albumId（时间相册的 albumId 就是 year_key/month_key/date_key）
     gps_latitude: "gpsLatitude",
     gps_longitude: "gpsLongitude",
     gps_altitude: "gpsAltitude",

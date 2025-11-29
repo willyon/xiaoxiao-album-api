@@ -91,7 +91,8 @@ function selectImagesByPage({ pageNo, pageSize, userId }) {
 }
 
 // 分页获取用户具体某年份的图片数据 —— 基于物化的 yearKey
-function selectImagesByYear({ pageNo, pageSize, albumKey, userId }) {
+// albumId: 对于时间相册，实际上是 year_key (如 "2024")
+function selectImagesByYear({ pageNo, pageSize, albumId, userId }) {
   const offset = (pageNo - 1) * pageSize;
 
   // 分页数据查询（与总数统计保持相同过滤条件）
@@ -138,8 +139,8 @@ function selectImagesByYear({ pageNo, pageSize, albumKey, userId }) {
   `);
 
   try {
-    const data = dataQuery.all(userId, albumKey, pageSize, offset);
-    const { total } = countQuery.get(userId, albumKey);
+    const data = dataQuery.all(userId, albumId, pageSize, offset);
+    const { total } = countQuery.get(userId, albumId);
     return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;
@@ -147,7 +148,8 @@ function selectImagesByYear({ pageNo, pageSize, albumKey, userId }) {
 }
 
 // 分页获取用户具体某月份的图片数据 —— 基于物化的 monthKey
-function selectImagesByMonth({ pageNo, pageSize, albumKey, userId }) {
+// albumId: 对于时间相册，实际上是 month_key (如 "2024-01")
+function selectImagesByMonth({ pageNo, pageSize, albumId, userId }) {
   const offset = (pageNo - 1) * pageSize;
 
   // 分页数据查询（与总数统计保持相同过滤条件）
@@ -194,8 +196,8 @@ function selectImagesByMonth({ pageNo, pageSize, albumKey, userId }) {
   `);
 
   try {
-    const data = dataQuery.all(userId, albumKey, pageSize, offset);
-    const { total } = countQuery.get(userId, albumKey);
+    const data = dataQuery.all(userId, albumId, pageSize, offset);
+    const { total } = countQuery.get(userId, albumId);
     return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;
@@ -203,7 +205,8 @@ function selectImagesByMonth({ pageNo, pageSize, albumKey, userId }) {
 }
 
 // 分页获取用户具体某个日期的图片数据 —— 基于物化的 dateKey
-function selectImagesByDate({ pageNo, pageSize, albumKey, userId }) {
+// albumId: 对于时间相册，实际上是 date_key (如 "2024-01-15")
+function selectImagesByDate({ pageNo, pageSize, albumId, userId }) {
   const offset = (pageNo - 1) * pageSize;
 
   // 分页数据查询（与总数统计保持相同过滤条件）
@@ -250,8 +253,8 @@ function selectImagesByDate({ pageNo, pageSize, albumKey, userId }) {
   `);
 
   try {
-    const data = dataQuery.all(userId, albumKey, pageSize, offset);
-    const { total } = countQuery.get(userId, albumKey);
+    const data = dataQuery.all(userId, albumId, pageSize, offset);
+    const { total } = countQuery.get(userId, albumId);
     return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;
@@ -334,8 +337,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
       GROUP BY month_key
     )
     SELECT
-      latest.month_key,        -- 分组键（YYYY-MM / 'unknown'）
-      latest.month_key AS album_title,  -- 相册标题（用于显示）
+      latest.month_key AS album_id,  -- 相册ID（统一使用 album_id，mapper 会映射为 albumId）
       latest.thumbnail_storage_key AS latestImagekey,  -- 封面图片的缩略图存储键
       latest.image_created_at,  -- 封面图片的拍摄时间
       latest.storage_type,      -- 封面图片的存储类型
@@ -438,8 +440,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
       GROUP BY year_key
     )
     SELECT
-      latest.year_key,        -- 分组键（YYYY / 'unknown'）
-      latest.year_key AS album_title,  -- 相册标题（用于显示）
+      latest.year_key AS album_id,  -- 相册ID（统一使用 album_id，mapper 会映射为 albumId）
       latest.thumbnail_storage_key AS latestImagekey,
       latest.image_created_at,
       latest.storage_type,
@@ -541,8 +542,7 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
       GROUP BY date_key
     )
     SELECT
-      latest.date_key,        -- 分组键（YYYY-MM-DD / 'unknown'）
-      latest.date_key AS album_title,  -- 相册标题（用于显示）
+      latest.date_key AS album_id,  -- 相册ID（统一使用 album_id，mapper 会映射为 albumId）
       latest.thumbnail_storage_key AS latestImagekey,
       latest.image_created_at,
       latest.storage_type,

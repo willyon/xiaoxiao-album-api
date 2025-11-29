@@ -27,87 +27,6 @@ async function handleGetAllByPage(req, res, next) {
   }
 }
 
-//分页获取具体某个年份的图片
-async function handleGetByCertainYear(req, res, next) {
-  const { userId } = req?.user;
-  const { pageNo, pageSize, albumKey } = req.body;
-  try {
-    const queryResult = await imageService.getImagesByYear({ userId, pageNo, pageSize, albumKey });
-
-    res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
-  } catch (error) {
-    next(error);
-  }
-}
-//分页获取具体某个月份的图片
-async function handleGetByCertainMonth(req, res, next) {
-  const { userId } = req?.user;
-  const { pageNo, pageSize, albumKey } = req.body;
-  try {
-    const queryResult = await imageService.getImagesByMonth({ userId, pageNo, pageSize, albumKey });
-
-    res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
-  } catch (error) {
-    next(error);
-  }
-}
-
-//分页获取具体某个日期的图片
-async function handleGetByCertainDate(req, res, next) {
-  const { userId } = req?.user;
-  const { pageNo, pageSize, albumKey } = req.body;
-  try {
-    const queryResult = await imageService.getImagesByDate({ userId, pageNo, pageSize, albumKey });
-
-    res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
-  } catch (error) {
-    next(error);
-  }
-}
-
-// 分页获取按年份分组数据
-async function handleGroupByYear(req, res, next) {
-  const { userId } = req?.user;
-  const { pageSize, pageNo } = req.body;
-
-  try {
-    // 分页获取数据
-    const queryResult = await imageService.getGroupsByYear({ userId, pageSize, pageNo });
-
-    res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
-  } catch (error) {
-    next(error);
-  }
-}
-
-// 分页获取按月份分组数据
-async function handleGroupByMonth(req, res, next) {
-  const { userId } = req?.user;
-  const { pageSize, pageNo } = req.body;
-  try {
-    // 分页获取数据
-    const queryResult = await imageService.getGroupsByMonth({ userId, pageSize, pageNo });
-
-    res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
-  } catch (error) {
-    next(error);
-  }
-}
-
-// 分页获取按日期分组数据
-async function handleGroupByDate(req, res, next) {
-  const { userId } = req?.user;
-  const { pageSize, pageNo } = req.body;
-  try {
-    // 分页获取数据
-    const queryResult = await imageService.getGroupsByDate({ userId, pageSize, pageNo });
-
-    res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
-  } catch (error) {
-    next(error);
-  }
-}
-
 /**
  * 预检文件是否存在 - 通用图片检查接口
  * POST /images/checkFileExists
@@ -169,11 +88,5 @@ async function handleCheckFileExists(req, res, next) {
 
 module.exports = {
   handleGetAllByPage,
-  handleGetByCertainYear,
-  handleGetByCertainMonth,
-  handleGetByCertainDate,
-  handleGroupByYear,
-  handleGroupByMonth,
-  handleGroupByDate,
   handleCheckFileExists,
 };

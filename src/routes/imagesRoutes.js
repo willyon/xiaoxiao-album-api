@@ -8,16 +8,7 @@
 const express = require("express");
 const router = express.Router();
 const upload = require("../middlewares/upload"); // 引入 upload 中间件
-const {
-  handleGetAllByPage,
-  handleGetByCertainYear,
-  handleGetByCertainMonth,
-  handleGetByCertainDate,
-  handleGroupByYear,
-  handleGroupByMonth,
-  handleGroupByDate,
-  handleCheckFileExists,
-} = require("../controllers/imageController");
+const { handleGetAllByPage, handleCheckFileExists } = require("../controllers/imageController");
 const { handleDownloadSingleImage, handleDownloadBatchImages } = require("../controllers/downloadController");
 const { handlePostImages } = require("../controllers/uploadController");
 const { handleGetUploadSignature } = require("../controllers/ossUploadController");
@@ -32,7 +23,6 @@ const {
 const cleanupRoutes = require("./cleanupRoutes");
 const trashRoutes = require("./trashRoutes");
 const albumRoutes = require("./albumRoutes");
-const { queryByCustomAlbum } = require("../controllers/albumController");
 
 //上传图片
 router.post("/postImages", upload, handlePostImages);
@@ -47,20 +37,8 @@ router.post("/download/batch", handleDownloadBatchImages);
 
 // 分页获取图片信息
 router.post("/queryAllByPage", handleGetAllByPage);
-// 分页获取按年份分组数据
-router.post("/queryGroupByYear", handleGroupByYear);
-// 分页获取按月份分组数据
-router.post("/queryGroupByMonth", handleGroupByMonth);
-// 分页获取按日期分组数据
-router.post("/queryGroupByDate", handleGroupByDate);
-// 分页获取具体某个年份的图片信息
-router.post("/queryByCertainYear", handleGetByCertainYear);
-// 分页获取具体某个月份的图片信息
-router.post("/queryByCertainMonth", handleGetByCertainMonth);
-// 分页获取具体某个日期的图片信息
-router.post("/queryByCertainDate", handleGetByCertainDate);
-// 分页获取具体某个自定义相册的图片信息（在 albumController 中处理）
-router.post("/queryByCustomAlbum", queryByCustomAlbum);
+// 注意：获取目录数据的接口已统一到 /images/albums/:type/catalogs (year/month/date/custom)
+// 注意：获取具体相册图片的接口已统一到 /images/albums/:type/query (year/month/date/custom)
 
 // ========== 搜索相关路由 ========== //
 // 基础搜索

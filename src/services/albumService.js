@@ -13,17 +13,15 @@ const logger = require("../utils/logger");
 /**
  * 获取用户的相册列表（包含封面图片URL）
  */
-async function getAlbumsList({ userId, albumType = null, pageNo = 1, pageSize = 20 }) {
-  // 如果没有指定 albumType，确保"喜欢"相册存在（这样用户至少能看到一个相册）
-  if (!albumType) {
-    try {
-      albumModel.getOrCreateFavoriteAlbum(userId);
-    } catch (error) {
-      // 继续执行，即使创建失败也尝试查询现有相册
-    }
+async function getAlbumsList({ userId, pageNo = 1, pageSize = 20 }) {
+  // 确保"喜欢"相册存在（这样用户至少能看到一个相册）
+  try {
+    albumModel.getOrCreateFavoriteAlbum(userId);
+  } catch (error) {
+    // 继续执行，即使创建失败也尝试查询现有相册
   }
 
-  const allAlbums = albumModel.getAlbumsByUserId({ userId, albumType });
+  const allAlbums = albumModel.getAlbumsByUserId({ userId });
 
   // 分页处理
   const total = allAlbums.length;
@@ -256,7 +254,7 @@ async function addImagesToAlbum({ userId, albumId, imageIds }) {
   // 验证图片存在且属于当前用户
   // TODO: 添加图片验证逻辑（可以调用imageModel检查）
 
-  const result = albumModel.addImagesToAlbum({ albumId, imageIds });
+  const result = albumModel.addImagesToAlbum({ albumId, imageIds, userId, albumType: album.albumType });
 
   return result;
 }
@@ -276,7 +274,7 @@ async function removeImagesFromAlbum({ userId, albumId, imageIds }) {
     });
   }
 
-  const result = albumModel.removeImagesFromAlbum({ albumId, imageIds });
+  const result = albumModel.removeImagesFromAlbum({ albumId, imageIds, userId, albumType: album.albumType });
 
   return result;
 }
@@ -404,6 +402,7 @@ async function getAlbumImagesList({ userId, albumId, pageNo, pageSize }) {
 
       return {
         ...image,
+        albumId, // 添加 albumId 字段，统一返回格式
         thumbnailUrl,
         highResUrl,
       };

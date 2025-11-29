@@ -6,12 +6,12 @@
 const express = require("express");
 const router = express.Router();
 const {
-  getAlbumsList,
   createAlbum,
   getAlbumById,
   updateAlbum,
   deleteAlbum,
-  queryByCustomAlbum,
+  queryAlbumPhotos,
+  queryAlbums,
   addImagesToAlbum,
   removeImagesFromAlbum,
   setAlbumCover,
@@ -21,13 +21,18 @@ const {
 // 切换图片喜欢状态（必须在 /:albumId 之前，避免被匹配为 albumId）
 router.post("/favorite/toggle", toggleFavoriteImage);
 
-// 获取相册列表
-router.get("/", getAlbumsList);
+// 统一获取相册列表（year/month/date/custom）
+// 必须在 /:albumId 之前，避免被匹配为 albumId
+router.post("/:type", queryAlbums);
+
+// 统一获取相册图片列表（year/month/date/custom）
+// 必须在 /:albumId 之前，避免被匹配为 albumId
+router.post("/:type/:albumId/photos", queryAlbumPhotos);
 
 // 创建相册
 router.post("/", createAlbum);
 
-// 获取相册详情
+// 获取相册详情（自定义相册，albumId 是数字）
 router.get("/:albumId", getAlbumById);
 
 // 更新相册

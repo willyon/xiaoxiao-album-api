@@ -171,12 +171,13 @@ async function getAllImagesByPage({ pageNo, pageSize, userId }) {
 }
 
 // 分页获取用户某年份图片
-async function getImagesByYear({ pageNo, pageSize, albumKey, userId }) {
+// albumId: 对于时间相册，实际上是 year_key (如 "2024")
+async function getImagesByYear({ pageNo, pageSize, albumId, userId }) {
   try {
     const result = await imageModel.selectImagesByYear({
       pageNo,
       pageSize,
-      albumKey,
+      albumId,
       userId,
     });
 
@@ -187,16 +188,17 @@ async function getImagesByYear({ pageNo, pageSize, albumKey, userId }) {
   } catch (error) {
     logger.error({
       message: "分页获取用户某年份图片失败",
-      details: { pageNo, pageSize, albumKey, userId, error: error.message },
+      details: { pageNo, pageSize, albumId, userId, error: error.message },
     });
     throw new CustomError(ERROR_CODES.INTERNAL_SERVER_ERROR, "获取用户图片失败");
   }
 }
 
 // 分页获取用户某月份图片
-async function getImagesByMonth({ pageNo, pageSize, albumKey, userId }) {
+// albumId: 对于时间相册，实际上是 month_key (如 "2024-01")
+async function getImagesByMonth({ pageNo, pageSize, albumId, userId }) {
   try {
-    const result = await imageModel.selectImagesByMonth({ pageNo, pageSize, albumKey, userId });
+    const result = await imageModel.selectImagesByMonth({ pageNo, pageSize, albumId, userId });
 
     // 添加完整URL（isFavorite字段已从数据库直接返回）
     result.data = await addFullUrlToImage(result.data);
@@ -205,16 +207,17 @@ async function getImagesByMonth({ pageNo, pageSize, albumKey, userId }) {
   } catch (error) {
     logger.error({
       message: "分页获取用户某月份图片失败",
-      details: { pageNo, pageSize, albumKey, userId, error: error.message },
+      details: { pageNo, pageSize, albumId, userId, error: error.message },
     });
     throw new CustomError(ERROR_CODES.INTERNAL_SERVER_ERROR, "获取用户图片失败");
   }
 }
 
 // 分页获取用户某日期图片
-async function getImagesByDate({ pageNo, pageSize, albumKey, userId }) {
+// albumId: 对于时间相册，实际上是 date_key (如 "2024-01-15")
+async function getImagesByDate({ pageNo, pageSize, albumId, userId }) {
   try {
-    const result = await imageModel.selectImagesByDate({ pageNo, pageSize, albumKey, userId });
+    const result = await imageModel.selectImagesByDate({ pageNo, pageSize, albumId, userId });
 
     // 添加完整URL（isFavorite字段已从数据库直接返回）
     result.data = await addFullUrlToImage(result.data);
@@ -223,7 +226,7 @@ async function getImagesByDate({ pageNo, pageSize, albumKey, userId }) {
   } catch (error) {
     logger.error({
       message: "分页获取用户某日期图片失败",
-      details: { pageNo, pageSize, albumKey, userId, error: error.message },
+      details: { pageNo, pageSize, albumId, userId, error: error.message },
     });
     throw new CustomError(ERROR_CODES.INTERNAL_SERVER_ERROR, "获取用户图片失败");
   }
