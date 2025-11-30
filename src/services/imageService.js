@@ -9,11 +9,13 @@ const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
 const storageService = require("./storageService");
 const imageModel = require("../models/imageModel");
+const cleanupModel = require("../models/cleanupModel");
+const albumModel = require("../models/albumModel");
+const albumService = require("./albumService");
 const exifr = require("exifr");
 const exiftool = require("exiftool-vendored").exiftool;
 const fs = require("fs");
 const path = require("path");
-const os = require("os");
 const logger = require("../utils/logger");
 const { stringToTimestamp } = require("../utils/formatTime");
 const { getStandardMimeType } = require("../utils/fileUtils");
@@ -316,6 +318,112 @@ async function getGroupsByDate({ userId, pageNo = 1, pageSize = 10, withFullUrls
   }
 }
 
+// 部分更新图片信息（仅用于 favorite 字段）
+// 注意：此方法只处理 favorite 字段，会调用 albumService.toggleFavoriteImage 以同步更新相册
+async function patchImage({ userId, imageId, patchData }) {
+  // 只支持 favorite 字段的更新
+  if (patchData.favorite !== undefined || patchData.isFavorite !== undefined) {
+    const isFavorite = patchData.favorite !== undefined ? patchData.favorite : patchData.isFavorite;
+    return await albumService.toggleFavoriteImage({
+      userId,
+      imageId,
+      isFavorite,
+    });
+  }
+
+  // 如果不包含 favorite 字段，抛出错误
+  throw new CustomError({
+    httpStatus: 400,
+    messageCode: ERROR_CODES.INVALID_PARAMETERS,
+    messageType: "warning",
+    message: "目前只支持更新 favorite 字段",
+  });
+}
+
+// 删除图片（软删除，移至回收站）
+// 这是核心的删除方法，包含通用的删除逻辑
+async function deleteImages({ userId, imageIds }) {
+  // 规范化 ID 列表
+  const normalizedIds = Array.isArray(imageIds) ? imageIds.map((id) => parseInt(id)).filter((id) => !isNaN(id)) : [];
+
+  if (normalizedIds.length === 0) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: "warning",
+    });
+  }
+
+  // 验证图片权限
+  const images = cleanupModel.selectImagesByIds(normalizedIds);
+  if (images.length !== normalizedIds.length) {
+    logger.warn({
+      message: "删除图片时，部分图片未找到",
+      details: {
+        userId,
+        requestedIds: normalizedIds,
+        foundIds: images.map((img) => img.id),
+        missingIds: normalizedIds.filter((id) => !images.some((img) => img.id === id)),
+      },
+    });
+    throw new CustomError({
+      httpStatus: 404,
+      messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
+      messageType: "warning",
+    });
+  }
+
+  // 验证用户权限
+  const unauthorized = images.some((image) => image.user_id !== userId);
+  if (unauthorized) {
+    throw new CustomError({
+      httpStatus: 403,
+      messageCode: ERROR_CODES.UNAUTHORIZED,
+      messageType: "error",
+    });
+  }
+
+  const now = Date.now();
+
+  // 执行删除操作：软删除，标记 deleted_at
+  cleanupModel.markImagesDeleted(normalizedIds, now);
+
+  // 更新包含这些图片的相册统计（图片数量、封面）
+  albumModel.updateAlbumsStatsForImages(normalizedIds);
+
+  logger.info({
+    message: "image.delete.completed",
+    details: {
+      userId,
+      imageIds: normalizedIds,
+      timestamp: now,
+    },
+  });
+
+  return {
+    deletedCount: normalizedIds.length,
+  };
+}
+
+/**
+ * 获取单张图片的下载信息
+ */
+async function getImageDownloadInfo({ userId, imageId }) {
+  const image = imageModel.getImageDownloadInfo({ userId, imageId });
+  if (!image) {
+    return null;
+  }
+  return image;
+}
+
+/**
+ * 批量获取图片的下载信息
+ */
+async function getImagesDownloadInfo({ userId, imageIds }) {
+  const images = imageModel.getImagesDownloadInfo({ userId, imageIds });
+  return images;
+}
+
 module.exports = {
   // ========== 图片业务逻辑函数 ==========
   saveNewImage,
@@ -331,148 +439,11 @@ module.exports = {
   getGroupsByMonth,
   getGroupsByDate,
   addFullUrlToImage,
+
+  // ========== 图片 CRUD 服务函数 ==========
+  patchImage, // 仅用于 favorite 字段更新
+  deleteImages,
+  // ========== 图片下载服务函数 ==========
+  getImageDownloadInfo,
+  getImagesDownloadInfo,
 };
-
-// ========== 备用的注释代码（保留备用） ==========
-
-// const fsExtra = require("fs-extra");
-// const path = require("path");
-// const imagemagick = require("imagemagick");
-// const sharp = require("sharp");
-// const crypto = require("crypto");
-// const logger = require("../utils/logger");
-
-// 判断文件是否为图片
-// function isImage(file) {
-//   return [".jpg", ".jpeg", ".png", ".avif", ".heic", ".heif", ".webp", ".gif"].includes(path.extname(file).toLowerCase());
-// }
-
-// 图片格式化
-// function formatImage(convertParams) {
-//   return new Promise((resolve, reject) => {
-//     imagemagick.convert(convertParams, (error) => {
-//       if (error) {
-//         reject(error);
-//       } else {
-//         resolve();
-//       }
-//     });
-//   });
-// }
-
-// ======= Sharp 编码器与克隆批量产物 =======
-
-/**
- * 按输出扩展名选择编码器，并应用质量/效率参数
- */
-// function _applyEncoderByExt(pipeline, ext, quality = 80) {
-//   switch (ext) {
-//     case "jpg":
-//     case "jpeg":
-//       return pipeline.jpeg({
-//         quality, // 1–100，越高越清晰越大；一般 70–85 折中
-//         mozjpeg: true, // 使用 mozjpeg 优化器，体积更小
-//         chromaSubsampling: "4:2:0", // 色度抽样，压缩更好（人眼对色敏感度低于亮度）
-//         trellisQuantisation: true, // 网格量化，进一步优化率失真
-//         overshootDeringing: true, // 去振铃伪影，边缘更干净
-//       });
-//     case "png":
-//       return pipeline.png({
-//         compressionLevel: 6, // 0–9，越高越小但更慢
-//         palette: true, // 尝试索引色调色板（适合扁平色/图标，能显著减小体积）
-//       });
-//     case "webp":
-//       return pipeline.webp({
-//         quality, // 有损质量；一般 35–60
-//         smartSubsample: true, // 智能抽样，减少色彩伪影
-//         effort: 3, // 0~6，越小越快；3 是很好的平衡点 effort表示编码器花多少 CPU 算力去挤压文件体积
-//         nearLossless: false, // 是否启用"近无损"（为 true 时更接近 PNG 特性）
-//       });
-//     case "avif":
-//       return pipeline.avif({
-//         quality, // 一般 55–90；同等主观质量下比 WebP 文件更小
-//         effort: Number(process.env.SHARP_AVIF_EFFORT || 3), // effort: 0–9，越大越慢、体积越小；5–7 是常见折中
-//         chromaSubsampling: "4:2:0", // 色度抽样，减小体积
-//       });
-//     case "heic":
-//     case "heif":
-//       return pipeline.heif({
-//         quality, // 1–100
-//         compression: "hevc", // 编码器使用 HEVC
-//         chromaSubsampling: "4:2:0",
-//       });
-//     default:
-//       return pipeline.webp({
-//         quality,
-//         smartSubsample: true,
-//         nearLossless: false,
-//       });
-//   }
-// }
-
-/**
- * 只解码一次原图，建立一条通用管线， 然后后续生成多个版本时用 .clone() 分支出去
- * @param {string|Buffer} input - 输入数据，可以是文件路径或Buffer
- */
-// function _createSharpBase(input) {
-//   return sharp(input, {
-//     failOnError: false, // 避免遇到坏图直接崩
-//     sequentialRead: true, // 顺序读取，减少磁盘随机 I/O
-//     limitInputPixels: false, // 不限制像素避免超大图被强制拒绝（如需要可设上限）
-//   }).rotate(); // 按 EXIF 自动旋转到正确方向
-// }
-
-/**
- * 批量场景 多产物批量转码：同一张图只解码一次，其余以 .clone() 并行编码
- * @param {Object} args
- * @param {string} args.inputPath
- * @param {Array<{
- *   outputPath: string,
- *   quality?: number,
- *   resizeWidth?: number,
- *   fit?: "cover"|"contain"|"inside"|"outside"|"fill",
- *   withoutEnlargement?: boolean
- * }>} args.tasks
- */
-// async function formatMultipleImagesFromOneSource({ inputPath, tasks }) {
-//   if (!tasks?.length) return { successPaths: [] };
-
-//   await Promise.all(tasks.map((t) => fsExtra.ensureDir(path.dirname(t.outputPath))));
-
-//   const base = _createSharpBase(inputPath);
-
-//   const pipelines = tasks.map((t) => {
-//     const ext = path.extname(t.outputPath).toLowerCase().slice(1);
-//     let branch = base.clone();
-//     if (t.resizeWidth) {
-//       branch = branch.resize({
-//         width: t.resizeWidth, //设定最大宽度
-//         fit: "inside", // inside 保持原图比例，把图片缩小到不超过目标宽高的最大尺寸
-//         withoutEnlargement: true, //如果原图本来就小于目标尺寸，不放大
-//         fastShrinkOnLoad: true, //在解码图片的时候，如果目标尺寸（resizeWidth / resizeHeight）明显比原图小很多，Sharp 会直接在解码阶段先用更低分辨率读取，而不是先解出原图全尺寸再去缩小。
-//         // kernel: sharp.kernel.lanczos2,
-//       });
-//     }
-//     branch = _applyEncoderByExt(branch, ext, t.quality ?? 80);
-//     return { branch, out: t.outputPath };
-//   });
-
-//   // 等"全部分支"结束
-//   const settled = await Promise.allSettled(pipelines.map((p) => p.branch.toFile(p.out)));
-
-//   const successPaths = [];
-//   const errors = [];
-//   settled.forEach((r, i) => {
-//     if (r.status === "fulfilled") successPaths.push(pipelines[i].out);
-//     else errors.push(r.reason || new Error("encode failed"));
-//   });
-
-//   if (errors.length) {
-//     const err = new Error("BATCH_ENCODE_PARTIAL_FAILURE");
-//     err.successPaths = successPaths; // 已经成功写到最终路径的文件
-//     err.errors = errors; // 失败原因列表（可用于日志）
-//     throw err;
-//   }
-
-//   return { successPaths };
-// }

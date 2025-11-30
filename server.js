@@ -35,6 +35,10 @@ const authMiddleware = require("./src/middlewares/authMiddleware");
 // 导入业务路由
 const authRoutes = require("./src/routes/authRoutes");
 const imagesRoutes = require("./src/routes/imagesRoutes");
+const albumRoutes = require("./src/routes/albumRoutes");
+const searchRoutes = require("./src/routes/searchRoutes");
+const cleanupRoutes = require("./src/routes/cleanupRoutes");
+const trashRoutes = require("./src/routes/trashRoutes");
 const aliyunOssCallbackRoutes = require("./src/routes/aliyunOssCallbackRoutes");
 const uploadSessionRoutes = require("./src/routes/uploadSessionRoutes");
 const progressRoutes = require("./src/routes/progressRoutes");
@@ -109,20 +113,32 @@ app.use("/localStorage", express.static(path.join(__dirname, "localStorage")));
 
 // ========================== 业务路由注册 ========================== //
 
-// 注册 注册/登录 路由
-app.use("/auth", authRoutes);
+// 注册认证路由
+app.use("/api/auth", authRoutes);
 
-// 注册阿里云OSS回调路由 - 不需要鉴权
+// 注册阿里云OSS回调路由 - 不需要鉴权（保持原路径，因为这是外部回调）
 app.use("/aliyunOss", aliyunOssCallbackRoutes);
 
 // 注册图片业务路由+鉴权中间件(authMiddleware)
-app.use("/images", [authMiddleware], imagesRoutes);
+app.use("/api/images", [authMiddleware], imagesRoutes);
+
+// 注册相册路由+鉴权中间件(authMiddleware)
+app.use("/api/albums", [authMiddleware], albumRoutes);
+
+// 注册搜索路由+鉴权中间件(authMiddleware)
+app.use("/api/search", [authMiddleware], searchRoutes);
+
+// 注册清理路由+鉴权中间件(authMiddleware)
+app.use("/api/cleanup", [authMiddleware], cleanupRoutes);
+
+// 注册回收站路由+鉴权中间件(authMiddleware)
+app.use("/api/trash", [authMiddleware], trashRoutes);
 
 // 注册上传会话管理路由+鉴权中间件(authMiddleware)
-app.use("/uploads", [authMiddleware], uploadSessionRoutes);
+app.use("/api/upload-sessions", [authMiddleware], uploadSessionRoutes);
 
 // 注册SSE进度推送路由 - 不需要鉴权（EventSource无法发送认证头）
-app.use("/progress", progressRoutes);
+app.use("/api/progress", progressRoutes);
 
 // ========================== 错误处理中间件 ========================== //
 

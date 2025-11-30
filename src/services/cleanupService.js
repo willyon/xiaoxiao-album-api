@@ -5,6 +5,7 @@ const cleanupModel = require("../models/cleanupModel");
 const albumModel = require("../models/albumModel");
 const cleanupEnqueueHelper = require("./cleanupEnqueueHelper");
 const storageService = require("./storageService");
+const imageService = require("./imageService");
 const logger = require("../utils/logger");
 
 function _normalizeType(type) {
@@ -288,6 +289,7 @@ async function _getBlurryGroups({ userId, pageNo = 1, pageSize = 20 }) {
 
 // 删除图片（软删除，移至回收站）
 // groupId: 可选，如果提供则从分组中获取类型（duplicate/similar/blurry），如果不提供则视为 'all' 类型
+// 这个方法在核心删除逻辑基础上，增加了清理分组相关的处理
 async function deleteImages({ userId, groupId, imageIds }) {
   const normalizedIds = _normalizeIdList(imageIds);
 
@@ -298,37 +300,6 @@ async function deleteImages({ userId, groupId, imageIds }) {
       messageType: "warning",
     });
   }
-
-  // 验证图片权限
-  const images = cleanupModel.selectImagesByIds(normalizedIds);
-  if (images.length !== normalizedIds.length) {
-    logger.warn({
-      message: "删除图片时，部分图片未找到",
-      details: {
-        userId,
-        groupId,
-        requestedIds: normalizedIds,
-        foundIds: images.map((img) => img.id),
-        missingIds: normalizedIds.filter((id) => !images.some((img) => img.id === id)),
-      },
-    });
-    throw new CustomError({
-      httpStatus: 404,
-      messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
-      messageType: "warning",
-    });
-  }
-
-  const unauthorized = images.some((image) => image.user_id !== userId);
-  if (unauthorized) {
-    throw new CustomError({
-      httpStatus: 403,
-      messageCode: ERROR_CODES.UNAUTHORIZED,
-      messageType: "error",
-    });
-  }
-
-  const now = Date.now();
 
   // 从 groupId 获取分组信息和类型
   let type = "all"; // 默认类型
@@ -357,12 +328,10 @@ async function deleteImages({ userId, groupId, imageIds }) {
     type = group.group_type || "all";
   }
 
-  // 执行删除操作：软删除，标记 deleted_at
-  cleanupModel.markImagesDeleted(normalizedIds, now);
+  // 调用 imageService 的核心删除方法
+  await imageService.deleteImages({ userId, imageIds: normalizedIds });
 
-  // 更新包含这些图片的相册统计（图片数量、封面）
-  albumModel.updateAlbumsStatsForImages(normalizedIds);
-
+  // 清理分组相关的处理
   // 从所有包含这些图片的分组中移除成员记录
   cleanupModel.deleteGroupMembersByImageIds(normalizedIds);
 
@@ -376,13 +345,12 @@ async function deleteImages({ userId, groupId, imageIds }) {
       type,
       groupId: group?.id || null,
       imageIds: normalizedIds,
-      timestamp: now,
     },
   });
 
   // 如果指定了分组，检查该分组是否还存在（可能已被删除）
   if (group) {
-    const refreshResult = cleanupModel.refreshGroupStats(group.id, { updatedAt: now });
+    const refreshResult = cleanupModel.refreshGroupStats(group.id, { updatedAt: Date.now() });
     return {
       resolved: refreshResult.deleted || refreshResult.memberCount === 0,
     };

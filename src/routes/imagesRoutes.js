@@ -8,64 +8,36 @@
 const express = require("express");
 const router = express.Router();
 const upload = require("../middlewares/upload"); // 引入 upload 中间件
-const { handleGetAllByPage, handleCheckFileExists } = require("../controllers/imageController");
+const { handleGetAllByPage, handleCheckFileExists, handlePatchImage, handleDeleteImages } = require("../controllers/imageController");
 const { handleDownloadSingleImage, handleDownloadBatchImages } = require("../controllers/downloadController");
 const { handlePostImages } = require("../controllers/uploadController");
 const { handleGetUploadSignature } = require("../controllers/ossUploadController");
-const {
-  handleSearchImages,
-  handleGetSearchSuggestions,
-  handleIndexImage,
-  handleGetQueueStatus,
-  handleAdvancedSearch,
-  handleGetFilterOptionsPaginated,
-} = require("../controllers/searchController");
-const cleanupRoutes = require("./cleanupRoutes");
-const trashRoutes = require("./trashRoutes");
-const albumRoutes = require("./albumRoutes");
 
-//上传图片
-router.post("/postImages", upload, handlePostImages);
+// ========== 图片 CRUD 接口 ========== //
+// 批量上传图片
+router.post("/", upload, handlePostImages);
 
-// 预检和直传相关路由
-router.post("/checkFileExists", handleCheckFileExists);
-router.post("/getUploadSignature", handleGetUploadSignature);
+// 分页获取图片列表（参数从 body 改为 query params）
+router.get("/", handleGetAllByPage);
 
-// 图片下载相关路由
-router.get("/download/:imageId", handleDownloadSingleImage);
-router.post("/download/batch", handleDownloadBatchImages);
+// 部分更新图片信息（仅用于 favorite 字段）
+router.patch("/:imageId", handlePatchImage);
 
-// 分页获取图片信息
-router.post("/queryAllByPage", handleGetAllByPage);
-// 注意：获取目录数据的接口已统一到 /images/albums/:type/catalogs (year/month/date/custom)
-// 注意：获取具体相册图片的接口已统一到 /images/albums/:type/query (year/month/date/custom)
+// 批量删除图片（软删除，移至回收站）
+router.delete("/", handleDeleteImages);
 
-// ========== 搜索相关路由 ========== //
-// 基础搜索
-router.post("/search/images", handleSearchImages);
+// ========== 图片上传相关接口 ========== //
+// 检查文件是否已存在
+router.post("/check-exists", handleCheckFileExists);
 
-// 高级搜索
-router.post("/search/advanced", handleAdvancedSearch);
+// 获取上传签名（OSS直传）
+router.post("/upload/signature", handleGetUploadSignature);
 
-// 搜索建议
-router.get("/search/suggestions", handleGetSearchSuggestions);
+// ========== 图片下载相关接口 ========== //
+// 单张图片下载
+router.get("/:imageId/download", handleDownloadSingleImage);
 
-// 分页获取筛选选项（用于滚动加载）
-router.get("/search/filter-options-paginated", handleGetFilterOptionsPaginated);
-
-// 手动索引单个图片
-router.post("/search/index-image", handleIndexImage);
-
-// 获取队列状态
-router.get("/search/queue-status", handleGetQueueStatus);
-
-// 智能清理相关路由
-router.use("/cleanup", cleanupRoutes);
-
-// 回收站相关路由
-router.use("/trash", trashRoutes);
-
-// 相册相关路由
-router.use("/albums", albumRoutes);
+// 批量图片下载（ZIP）
+router.post("/download", handleDownloadBatchImages);
 
 module.exports = router;

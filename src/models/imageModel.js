@@ -910,6 +910,70 @@ function getImageStorageInfo(imageId) {
   };
 }
 
+/**
+ * 根据ID获取图片下载信息（包含 original_storage_key，用于下载）
+ */
+function getImageDownloadInfo({ userId, imageId }) {
+  const sql = `
+    SELECT 
+      id,
+      original_storage_key,
+      high_res_storage_key,
+      thumbnail_storage_key,
+      storage_type
+    FROM images
+    WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+    LIMIT 1
+  `;
+
+  const stmt = db.prepare(sql);
+  const image = stmt.get(imageId, userId);
+
+  if (!image) {
+    return null;
+  }
+
+  return {
+    id: image.id,
+    originalStorageKey: image.original_storage_key,
+    highResStorageKey: image.high_res_storage_key,
+    thumbnailStorageKey: image.thumbnail_storage_key,
+    storageType: image.storage_type,
+  };
+}
+
+/**
+ * 批量根据 imageIds 获取图片下载信息（用于批量下载）
+ */
+function getImagesDownloadInfo({ userId, imageIds }) {
+  if (!imageIds || imageIds.length === 0) {
+    return [];
+  }
+
+  const placeholders = imageIds.map(() => "?").join(",");
+  const sql = `
+    SELECT 
+      id,
+      original_storage_key,
+      high_res_storage_key,
+      thumbnail_storage_key,
+      storage_type
+    FROM images
+    WHERE id IN (${placeholders}) AND user_id = ? AND deleted_at IS NULL
+  `;
+
+  const stmt = db.prepare(sql);
+  const images = stmt.all(...imageIds, userId);
+
+  return images.map((image) => ({
+    id: image.id,
+    originalStorageKey: image.original_storage_key,
+    highResStorageKey: image.high_res_storage_key,
+    thumbnailStorageKey: image.thumbnail_storage_key,
+    storageType: image.storage_type,
+  }));
+}
+
 module.exports = {
   checkFileExists,
   insertImage,
@@ -926,4 +990,6 @@ module.exports = {
   selectGroupsByDate,
   selectHashesByUserId,
   getImageStorageInfo,
+  getImageDownloadInfo,
+  getImagesDownloadInfo,
 };

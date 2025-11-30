@@ -15,31 +15,28 @@ const {
   addImagesToAlbum,
   removeImagesFromAlbum,
   setAlbumCover,
-  toggleFavoriteImage,
 } = require("../controllers/albumController");
 
-// 切换图片喜欢状态（必须在 /:albumId 之前，避免被匹配为 albumId）
-router.post("/favorite/toggle", toggleFavoriteImage);
+// ========== 相册列表接口 ========== //
+// 获取相册列表（统一接口：year/month/date/custom，type 作为 query param）
+router.get("/", queryAlbums);
 
-// 统一获取相册列表（year/month/date/custom）
-// 必须在 /:albumId 之前，避免被匹配为 albumId
-router.post("/:type", queryAlbums);
-
-// 统一获取相册图片列表（year/month/date/custom）
-// 必须在 /:albumId 之前，避免被匹配为 albumId
-router.post("/:type/:albumId/photos", queryAlbumPhotos);
-
+// ========== 相册 CRUD 接口 ========== //
 // 创建相册
 router.post("/", createAlbum);
 
-// 获取相册详情（自定义相册，albumId 是数字）
+// 获取相册详情
 router.get("/:albumId", getAlbumById);
 
-// 更新相册
+// 完整更新相册
 router.put("/:albumId", updateAlbum);
 
 // 删除相册
 router.delete("/:albumId", deleteAlbum);
+
+// ========== 相册图片管理接口 ========== //
+// 获取相册图片列表（移除 type 参数，直接从 albumId 判断类型）
+router.get("/:albumId/images", queryAlbumPhotos);
 
 // 添加图片到相册
 router.post("/:albumId/images", addImagesToAlbum);
@@ -48,6 +45,6 @@ router.post("/:albumId/images", addImagesToAlbum);
 router.delete("/:albumId/images", removeImagesFromAlbum);
 
 // 设置相册封面图片
-router.post("/:albumId/set-cover", setAlbumCover);
+router.put("/:albumId/cover", setAlbumCover);
 
 module.exports = router;

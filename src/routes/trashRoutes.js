@@ -18,15 +18,15 @@ const {
 router.get("/summary", handleGetTrashSummary);
 
 // 分页获取已删除图片列表
-router.get("/list", handleGetDeletedImages);
+router.get("/", handleGetDeletedImages);
 
-// 恢复图片
+// 批量恢复图片
 router.post("/restore", handleRestoreImages);
 
-// 彻底删除图片
-router.post("/permanently-delete", handlePermanentlyDeleteImages);
+// 批量永久删除图片
+router.delete("/", handlePermanentlyDeleteImages);
 
 // 清空回收站
-router.post("/clear", handleClearTrash);
+router.delete("/all", handleClearTrash);
 
 module.exports = router;

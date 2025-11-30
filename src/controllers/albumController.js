@@ -107,8 +107,8 @@ async function deleteAlbum(req, res, next) {
 async function queryAlbums(req, res, next) {
   try {
     const userId = req.user.userId;
-    const { type } = req.params;
-    const { pageNo, pageSize } = req.body;
+    // GET 请求：type 和分页参数都从 query 获取
+    const { type, pageNo, pageSize } = req.query;
 
     if (!type || !["year", "month", "date", "custom"].includes(type)) {
       throw new CustomError({
@@ -149,21 +149,23 @@ async function queryAlbums(req, res, next) {
 
 /**
  * 统一获取相册图片列表（year/month/date/custom）
- * POST /images/albums/:type/:albumId/photos
- * Body: { pageNo, pageSize }
+ * GET /albums/:albumId/images?type=year&pageNo=1&pageSize=20
+ * 注意：type 参数必须提供，用于明确指定相册类型
  */
 async function queryAlbumPhotos(req, res, next) {
   try {
     const userId = req.user.userId;
-    const { type, albumId } = req.params;
-    const { pageNo, pageSize } = req.body;
+    const { albumId } = req.params;
+    // GET 请求：type 和分页参数都从 query 获取
+    const { type, pageNo, pageSize } = req.query;
 
+    // 验证 type 参数
     if (!type || !["year", "month", "date", "custom"].includes(type)) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
         messageType: "error",
-        message: "无效的相册类型",
+        message: "type 参数是必需的，且必须是 year/month/date/custom 之一",
       });
     }
 
@@ -292,35 +294,6 @@ async function setAlbumCover(req, res, next) {
   }
 }
 
-/**
- * 切换图片喜欢状态
- */
-async function toggleFavoriteImage(req, res, next) {
-  try {
-    const userId = req.user.userId;
-    const { imageId, isFavorite } = req.body;
-
-    if (!imageId || typeof isFavorite !== "boolean") {
-      return next({
-        httpStatus: 400,
-        messageCode: "INVALID_PARAMETERS",
-        messageType: "warning",
-        message: "参数错误",
-      });
-    }
-
-    const result = await albumService.toggleFavoriteImage({
-      userId,
-      imageId: parseInt(imageId),
-      isFavorite,
-    });
-
-    res.sendResponse({ data: result });
-  } catch (error) {
-    next(error);
-  }
-}
-
 module.exports = {
   createAlbum,
   getAlbumById,
@@ -331,5 +304,4 @@ module.exports = {
   addImagesToAlbum,
   removeImagesFromAlbum,
   setAlbumCover,
-  toggleFavoriteImage,
 };

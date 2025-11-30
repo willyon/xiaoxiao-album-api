@@ -16,7 +16,7 @@ const redisClient = getRedisClient();
 
 /**
  * 图片处理进度推送流（SSE）
- * GET /api/progress/stream?sessionId=xxx
+ * GET /progress/stream?sessionId=xxx
  */
 const progressStream = async (req, res, next) => {
   try {

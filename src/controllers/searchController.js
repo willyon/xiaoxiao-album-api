@@ -6,8 +6,7 @@
 
 const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
-const { searchImagesByText, getSearchResultsCount, getSearchSuggestions, getFilterOptionsPaginated } = require("../models/searchModel");
-const { updateImageSearchMetadata } = require("../models/imageModel");
+const searchService = require("../services/searchService");
 const { addFullUrlToImage } = require("../services/imageService");
 // 移除队列引用，简化控制器
 const logger = require("../utils/logger");
@@ -316,7 +315,7 @@ function buildSearchConditions(query, filters) {
 
 /**
  * 搜索图片
- * POST /api/search/images
+ * POST /search/images
  */
 async function handleSearchImages(req, res, next) {
   try {
@@ -350,7 +349,7 @@ async function handleSearchImages(req, res, next) {
 
     // 并行查询：获取结果列表和总数
     const [searchResults, totalCount] = await Promise.all([
-      searchImagesByText({
+      searchService.searchImagesByText({
         userId,
         query: ftsQuery,
         useFts,
@@ -359,7 +358,7 @@ async function handleSearchImages(req, res, next) {
         limit: pageSize,
         offset,
       }),
-      getSearchResultsCount({
+      searchService.getSearchResultsCount({
         userId,
         query: ftsQuery,
         useFts,
@@ -403,14 +402,14 @@ async function handleSearchImages(req, res, next) {
 
 /**
  * 获取搜索建议
- * GET /api/search/suggestions
+ * GET /search/suggestions
  */
 async function handleGetSearchSuggestions(req, res, next) {
   try {
     const { userId } = req.user;
     const { prefix = "", limit = 10 } = req.query;
 
-    const suggestions = await getSearchSuggestions({
+    const suggestions = await searchService.getSearchSuggestions({
       userId,
       prefix,
       limit: parseInt(limit),
@@ -427,7 +426,7 @@ async function handleGetSearchSuggestions(req, res, next) {
 
 /**
  * 手动触发图片搜索索引
- * POST /api/search/index-image
+ * POST /search/index-image
  * 注意：这个方法将在 metaIngestor 中集成，这里只是提供接口占位
  */
 async function handleIndexImage(req, res, next) {
@@ -463,7 +462,7 @@ async function handleIndexImage(req, res, next) {
 
 /**
  * 获取搜索队列状态
- * GET /api/search/queue-status
+ * GET /search/queue-status
  * 注意：这个方法将在队列服务中实现
  */
 async function handleGetQueueStatus(req, res, next) {
@@ -485,7 +484,7 @@ async function handleGetQueueStatus(req, res, next) {
 
 /**
  * 高级搜索（支持多条件组合）
- * POST /api/search/advanced
+ * POST /search/advanced
  */
 async function handleAdvancedSearch(req, res, next) {
   try {
@@ -545,7 +544,7 @@ async function handleAdvancedSearch(req, res, next) {
 
     // 执行搜索
     const offset = (pageNo - 1) * pageSize;
-    const searchResults = await searchImagesByText({
+    const searchResults = await searchService.searchImagesByText({
       userId,
       query: searchQuery || "*", // 如果没有查询条件，搜索所有
       limit: pageSize,
@@ -575,7 +574,7 @@ async function handleAdvancedSearch(req, res, next) {
 
 /**
  * 分页获取筛选选项（用于滚动加载）
- * GET /api/search/filter-options-paginated?type=city&pageNo=1&pageSize=20
+ * GET /search/filters?type=city&pageNo=1&pageSize=20
  */
 async function handleGetFilterOptionsPaginated(req, res, next) {
   try {
@@ -596,7 +595,7 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
       details: { type, pageNo, pageSize },
     });
 
-    const result = await getFilterOptionsPaginated({
+    const result = await searchService.getFilterOptionsPaginated({
       userId,
       type,
       pageNo: parseInt(pageNo),

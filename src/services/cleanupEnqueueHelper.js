@@ -1,4 +1,3 @@
-const path = require("path");
 const { cleanupQueue } = require("../queues/cleanupQueue");
 const logger = require("../utils/logger");
 const cleanupModel = require("../models/cleanupModel");

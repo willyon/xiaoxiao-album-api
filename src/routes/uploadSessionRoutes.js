@@ -10,9 +10,9 @@ const router = express.Router();
 const { handleCreateSession, handleGetActiveSession } = require("../controllers/uploadSessionController");
 
 // 创建上传会话
-router.post("/sessions", handleCreateSession);
+router.post("/", handleCreateSession);
 
-// 获取用户的最新会话
-router.get("/sessions/active", handleGetActiveSession);
+// 获取上传会话列表（支持 active 查询参数）
+router.get("/", handleGetActiveSession);
 
 module.exports = router;

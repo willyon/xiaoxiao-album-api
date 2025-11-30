@@ -19,17 +19,14 @@ const {
 // 应用认证中间件
 router.use(authMiddleware);
 
-// 基础搜索
+// 搜索图片（基础搜索和高级搜索统一，通过 advanced query param 区分）
 router.post("/images", handleSearchImages);
-
-// 高级搜索
-router.post("/advanced", handleAdvancedSearch);
 
 // 搜索建议
 router.get("/suggestions", handleGetSearchSuggestions);
 
-// 分页获取筛选选项（用于滚动加载）
-router.get("/filter-options-paginated", handleGetFilterOptionsPaginated);
+// 获取筛选选项（用于滚动加载）
+router.get("/filters", handleGetFilterOptionsPaginated);
 
 // 手动索引单个图片
 router.post("/index-image", handleIndexImage);

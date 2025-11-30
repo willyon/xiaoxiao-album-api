@@ -17,18 +17,17 @@ const {
   handleVerifyEmail,
 } = require("../controllers/authController");
 
-// 注册/登录
-router.post("/loginOrRegister", handleLoginOrRegister);
+// 创建会话（登录/注册统一接口）
+router.post("/session", handleLoginOrRegister);
+// 获取当前登录用户信息（需要鉴权）
+router.get("/me", authMiddleware, handleCheckLoginStatus);
+// 删除会话（登出）
+router.delete("/session", authMiddleware, handleLogoutUser);
 // 重发验证邮件的接口
-router.post("/resendVerificationEmail", handleResendVerificationEmail);
+router.post("/verify-email/resend", handleResendVerificationEmail);
 // 验证邮箱的接口
-router.get("/verifyEmail", handleVerifyEmail);
+router.get("/verify-email", handleVerifyEmail);
 //通过refresh token 更新 jwt token
 router.post("/refreshToken", handleRefreshToken);
-// 登出
-router.post("/logoutUser", handleLogoutUser);
-
-// 判断当前页面是否已有登录用户（需要鉴权）
-router.get("/checkLoginStatus", authMiddleware, handleCheckLoginStatus);
 
 module.exports = router;

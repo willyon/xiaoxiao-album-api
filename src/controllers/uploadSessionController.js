@@ -28,18 +28,29 @@ const handleCreateSession = async (req, res, next) => {
 };
 
 /**
- * 处理获取活跃会话请求
- * GET /api/uploads/sessions/active
+ * 处理获取上传会话列表请求
+ * GET /upload-sessions?active=true
  */
 const handleGetActiveSession = async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const activeSession = await getActiveSession(userId);
+    const { active } = req.query;
 
-    res.sendResponse({
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-      data: activeSession,
-    });
+    // 如果 active=true，只返回活跃会话；否则返回所有会话（未来扩展）
+    if (active === "true") {
+      const activeSession = await getActiveSession(userId);
+      res.sendResponse({
+        messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
+        data: activeSession,
+      });
+    } else {
+      // TODO: 如果需要返回所有会话列表，需要实现新方法
+      const activeSession = await getActiveSession(userId);
+      res.sendResponse({
+        messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
+        data: activeSession,
+      });
+    }
   } catch (error) {
     next(error);
   }

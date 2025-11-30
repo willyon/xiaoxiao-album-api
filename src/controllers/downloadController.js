@@ -3,57 +3,14 @@
  * @Date: 2025-01-23
  * @Description: 图片下载控制器 - 包含数据库查询、业务逻辑和HTTP处理
  */
-const { db } = require("../services/database");
-const { mapFields } = require("../utils/fieldMapper");
 const storageService = require("../services/storageService");
+const imageService = require("../services/imageService");
 const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
 const logger = require("../utils/logger");
 const archiver = require("archiver");
 const path = require("path");
 const { DateTime } = require("luxon");
-
-// ========== 数据库查询层 ==========
-
-/**
- * 根据 imageId 查询图片信息（用于下载）
- */
-function _selectImageById({ imageId, userId }) {
-  const stmt = db.prepare(`
-    SELECT 
-      id,
-      original_storage_key,
-      high_res_storage_key,
-      thumbnail_storage_key,
-      storage_type
-    FROM images
-    WHERE id = ? AND user_id = ? AND deleted_at IS NULL
-    LIMIT 1
-  `);
-  return stmt.get(imageId, userId);
-}
-
-/**
- * 批量根据 imageIds 查询图片信息（用于批量下载）
- */
-function _selectImagesByIds({ imageIds, userId }) {
-  if (!imageIds || imageIds.length === 0) {
-    return [];
-  }
-
-  const placeholders = imageIds.map(() => "?").join(",");
-  const stmt = db.prepare(`
-    SELECT 
-      id,
-      original_storage_key,
-      high_res_storage_key,
-      thumbnail_storage_key,
-      storage_type
-    FROM images
-    WHERE id IN (${placeholders}) AND user_id = ? AND deleted_at IS NULL
-  `);
-  return stmt.all(...imageIds, userId);
-}
 
 // ========== 业务逻辑层 ==========
 
@@ -89,15 +46,13 @@ function _getContentTypeFromFileName(fileName) {
  */
 async function _getSingleImageDownload(imageId, userId) {
   try {
-    // 查询图片信息
-    const image = _selectImageById({ imageId, userId });
+    // 通过 service 查询图片信息
+    const image = await imageService.getImageDownloadInfo({ userId, imageId });
     if (!image) {
       throw new Error("图片不存在");
     }
 
-    // 映射字段
-    const mappedImage = mapFields("images", [image])[0];
-    const { originalStorageKey, highResStorageKey } = mappedImage;
+    const { originalStorageKey, highResStorageKey } = image;
 
     // 优先使用原图，如果不存在则使用高清图
     let storageKey = originalStorageKey || highResStorageKey;
@@ -140,14 +95,11 @@ async function _getBatchImagesDownload(imageIds, userId) {
       throw new Error("图片ID列表为空");
     }
 
-    // 查询图片信息
-    const images = _selectImagesByIds({ imageIds, userId });
+    // 通过 service 查询图片信息
+    const images = await imageService.getImagesDownloadInfo({ userId, imageIds });
     if (!images || images.length === 0) {
       throw new Error("未找到任何图片");
     }
-
-    // 映射字段
-    const mappedImages = mapFields("images", images);
 
     // 创建ZIP归档
     const archive = archiver("zip", {
@@ -156,7 +108,7 @@ async function _getBatchImagesDownload(imageIds, userId) {
 
     // 处理每张图片
     const fileNameMap = new Map(); // 用于处理文件名冲突
-    for (const image of mappedImages) {
+    for (const image of images) {
       const { id: imageId, originalStorageKey, highResStorageKey } = image;
 
       // 优先使用原图，如果不存在则使用高清图

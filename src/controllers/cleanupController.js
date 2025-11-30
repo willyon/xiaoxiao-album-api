@@ -60,34 +60,7 @@ function _parseCursor(cursor) {
   return { pageNo, pageSize: 12 };
 }
 
-// 删除清理分组中的图片
-async function handleDeleteImages(req, res, next) {
-  try {
-    const userId = _extractUserId(req);
-    const { groupId, imageIds } = req.body || {};
-
-    if (!imageIds || !Array.isArray(imageIds) || imageIds.length === 0) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: "warning",
-      });
-    }
-
-    const result = await cleanupService.deleteImages({
-      userId,
-      groupId,
-      imageIds,
-    });
-
-    res.sendResponse({ data: result });
-  } catch (error) {
-    next(error);
-  }
-}
-
 module.exports = {
   handleGetSummary,
   handleGetGroups,
-  handleDeleteImages,
 };
