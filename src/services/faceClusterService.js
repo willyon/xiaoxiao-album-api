@@ -30,11 +30,15 @@ const {
   updateFaceEmbeddingThumbnail,
   updateFaceClusterRepresentative,
   getOldClusterNameMapping,
+  getOldCoverMapping,
   restoreClusterNames,
+  restoreCoverSettings,
   setClusterCover,
   restoreClusterDefaultCover,
   verifyFaceEmbeddingInCluster,
   getFaceEmbeddingIdsByClusterId,
+  getFaceEmbeddingRepresentativeValue,
+  getRepresentativeStatusByThumbnailKeys,
   getDefaultCoverFaceEmbeddingId,
 } = require("../models/faceClusterModel");
 const { getImageStorageInfo } = require("../models/imageModel");
@@ -97,7 +101,35 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       requestBody.threshold = threshold;
     }
 
-    // 3. 调用 Python 服务的聚类 API
+    // 3. 检查 Python 服务是否可用
+    try {
+      const healthCheck = await axios.get(`${PYTHON_SERVICE_URL}/health`, {
+        timeout: 5000, // 5秒超时
+      });
+      if (!healthCheck.data?.status || healthCheck.data.status !== "healthy") {
+        throw new Error(`Python 服务健康检查失败: ${JSON.stringify(healthCheck.data)}`);
+      }
+      logger.info({
+        message: `Python 服务健康检查通过`,
+        details: { serviceUrl: PYTHON_SERVICE_URL },
+      });
+    } catch (error) {
+      const errorMsg =
+        error.code === "ECONNREFUSED" || error.code === "ETIMEDOUT"
+          ? `无法连接到 Python 服务 (${PYTHON_SERVICE_URL})。请确保服务正在运行。\n提示: 可以运行 "cd python-ai-service && python3 start.py" 启动服务`
+          : `Python 服务健康检查失败: ${error.message}`;
+      logger.error({
+        message: errorMsg,
+        details: {
+          serviceUrl: PYTHON_SERVICE_URL,
+          error: error.message,
+          code: error.code,
+        },
+      });
+      throw new Error(errorMsg);
+    }
+
+    // 4. 调用 Python 服务的聚类 API
     logger.info({
       message: `调用 Python 聚类服务: ${PYTHON_SERVICE_URL}/cluster_faces`,
       details: {
@@ -106,12 +138,31 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       },
     });
 
-    const response = await axios.post(`${PYTHON_SERVICE_URL}/cluster_faces`, requestBody, {
-      timeout: 300000, // 5分钟超时（大量数据可能需要较长时间）
-      headers: {
-        "Content-Type": "application/json",
-      },
-    });
+    let response;
+    try {
+      response = await axios.post(`${PYTHON_SERVICE_URL}/cluster_faces`, requestBody, {
+        timeout: 300000, // 5分钟超时（大量数据可能需要较长时间）
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+    } catch (error) {
+      // 提供更详细的错误信息
+      if (error.code === "ECONNREFUSED") {
+        throw new Error(
+          `无法连接到 Python 服务 (${PYTHON_SERVICE_URL})。请确保服务正在运行。\n提示: 可以运行 "cd python-ai-service && python3 start.py" 启动服务`,
+        );
+      } else if (error.code === "ETIMEDOUT") {
+        throw new Error(`Python 服务请求超时 (${PYTHON_SERVICE_URL})。可能是数据量太大或服务响应慢。`);
+      } else if (error.response) {
+        // Python 服务返回了错误响应
+        const status = error.response.status;
+        const detail = error.response.data?.detail || error.response.data?.message || error.message;
+        throw new Error(`Python 聚类服务错误 (${status}): ${detail}`);
+      } else {
+        throw new Error(`调用 Python 聚类服务失败: ${error.message}`);
+      }
+    }
 
     const clusters = response.data.clusters || [];
 
@@ -137,7 +188,7 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       },
     });
 
-    // 4. 解析聚类结果，建立映射关系
+    // 5. 解析聚类结果，建立映射关系
     // Python 返回的格式：
     // {
     //   clusters: [
@@ -185,9 +236,10 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       details: { userId, clusterCount: clusters.length },
     });
 
-    // 5. 如果重新聚类，先保存旧的缩略图路径和聚类名称映射（用于后续清理和名称恢复）
+    // 6. 如果重新聚类，先保存旧的缩略图路径、聚类名称映射和封面设置（用于后续清理和恢复）
     let oldThumbnailPaths = [];
     let oldClusterNameMapping = null;
+    let oldCoverMapping = null;
     if (recluster) {
       oldThumbnailPaths = getOldThumbnailPathsByUserId(userId);
       logger.info({
@@ -202,6 +254,13 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
         details: { userId },
       });
 
+      // 保存旧的封面设置映射（在删除前）
+      oldCoverMapping = getOldCoverMapping(userId);
+      logger.info({
+        message: `找到 ${oldCoverMapping.size} 个手动设置的封面`,
+        details: { userId },
+      });
+
       // 删除旧的聚类数据（排除用户手动分配的记录，保护用户的手动调整）
       const deleteResult = deleteFaceClustersByUserId(userId, { excludeUserAssigned: true });
       logger.info({
@@ -210,17 +269,52 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       });
     }
 
-    // 6. 批量插入聚类结果
+    // 7. 批量插入聚类结果
     const insertResult = insertFaceClusters(userId, clusterData);
 
-    // 7. 如果重新聚类，尝试恢复聚类名称（根据新旧聚类的 face_embedding_id 重叠度匹配）
-    // 使用一对一匹配策略，确保每个名称只分配给一个最匹配的新聚类
-    if (recluster && oldClusterNameMapping && oldClusterNameMapping.size > 0) {
-      const restoredCount = restoreClusterNames(userId, oldClusterNameMapping, clusterData, 0.6);
-      logger.info({
-        message: `恢复了 ${restoredCount} 个聚类的自定义名称（使用一对一匹配策略）`,
-        details: { userId, totalOldNamedClusters: oldClusterNameMapping.size },
-      });
+    // 8. 如果重新聚类，尝试恢复聚类名称和封面设置
+    if (recluster) {
+      // 8.1 恢复聚类名称（根据新旧聚类的 face_embedding_id 重叠度匹配）
+      // 使用一对一匹配策略，确保每个名称只分配给一个最匹配的新聚类
+      if (oldClusterNameMapping && oldClusterNameMapping.size > 0) {
+        const restoredCount = restoreClusterNames(userId, oldClusterNameMapping, clusterData, 0.6);
+        logger.info({
+          message: `恢复了 ${restoredCount} 个聚类的自定义名称（使用一对一匹配策略）`,
+          details: { userId, totalOldNamedClusters: oldClusterNameMapping.size },
+        });
+      }
+
+      // 8.2 恢复封面设置（根据 face_embedding_id 直接匹配）
+      // 注意：缩略图的生成和验证会移到步骤 9.1，这里只恢复封面标志
+      if (oldCoverMapping && oldCoverMapping.size > 0) {
+        // 过滤出在新聚类中存在的 face_embedding_id
+        const validCoverMapping = new Map();
+        for (const [faceEmbeddingId, oldClusterId] of oldCoverMapping.entries()) {
+          const existsInNewCluster = clusterData.some((item) => item.faceEmbeddingId === faceEmbeddingId);
+          if (existsInNewCluster) {
+            validCoverMapping.set(faceEmbeddingId, oldClusterId);
+          } else {
+            logger.warn({
+              message: `无法恢复封面设置: face_embedding_id=${faceEmbeddingId} 在新聚类中不存在`,
+              details: { userId, faceEmbeddingId, oldClusterId },
+            });
+          }
+        }
+
+        // 恢复封面设置（缩略图会在步骤 9.1 中生成和验证）
+        if (validCoverMapping.size > 0) {
+          const restoredCoverCount = restoreCoverSettings(userId, validCoverMapping, clusterData);
+          logger.info({
+            message: `恢复了 ${restoredCoverCount} 个手动设置的封面标志（共 ${oldCoverMapping.size} 个，${oldCoverMapping.size - validCoverMapping.size} 个因不在新聚类中被跳过）`,
+            details: { userId, totalOldCovers: oldCoverMapping.size, validCovers: validCoverMapping.size },
+          });
+        } else {
+          logger.warn({
+            message: `没有可恢复的封面（所有封面都不在新聚类中）`,
+            details: { userId, totalOldCovers: oldCoverMapping.size },
+          });
+        }
+      }
     }
 
     logger.info({
@@ -233,24 +327,88 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       },
     });
 
-    // 8. 为每个cluster选择最佳人脸并生成缩略图
+    // 9. 为每个cluster选择最佳人脸并生成缩略图（默认封面）
     const generatedThumbnailPaths = await _generateThumbnailsForClusters(userId, clusters, faceEmbeddings);
 
-    // 9. 如果重新聚类，清理不再使用的旧缩略图
-    if (recluster && oldThumbnailPaths.length > 0) {
-      // 找出不再使用的缩略图（在旧列表中但不在新列表中）
-      const newThumbnailPathsSet = new Set(generatedThumbnailPaths);
-      const unusedThumbnailPaths = oldThumbnailPaths.filter((path) => !newThumbnailPathsSet.has(path));
+    // 9.1. 如果重新聚类，为手动设置的封面（is_representative = 2）验证并生成缩略图（如果文件不存在）
+    if (recluster && oldCoverMapping && oldCoverMapping.size > 0) {
+      // 获取所有手动设置封面的 face_embedding_id
+      const manualCoverFaceIds = Array.from(oldCoverMapping.keys());
 
-      if (unusedThumbnailPaths.length > 0) {
+      // 批量查询这些 face_embedding 的缩略图存储键
+      const faceEmbeddings = getFaceEmbeddingsByIds(manualCoverFaceIds);
+      const thumbnailKeysToVerify = faceEmbeddings.map((fe) => fe.face_thumbnail_storage_key).filter((key) => key);
+
+      // 验证并生成缺失的缩略图
+      let regeneratedCount = 0;
+      for (const faceEmbedding of faceEmbeddings) {
+        if (faceEmbedding.face_thumbnail_storage_key) {
+          try {
+            // 验证文件是否存在，如果不存在则重新生成
+            const thumbnailKey = await generateThumbnailForFaceEmbedding(faceEmbedding.id, false);
+            if (thumbnailKey && thumbnailKey !== faceEmbedding.face_thumbnail_storage_key) {
+              regeneratedCount++;
+            }
+          } catch (error) {
+            logger.warn({
+              message: `验证/生成手动封面缩略图失败: faceEmbeddingId=${faceEmbedding.id}`,
+              details: { userId, faceEmbeddingId: faceEmbedding.id, error: error.message },
+            });
+          }
+        }
+      }
+
+      if (regeneratedCount > 0) {
         logger.info({
-          message: `开始清理 ${unusedThumbnailPaths.length} 个不再使用的缩略图文件`,
-          details: { userId, totalOld: oldThumbnailPaths.length, totalNew: generatedThumbnailPaths.length },
+          message: `为手动设置的封面重新生成了 ${regeneratedCount} 个缩略图`,
+          details: { userId },
+        });
+      }
+    }
+
+    // 10. 如果重新聚类，清理不再使用的旧缩略图
+    if (recluster && oldThumbnailPaths.length > 0) {
+      // 查询旧缩略图对应的 is_representative 状态
+      const representativeStatusMap = getRepresentativeStatusByThumbnailKeys(userId, oldThumbnailPaths);
+
+      // 新生成的默认封面缩略图集合（用于快速查找）
+      const newThumbnailPathsSet = new Set(generatedThumbnailPaths);
+
+      // 确定哪些缩略图需要删除：
+      // 1. 在新生成的默认封面列表中 -> 保留（已在使用）
+      // 2. is_representative = 2（手动设置的封面）-> 保留
+      // 3. 其他 -> 删除
+      const thumbnailsToDelete = oldThumbnailPaths.filter((path) => {
+        // 如果在新生成的默认封面列表中，保留
+        if (newThumbnailPathsSet.has(path)) {
+          return false;
+        }
+
+        // 如果 is_representative = 2（手动设置的封面），保留
+        const isRepresentative = representativeStatusMap.get(path);
+        if (isRepresentative === 2) {
+          return false;
+        }
+
+        // 其他情况，删除
+        return true;
+      });
+
+      if (thumbnailsToDelete.length > 0) {
+        logger.info({
+          message: `开始清理 ${thumbnailsToDelete.length} 个不再使用的缩略图文件（保留 ${oldThumbnailPaths.length - thumbnailsToDelete.length} 个手动设置的封面）`,
+          details: {
+            userId,
+            totalOld: oldThumbnailPaths.length,
+            toDelete: thumbnailsToDelete.length,
+            preserved: oldThumbnailPaths.length - thumbnailsToDelete.length,
+            newDefaultCovers: generatedThumbnailPaths.length,
+          },
         });
 
         let deletedCount = 0;
         let failedCount = 0;
-        for (const thumbnailPath of unusedThumbnailPaths) {
+        for (const thumbnailPath of thumbnailsToDelete) {
           try {
             await storageService.storage.deleteFile(thumbnailPath);
             deletedCount++;
@@ -267,17 +425,17 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
         }
         logger.info({
           message: `清理不再使用的缩略图完成: 成功 ${deletedCount} 个，失败 ${failedCount} 个`,
-          details: { userId, total: unusedThumbnailPaths.length },
+          details: { userId, total: thumbnailsToDelete.length },
         });
       } else {
         logger.info({
-          message: `所有旧缩略图仍在使用中，无需清理`,
+          message: `所有旧缩略图仍在使用中或为手动设置的封面，无需清理`,
           details: { userId, totalOld: oldThumbnailPaths.length },
         });
       }
     }
 
-    // 10. 获取聚类统计信息
+    // 11. 获取聚类统计信息
     const stats = getClusterStatsByUserId(userId);
 
     return {
@@ -298,11 +456,7 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       },
     });
 
-    // 如果是 Python 服务错误，提供更详细的错误信息
-    if (error.response) {
-      throw new Error(`Python 聚类服务错误: ${error.response.status} - ${error.response.data?.detail || error.message}`);
-    }
-
+    // 错误已经在 try-catch 中处理，这里只需要重新抛出
     throw error;
   }
 }
@@ -725,9 +879,10 @@ async function restoreDefaultCover(userId, clusterId) {
 /**
  * 为单个 face_embedding 生成缩略图（如果还没有）
  * @param {number} faceEmbeddingId - face_embedding ID
+ * @param {boolean} forceRegenerate - 是否强制重新生成（即使已有缩略图），默认 false
  * @returns {Promise<string|null>} 返回缩略图存储键，如果生成失败则返回 null
  */
-async function generateThumbnailForFaceEmbedding(faceEmbeddingId) {
+async function generateThumbnailForFaceEmbedding(faceEmbeddingId, forceRegenerate = false) {
   try {
     // 1. 获取 face_embedding 信息
     const faceEmbeddings = getFaceEmbeddingsByIds([faceEmbeddingId]);
@@ -740,9 +895,26 @@ async function generateThumbnailForFaceEmbedding(faceEmbeddingId) {
 
     const faceEmbedding = faceEmbeddings[0];
 
-    // 2. 检查是否已有缩略图
-    if (faceEmbedding.face_thumbnail_storage_key) {
-      return faceEmbedding.face_thumbnail_storage_key;
+    // 2. 检查是否已有缩略图（如果不需要强制重新生成）
+    if (faceEmbedding.face_thumbnail_storage_key && !forceRegenerate) {
+      // 验证文件是否真的存在
+      try {
+        const fileExists = await storageService.storage.fileExists(faceEmbedding.face_thumbnail_storage_key);
+        if (fileExists) {
+          return faceEmbedding.face_thumbnail_storage_key;
+        } else {
+          // 文件不存在，需要重新生成
+          logger.warn({
+            message: `缩略图文件不存在，将重新生成: faceEmbeddingId=${faceEmbeddingId}, storageKey=${faceEmbedding.face_thumbnail_storage_key}`,
+          });
+        }
+      } catch (error) {
+        // 验证文件失败，继续重新生成
+        logger.warn({
+          message: `验证缩略图文件失败，将重新生成: faceEmbeddingId=${faceEmbeddingId}`,
+          details: { error: error.message },
+        });
+      }
     }
 
     // 3. 获取图片数据
