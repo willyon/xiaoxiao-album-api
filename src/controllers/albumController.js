@@ -108,7 +108,7 @@ async function queryAlbums(req, res, next) {
   try {
     const userId = req.user.userId;
     // GET 请求：type 和分页参数都从 query 获取
-    const { type, pageNo, pageSize } = req.query;
+    const { type, pageNo, pageSize, search } = req.query;
 
     if (!type || !["year", "month", "date", "custom"].includes(type)) {
       throw new CustomError({
@@ -127,6 +127,7 @@ async function queryAlbums(req, res, next) {
         userId,
         pageNo: pageNo || 1,
         pageSize: pageSize || 20,
+        search: search || null,
       });
       res.sendResponse({ data: result });
     } else {
@@ -149,15 +150,16 @@ async function queryAlbums(req, res, next) {
 
 /**
  * 统一获取相册图片列表（year/month/date/custom）
- * GET /albums/:albumId/images?type=year&pageNo=1&pageSize=20
+ * GET /albums/:albumId/images?type=year&pageNo=1&pageSize=20&clusterId=123
  * 注意：type 参数必须提供，用于明确指定相册类型
+ * clusterId 为可选参数，用于查询特定人物的相册照片
  */
 async function queryAlbumPhotos(req, res, next) {
   try {
     const userId = req.user.userId;
     const { albumId } = req.params;
-    // GET 请求：type 和分页参数都从 query 获取
-    const { type, pageNo, pageSize } = req.query;
+    // GET 请求：type、clusterId 和分页参数都从 query 获取
+    const { type, pageNo, pageSize, clusterId } = req.query;
 
     // 验证 type 参数
     if (!type || !["year", "month", "date", "custom"].includes(type)) {
@@ -172,7 +174,7 @@ async function queryAlbumPhotos(req, res, next) {
     let result;
 
     if (type === "custom") {
-      // 自定义相册：albumId 是数字
+      // 自定义相册：albumId 是数字，暂不支持 clusterId 过滤
       result = await albumService.getAlbumImagesList({
         userId,
         albumId: parseInt(albumId),
@@ -182,12 +184,28 @@ async function queryAlbumPhotos(req, res, next) {
       res.sendResponse({ data: { list: result.list, total: result.total } });
     } else {
       // 时间相册（year/month/date）：albumId 是 year_key/month_key/date_key（字符串）
+      // 支持可选的 clusterId 参数
       let queryResult;
+      const clusterIdParam = clusterId ? parseInt(clusterId) : null;
+
       if (type === "year") {
-        queryResult = await imageService.getImagesByYear({ userId, pageNo, pageSize, albumId });
+        queryResult = await imageService.getImagesByYear({
+          userId,
+          pageNo,
+          pageSize,
+          albumId,
+          clusterId: clusterIdParam,
+        });
       } else if (type === "month") {
-        queryResult = await imageService.getImagesByMonth({ userId, pageNo, pageSize, albumId });
+        queryResult = await imageService.getImagesByMonth({
+          userId,
+          pageNo,
+          pageSize,
+          albumId,
+          clusterId: clusterIdParam,
+        });
       } else if (type === "date") {
+        // date 类型暂不支持 clusterId，保持原有逻辑
         queryResult = await imageService.getImagesByDate({ userId, pageNo, pageSize, albumId });
       }
 

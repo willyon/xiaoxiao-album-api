@@ -156,8 +156,16 @@ class StorageService {
     // 获取当前存储类型
     this._currentStorageType = this.storage.type;
 
-    // 在实例化时就创建备用适配器
-    this._backupAdapter = this._createBackupAdapter();
+    // 在实例化时就创建备用适配器（如果失败则跳过，不影响主流程）
+    try {
+      this._backupAdapter = this._createBackupAdapter();
+    } catch (error) {
+      logger.warn({
+        message: "初始化备用适配器失败，将跳过备用适配器",
+        details: { error: error.message },
+      });
+      this._backupAdapter = null;
+    }
   }
 
   /**
@@ -168,7 +176,16 @@ class StorageService {
     try {
       // 如果当前是本地存储，返回OSS适配器
       if (this._currentStorageType === STORAGE_TYPES.LOCAL) {
-        return StorageAdapterFactory.createBackupAdapter(STORAGE_TYPES.ALIYUN_OSS);
+        try {
+          return StorageAdapterFactory.createBackupAdapter(STORAGE_TYPES.ALIYUN_OSS);
+        } catch (error) {
+          // OSS配置缺失时，不创建备用适配器
+          logger.warn({
+            message: "创建OSS备用适配器失败，跳过（OSS配置可能缺失）",
+            details: { error: error.message },
+          });
+          return null;
+        }
       }
 
       // 如果当前是OSS存储，返回本地适配器
@@ -181,7 +198,7 @@ class StorageService {
     } catch (error) {
       // 如果创建备用适配器失败，回退到本地适配器
       logger.warn({
-        message: "创建备用适配器失败，回退到本地适配器",
+        message: "创建备用适配器失败，跳过",
         details: { error: error.message },
       });
       return null;

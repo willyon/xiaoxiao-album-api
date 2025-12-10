@@ -517,6 +517,11 @@ function createTableFaceEmbeddings() {
         gender TEXT,
         expression TEXT,
         confidence REAL,
+        quality_score REAL DEFAULT NULL,        -- 人脸质量分数（0-1，用于选择最佳封面人脸）
+        bbox TEXT DEFAULT NULL,                 -- 人脸边界框坐标（JSON格式: [x1, y1, x2, y2]，用于生成缩略图）
+        pose TEXT DEFAULT NULL,                 -- 人脸姿态信息（JSON格式: {yaw, pitch, roll}，用于选择最佳封面人脸）
+        ignored_for_clustering BOOLEAN DEFAULT FALSE,  -- 是否排除参与聚类（TRUE=永久排除，FALSE/NULL=参与聚类，保留字段以备未来扩展使用）
+        face_thumbnail_storage_key TEXT,
         created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
         FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE,
         UNIQUE (image_id, face_index)
@@ -574,7 +579,10 @@ function createTableFaceClusters() {
         face_embedding_id INTEGER NOT NULL,
         similarity_score REAL,
         is_representative BOOLEAN DEFAULT FALSE,
+        is_user_assigned BOOLEAN DEFAULT FALSE,
+        name TEXT,
         created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+        updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
         FOREIGN KEY (face_embedding_id) REFERENCES face_embeddings(id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         UNIQUE (user_id, cluster_id, face_embedding_id)
@@ -595,6 +603,46 @@ function createTableFaceClusters() {
       `
       CREATE INDEX IF NOT EXISTS idx_face_clusters_cluster_id
       ON face_clusters(cluster_id);
+    `,
+    ).run();
+
+    // 创建复合索引优化按人物查询照片的性能
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_face_clusters_cluster_user
+      ON face_clusters(cluster_id, user_id);
+    `,
+    ).run();
+
+    // 创建复合索引优化 JOIN 查询性能（用于 images JOIN face_embeddings JOIN face_clusters）
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_face_clusters_embedding_cluster
+      ON face_clusters(face_embedding_id, cluster_id);
+    `,
+    ).run();
+
+    // 创建复合索引优化封面查询性能
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_face_clusters_user_cluster_rep
+      ON face_clusters(user_id, cluster_id, is_representative DESC, similarity_score DESC);
+    `,
+    ).run();
+
+    // 创建索引优化 face_embeddings 的 ignored_for_clustering 查询
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_face_embeddings_ignored
+      ON face_embeddings(ignored_for_clustering);
+    `,
+    ).run();
+
+    // 创建复合索引优化 JOIN 查询
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_face_embeddings_image_ignored
+      ON face_embeddings(image_id, ignored_for_clustering);
     `,
     ).run();
 

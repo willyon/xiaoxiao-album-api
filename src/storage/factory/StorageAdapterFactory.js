@@ -85,16 +85,25 @@ class StorageAdapterFactory {
       return StorageAdapterFactory.backupAdapter;
     }
 
-    // 设置配置对象
-    const storageConfig = StorageAdapterFactory.storageConfig || getStorageConfig();
-    let Adapter = adapterContainer[storageType];
-    let options = storageConfig[storageType];
-    let adapter = new Adapter(options || {});
+    try {
+      // 设置配置对象
+      const storageConfig = StorageAdapterFactory.storageConfig || getStorageConfig();
+      let Adapter = adapterContainer[storageType];
+      let options = storageConfig[storageType];
+      let adapter = new Adapter(options || {});
 
-    // 根据配置对象创建存储适配器
-    StorageAdapterFactory.backupAdapter = adapter;
+      // 根据配置对象创建存储适配器
+      StorageAdapterFactory.backupAdapter = adapter;
 
-    return adapter;
+      return adapter;
+    } catch (error) {
+      // 如果创建备用适配器失败（如OSS配置缺失），返回null
+      logger.warn({
+        message: "创建备用存储适配器失败",
+        details: { storageType, error: error.message },
+      });
+      return null;
+    }
   }
 
   /**

@@ -13,7 +13,7 @@ const logger = require("../utils/logger");
 /**
  * 获取用户的相册列表（包含封面图片URL）
  */
-async function getAlbumsList({ userId, pageNo = 1, pageSize = 20 }) {
+async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null }) {
   // 确保"喜欢"相册存在（这样用户至少能看到一个相册）
   try {
     albumModel.getOrCreateFavoriteAlbum(userId);
@@ -21,7 +21,7 @@ async function getAlbumsList({ userId, pageNo = 1, pageSize = 20 }) {
     // 继续执行，即使创建失败也尝试查询现有相册
   }
 
-  const allAlbums = albumModel.getAlbumsByUserId({ userId });
+  const allAlbums = albumModel.getAlbumsByUserId({ userId, search });
 
   // 分页处理
   const total = allAlbums.length;

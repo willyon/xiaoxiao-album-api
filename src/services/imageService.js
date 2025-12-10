@@ -151,12 +151,13 @@ async function getUserImageHashes(userId) {
 // ========== 图片查询服务函数 ==========
 
 // 分页获取用户全部图片
-async function getAllImagesByPage({ pageNo, pageSize, userId }) {
+async function getAllImagesByPage({ pageNo, pageSize, userId, clusterId = null }) {
   try {
     const result = await imageModel.selectImagesByPage({
       pageNo,
       pageSize,
       userId,
+      clusterId,
     });
 
     // 添加完整URL（isFavorite字段已从数据库直接返回）
@@ -166,7 +167,7 @@ async function getAllImagesByPage({ pageNo, pageSize, userId }) {
   } catch (error) {
     logger.error({
       message: "分页获取用户全部图片失败",
-      details: { pageNo, pageSize, userId, error: error.message },
+      details: { pageNo, pageSize, userId, clusterId, error: error.message },
     });
     throw new CustomError(ERROR_CODES.INTERNAL_SERVER_ERROR, "获取用户图片失败");
   }
@@ -174,13 +175,15 @@ async function getAllImagesByPage({ pageNo, pageSize, userId }) {
 
 // 分页获取用户某年份图片
 // albumId: 对于时间相册，实际上是 year_key (如 "2024")
-async function getImagesByYear({ pageNo, pageSize, albumId, userId }) {
+// clusterId: 可选，用于查询特定人物的某年份照片
+async function getImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = null }) {
   try {
     const result = await imageModel.selectImagesByYear({
       pageNo,
       pageSize,
       albumId,
       userId,
+      clusterId,
     });
 
     // 添加完整URL（isFavorite字段已从数据库直接返回）
@@ -190,7 +193,7 @@ async function getImagesByYear({ pageNo, pageSize, albumId, userId }) {
   } catch (error) {
     logger.error({
       message: "分页获取用户某年份图片失败",
-      details: { pageNo, pageSize, albumId, userId, error: error.message },
+      details: { pageNo, pageSize, albumId, userId, clusterId, error: error.message },
     });
     throw new CustomError(ERROR_CODES.INTERNAL_SERVER_ERROR, "获取用户图片失败");
   }
@@ -198,9 +201,16 @@ async function getImagesByYear({ pageNo, pageSize, albumId, userId }) {
 
 // 分页获取用户某月份图片
 // albumId: 对于时间相册，实际上是 month_key (如 "2024-01")
-async function getImagesByMonth({ pageNo, pageSize, albumId, userId }) {
+// clusterId: 可选，用于查询特定人物的某月份照片
+async function getImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = null }) {
   try {
-    const result = await imageModel.selectImagesByMonth({ pageNo, pageSize, albumId, userId });
+    const result = await imageModel.selectImagesByMonth({
+      pageNo,
+      pageSize,
+      albumId,
+      userId,
+      clusterId,
+    });
 
     // 添加完整URL（isFavorite字段已从数据库直接返回）
     result.data = await addFullUrlToImage(result.data);
@@ -209,7 +219,7 @@ async function getImagesByMonth({ pageNo, pageSize, albumId, userId }) {
   } catch (error) {
     logger.error({
       message: "分页获取用户某月份图片失败",
-      details: { pageNo, pageSize, albumId, userId, error: error.message },
+      details: { pageNo, pageSize, albumId, userId, clusterId, error: error.message },
     });
     throw new CustomError(ERROR_CODES.INTERNAL_SERVER_ERROR, "获取用户图片失败");
   }
@@ -313,6 +323,58 @@ async function getGroupsByDate({ userId, pageNo = 1, pageSize = 10, withFullUrls
     throw new CustomError({
       httpStatus: 500,
       messageCode: ERROR_CODES.FAILED_SELECT_GROUPS_BY_DATE,
+      messageType: "error",
+    });
+  }
+}
+
+// 按年份获取指定人物的分组信息
+async function getGroupsByYearForCluster({ userId, clusterId, pageNo = 1, pageSize = 10, withFullUrls = true }) {
+  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId || !clusterId) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: "warning",
+    });
+  }
+  try {
+    const queryResult = await imageModel.selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId });
+
+    if (withFullUrls && queryResult.data) {
+      queryResult.data = await _addFullUrlToGroupCover(queryResult.data);
+    }
+
+    return queryResult;
+  } catch (error) {
+    throw new CustomError({
+      httpStatus: 500,
+      messageCode: ERROR_CODES.FAILED_SELECT_GROUPS_BY_YEAR,
+      messageType: "error",
+    });
+  }
+}
+
+// 按月份获取指定人物的分组信息
+async function getGroupsByMonthForCluster({ userId, clusterId, pageNo = 1, pageSize = 10, withFullUrls = true }) {
+  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId || !clusterId) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: "warning",
+    });
+  }
+  try {
+    const queryResult = await imageModel.selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId });
+
+    if (withFullUrls && queryResult.data) {
+      queryResult.data = await _addFullUrlToGroupCover(queryResult.data);
+    }
+
+    return queryResult;
+  } catch (error) {
+    throw new CustomError({
+      httpStatus: 500,
+      messageCode: ERROR_CODES.FAILED_SELECT_GROUPS_BY_MONTH,
       messageType: "error",
     });
   }
@@ -438,6 +500,8 @@ module.exports = {
   getGroupsByYear,
   getGroupsByMonth,
   getGroupsByDate,
+  getGroupsByYearForCluster,
+  getGroupsByMonthForCluster,
   addFullUrlToImage,
 
   // ========== 图片 CRUD 服务函数 ==========

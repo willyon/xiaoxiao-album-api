@@ -14,6 +14,16 @@ const db = new Database(path.resolve(__dirname, "../../database.db"));
 // 开启外键支持
 db.pragma("foreign_keys = ON");
 
+// 优化 SQLite 性能配置
+// WAL 模式：提高并发性能，减少锁竞争
+db.pragma("journal_mode = WAL");
+// 同步模式：NORMAL 平衡性能和安全性
+db.pragma("synchronous = NORMAL");
+// 缓存大小：64MB，提高查询性能
+db.pragma("cache_size = -65536");
+// 临时存储：内存，提高临时表操作性能
+db.pragma("temp_store = MEMORY");
+
 //用于执行查询的函数
 // function runQuery(query, params = []) {
 //   const stmt = db.prepare(query);

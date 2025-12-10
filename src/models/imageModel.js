@@ -36,171 +36,362 @@ function selectHashesByUserId(userId) {
 }
 
 //分页获取用户全部图片数据
-function selectImagesByPage({ pageNo, pageSize, userId }) {
+// 支持可选的 clusterId 参数，用于查询特定人物的照片
+function selectImagesByPage({ pageNo, pageSize, userId, clusterId = null }) {
   const offset = (pageNo - 1) * pageSize;
 
-  // 分页数据查询
-  const dataQuery = db.prepare(`
-    SELECT 
-      id,
-      high_res_storage_key, 
-      thumbnail_storage_key, 
-      image_created_at, 
-      date_key, 
-      day_key, 
-      month_key, 
-      year_key, 
-      storage_type, 
-      gps_location,
-      width_px,
-      height_px,
-      aspect_ratio,
-      layout_type,
-      color_theme,
-      file_size_bytes,
-      face_count,
-      person_count,
-      age_tags,
-      gender_tags,
-      expression_tags,
-      has_young,
-      has_adult,
-      is_favorite
-    FROM images
-    WHERE user_id = ?
-      AND deleted_at IS NULL
-    ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
-    LIMIT ? OFFSET ?
-  `);
+  // 如果指定了 clusterId，需要通过 face_clusters 表关联查询
+  if (clusterId !== null && clusterId !== undefined) {
+    // 分页数据查询（使用 JOIN + GROUP BY 确保每张照片只返回一次，性能更好）
+    // 注意：当指定 clusterId 时，返回对应的 face_embedding_id（用于移出功能）
+    // 如果一张图片中有多个人脸都属于同一 cluster，使用 MIN 取第一个 face_embedding_id
+    const dataQuery = db.prepare(`
+      SELECT 
+        i.id,
+        i.high_res_storage_key, 
+        i.thumbnail_storage_key, 
+        i.image_created_at, 
+        i.date_key, 
+        i.day_key, 
+        i.month_key, 
+        i.year_key, 
+        i.storage_type, 
+        i.gps_location,
+        i.width_px,
+        i.height_px,
+        i.aspect_ratio,
+        i.layout_type,
+        i.color_theme,
+        i.file_size_bytes,
+        i.face_count,
+        i.person_count,
+        i.age_tags,
+        i.gender_tags,
+        i.expression_tags,
+        i.has_young,
+        i.has_adult,
+        i.is_favorite,
+        MIN(fe.id) AS face_embedding_id
+      FROM images i
+      INNER JOIN face_embeddings fe ON i.id = fe.image_id
+      INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id
+      WHERE i.user_id = ?
+        AND fc.cluster_id = ?
+        AND i.deleted_at IS NULL
+      GROUP BY i.id
+      ORDER BY i.image_created_at DESC, i.id DESC
+      LIMIT ? OFFSET ?
+    `);
 
-  // 总数统计（与分页查询保持相同过滤条件）
-  const countQuery = db.prepare(`
-    SELECT COUNT(*) AS total
-    FROM images
-    WHERE user_id = ?
-      AND deleted_at IS NULL
-  `);
+    // 总数统计（使用 COUNT(DISTINCT) 确保统计的是照片数量，与数据查询逻辑一致）
+    const countQuery = db.prepare(`
+      SELECT COUNT(DISTINCT i.id) AS total
+      FROM images i
+      INNER JOIN face_embeddings fe ON i.id = fe.image_id
+      INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id
+      WHERE i.user_id = ?
+        AND fc.cluster_id = ?
+        AND i.deleted_at IS NULL
+    `);
 
-  try {
-    const data = dataQuery.all(userId, pageSize, offset);
-    const { total } = countQuery.get(userId);
-    return { data: mapFields("images", data), total };
-  } catch (error) {
-    throw error;
+    try {
+      const data = dataQuery.all(userId, clusterId, pageSize, offset);
+      const { total } = countQuery.get(userId, clusterId);
+      return { data: mapFields("images", data), total };
+    } catch (error) {
+      throw error;
+    }
+  } else {
+    // 原有逻辑：查询所有图片
+    const dataQuery = db.prepare(`
+      SELECT 
+        id,
+        high_res_storage_key, 
+        thumbnail_storage_key, 
+        image_created_at, 
+        date_key, 
+        day_key, 
+        month_key, 
+        year_key, 
+        storage_type, 
+        gps_location,
+        width_px,
+        height_px,
+        aspect_ratio,
+        layout_type,
+        color_theme,
+        file_size_bytes,
+        face_count,
+        person_count,
+        age_tags,
+        gender_tags,
+        expression_tags,
+        has_young,
+        has_adult,
+        is_favorite
+      FROM images
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+      ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
+      LIMIT ? OFFSET ?
+    `);
+
+    const countQuery = db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM images
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+    `);
+
+    try {
+      const data = dataQuery.all(userId, pageSize, offset);
+      const { total } = countQuery.get(userId);
+      return { data: mapFields("images", data), total };
+    } catch (error) {
+      throw error;
+    }
   }
 }
 
 // 分页获取用户具体某年份的图片数据 —— 基于物化的 yearKey
 // albumId: 对于时间相册，实际上是 year_key (如 "2024")
-function selectImagesByYear({ pageNo, pageSize, albumId, userId }) {
+// 支持可选的 clusterId 参数，用于查询特定人物的某年份照片
+function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = null }) {
   const offset = (pageNo - 1) * pageSize;
 
-  // 分页数据查询（与总数统计保持相同过滤条件）
-  const dataQuery = db.prepare(`
-    SELECT 
-      id,
-      high_res_storage_key, 
-      thumbnail_storage_key, 
-      image_created_at, 
-      date_key, 
-      day_key, 
-      month_key, 
-      year_key, 
-      storage_type, 
-      gps_location,
-      width_px,
-      height_px,
-      aspect_ratio,
-      layout_type,
-      color_theme,
-      file_size_bytes,
-      face_count,
-      person_count,
-      age_tags,
-      gender_tags,
-      expression_tags,
-      has_young,
-      has_adult,
-      is_favorite
-    FROM images
-    WHERE user_id = ?
-      AND year_key = ?
-      AND deleted_at IS NULL
-    ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
-    LIMIT ? OFFSET ?
-  `);
+  // 如果指定了 clusterId，需要通过 face_clusters 表关联查询
+  if (clusterId !== null && clusterId !== undefined) {
+    // 使用 JOIN + GROUP BY 确保每张照片只返回一次，性能更好
+    // 如果一张图片中有多个人脸都属于同一 cluster，使用 MIN 取第一个 face_embedding_id
+    const dataQuery = db.prepare(`
+      SELECT 
+        i.id,
+        i.high_res_storage_key, 
+        i.thumbnail_storage_key, 
+        i.image_created_at, 
+        i.date_key, 
+        i.day_key, 
+        i.month_key, 
+        i.year_key, 
+        i.storage_type, 
+        i.gps_location,
+        i.width_px,
+        i.height_px,
+        i.aspect_ratio,
+        i.layout_type,
+        i.color_theme,
+        i.file_size_bytes,
+        i.face_count,
+        i.person_count,
+        i.age_tags,
+        i.gender_tags,
+        i.expression_tags,
+        i.has_young,
+        i.has_adult,
+        i.is_favorite,
+        MIN(fe.id) AS face_embedding_id
+      FROM images i
+      INNER JOIN face_embeddings fe ON i.id = fe.image_id
+      INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id
+      WHERE i.user_id = ?
+        AND i.year_key = ?
+        AND fc.cluster_id = ?
+        AND i.deleted_at IS NULL
+      GROUP BY i.id
+      ORDER BY i.image_created_at DESC, i.id DESC
+      LIMIT ? OFFSET ?
+    `);
 
-  const countQuery = db.prepare(`
-    SELECT COUNT(*) AS total
-    FROM images
-    WHERE user_id = ?
-      AND year_key = ?
-      AND deleted_at IS NULL
-  `);
+    const countQuery = db.prepare(`
+      SELECT COUNT(DISTINCT i.id) AS total
+      FROM images i
+      INNER JOIN face_embeddings fe ON i.id = fe.image_id
+      INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id
+      WHERE i.user_id = ?
+        AND i.year_key = ?
+        AND fc.cluster_id = ?
+        AND i.deleted_at IS NULL
+    `);
 
-  try {
-    const data = dataQuery.all(userId, albumId, pageSize, offset);
-    const { total } = countQuery.get(userId, albumId);
-    return { data: mapFields("images", data), total };
-  } catch (error) {
-    throw error;
+    try {
+      const data = dataQuery.all(userId, albumId, clusterId, pageSize, offset);
+      const { total } = countQuery.get(userId, albumId, clusterId);
+      return { data: mapFields("images", data), total };
+    } catch (error) {
+      throw error;
+    }
+  } else {
+    // 原有逻辑：查询所有用户的某年份图片
+    const dataQuery = db.prepare(`
+      SELECT 
+        id,
+        high_res_storage_key, 
+        thumbnail_storage_key, 
+        image_created_at, 
+        date_key, 
+        day_key, 
+        month_key, 
+        year_key, 
+        storage_type, 
+        gps_location,
+        width_px,
+        height_px,
+        aspect_ratio,
+        layout_type,
+        color_theme,
+        file_size_bytes,
+        face_count,
+        person_count,
+        age_tags,
+        gender_tags,
+        expression_tags,
+        has_young,
+        has_adult,
+        is_favorite
+      FROM images
+      WHERE user_id = ?
+        AND year_key = ?
+        AND deleted_at IS NULL
+      ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
+      LIMIT ? OFFSET ?
+    `);
+
+    const countQuery = db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM images
+      WHERE user_id = ?
+        AND year_key = ?
+        AND deleted_at IS NULL
+    `);
+
+    try {
+      const data = dataQuery.all(userId, albumId, pageSize, offset);
+      const { total } = countQuery.get(userId, albumId);
+      return { data: mapFields("images", data), total };
+    } catch (error) {
+      throw error;
+    }
   }
 }
 
 // 分页获取用户具体某月份的图片数据 —— 基于物化的 monthKey
 // albumId: 对于时间相册，实际上是 month_key (如 "2024-01")
-function selectImagesByMonth({ pageNo, pageSize, albumId, userId }) {
+// 支持可选的 clusterId 参数，用于查询特定人物的某月份照片
+function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = null }) {
   const offset = (pageNo - 1) * pageSize;
 
-  // 分页数据查询（与总数统计保持相同过滤条件）
-  const dataQuery = db.prepare(`
-    SELECT 
-      id,
-      high_res_storage_key, 
-      thumbnail_storage_key, 
-      image_created_at, 
-      date_key, 
-      day_key, 
-      month_key, 
-      year_key, 
-      storage_type, 
-      gps_location,
-      width_px,
-      height_px,
-      aspect_ratio,
-      layout_type,
-      color_theme,
-      file_size_bytes,
-      face_count,
-      person_count,
-      age_tags,
-      gender_tags,
-      expression_tags,
-      has_young,
-      has_adult,
-      is_favorite
-    FROM images
-    WHERE user_id = ?
-      AND month_key = ?
-      AND deleted_at IS NULL
-    ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
-    LIMIT ? OFFSET ?
-  `);
+  // 如果指定了 clusterId，需要通过 face_clusters 表关联查询
+  if (clusterId !== null && clusterId !== undefined) {
+    // 使用 JOIN + GROUP BY 确保每张照片只返回一次，性能更好
+    // 如果一张图片中有多个人脸都属于同一 cluster，使用 MIN 取第一个 face_embedding_id
+    const dataQuery = db.prepare(`
+      SELECT 
+        i.id,
+        i.high_res_storage_key, 
+        i.thumbnail_storage_key, 
+        i.image_created_at, 
+        i.date_key, 
+        i.day_key, 
+        i.month_key, 
+        i.year_key, 
+        i.storage_type, 
+        i.gps_location,
+        i.width_px,
+        i.height_px,
+        i.aspect_ratio,
+        i.layout_type,
+        i.color_theme,
+        i.file_size_bytes,
+        i.face_count,
+        i.person_count,
+        i.age_tags,
+        i.gender_tags,
+        i.expression_tags,
+        i.has_young,
+        i.has_adult,
+        i.is_favorite,
+        MIN(fe.id) AS face_embedding_id
+      FROM images i
+      INNER JOIN face_embeddings fe ON i.id = fe.image_id
+      INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id
+      WHERE i.user_id = ?
+        AND i.month_key = ?
+        AND fc.cluster_id = ?
+        AND i.deleted_at IS NULL
+      GROUP BY i.id
+      ORDER BY i.image_created_at DESC, i.id DESC
+      LIMIT ? OFFSET ?
+    `);
 
-  const countQuery = db.prepare(`
-    SELECT COUNT(*) AS total
-    FROM images
-    WHERE user_id = ?
-      AND month_key = ?
-      AND deleted_at IS NULL
-  `);
+    const countQuery = db.prepare(`
+      SELECT COUNT(DISTINCT i.id) AS total
+      FROM images i
+      INNER JOIN face_embeddings fe ON i.id = fe.image_id
+      INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id
+      WHERE i.user_id = ?
+        AND i.month_key = ?
+        AND fc.cluster_id = ?
+        AND i.deleted_at IS NULL
+    `);
 
-  try {
-    const data = dataQuery.all(userId, albumId, pageSize, offset);
-    const { total } = countQuery.get(userId, albumId);
-    return { data: mapFields("images", data), total };
-  } catch (error) {
-    throw error;
+    try {
+      const data = dataQuery.all(userId, albumId, clusterId, pageSize, offset);
+      const { total } = countQuery.get(userId, albumId, clusterId);
+      return { data: mapFields("images", data), total };
+    } catch (error) {
+      throw error;
+    }
+  } else {
+    // 原有逻辑：查询所有用户的某月份图片
+    const dataQuery = db.prepare(`
+      SELECT 
+        id,
+        high_res_storage_key, 
+        thumbnail_storage_key, 
+        image_created_at, 
+        date_key, 
+        day_key, 
+        month_key, 
+        year_key, 
+        storage_type, 
+        gps_location,
+        width_px,
+        height_px,
+        aspect_ratio,
+        layout_type,
+        color_theme,
+        file_size_bytes,
+        face_count,
+        person_count,
+        age_tags,
+        gender_tags,
+        expression_tags,
+        has_young,
+        has_adult,
+        is_favorite
+      FROM images
+      WHERE user_id = ?
+        AND month_key = ?
+        AND deleted_at IS NULL
+      ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
+      LIMIT ? OFFSET ?
+    `);
+
+    const countQuery = db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM images
+      WHERE user_id = ?
+        AND month_key = ?
+        AND deleted_at IS NULL
+    `);
+
+    try {
+      const data = dataQuery.all(userId, albumId, pageSize, offset);
+      const { total } = countQuery.get(userId, albumId);
+      return { data: mapFields("images", data), total };
+    } catch (error) {
+      throw error;
+    }
   }
 }
 
@@ -464,6 +655,206 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
   try {
     const data = dataQuery.all(userId, userId, pageSize, offset);
     const { groupCount: total } = countQuery.get(userId);
+    return { data: mapFields("images", data), total };
+  } catch (error) {
+    throw error;
+  }
+}
+
+// 分页获取指定人物（clusterId）按年份分组的数据
+function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
+  const offset = (pageNo - 1) * pageSize;
+
+  const dataQuery = db.prepare(`
+    WITH ranked_images AS (
+      -- 为指定人物的图片按年份分组并排序
+      SELECT 
+        i.year_key,
+        i.thumbnail_storage_key,
+        i.image_created_at,
+        i.id,
+        i.storage_type,
+        ROW_NUMBER() OVER (
+          PARTITION BY i.year_key 
+          ORDER BY 
+            CASE 
+              WHEN i.expression_tags LIKE 'happy%' 
+                   AND i.primary_expression_confidence > 0.7 
+                   AND i.primary_face_quality > 0.7 
+                   AND i.face_count > 0 
+                   THEN 1
+              WHEN i.expression_tags LIKE 'happy%' 
+                   AND i.primary_expression_confidence > 0.7 
+                   AND i.face_count > 0 
+                   THEN 2
+              WHEN i.primary_face_quality > 0.8 
+                   AND i.face_count > 0 
+                   THEN 3
+              WHEN i.face_count > 0 THEN 4
+              WHEN i.person_count > 0 THEN 5
+              ELSE 6
+            END,
+            COALESCE(i.primary_expression_confidence, 0) DESC,
+            COALESCE(i.primary_face_quality, 0) DESC,
+            COALESCE(i.face_count, 0) DESC,
+            COALESCE(i.person_count, 0) DESC,
+            COALESCE(i.image_created_at, 0) DESC,
+            i.id DESC
+        ) AS rn
+      FROM face_clusters fc
+      INNER JOIN face_embeddings fe ON fc.face_embedding_id = fe.id
+      INNER JOIN images i ON fe.image_id = i.id
+      WHERE fc.user_id = ? 
+        AND fc.cluster_id = ?
+        AND i.deleted_at IS NULL
+    ),
+    latest AS (
+      SELECT 
+        year_key,
+        thumbnail_storage_key,
+        image_created_at,
+        id,
+        storage_type
+      FROM ranked_images
+      WHERE rn = 1
+    ),
+    counts AS (
+      SELECT i.year_key, COUNT(DISTINCT i.id) AS imageCount
+      FROM face_clusters fc
+      INNER JOIN face_embeddings fe ON fc.face_embedding_id = fe.id
+      INNER JOIN images i ON fe.image_id = i.id
+      WHERE fc.user_id = ?
+        AND fc.cluster_id = ?
+        AND i.deleted_at IS NULL
+      GROUP BY i.year_key
+    )
+    SELECT
+      latest.year_key AS album_id,
+      latest.thumbnail_storage_key AS latestImagekey,
+      latest.image_created_at,
+      latest.storage_type,
+      counts.imageCount
+    FROM latest
+    JOIN counts ON counts.year_key = latest.year_key
+    ORDER BY
+      CASE WHEN latest.year_key = 'unknown' THEN 1 ELSE 0 END,
+      latest.year_key DESC
+    LIMIT ? OFFSET ?;
+  `);
+
+  const countQuery = db.prepare(`
+    SELECT COUNT(DISTINCT i.year_key) AS groupCount
+    FROM face_clusters fc
+    INNER JOIN face_embeddings fe ON fc.face_embedding_id = fe.id
+    INNER JOIN images i ON fe.image_id = i.id
+      WHERE fc.user_id = ?
+      AND fc.cluster_id = ?
+      AND i.deleted_at IS NULL;
+  `);
+
+  try {
+    const data = dataQuery.all(userId, clusterId, userId, clusterId, pageSize, offset);
+    const { groupCount: total } = countQuery.get(userId, clusterId);
+    return { data: mapFields("images", data), total };
+  } catch (error) {
+    throw error;
+  }
+}
+
+// 分页获取指定人物（clusterId）按月份分组的数据
+function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) {
+  const offset = (pageNo - 1) * pageSize;
+
+  const dataQuery = db.prepare(`
+    WITH ranked_images AS (
+      -- 为指定人物的图片按月份分组并排序
+      SELECT 
+        i.month_key,
+        i.thumbnail_storage_key,
+        i.image_created_at,
+        i.id,
+        i.storage_type,
+        ROW_NUMBER() OVER (
+          PARTITION BY i.month_key 
+          ORDER BY 
+            CASE 
+              WHEN i.expression_tags LIKE 'happy%' 
+                   AND i.primary_expression_confidence > 0.7 
+                   AND i.primary_face_quality > 0.7 
+                   AND i.face_count > 0 
+                   THEN 1
+              WHEN i.expression_tags LIKE 'happy%' 
+                   AND i.primary_expression_confidence > 0.7 
+                   AND i.face_count > 0 
+                   THEN 2
+              WHEN i.primary_face_quality > 0.8 
+                   AND i.face_count > 0 
+                   THEN 3
+              WHEN i.face_count > 0 THEN 4
+              WHEN i.person_count > 0 THEN 5
+              ELSE 6
+            END,
+            COALESCE(i.primary_expression_confidence, 0) DESC,
+            COALESCE(i.primary_face_quality, 0) DESC,
+            COALESCE(i.face_count, 0) DESC,
+            COALESCE(i.person_count, 0) DESC,
+            COALESCE(i.image_created_at, 0) DESC,
+            i.id DESC
+        ) AS rn
+      FROM face_clusters fc
+      INNER JOIN face_embeddings fe ON fc.face_embedding_id = fe.id
+      INNER JOIN images i ON fe.image_id = i.id
+      WHERE fc.user_id = ? 
+        AND fc.cluster_id = ?
+        AND i.deleted_at IS NULL
+    ),
+    latest AS (
+      SELECT 
+        month_key,
+        thumbnail_storage_key,
+        image_created_at,
+        id,
+        storage_type
+      FROM ranked_images
+      WHERE rn = 1
+    ),
+    counts AS (
+      SELECT i.month_key, COUNT(DISTINCT i.id) AS imageCount
+      FROM face_clusters fc
+      INNER JOIN face_embeddings fe ON fc.face_embedding_id = fe.id
+      INNER JOIN images i ON fe.image_id = i.id
+      WHERE fc.user_id = ?
+        AND fc.cluster_id = ?
+        AND i.deleted_at IS NULL
+      GROUP BY i.month_key
+    )
+    SELECT
+      latest.month_key AS album_id,
+      latest.thumbnail_storage_key AS latestImagekey,
+      latest.image_created_at,
+      latest.storage_type,
+      counts.imageCount
+    FROM latest
+    JOIN counts ON counts.month_key = latest.month_key
+    ORDER BY
+      CASE WHEN latest.month_key = 'unknown' THEN 1 ELSE 0 END,
+      latest.month_key DESC
+    LIMIT ? OFFSET ?;
+  `);
+
+  const countQuery = db.prepare(`
+    SELECT COUNT(DISTINCT i.month_key) AS groupCount
+    FROM face_clusters fc
+    INNER JOIN face_embeddings fe ON fc.face_embedding_id = fe.id
+    INNER JOIN images i ON fe.image_id = i.id
+      WHERE fc.user_id = ?
+      AND fc.cluster_id = ?
+      AND i.deleted_at IS NULL;
+  `);
+
+  try {
+    const data = dataQuery.all(userId, clusterId, userId, clusterId, pageSize, offset);
+    const { groupCount: total } = countQuery.get(userId, clusterId);
     return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;
@@ -799,6 +1190,7 @@ function updateLocationInfo(imageId, { gpsLocation, country, city }) {
  * • 存储图片中每个人脸的详细信息和512维特征向量
  * • 支持人脸识别、聚类、相似度计算
  * • 采用先删除再插入策略，保证数据一致性
+ * • 存储人脸缩略图（用于封面显示）
  *
  * @function insertFaceEmbeddings
  * @param {number} imageId - 图片ID
@@ -809,8 +1201,9 @@ function updateLocationInfo(imageId, { gpsLocation, country, city }) {
  * @param {string} faceData[].gender - 性别："male" 或 "female"
  * @param {string} faceData[].expression - 表情："happy", "neutral", "sad"等
  * @param {number} faceData[].confidence - 人脸检测置信度 (0-1)
+ * @param {string} [faceData[].face_thumbnail_base64] - 人脸缩略图base64编码（可选）
  *
- * @returns {Object} 返回对象 { affectedRows: 插入的行数 }
+ * @returns {Promise<Object>} 返回对象 { affectedRows: 插入的行数 }
  *
  * 📊 数据用途:
  * • 人脸识别：通过embedding计算余弦相似度
@@ -822,6 +1215,7 @@ function updateLocationInfo(imageId, { gpsLocation, country, city }) {
  * 1. 先删除该图片的旧人脸数据（避免重复）
  * 2. 批量插入新的人脸数据
  * 3. embedding存储为BLOB（JSON序列化后的512维数组）
+ * 4. 如果提供face_thumbnail_base64，则存储人脸缩略图
  *
  * ⚠️ 注意事项:
  * • embedding是512维float数组，需要JSON.stringify后存储
@@ -838,13 +1232,14 @@ function updateLocationInfo(imageId, { gpsLocation, country, city }) {
  *     age: 25,  // 代表20-29岁段
  *     gender: 'female',
  *     expression: 'happy',
- *     confidence: 0.95
+ *     confidence: 0.95,
+ *     face_thumbnail_base64: 'data:image/jpeg;base64,...'
  *   }
  * ];
  * await insertFaceEmbeddings(imageId, faces);
  * ```
  */
-function insertFaceEmbeddings(imageId, faceData) {
+async function insertFaceEmbeddings(imageId, faceData) {
   try {
     // 先删除该图片的旧人脸数据
     // 原因：1. 避免重复数据 2. 支持重试机制 3. 确保数据一致性
@@ -857,10 +1252,12 @@ function insertFaceEmbeddings(imageId, faceData) {
     }
 
     // 批量插入新的人脸数据
+    // 优化（2025-12-XX）：添加quality_score、bbox、pose字段，移除face_thumbnail_storage_key处理
+    // 缩略图将在聚类后，只为最佳人脸生成
     const insertSql = `
       INSERT INTO face_embeddings (
-        image_id, face_index, embedding, age, gender, expression, confidence
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        image_id, face_index, embedding, age, gender, expression, confidence, quality_score, bbox, pose
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const insertStmt = db.prepare(insertSql);
 
@@ -869,7 +1266,21 @@ function insertFaceEmbeddings(imageId, faceData) {
       // 将embedding数组转换为Buffer存储
       const embeddingBuffer = Buffer.from(JSON.stringify(face.embedding));
 
-      const result = insertStmt.run(imageId, face.face_index, embeddingBuffer, face.age, face.gender, face.expression, face.confidence);
+      // 优化（2025-12-XX）：不再处理 face_thumbnail_base64
+      // 缩略图将在聚类后，只为最佳人脸生成
+
+      const result = insertStmt.run(
+        imageId,
+        face.face_index,
+        embeddingBuffer,
+        face.age || null,
+        face.gender || null,
+        face.expression || null,
+        face.confidence || null,
+        face.quality_score || null,
+        JSON.stringify(face.bbox || []), // bbox存储为JSON字符串
+        JSON.stringify(face.pose || {}), // pose存储为JSON字符串
+      );
       totalAffected += result.changes;
     }
 
@@ -988,6 +1399,8 @@ module.exports = {
   selectGroupsByYear,
   selectGroupsByMonth,
   selectGroupsByDate,
+  selectGroupsByYearForCluster,
+  selectGroupsByMonthForCluster,
   selectHashesByUserId,
   getImageStorageInfo,
   getImageDownloadInfo,

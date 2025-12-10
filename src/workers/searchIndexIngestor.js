@@ -38,6 +38,7 @@
 const imageUnderstandingService = require("../services/imageUnderstandingService");
 const { updateImageSearchMetadata, insertFaceEmbeddings } = require("../models/imageModel");
 const storageService = require("../services/storageService");
+const faceClusterScheduler = require("../services/faceClusterScheduler");
 const logger = require("../utils/logger");
 
 /**
@@ -225,6 +226,18 @@ async function processFaceRecognition(job) {
         hasAdult,
       },
     });
+
+    // 5. 自动调度人脸聚类任务（去抖机制，避免频繁执行）
+    // 如果检测到高质量人脸，则调度聚类任务
+    if (faces && faces.length > 0) {
+      const highQualityFaces = faces.filter((face) => face.is_high_quality);
+      if (highQualityFaces.length > 0) {
+        faceClusterScheduler.scheduleUserClustering(userId);
+        logger.info({
+          message: `已调度人脸聚类任务: userId=${userId}, highQualityFaces=${highQualityFaces.length}`,
+        });
+      }
+    }
   } catch (error) {
     const errorMessage = error.message || "unknown_error";
 

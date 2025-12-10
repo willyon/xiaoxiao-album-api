@@ -42,6 +42,7 @@ const trashRoutes = require("./src/routes/trashRoutes");
 const aliyunOssCallbackRoutes = require("./src/routes/aliyunOssCallbackRoutes");
 const uploadSessionRoutes = require("./src/routes/uploadSessionRoutes");
 const progressRoutes = require("./src/routes/progressRoutes");
+const faceClusterRoutes = require("./src/routes/faceClusterRoutes");
 
 // ========================== 创建Express实例，设置端口号 ========================== //
 
@@ -139,6 +140,9 @@ app.use("/api/upload-sessions", [authMiddleware], uploadSessionRoutes);
 
 // 注册SSE进度推送路由 - 不需要鉴权（EventSource无法发送认证头）
 app.use("/api/progress", progressRoutes);
+
+// 注册人脸聚类路由+鉴权中间件(authMiddleware)
+app.use("/api/face-clusters", [authMiddleware], faceClusterRoutes);
 
 // ========================== 错误处理中间件 ========================== //
 

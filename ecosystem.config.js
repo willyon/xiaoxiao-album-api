@@ -93,6 +93,31 @@ module.exports = {
       log_file: "./logs/cleanup-rebuild-all-combined.log",
       time: true,
     },
+    {
+      name: "face-cluster-rebuild-all",
+      script: "deployment-scripts/faceClusterRebuildAll.js",
+      cwd: ".",
+      // 定时执行：每天凌晨 3 点执行一次（与清理任务同时执行）
+      cron: "0 3 * * *",
+      // 执行完成后自动退出，不常驻
+      autorestart: false,
+      watch: false,
+      // 实例数：只运行一个实例
+      instances: 1,
+      // 执行模式：fork 模式（适合一次性脚本）
+      exec_mode: "fork",
+      env: {
+        NODE_ENV: "production",
+      },
+      // 日志配置（如果 logs 目录不存在，PM2 会自动创建）
+      error_file: "./logs/face-cluster-rebuild-all-error.log",
+      out_file: "./logs/face-cluster-rebuild-all-out.log",
+      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      merge_logs: true,
+      // 保留最近 10 天的日志
+      log_file: "./logs/face-cluster-rebuild-all-combined.log",
+      time: true,
+    },
 
     // ========== Python AI 服务 ==========
     // {
@@ -130,10 +155,12 @@ pm2 start ecosystem.config.js
 
 📋 定时任务管理:
 - 查看定时任务状态: pm2 list
-- 查看定时任务日志: pm2 logs cleanup-rebuild-all
-- 手动执行定时任务: pm2 start cleanup-rebuild-all --no-autorestart
-- 停止定时任务: pm2 stop cleanup-rebuild-all
-- 删除定时任务: pm2 delete cleanup-rebuild-all
+- 查看清理任务日志: pm2 logs cleanup-rebuild-all
+- 查看聚类任务日志: pm2 logs face-cluster-rebuild-all
+- 手动执行清理任务: pm2 start cleanup-rebuild-all --no-autorestart
+- 手动执行聚类任务: pm2 start face-cluster-rebuild-all --no-autorestart
+- 停止定时任务: pm2 stop cleanup-rebuild-all face-cluster-rebuild-all
+- 删除定时任务: pm2 delete cleanup-rebuild-all face-cluster-rebuild-all
 
 📋 监控命令:
 - 实时监控: pm2 monit

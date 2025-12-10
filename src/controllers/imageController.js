@@ -15,13 +15,20 @@ const { updateProgress } = require("../services/imageProcessingProgressService")
 const logger = require("../utils/logger");
 
 // 分页获取所有图片信息
+// 支持可选的 clusterId 参数，用于查询特定人物的照片
 async function handleGetAllByPage(req, res, next) {
   const { userId } = req?.user;
   // GET 请求参数从 query 获取
-  const { pageNo, pageSize } = req.query;
+  const { pageNo, pageSize, clusterId } = req.query;
   try {
     // 分页获取数据库中所有已存储图片信息（默认包含完整URL）
-    const queryResult = await imageService.getAllImagesByPage({ userId, pageNo, pageSize });
+    // clusterId 为可选参数，如果提供则查询特定人物的照片
+    const queryResult = await imageService.getAllImagesByPage({
+      userId,
+      pageNo,
+      pageSize,
+      clusterId: clusterId ? parseInt(clusterId) : null,
+    });
 
     res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
   } catch (error) {

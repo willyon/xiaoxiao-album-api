@@ -43,17 +43,36 @@ def perform_clustering(embeddings, threshold=None):
         # 使用配置文件中的默认值（如果未提供）
         if threshold is None:
             threshold = settings.FACE_CLUSTERING_THRESHOLD
+            logger.info(f"使用默认阈值: {threshold}")
+        else:
+            logger.info(f"使用传入的阈值: {threshold}")
         
         # 转换为 numpy 数组
         # embeddings 是 Python 列表，需要转换为 NumPy 数组供 scikit-learn 使用
-        embeddings_array = np.array(embeddings)
+        embeddings_array = np.array(embeddings, dtype=np.float32)
         
-        # 使用 DBSCAN 聚类算法
-        # DBSCAN: Density-Based Spatial Clustering of Applications with Noise
-        # eps: 邻域半径，两个样本的最大距离（对应 threshold 参数）
-        # min_samples: 形成密集区域的最小样本数（设为1，允许单点聚类）
-        clustering = DBSCAN(eps=threshold, min_samples=1)
-        cluster_labels = clustering.fit_predict(embeddings_array)
+        # 确保 embedding 已归一化（InsightFace 通常已归一化，但为了安全再次归一化）
+        # L2 归一化：确保每个向量的模长为 1，这对余弦距离很重要
+        norms = np.linalg.norm(embeddings_array, axis=1, keepdims=True)
+        norms[norms == 0] = 1  # 避免除零
+        embeddings_normalized = embeddings_array / norms
+        
+        # 使用 DBSCAN 聚类算法，使用余弦距离（cosine distance）
+        # 行业最佳实践（2025）：对于 L2 归一化的人脸特征向量，使用余弦距离更合适
+        # - 余弦距离范围：[0, 2]，其中 0 表示完全相同，2 表示完全相反
+        # - 对于归一化向量，余弦距离 = 1 - 余弦相似度
+        # - 同一人的不同照片，余弦距离通常在 0.2-0.6 之间
+        # - 不同人的照片，余弦距离通常在 0.6-1.5 之间
+        # 
+        # DBSCAN 参数说明：
+        # - eps: 邻域半径，使用余弦距离时，阈值范围通常是 0.2-0.8
+        # - min_samples: 形成密集区域的最小样本数（设为1，允许单点聚类）
+        # - metric: 'cosine' 表示使用余弦距离
+        clustering = DBSCAN(eps=threshold, min_samples=1, metric='cosine')
+        cluster_labels = clustering.fit_predict(embeddings_normalized)
+        
+        # 记录实际使用的阈值和距离度量（用于调试和验证）
+        logger.info(f"执行聚类: embedding数量={len(embeddings)}, 使用阈值={threshold}, 距离度量=cosine, 归一化=已归一化")
         
         # 组织聚类结果
         # cluster_labels 是一个数组，每个元素是对应特征向量的聚类标签

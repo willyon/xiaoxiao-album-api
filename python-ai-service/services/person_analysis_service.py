@@ -6,12 +6,17 @@
 """
 
 import numpy as np
+import cv2
+import base64
+import io
+from PIL import Image
 from logger import logger
 from services.face_detector import FaceDetector
 from services.face_attribute_analyzer import FaceAttributeAnalyzer
 from services.expression_analyzer import ExpressionAnalyzer
 from services.person_detector import PersonDetector
 from utils.images import convert_to_opencv
+from config import settings
 
 
 # 全局单例
@@ -170,6 +175,8 @@ def _analyze_image(image):
                 'pose': face['pose'],
                 'embedding': face['embedding'],
                 'is_high_quality': face['passed_quality'],  # 标记是否为高质量人脸
+                # 优化（2025-12-XX）：不再生成缩略图，将在聚类后只为最佳人脸生成
+                # face_thumbnail_base64 字段已移除
             }
             
             # 年龄信息
@@ -258,6 +265,88 @@ def _convert_to_native_types(obj):
         return obj
 
 
+def _crop_face_thumbnail(img, bbox):
+    """
+    裁剪人脸缩略图（用于封面显示）
+
+    功能说明：
+    1. 从原图中裁剪出人脸区域（OpenCV BGR）
+    2. 向外扩展 20% 上下文，让头像不那么紧绷
+    3. 使用可配置的缩略图尺寸（settings.FACE_THUMBNAIL_SIZE）
+    4. 保持处理阶段使用 BGR 颜色空间，仅在编码前转换为 RGB
+    5. 使用 Pillow 进行 JPEG 编码，并返回 base64 字符串
+
+    Args:
+        img: OpenCV 原图（BGR / BGRA / 灰度，numpy 数组）
+        bbox: 人脸边界框 [x1, y1, x2, y2]
+
+    Returns:
+        str: base64 编码的 JPEG 图片字符串，格式："data:image/jpeg;base64,..."
+        None: 裁剪或编码失败
+    """
+    try:
+        # 解包边界框坐标
+        x1, y1, x2, y2 = bbox
+
+        # 计算人脸宽度和高度
+        w, h = x2 - x1, y2 - y1
+
+        # 优化点 3：过滤极小人脸，避免产生噪声缩略图
+        MIN_FACE_THUMBNAIL_SIZE = 20  # 像素，原始 bbox 的最小边阈值
+        if w < MIN_FACE_THUMBNAIL_SIZE or h < MIN_FACE_THUMBNAIL_SIZE:
+            return None
+
+        # 向外扩展 20%（多一点上下文，让缩略图更美观）
+        x1 = max(0, int(x1 - w * 0.2))
+        y1 = max(0, int(y1 - h * 0.2))
+        x2 = min(img.shape[1], int(x2 + w * 0.2))
+        y2 = min(img.shape[0], int(y2 + h * 0.2))
+
+        # 检查扩展后的区域是否有效
+        if x2 <= x1 or y2 <= y1:
+            return None
+
+        # 从原图裁剪人脸区域
+        face_img = img[y1:y2, x1:x2]
+        if face_img.size == 0:
+            return None
+
+        # 统一为三通道 BGR，保持与 OpenCV 默认颜色空间一致
+        if len(face_img.shape) == 2:
+            # 灰度 -> BGR
+            face_img = cv2.cvtColor(face_img, cv2.COLOR_GRAY2BGR)
+        elif face_img.shape[2] == 4:
+            # BGRA -> BGR（丢弃 alpha 通道）
+            face_img = cv2.cvtColor(face_img, cv2.COLOR_BGRA2BGR)
+        elif face_img.shape[2] == 3:
+            # 已经是 BGR，保持不变
+            pass
+        else:
+            logger.warning(f"无法识别的人脸缩略图通道格式: shape={face_img.shape}")
+            return None
+
+        # 优化点 1：使用可配置的缩略图尺寸
+        thumb_w, thumb_h = settings.FACE_THUMBNAIL_SIZE
+        face_img = cv2.resize(face_img, (thumb_w, thumb_h), interpolation=cv2.INTER_LANCZOS4)
+
+        # 优化点 2：使用 Pillow 进行 JPEG 编码
+        # 先将 BGR 转为 RGB，再交给 Pillow 保存
+        face_rgb = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
+        pil_img = Image.fromarray(face_rgb)
+
+        buffer = io.BytesIO()
+        pil_img.save(buffer, format="JPEG", quality=85, optimize=True)
+        img_bytes = buffer.getvalue()
+
+        # 转换为 base64 字符串
+        img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+        return f"data:image/jpeg;base64,{img_base64}"
+
+    except Exception as e:
+        logger.warning(f"裁剪人脸缩略图失败: {str(e)}")
+        return None
+
+
 def _bucket_to_age(bucket):
     """
     将年龄段转换为数值（取中间值）
@@ -280,4 +369,3 @@ def _bucket_to_age(bucket):
         return 0
     except:
         return 0
-
