@@ -271,7 +271,7 @@ const _getEmailContent = (language, JWTToken) => {
       html: `
         <h1>Welcome to Bingbing Cloud Photos!</h1>
         <p>Click the button below to activate your account:</p>
-        <a href="${baseUrl}/verifyEmail?token=${JWTToken}&lang=en" 
+        <a href="${baseUrl}/emailActivation?token=${JWTToken}&lang=en" 
           style="display:inline-block;padding:10px 20px;background-color:#409eff;color:#fff;text-decoration:none;border-radius:4px;">
           Activate Account
         </a>
@@ -284,7 +284,7 @@ const _getEmailContent = (language, JWTToken) => {
       html: `
         <h1>欢迎注册冰冰云相册！</h1>
         <p>点击下面的按钮以激活您的账户：</p>
-        <a href="${baseUrl}/verifyEmail?token=${JWTToken}&lang=zh" 
+        <a href="${baseUrl}/emailActivation?token=${JWTToken}&lang=zh" 
           style="display:inline-block;padding:10px 20px;background-color:#409eff;color:#fff;text-decoration:none;border-radius:4px;">
           激活账户
         </a>
