@@ -1,5 +1,4 @@
 const CLEANUP_TYPES = {
-  DUPLICATE: "duplicate",
   SIMILAR: "similar",
   BLURRY: "blurry",
 };

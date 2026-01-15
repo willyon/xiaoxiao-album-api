@@ -11,24 +11,14 @@ function rebuildCleanupGroups({ userId }) {
 
   const images = cleanupModel.selectCleanupCandidatesByUser(userId);
   if (!images || images.length === 0) {
-    cleanupModel.deleteGroupsByType(userId, CLEANUP_TYPES.DUPLICATE);
     cleanupModel.deleteGroupsByType(userId, CLEANUP_TYPES.SIMILAR);
     cleanupModel.deleteGroupsByType(userId, CLEANUP_TYPES.BLURRY);
     return {
-      duplicateGroupCount: 0,
       similarGroupCount: 0,
-      blurryGroupCount: 0,
     };
   }
 
-  const duplicateGroups = _buildDuplicateGroups(images);
-  const duplicateSummary = _replaceGroups({
-    userId,
-    groupType: CLEANUP_TYPES.DUPLICATE,
-    groups: duplicateGroups,
-  });
-
-  const similarGroups = _buildSimilarGroups(images, duplicateGroups);
+  const similarGroups = _buildSimilarGroups(images);
   const similarSummary = _replaceGroups({
     userId,
     groupType: CLEANUP_TYPES.SIMILAR,
@@ -37,16 +27,14 @@ function rebuildCleanupGroups({ userId }) {
 
   // 模糊图：创建一个包含所有模糊图的分组
   const blurryGroups = _buildBlurryGroups(images);
-  const blurrySummary = _replaceGroups({
+  _replaceGroups({
     userId,
     groupType: CLEANUP_TYPES.BLURRY,
     groups: blurryGroups,
   });
 
   return {
-    duplicateGroupCount: duplicateSummary.groupCount,
     similarGroupCount: similarSummary.groupCount,
-    blurryGroupCount: blurrySummary.groupCount,
   };
 }
 
@@ -57,6 +45,8 @@ function _replaceGroups({ userId, groupType, groups }) {
     return { groupCount: 0 };
   }
 
+  // 使用当前时间作为所有新创建分组的 updatedAt，确保时间准确
+  const now = Date.now();
   let createdGroups = 0;
   for (const group of groups) {
     try {
@@ -67,6 +57,7 @@ function _replaceGroups({ userId, groupType, groups }) {
         score: group.score,
         memberCount: group.members.length,
         totalSizeBytes: group.totalSizeBytes,
+        updatedAt: now, // 明确传递当前时间，确保每次重建时更新时间都是最新的
       });
 
       createdGroups += 1;
@@ -88,48 +79,13 @@ function _replaceGroups({ userId, groupType, groups }) {
 }
 
 /**
- * 构建重复图片分组
- * 使用 image_hash（文件 SHA256 哈希）判断重复图
- * 如果两个文件的 image_hash 相同，说明是完全相同的文件（重复上传）
- */
-function _buildDuplicateGroups(images) {
-  const groupsByHash = new Map();
-  for (const image of images) {
-    const fileHash = image.image_hash;
-
-    // 必须有 image_hash 才能判断重复
-    if (!fileHash || typeof fileHash !== "string") continue;
-
-    const normalizedHash = fileHash.trim().toLowerCase();
-    if (!groupsByHash.has(normalizedHash)) {
-      groupsByHash.set(normalizedHash, []);
-    }
-    groupsByHash.get(normalizedHash).push(image);
-  }
-
-  const result = [];
-  for (const members of groupsByHash.values()) {
-    if (!members || members.length < 2) continue;
-    const group = _createGroupFromMembers(members, { similarityResolver: () => 1 });
-    result.push(group);
-  }
-  return result;
-}
-
-/**
  * 构建相似图片分组（优化版：使用倒排索引）
  * 优化策略：按哈希前缀分组，只比较同组或相邻组的图片，大幅减少比较次数
  * 时间复杂度：从 O(n²) 优化到 O(n × k)，k 为平均组大小（通常远小于 n）
  */
-function _buildSimilarGroups(images, duplicateGroups) {
-  const duplicateIds = new Set();
-  duplicateGroups.forEach((group) => {
-    group.members.forEach((member) => duplicateIds.add(member.imageId));
-  });
-
+function _buildSimilarGroups(images) {
   const candidates = images
     .filter((image) => {
-      if (duplicateIds.has(image.id)) return false;
       if (!image.image_phash || typeof image.image_phash !== "string") return false;
       return image.image_phash.trim().length >= 8;
     })

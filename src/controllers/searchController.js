@@ -50,19 +50,24 @@ function buildSearchConditions(query, filters) {
     }
   }
 
-  // 2. 表情（expression_tags 字段在 FTS 中）
-  // 🎯 优雅方案：数据源已改为 NULL 而不是空字符串，FTS5 不会索引 NULL
-  // 注意：expression_tags 是逗号分隔的字符串，如 "happy,neutral"，但 FTS 可以直接匹配
+  // 2. 表情（expression_tags 字段在 images 表中）
+  // 注意：避免 FTS 子串/分词导致的误匹配，使用 WHERE 精确匹配逗号分隔标签
   if (filters.expression && Array.isArray(filters.expression) && filters.expression.length > 0) {
-    // 前端已经将 disgusted 展开为 ['disgust', 'contempt']，直接使用 FTS 查询
-    const exprConditions = filters.expression.map((expr) => `expression_tags:${expr}`).join(" OR ");
-    ftsConditions.push(`(${exprConditions})`);
+    const exprConditions = [];
+    filters.expression.forEach((expr) => {
+      exprConditions.push("(i.expression_tags = ? OR i.expression_tags LIKE ? OR i.expression_tags LIKE ? OR i.expression_tags LIKE ?)");
+      whereParams.push(`${expr}`, `${expr},%`, `%,${expr},%`, `%,${expr}`);
+    });
+    if (exprConditions.length > 0) {
+      whereConditions.push(`(${exprConditions.join(" OR ")})`);
+    }
   }
 
-  // 3. 性别（gender_tags 字段在 FTS 中）
-  // 🎯 优雅方案：数据源已改为 NULL 而不是空字符串，FTS5 不会索引 NULL
+  // 3. 性别（gender_tags 字段在 images 表中）
+  // 注意：避免 "male" 命中 "female" 的子串问题，使用 WHERE 精确匹配逗号分隔标签
   if (filters.gender && filters.gender !== "" && filters.gender !== "all") {
-    ftsConditions.push(`gender_tags:${filters.gender}`);
+    whereConditions.push("(i.gender_tags = ? OR i.gender_tags LIKE ? OR i.gender_tags LIKE ? OR i.gender_tags LIKE ?)");
+    whereParams.push(`${filters.gender}`, `${filters.gender},%`, `%,${filters.gender},%`, `%,${filters.gender}`);
   }
 
   // 4. 图片版式（layout_type 字段在 FTS 中）

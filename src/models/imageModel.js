@@ -132,7 +132,7 @@ function selectImagesByPage({ pageNo, pageSize, userId, clusterId = null }) {
       FROM images
       WHERE user_id = ?
         AND deleted_at IS NULL
-      ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
+      ORDER BY image_created_at DESC, id DESC
       LIMIT ? OFFSET ?
     `);
 

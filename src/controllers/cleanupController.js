@@ -14,16 +14,6 @@ function _extractUserId(req) {
   return userId;
 }
 
-async function handleGetSummary(req, res, next) {
-  try {
-    const userId = _extractUserId(req);
-    const data = await cleanupService.getCleanupSummary(userId);
-    res.sendResponse({ data });
-  } catch (error) {
-    next(error);
-  }
-}
-
 async function handleGetGroups(req, res, next) {
   try {
     const userId = _extractUserId(req);
@@ -61,6 +51,5 @@ function _parseCursor(cursor) {
 }
 
 module.exports = {
-  handleGetSummary,
   handleGetGroups,
 };

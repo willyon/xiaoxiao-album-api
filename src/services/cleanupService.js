@@ -9,9 +9,9 @@ const imageService = require("./imageService");
 const logger = require("../utils/logger");
 
 function _normalizeType(type) {
-  if (!type) return CLEANUP_TYPES.DUPLICATE;
+  if (!type) return CLEANUP_TYPES.SIMILAR;
   const lower = String(type).toLowerCase();
-  return CLEANUP_TYPE_LIST.includes(lower) ? lower : CLEANUP_TYPES.DUPLICATE;
+  return CLEANUP_TYPE_LIST.includes(lower) ? lower : CLEANUP_TYPES.SIMILAR;
 }
 
 function _formatTimestamp(value) {
@@ -39,43 +39,6 @@ function _normalizeIdList(ids) {
     .filter((value) => value !== null);
 }
 
-async function getCleanupSummary(userId) {
-  const rows = cleanupModel.selectSummaryByUserId(userId);
-  const summary = {
-    duplicateGroupCount: 0,
-    similarGroupCount: 0,
-    blurryGroupCount: 0,
-    duplicateCount: 0,
-    similarCount: 0,
-    blurryCount: 0,
-  };
-
-  rows.forEach((row) => {
-    const type = row.group_type;
-    const groupCount = row.group_count || 0;
-    const memberCount = row.member_count || 0;
-
-    switch (type) {
-      case CLEANUP_TYPES.DUPLICATE:
-        summary.duplicateGroupCount = groupCount;
-        summary.duplicateCount = memberCount;
-        break;
-      case CLEANUP_TYPES.SIMILAR:
-        summary.similarGroupCount = groupCount;
-        summary.similarCount = memberCount;
-        break;
-      case CLEANUP_TYPES.BLURRY:
-        summary.blurryGroupCount = groupCount;
-        summary.blurryCount = memberCount;
-        break;
-      default:
-        break;
-    }
-  });
-
-  return summary;
-}
-
 async function getCleanupGroups({ userId, type, pageNo = 1, pageSize = 12 }) {
   const groupType = _normalizeType(type);
 
@@ -84,7 +47,7 @@ async function getCleanupGroups({ userId, type, pageNo = 1, pageSize = 12 }) {
     return await _getBlurryGroups({ userId, pageNo, pageSize: 20 });
   }
 
-  // 其他类型（duplicate/similar）：按组分页（每页12组）
+  // 其他类型（similar）：按组分页（每页12组）
   const safePageSize = Math.max(Number(pageSize) || 12, 1);
   const safePageNo = Math.max(Number(pageNo) || 1, 1);
   const offset = (safePageNo - 1) * safePageSize;
@@ -160,8 +123,8 @@ async function getCleanupGroups({ userId, type, pageNo = 1, pageSize = 12 }) {
     .map((group) => {
       const members = membersByGroup.get(group.id) || [];
 
-      // 对于相似图和重复图，如果只有1张图片，过滤掉这个分组
-      if ((groupType === CLEANUP_TYPES.SIMILAR || groupType === CLEANUP_TYPES.DUPLICATE) && members.length <= 1) {
+      // 对于相似图，如果只有1张图片，过滤掉这个分组
+      if (groupType === CLEANUP_TYPES.SIMILAR && members.length <= 1) {
         return null;
       }
 
@@ -267,6 +230,7 @@ async function _getBlurryGroups({ userId, pageNo = 1, pageSize = 20 }) {
   // 移除 rankScore, similarity 等不需要的字段
   const blurryMembers = members.map((member) => ({
     imageId: member.imageId,
+    groupId: group.id,
     thumbnailUrl: member.thumbnailUrl,
     highResUrl: member.highResUrl,
   }));
@@ -283,12 +247,12 @@ async function _getBlurryGroups({ userId, pageNo = 1, pageSize = 20 }) {
         members: blurryMembers, // 当前页的成员数据（只包含必要字段）
       },
     ],
-    total: totalCount, // 返回成员总数，与相似图/重复图的 total 含义保持一致（成员总数）
+    total: totalCount, // 返回成员总数，与相似图的 total 含义保持一致（成员总数）
   };
 }
 
 // 删除图片（软删除，移至回收站）
-// groupId: 可选，如果提供则从分组中获取类型（duplicate/similar/blurry），如果不提供则视为 'all' 类型
+// groupId: 可选，如果提供则从分组中获取类型（similar/blurry），如果不提供则视为 'all' 类型
 // 这个方法在核心删除逻辑基础上，增加了清理分组相关的处理
 async function deleteImages({ userId, groupId, imageIds }) {
   const normalizedIds = _normalizeIdList(imageIds);
@@ -364,16 +328,35 @@ async function deleteImages({ userId, groupId, imageIds }) {
 function _mapMemberRow(row) {
   return {
     imageId: row.image_id,
+    groupId: row.group_id,
     rankScore: row.rank_score,
     similarity: row.similarity,
-    thumbnailUrl: null,
-    highResUrl: null,
+    thumbnailUrl: null, // 后续补齐URL
+    highResUrl: null, // 后续补齐URL
     isFavorite: row.is_favorite === 1 || row.is_favorite === true,
+    // PhotoPreview 和 PhotoInfoPanel 需要的字段
+    creationDate: row.image_created_at,
+    dayKey: row.day_key,
+    gpsLocation: row.gps_location,
+    widthPx: row.width_px,
+    heightPx: row.height_px,
+    aspectRatio: row.aspect_ratio,
+    layoutType: row.layout_type,
+    colorTheme: row.color_theme,
+    fileSizeBytes: row.file_size_bytes,
+    faceCount: row.face_count,
+    personCount: row.person_count,
+    ageTags: row.age_tags,
+    genderTags: row.gender_tags,
+    expressionTags: row.expression_tags,
+    hasYoung: row.has_young === 1 || row.has_young === true,
+    hasAdult: row.has_adult === 1 || row.has_adult === true,
+    primaryFaceQuality: row.primary_face_quality,
+    primaryExpressionConfidence: row.primary_expression_confidence,
   };
 }
 
 module.exports = {
-  getCleanupSummary,
   getCleanupGroups,
   deleteImages,
 };
