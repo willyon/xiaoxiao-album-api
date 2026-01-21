@@ -367,7 +367,7 @@ function getFilterOptions(userId) {
  * 分页获取筛选选项列表
  * @param {Object} params
  * @param {number} params.userId - 用户ID
- * @param {string} params.type - 选项类型: 'city' | 'year' | 'month' | 'day' | 'weekday'
+ * @param {string} params.type - 选项类型: 'city' | 'year' | 'month' | 'weekday'
  * @param {number} params.pageNo - 页码（从1开始）
  * @param {number} params.pageSize - 每页数量（默认20）
  * @returns {Object} { data: [], total: 0, hasMore: false }
@@ -404,7 +404,7 @@ function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, ti
           )
           .get(userId);
 
-        data = cityData.map((c) => ({ value: c.city, label: c.city, count: c.count }));
+        data = cityData.map((c) => c.city);
         total = cityTotal.total;
         break;
       }
@@ -434,7 +434,7 @@ function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, ti
           )
           .get(userId);
 
-        data = yearData.map((y) => ({ value: y.year_key, label: y.year_key, count: y.count }));
+        data = yearData.map((y) => y.year_key);
         total = yearTotal.total;
         break;
       }
@@ -464,38 +464,8 @@ function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, ti
           )
           .get(userId);
 
-        data = monthData.map((m) => ({ value: m.month_key, label: m.month_key, count: m.count }));
+        data = monthData.map((m) => m.month_key);
         total = monthTotal.total;
-        break;
-      }
-
-      case "day": {
-        // 获取完整的日期列表（YYYY-MM-DD格式，降序）
-        const dayData = db
-          .prepare(
-            `
-          SELECT date_key, COUNT(*) as count
-          FROM images 
-          WHERE user_id = ? AND date_key != 'unknown'
-          GROUP BY date_key
-          ORDER BY date_key DESC
-          LIMIT ? OFFSET ?
-        `,
-          )
-          .all(userId, pageSize, offset);
-
-        const dayTotal = db
-          .prepare(
-            `
-          SELECT COUNT(DISTINCT date_key) as total
-          FROM images 
-          WHERE user_id = ? AND date_key != 'unknown'
-        `,
-          )
-          .get(userId);
-
-        data = dayData.map((d) => ({ value: d.date_key, label: d.date_key, count: d.count }));
-        total = dayTotal.total;
         break;
       }
 
@@ -535,22 +505,7 @@ function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, ti
           )
           .get(userId);
 
-        // 星期几映射（day_key 是英文，前端可能需要中文）
-        const weekdayMap = {
-          Monday: "周一",
-          Tuesday: "周二",
-          Wednesday: "周三",
-          Thursday: "周四",
-          Friday: "周五",
-          Saturday: "周六",
-          Sunday: "周日",
-        };
-
-        data = weekdayData.map((w) => ({
-          value: w.day_key,
-          label: weekdayMap[w.day_key] || w.day_key,
-          count: w.count,
-        }));
+        data = weekdayData.map((w) => w.day_key);
         total = weekdayTotal.total;
         break;
       }

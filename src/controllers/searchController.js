@@ -6,6 +6,10 @@
 
 const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
+const {
+  COLOR_THEME_FRONTEND_TO_BACKEND,
+  AGE_GROUP_FRONTEND_TO_BACKEND,
+} = require("../constants/filterMappings");
 const searchService = require("../services/searchService");
 const { addFullUrlToImage } = require("../services/imageService");
 // 移除队列引用，简化控制器
@@ -14,10 +18,37 @@ const logger = require("../utils/logger");
 /**
  * 构建 FTS 查询和 WHERE 条件
  * @param {string} query - 用户搜索关键词
- * @param {Object} filters - 筛选条件
+ * @param {Object} filters - 筛选条件（可能包含前端值，需要转换为后端值）
  * @returns {Object} { ftsQuery, whereConditions, whereParams }
  */
 function buildSearchConditions(query, filters) {
+
+  // 将前端值转换为后端值（创建一个新的 filters 对象，避免修改原始对象）
+  const convertedFilters = { ...filters };
+
+  // 转换颜色主题：前端3分类 → 后端5分类
+  if (convertedFilters.colorTheme && Array.isArray(convertedFilters.colorTheme) && convertedFilters.colorTheme.length > 0) {
+    const backendValues = new Set();
+    convertedFilters.colorTheme.forEach((frontendTheme) => {
+      const backendThemeValues = COLOR_THEME_FRONTEND_TO_BACKEND[frontendTheme] || [frontendTheme];
+      backendThemeValues.forEach((val) => backendValues.add(val));
+    });
+    convertedFilters.colorTheme = Array.from(backendValues);
+  }
+
+  // 转换年龄段：前端5分类 → 后端9分类
+  if (convertedFilters.ageGroup && Array.isArray(convertedFilters.ageGroup) && convertedFilters.ageGroup.length > 0) {
+    const backendValues = new Set();
+    convertedFilters.ageGroup.forEach((frontendAge) => {
+      const backendAgeValues = AGE_GROUP_FRONTEND_TO_BACKEND[frontendAge] || [frontendAge];
+      backendAgeValues.forEach((val) => backendValues.add(val));
+    });
+    convertedFilters.ageGroup = Array.from(backendValues);
+  }
+
+  // 使用转换后的 filters 进行后续处理
+  filters = convertedFilters;
+
   // FTS 查询部分（用于 MATCH 子句）
   const ftsConditions = [];
   const isWildcardQuery = !query || query.trim() === "" || query.trim() === "*";
@@ -113,96 +144,36 @@ function buildSearchConditions(query, filters) {
     }
   }
 
-  // 6. 时间维度 + 选中的时间值（支持 'unknown' 表示无时间信息）
-  if (filters.timeDimension && filters.selectedTimeValues && filters.selectedTimeValues.length > 0) {
-    const hasUnknown = filters.selectedTimeValues.includes("unknown");
-    const knownValues = filters.selectedTimeValues.filter((val) => val !== "unknown");
+  // 6. 时间维度 + 选中的时间值
+  // 6.1. 时间未知维度（独立处理）
+  if (filters.timeDimension === "unknown") {
+    // 只筛选时间未知的图片（所有时间字段都是 unknown）
+    whereConditions.push("(i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown')");
+  }
+  // 6.2. 其他时间维度（年/月/星期）
+  else if (filters.timeDimension && filters.selectedTimeValues && filters.selectedTimeValues.length > 0) {
+    const knownValues = filters.selectedTimeValues;
 
-    // 特殊处理：如果 timeDimension === 'all' 且选择了 'unknown'
-    if (filters.timeDimension === "all" && hasUnknown) {
-      if (knownValues.length === 0) {
-        // 只筛选时间未知的图片（所有时间字段都是 unknown）
-        whereConditions.push("(i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown')");
-      } else {
-        // 边界情况：timeDimension='all' 但有具体值（理论上不应该发生，但做容错处理）
-        // 忽略具体值，只处理 unknown
-        whereConditions.push("(i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown')");
-        logger.warn({
-          message: "异常情况：timeDimension='all' 但 selectedTimeValues 包含具体值",
-          details: { selectedTimeValues: filters.selectedTimeValues },
-        });
-      }
-    } else if (filters.timeDimension === "year") {
-      const conditions = [];
-      if (knownValues.length > 0) {
-        const placeholders = knownValues.map(() => "?").join(",");
-        conditions.push(`i.year_key IN (${placeholders})`);
-        whereParams.push(...knownValues);
-      }
-      if (hasUnknown) {
-        conditions.push("(i.year_key IS NULL OR i.year_key = '' OR i.year_key = 'unknown')");
-      }
-      if (conditions.length > 0) {
-        whereConditions.push(`(${conditions.join(" OR ")})`);
-      }
+    if (filters.timeDimension === "year") {
+      const placeholders = knownValues.map(() => "?").join(",");
+      whereConditions.push(`i.year_key IN (${placeholders})`);
+      whereParams.push(...knownValues);
     } else if (filters.timeDimension === "month") {
-      const conditions = [];
-      if (knownValues.length > 0) {
-        const placeholders = knownValues.map(() => "?").join(",");
-        conditions.push(`i.month_key IN (${placeholders})`);
-        whereParams.push(...knownValues);
-      }
-      if (hasUnknown) {
-        conditions.push("(i.month_key IS NULL OR i.month_key = '' OR i.month_key = 'unknown')");
-      }
-      if (conditions.length > 0) {
-        whereConditions.push(`(${conditions.join(" OR ")})`);
-      }
-    } else if (filters.timeDimension === "day") {
-      const conditions = [];
-      if (knownValues.length > 0) {
-        const placeholders = knownValues.map(() => "?").join(",");
-        conditions.push(`i.date_key IN (${placeholders})`);
-        whereParams.push(...knownValues);
-      }
-      if (hasUnknown) {
-        conditions.push("(i.date_key IS NULL OR i.date_key = '' OR i.date_key = 'unknown')");
-      }
-      if (conditions.length > 0) {
-        whereConditions.push(`(${conditions.join(" OR ")})`);
-      }
+      const placeholders = knownValues.map(() => "?").join(",");
+      whereConditions.push(`i.month_key IN (${placeholders})`);
+      whereParams.push(...knownValues);
     } else if (filters.timeDimension === "weekday") {
-      const conditions = [];
-      if (knownValues.length > 0) {
-        const placeholders = knownValues.map(() => "?").join(",");
-        conditions.push(`i.day_key IN (${placeholders})`);
-        whereParams.push(...knownValues);
-      }
-      if (hasUnknown) {
-        conditions.push("(i.day_key IS NULL OR i.day_key = '' OR i.day_key = 'unknown')");
-      }
-      if (conditions.length > 0) {
-        whereConditions.push(`(${conditions.join(" OR ")})`);
-      }
+      const placeholders = knownValues.map(() => "?").join(",");
+      whereConditions.push(`i.day_key IN (${placeholders})`);
+      whereParams.push(...knownValues);
     }
   }
 
-  // 7. 自定义日期范围（支持包含时间未知的照片）
+  // 7. 自定义日期范围
   if (filters.customDateRange && Array.isArray(filters.customDateRange) && filters.customDateRange.length === 2) {
-    if (filters.includeUnknownTime) {
-      // 包含时间未知：日期范围 OR 时间未知
-      whereConditions.push(
-        "(i.date_key BETWEEN ? AND ? OR (i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown'))",
-      );
-      whereParams.push(filters.customDateRange[0], filters.customDateRange[1]);
-    } else {
-      // 只选日期范围，不包含时间未知
-      whereConditions.push("i.date_key BETWEEN ? AND ?");
-      whereParams.push(filters.customDateRange[0], filters.customDateRange[1]);
-    }
-  } else if (filters.includeUnknownTime && filters.timeDimension === "custom") {
-    // 只选择了"时间未知"，没有选择日期范围
-    whereConditions.push("(i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown')");
+    // 只选日期范围
+    whereConditions.push("i.date_key BETWEEN ? AND ?");
+    whereParams.push(filters.customDateRange[0], filters.customDateRange[1]);
   }
 
   // 8. 人物数量（基于 person_count，多选）
@@ -394,9 +365,6 @@ async function handleSearchImages(req, res, next) {
       data: {
         list: resultsWithUrls,
         total: totalCount,
-        pageNo,
-        pageSize,
-        hasMore: offset + resultsWithUrls.length < totalCount,
       },
       messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
     });
@@ -586,12 +554,12 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
     const { userId } = req.user;
     const { type, pageNo = 1, pageSize = 20, timeDimension = null } = req.query;
 
-    if (!type || !["city", "year", "month", "day", "weekday"].includes(type)) {
+    if (!type || !["city", "year", "month", "weekday"].includes(type)) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
         messageType: "error",
-        message: "type 参数必须是 city、year、month、day 或 weekday",
+        message: "type 参数必须是 city、year、month 或 weekday",
       });
     }
 
