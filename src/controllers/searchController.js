@@ -20,6 +20,9 @@ const logger = require("../utils/logger");
  * @param {string} query - 用户搜索关键词
  * @param {Object} filters - 筛选条件（可能包含前端值，需要转换为后端值）
  * @returns {Object} { ftsQuery, whereConditions, whereParams }
+ * @returns {string|null} ftsQuery - FTS 查询字符串（如果为 null，则不使用 FTS）
+ * @returns {Array<string>} whereConditions - WHERE 条件数组
+ * @returns {Array} whereParams - WHERE 条件参数
  */
 function buildSearchConditions(query, filters) {
 
@@ -109,18 +112,15 @@ function buildSearchConditions(query, filters) {
 
   // 构建最终的 FTS 查询字符串
   let ftsQuery;
-  let useFts = true;
 
   if (isWildcardQuery) {
     // 如果是通配符查询（查询所有）
     if (ftsConditions.length > 0) {
       // 有 FTS 筛选条件，只使用筛选条件
       ftsQuery = ftsConditions.join(" AND ");
-      useFts = true;
     } else {
       // 没有 FTS 筛选条件，不使用 FTS，直接查询 images 表
       ftsQuery = null;
-      useFts = false;
     }
   } else {
     // 有具体的搜索关键词
@@ -128,7 +128,6 @@ function buildSearchConditions(query, filters) {
     if (ftsConditions.length > 0) {
       ftsQuery += " AND " + ftsConditions.join(" AND ");
     }
-    useFts = true;
   }
 
   // ========== 处理 WHERE 子句字段 ==========
@@ -283,7 +282,6 @@ function buildSearchConditions(query, filters) {
 
   return {
     ftsQuery,
-    useFts,
     whereConditions,
     whereParams,
   };
@@ -313,11 +311,11 @@ async function handleSearchImages(req, res, next) {
     });
 
     // 构建搜索条件
-    const { ftsQuery, useFts, whereConditions, whereParams } = buildSearchConditions(searchQuery, filters);
+    const { ftsQuery, whereConditions, whereParams } = buildSearchConditions(searchQuery, filters);
 
     logger.info({
       message: "搜索条件构建完成",
-      details: { ftsQuery, useFts, whereConditionsCount: whereConditions.length, whereParamsCount: whereParams.length },
+      details: { ftsQuery, whereConditionsCount: whereConditions.length, whereParamsCount: whereParams.length },
     });
 
     // 执行搜索
@@ -327,8 +325,7 @@ async function handleSearchImages(req, res, next) {
     const [searchResults, totalCount] = await Promise.all([
       searchService.searchImagesByText({
         userId,
-        query: ftsQuery,
-        useFts,
+        ftsQuery,
         whereConditions,
         whereParams,
         limit: pageSize,
@@ -336,8 +333,7 @@ async function handleSearchImages(req, res, next) {
       }),
       searchService.getSearchResultsCount({
         userId,
-        query: ftsQuery,
-        useFts,
+        ftsQuery,
         whereConditions,
         whereParams,
       }),
@@ -517,9 +513,14 @@ async function handleAdvancedSearch(req, res, next) {
 
     // 执行搜索
     const offset = (pageNo - 1) * pageSize;
+    // 构建 FTS 查询：如果有条件则使用，否则为 null（不使用 FTS）
+    const finalFtsQuery = searchQuery || null;
+    
     const searchResults = await searchService.searchImagesByText({
       userId,
-      query: searchQuery || "*", // 如果没有查询条件，搜索所有
+      ftsQuery: finalFtsQuery,
+      whereConditions: [],
+      whereParams: [],
       limit: pageSize,
       offset,
     });

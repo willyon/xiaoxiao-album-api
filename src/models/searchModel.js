@@ -11,19 +11,18 @@ const { mapFields } = require("../utils/fieldMapper");
  * 全文搜索图片（支持复杂筛选条件）
  * @param {Object} params
  * @param {number} params.userId - 用户ID
- * @param {string} params.query - FTS 查询字符串（如果为空，则不使用 FTS）
- * @param {boolean} params.useFts - 是否使用 FTS 查询
+ * @param {string|null} params.ftsQuery - FTS 查询字符串（如果为 null，则不使用 FTS）
  * @param {Array<string>} params.whereConditions - WHERE 条件数组
  * @param {Array} params.whereParams - WHERE 条件参数
  * @param {number} params.limit - 返回结果数量
  * @param {number} params.offset - 偏移量
  * @returns {Array} 搜索结果
  */
-function searchImagesByText({ userId, query, useFts = true, whereConditions = [], whereParams = [], limit = 50, offset = 0 }) {
+function searchImagesByText({ userId, ftsQuery, whereConditions = [], whereParams = [], limit = 50, offset = 0 }) {
   let sql;
   let params;
 
-  if (useFts && query) {
+  if (ftsQuery) {
     // 使用 FTS 查询
     sql = `
       SELECT 
@@ -66,7 +65,7 @@ function searchImagesByText({ userId, query, useFts = true, whereConditions = []
       LIMIT ? OFFSET ?
     `;
 
-    params = [userId, query, ...whereParams, limit, offset];
+    params = [userId, ftsQuery, ...whereParams, limit, offset];
   } else {
     // 不使用 FTS，直接查询 images 表（用于纯筛选或查询所有图片）
     sql = `
@@ -120,17 +119,16 @@ function searchImagesByText({ userId, query, useFts = true, whereConditions = []
  * 获取搜索结果总数
  * @param {Object} params
  * @param {number} params.userId - 用户ID
- * @param {string} params.query - FTS 查询字符串
- * @param {boolean} params.useFts - 是否使用 FTS 查询
+ * @param {string|null} params.ftsQuery - FTS 查询字符串（如果为 null，则不使用 FTS）
  * @param {Array<string>} params.whereConditions - WHERE 条件数组
  * @param {Array} params.whereParams - WHERE 条件参数
  * @returns {number} 总记录数
  */
-function getSearchResultsCount({ userId, query, useFts = true, whereConditions = [], whereParams = [] }) {
+function getSearchResultsCount({ userId, ftsQuery, whereConditions = [], whereParams = [] }) {
   let sql;
   let params;
 
-  if (useFts && query) {
+  if (ftsQuery) {
     // 使用 FTS 查询计数
     sql = `
       SELECT COUNT(*) as total
@@ -146,7 +144,7 @@ function getSearchResultsCount({ userId, query, useFts = true, whereConditions =
       sql += " AND " + whereConditions.join(" AND ");
     }
 
-    params = [userId, query, ...whereParams];
+    params = [userId, ftsQuery, ...whereParams];
   } else {
     // 直接查询 images 表计数
     sql = `
