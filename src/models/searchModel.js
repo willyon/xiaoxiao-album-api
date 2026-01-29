@@ -168,16 +168,74 @@ function getSearchResultsCount({ userId, ftsQuery, whereConditions = [], wherePa
 }
 
 /**
+ * 根据图片 ID 列表获取图片信息（用于向量搜索结果）
+ * @param {number} userId - 用户ID
+ * @param {Array<number>} imageIds - 图片ID列表
+ * @returns {Array} 图片信息列表
+ */
+function getImagesByIds({ userId, imageIds }) {
+  if (!imageIds || imageIds.length === 0) {
+    return [];
+  }
+
+  const placeholders = imageIds.map(() => "?").join(",");
+  const sql = `
+    SELECT 
+      i.id,
+      i.thumbnail_storage_key,
+      i.high_res_storage_key,
+      i.image_created_at,
+      i.date_key,
+      i.month_key,
+      i.day_key,
+      i.gps_location,
+      i.width_px,
+      i.height_px,
+      i.aspect_ratio,
+      i.layout_type,
+      i.color_theme,
+      i.file_size_bytes,
+      i.face_count,
+      i.person_count,
+      i.age_tags,
+      i.gender_tags,
+      i.expression_tags,
+      i.has_young,
+      i.has_adult,
+      i.is_favorite
+    FROM images i
+    WHERE i.user_id = ?
+      AND i.deleted_at IS NULL
+      AND i.id IN (${placeholders})
+    ORDER BY i.image_created_at DESC
+  `;
+
+  const stmt = db.prepare(sql);
+  const results = stmt.all(userId, ...imageIds);
+  return mapFields("images", results);
+}
+
+/**
  * 获取搜索建议（基于现有标签）
+ * 改进：使用包含匹配（LIKE %prefix%），确保任意 tag 包含 prefix 都能被建议
  */
 function getSearchSuggestions({ userId, prefix = "", limit = 10 }) {
   const suggestions = [];
+
+  // 如果 prefix 为空，返回空数组
+  if (!prefix || !prefix.trim()) {
+    return [];
+  }
+
+  const normalizedPrefix = prefix.trim().toLowerCase();
 
   // 从各个标签字段获取建议
   // 注意：这些字段 = NULL 表示未分析，排除NULL
   const tagFields = ["scene_tags", "object_tags", "keywords"];
 
   tagFields.forEach((field) => {
+    // 使用包含匹配（LIKE %prefix%），而不是前缀匹配（LIKE prefix%）
+    // 这样可以匹配到逗号分隔字符串中任意位置的 tag
     const sql = `
       SELECT DISTINCT ${field} as tags
       FROM images 
@@ -189,18 +247,39 @@ function getSearchSuggestions({ userId, prefix = "", limit = 10 }) {
     `;
 
     const stmt = db.prepare(sql);
-    const results = stmt.all(userId, `${prefix}%`, limit);
+    // 使用 %prefix% 进行包含匹配
+    const results = stmt.all(userId, `%${prefix}%`, limit * 3); // 多取一些，因为后面会去重和过滤
 
     results.forEach((row) => {
       if (row.tags) {
-        const tags = row.tags.split(",").map((tag) => tag.trim());
+        // 将逗号分隔的标签拆分成数组
+        const tags = row.tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag);
         tags.forEach((tag) => {
-          if (tag.toLowerCase().includes(prefix.toLowerCase()) && !suggestions.includes(tag)) {
+          // 对每个 tag 进行包含匹配（不区分大小写）
+          if (tag.toLowerCase().includes(normalizedPrefix) && !suggestions.includes(tag)) {
             suggestions.push(tag);
           }
         });
       }
     });
+  });
+
+  // 按长度和匹配位置排序：优先显示短且以 prefix 开头的 tag
+  suggestions.sort((a, b) => {
+    const aLower = a.toLowerCase();
+    const bLower = b.toLowerCase();
+    const aStartsWith = aLower.startsWith(normalizedPrefix);
+    const bStartsWith = bLower.startsWith(normalizedPrefix);
+
+    // 以 prefix 开头的优先
+    if (aStartsWith && !bStartsWith) return -1;
+    if (!aStartsWith && bStartsWith) return 1;
+
+    // 长度短的优先
+    return a.length - b.length;
   });
 
   return suggestions.slice(0, limit);
@@ -530,4 +609,5 @@ module.exports = {
   getSearchResultsCount,
   getSearchSuggestions,
   getFilterOptionsPaginated,
+  getImagesByIds,
 };

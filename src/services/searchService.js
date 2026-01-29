@@ -59,9 +59,21 @@ async function getFilterOptionsPaginated(params) {
   return searchModel.getFilterOptionsPaginated(params);
 }
 
+/**
+ * 根据图片 ID 列表获取图片信息
+ * @param {Object} params
+ * @param {number} params.userId - 用户ID
+ * @param {Array<number>} params.imageIds - 图片ID列表
+ * @returns {Array} 图片信息列表
+ */
+async function getImagesByIds(params) {
+  return searchModel.getImagesByIds(params);
+}
+
 module.exports = {
   searchImagesByText,
   getSearchResultsCount,
   getSearchSuggestions,
   getFilterOptionsPaginated,
+  getImagesByIds,
 };

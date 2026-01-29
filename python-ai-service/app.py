@@ -14,10 +14,11 @@ from config import settings                        # 应用配置，包含所有
 from logger import logger                          # 日志记录器，用于记录应用日志
 
 # 导入路由模块
-from routes import cleanup, face_cluster, health, ocr, person     # 导入各个 API 路由：健康检查、人物分析、OCR、人脸聚类、清理指标
+from routes import cleanup, face_cluster, health, ocr, person, search_embedding     # 导入各个 API 路由：健康检查、人物分析、OCR、人脸聚类、清理指标、搜索向量化
 
 # 导入模型加载器
 from loaders.model_loader import load_all_models    # 统一加载所有AI模型
+from services.vector_search_service import init_hnsw_index  # 向量搜索索引初始化
 
 
 def create_app():
@@ -55,6 +56,12 @@ def create_app():
         logger.error(f"   - models/yolo11x.onnx")
         logger.error(f"   - EmotiEffLib 模型文件")
         raise RuntimeError(f"AI模型加载失败，服务无法启动: {str(e)}") from e
+
+    # 加载向量搜索索引（非严格依赖：失败时仅禁用 ANN，仍可使用 FTS 等功能）
+    try:
+        init_hnsw_index()
+    except Exception as e:
+        logger.error(f"⚠️ 向量索引初始化失败，向量搜索将退化为 FTS: {str(e)}")
     
     # 注册路由
     app.include_router(health.router, tags=["健康检查"])
@@ -62,6 +69,7 @@ def create_app():
     app.include_router(ocr.router, tags=["OCR识别"])
     app.include_router(face_cluster.router, tags=["人脸聚类"])
     app.include_router(cleanup.router, tags=["智能清理"])
+    app.include_router(search_embedding.router, tags=["搜索向量化"])
     
     return app
 
@@ -81,6 +89,8 @@ def main():
         logger.info("  - POST /analyze_cleanup - 图片清理指标")
         # logger.info("  - POST /ocr - OCR文字识别")
         logger.info("  - POST /cluster_faces - 人脸聚类")
+        logger.info("  - POST /encode_text - 文本向量化")
+        logger.info("  - POST /ann_search_by_vector - 向量相似度搜索（hnsw ANN）")
         
         # 启动服务器
         uvicorn.run(

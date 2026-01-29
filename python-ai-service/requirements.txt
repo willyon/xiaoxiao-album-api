@@ -26,6 +26,7 @@ sentencepiece>=0.1.99  # 多语言分词器支持
 insightface==0.7.3  # 人脸检测与特征提取
 emotiefflib>=1.1.1  # 表情识别（ONNX 后端，避免 PyTorch 兼容性问题）
 scikit-learn>=1.3.0  # 传统机器学习算法
+hnswlib>=0.8.0  # 向量近似最近邻搜索（ANN 索引）
 
 # ==== OCR 套件 ====
 paddleocr>=2.7.0  # OCR 识别工具集

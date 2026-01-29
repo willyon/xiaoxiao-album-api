@@ -6,12 +6,11 @@
 
 const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
-const {
-  COLOR_THEME_FRONTEND_TO_BACKEND,
-  AGE_GROUP_FRONTEND_TO_BACKEND,
-} = require("../constants/filterMappings");
+const { COLOR_THEME_FRONTEND_TO_BACKEND, AGE_GROUP_FRONTEND_TO_BACKEND } = require("../constants/filterMappings");
 const searchService = require("../services/searchService");
 const { addFullUrlToImage } = require("../services/imageService");
+const pythonSearchClient = require("../services/pythonSearchClient");
+const { parseQueryIntent, mergeFilters } = require("../utils/queryIntentParser");
 // 移除队列引用，简化控制器
 const logger = require("../utils/logger");
 
@@ -25,7 +24,6 @@ const logger = require("../utils/logger");
  * @returns {Array} whereParams - WHERE 条件参数
  */
 function buildSearchConditions(query, filters) {
-
   // 将前端值转换为后端值（创建一个新的 filters 对象，避免修改原始对象）
   const convertedFilters = { ...filters };
 
@@ -288,6 +286,51 @@ function buildSearchConditions(query, filters) {
 }
 
 /**
+ * 合并 FTS 和向量搜索结果，使用倒数排名融合（RRF）排序
+ * @param {Array} ftsResults - FTS 搜索结果（包含 id 字段）
+ * @param {Array<{image_id: number, score: number}>} vectorResults - 向量搜索结果
+ * @param {number} k - RRF 常数（默认 60）
+ * @returns {Array<{imageId: number, rrfScore: number}>} 合并排序后的结果
+ */
+function mergeAndRank(ftsResults, vectorResults, k = 60) {
+  // 创建 imageId -> rank 的映射
+  const ftsRankMap = new Map();
+  ftsResults.forEach((result, index) => {
+    ftsRankMap.set(result.id, index + 1); // rank 从 1 开始
+  });
+
+  const vectorRankMap = new Map();
+  vectorResults.forEach((result, index) => {
+    vectorRankMap.set(result.image_id, index + 1);
+  });
+
+  // 收集所有唯一的 imageId
+  const allImageIds = new Set();
+  ftsResults.forEach((result) => allImageIds.add(result.id));
+  vectorResults.forEach((result) => allImageIds.add(result.image_id));
+
+  // 计算每个 imageId 的 RRF 分数
+  const scoredResults = [];
+  allImageIds.forEach((imageId) => {
+    const ftsRank = ftsRankMap.get(imageId) || Infinity;
+    const vectorRank = vectorRankMap.get(imageId) || Infinity;
+
+    // RRF 公式：score = 1/(k + rank_fts) + 1/(k + rank_vector)
+    const rrfScore = 1 / (k + ftsRank) + 1 / (k + vectorRank);
+
+    scoredResults.push({
+      imageId,
+      rrfScore,
+    });
+  });
+
+  // 按 RRF 分数降序排序
+  scoredResults.sort((a, b) => b.rrfScore - a.rrfScore);
+
+  return scoredResults;
+}
+
+/**
  * 搜索图片
  * POST /search/images
  */
@@ -304,14 +347,35 @@ async function handleSearchImages(req, res, next) {
 
     // 允许空查询或通配符查询（用于纯筛选或查询所有图片）
     let searchQuery = query && query.trim() ? query.trim() : "*";
+    const hasQuery = searchQuery !== "*" && searchQuery.trim() !== "";
+
+    // 解析查询意图，自动填充筛选条件（不覆盖用户已设置的筛选）
+    let enhancedFilters = { ...filters };
+    if (hasQuery) {
+      const parsedIntent = parseQueryIntent(searchQuery);
+      enhancedFilters = mergeFilters(filters, parsedIntent);
+
+      // 如果有场景关键词，将其添加到查询文本中（通过 FTS 匹配）
+      if (parsedIntent._sceneKeywords && parsedIntent._sceneKeywords.length > 0) {
+        // 场景关键词通过 FTS 查询处理，不需要修改 filters
+        // 这些关键词会在 FTS 匹配时自动命中 scene_tags 字段
+      }
+    }
 
     logger.info({
       message: `用户搜索: ${userId}`,
-      details: { query: searchQuery, filters, pageNo, pageSize, searchType },
+      details: {
+        query: searchQuery,
+        originalFilters: filters,
+        enhancedFilters,
+        pageNo,
+        pageSize,
+        searchType,
+      },
     });
 
-    // 构建搜索条件
-    const { ftsQuery, whereConditions, whereParams } = buildSearchConditions(searchQuery, filters);
+    // 构建搜索条件（使用增强后的 filters）
+    const { ftsQuery, whereConditions, whereParams } = buildSearchConditions(searchQuery, enhancedFilters);
 
     logger.info({
       message: "搜索条件构建完成",
@@ -321,15 +385,16 @@ async function handleSearchImages(req, res, next) {
     // 执行搜索
     const offset = (pageNo - 1) * pageSize;
 
-    // 并行查询：获取结果列表和总数
-    const [searchResults, totalCount] = await Promise.all([
+    // 并行执行 FTS 搜索和向量搜索（如果有查询词）
+    const searchPromises = [
+      // FTS 搜索：获取更多结果用于合并（取 pageSize * 2，确保有足够的结果用于 RRF）
       searchService.searchImagesByText({
         userId,
         ftsQuery,
         whereConditions,
         whereParams,
-        limit: pageSize,
-        offset,
+        limit: hasQuery ? pageSize * 2 : pageSize, // 有查询词时多取一些用于合并
+        offset: hasQuery ? 0 : offset, // 有查询词时从 0 开始，合并后再分页
       }),
       searchService.getSearchResultsCount({
         userId,
@@ -337,18 +402,146 @@ async function handleSearchImages(req, res, next) {
         whereConditions,
         whereParams,
       }),
-    ]);
+    ];
+
+    // 如果有查询词，执行向量搜索
+    let vectorResults = [];
+    if (hasQuery) {
+      try {
+        // 1. 文本编码
+        const { vector: queryVector } = await pythonSearchClient.encodeText(searchQuery);
+
+        // 2. 基于 ANN 索引的向量搜索（由 Python 侧 hnswlib 完成，不再传输所有候选向量）
+        vectorResults = await pythonSearchClient.annSearchByVector(userId, queryVector, pageSize * 2);
+
+        logger.info({
+          message: "向量搜索完成（ANN）",
+          details: {
+            query: searchQuery,
+            queryVectorLength: queryVector.length,
+            vectorResultsCount: vectorResults.length,
+            vectorResults: vectorResults.slice(0, 5).map((r) => ({ image_id: r.image_id, score: r.score })),
+          },
+        });
+      } catch (error) {
+        // Python 服务失败时降级为仅 FTS，记录日志但不中断流程
+        logger.warn({
+          message: "向量搜索失败，降级为仅 FTS",
+          details: {
+            error: error.message,
+            query: searchQuery,
+          },
+        });
+      }
+    }
+
+    // 等待 FTS 搜索完成
+    const [ftsResults, ftsTotalCount] = await Promise.all(searchPromises);
+
+    let finalResults = ftsResults;
+    let finalTotal = ftsTotalCount;
+
+    // 如果有向量搜索结果，合并排序
+    if (hasQuery && vectorResults.length > 0) {
+      // 情况 1：FTS 没有命中，但向量搜索有结果 —— 直接按向量结果取图片列表
+      if (ftsResults.length === 0) {
+        const uniqueVectorIds = Array.from(new Set(vectorResults.map((r) => r.image_id)));
+        try {
+          const vectorImages = await searchService.getImagesByIds({
+            userId,
+            imageIds: uniqueVectorIds,
+          });
+
+          finalResults = vectorImages;
+          finalTotal = vectorImages.length;
+
+          logger.info({
+            message: "搜索结果：仅向量命中",
+            details: {
+              query: searchQuery,
+              imageCount: vectorImages.length,
+            },
+          });
+        } catch (error) {
+          logger.warn({
+            message: "仅向量命中场景下获取图片信息失败，降级为无结果",
+            details: { error: error.message, imageIds: uniqueVectorIds },
+          });
+          finalResults = [];
+          finalTotal = 0;
+        }
+      } else {
+        // 情况 2：FTS 和向量都有结果，使用 RRF 合并
+        const mergedRanks = mergeAndRank(ftsResults, vectorResults);
+
+        // 创建 imageId -> 完整结果对象的映射（FTS 结果）
+        const ftsResultsMap = new Map();
+        ftsResults.forEach((result) => {
+          ftsResultsMap.set(result.id, result);
+        });
+
+        // 收集需要从数据库获取的图片 ID（只在向量结果中出现的）
+        const vectorImageIds = new Set(vectorResults.map((r) => r.image_id));
+        const ftsImageIds = new Set(ftsResults.map((r) => r.id));
+        const missingImageIds = Array.from(vectorImageIds).filter((id) => !ftsImageIds.has(id));
+
+        // 如果有只在向量结果中的图片，从数据库获取
+        let vectorOnlyImages = [];
+        if (missingImageIds.length > 0) {
+          try {
+            vectorOnlyImages = await searchService.getImagesByIds({
+              userId,
+              imageIds: missingImageIds,
+            });
+            // 添加到映射中
+            vectorOnlyImages.forEach((img) => {
+              ftsResultsMap.set(img.id, img);
+            });
+          } catch (error) {
+            logger.warn({
+              message: "获取向量结果图片信息失败",
+              details: { error: error.message, missingImageIds },
+            });
+          }
+        }
+
+        // 按 RRF 排序后的顺序构建最终结果
+        const mergedResults = [];
+        const mergedImageIds = new Set();
+
+        for (const { imageId } of mergedRanks) {
+          if (mergedImageIds.has(imageId)) continue;
+
+          const result = ftsResultsMap.get(imageId);
+          if (result) {
+            mergedResults.push(result);
+            mergedImageIds.add(imageId);
+          }
+        }
+
+        finalResults = mergedResults;
+        // 总数：FTS 和向量结果的并集大小（去重后的 imageId 数量）
+        const allUniqueImageIds = new Set([...ftsResults.map((r) => r.id), ...vectorResults.map((r) => r.image_id)]);
+        finalTotal = Math.max(ftsTotalCount, allUniqueImageIds.size);
+      }
+    }
+
+    // 分页（如果之前取了更多结果）
+    if (hasQuery && vectorResults.length > 0) {
+      finalResults = finalResults.slice(offset, offset + pageSize);
+    }
 
     // 添加完整URL（thumbnailUrl 和 highResUrl）
-    // isFavorite字段已从数据库直接返回，searchResults 已经通过 mapFields 转换为 camelCase
-    const resultsWithUrls = await addFullUrlToImage(searchResults);
+    const resultsWithUrls = await addFullUrlToImage(finalResults);
 
     logger.info({
       message: `搜索完成: ${userId}`,
       details: {
         query,
         resultCount: resultsWithUrls.length,
-        totalCount,
+        totalCount: finalTotal,
+        ftsCount: ftsResults.length,
+        vectorCount: vectorResults.length,
         appliedFilters: Object.keys(filters).filter((key) => {
           const value = filters[key];
           if (Array.isArray(value)) return value.length > 0;
@@ -360,7 +553,7 @@ async function handleSearchImages(req, res, next) {
     res.sendResponse({
       data: {
         list: resultsWithUrls,
-        total: totalCount,
+        total: finalTotal,
       },
       messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
     });
@@ -515,7 +708,7 @@ async function handleAdvancedSearch(req, res, next) {
     const offset = (pageNo - 1) * pageSize;
     // 构建 FTS 查询：如果有条件则使用，否则为 null（不使用 FTS）
     const finalFtsQuery = searchQuery || null;
-    
+
     const searchResults = await searchService.searchImagesByText({
       userId,
       ftsQuery: finalFtsQuery,
