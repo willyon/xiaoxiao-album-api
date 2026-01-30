@@ -265,30 +265,6 @@ async function _deleteImagesFiles(images) {
 }
 
 /**
- * 获取回收站统计信息
- * @param {number} userId - 用户ID
- * @returns {Promise<Object>} 统计信息
- */
-async function getTrashSummary(userId) {
-  try {
-    const total = trashModel.countDeletedImages(userId);
-    return {
-      total,
-    };
-  } catch (error) {
-    logger.error({
-      message: "Failed to get trash summary",
-      details: { userId, error: error.message },
-    });
-    throw new CustomError({
-      httpStatus: 500,
-      messageCode: ERROR_CODES.INTERNAL_SERVER_ERROR,
-      messageType: "error",
-    });
-  }
-}
-
-/**
  * 分页获取已删除图片列表
  * @param {Object} params
  * @param {number} params.userId - 用户ID
@@ -579,7 +555,6 @@ async function clearTrash({ userId }) {
 }
 
 module.exports = {
-  getTrashSummary,
   getDeletedImages,
   restoreImages,
   permanentlyDeleteImages,

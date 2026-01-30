@@ -244,6 +244,24 @@ async function getImagesByDate({ pageNo, pageSize, albumId, userId }) {
   }
 }
 
+// 分页获取用户某地点图片
+// albumId: 城市名称或 'unknown'
+async function getImagesByCity({ pageNo, pageSize, albumId, userId }) {
+  try {
+    const result = await imageModel.selectImagesByCity({ pageNo, pageSize, albumId, userId });
+
+    result.data = await addFullUrlToImage(result.data);
+
+    return result;
+  } catch (error) {
+    logger.error({
+      message: "分页获取用户某地点图片失败",
+      details: { pageNo, pageSize, albumId, userId, error: error.message },
+    });
+    throw new CustomError(ERROR_CODES.INTERNAL_SERVER_ERROR, "获取用户图片失败");
+  }
+}
+
 // 按年份获取分组信息
 async function getGroupsByYear({ userId, pageNo = 1, pageSize = 10, withFullUrls = true }) {
   // 参数校验和默认值保护
@@ -295,6 +313,47 @@ async function getGroupsByMonth({ userId, pageNo = 1, pageSize = 10, withFullUrl
     throw new CustomError({
       httpStatus: 500,
       messageCode: ERROR_CODES.FAILED_SELECT_GROUPS_BY_MONTH,
+      messageType: "error",
+    });
+  }
+}
+
+// 获取「未知时间」相册（单独查询，不混在年/月列表中）
+async function getUnknownGroup({ userId, withFullUrls = true }) {
+  try {
+    const queryResult = await imageModel.selectUnknownGroup({ userId });
+    if (withFullUrls && queryResult.data?.length) {
+      queryResult.data = await _addFullUrlToGroupCover(queryResult.data);
+    }
+    return queryResult;
+  } catch (error) {
+    throw new CustomError({
+      httpStatus: 500,
+      messageCode: ERROR_CODES.FAILED_SELECT_GROUPS_BY_YEAR,
+      messageType: "error",
+    });
+  }
+}
+
+// 按地点获取分组信息
+async function getGroupsByCity({ userId, pageNo = 1, pageSize = 10, withFullUrls = true }) {
+  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: "warning",
+    });
+  }
+  try {
+    const queryResult = await imageModel.selectGroupsByCity({ pageNo, pageSize, userId });
+    if (withFullUrls && queryResult.data) {
+      queryResult.data = await _addFullUrlToGroupCover(queryResult.data);
+    }
+    return queryResult;
+  } catch (error) {
+    throw new CustomError({
+      httpStatus: 500,
+      messageCode: ERROR_CODES.FAILED_SELECT_GROUPS_BY_YEAR,
       messageType: "error",
     });
   }
@@ -497,9 +556,12 @@ module.exports = {
   getImagesByYear,
   getImagesByMonth,
   getImagesByDate,
+  getImagesByCity,
   getGroupsByYear,
   getGroupsByMonth,
   getGroupsByDate,
+  getUnknownGroup,
+  getGroupsByCity,
   getGroupsByYearForCluster,
   getGroupsByMonthForCluster,
   addFullUrlToImage,

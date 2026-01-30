@@ -1,0 +1,29 @@
+/*
+ * @Description: 地点（按城市分组）接口控制器
+ */
+const imageService = require("../services/imageService");
+
+/**
+ * 获取地点相册列表（按城市分组）
+ * GET /api/locations?pageNo=1&pageSize=20
+ */
+async function getLocations(req, res, next) {
+  try {
+    const userId = req.user.userId;
+    const { pageNo = 1, pageSize = 20 } = req.query;
+
+    const queryResult = await imageService.getGroupsByCity({
+      userId,
+      pageNo: parseInt(pageNo, 10) || 1,
+      pageSize: parseInt(pageSize, 10) || 20,
+    });
+
+    res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
+  } catch (error) {
+    next(error);
+  }
+}
+
+module.exports = {
+  getLocations,
+};

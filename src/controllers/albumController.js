@@ -100,49 +100,22 @@ async function deleteAlbum(req, res, next) {
 }
 
 /**
- * 统一获取相册列表（year/month/date/custom）
- * POST /images/albums/:type
- * Body: { pageNo, pageSize }
+ * 获取自定义相册列表
+ * GET /api/albums?pageNo=1&pageSize=20&search=xxx
  */
-async function queryAlbums(req, res, next) {
+async function getCustomAlbums(req, res, next) {
   try {
     const userId = req.user.userId;
-    // GET 请求：type 和分页参数都从 query 获取
-    const { type, pageNo, pageSize, search } = req.query;
+    const { pageNo, pageSize, search } = req.query;
 
-    if (!type || !["year", "month", "date", "custom"].includes(type)) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
-        messageType: "error",
-        message: "无效的目录类型",
-      });
-    }
+    const result = await albumService.getAlbumsList({
+      userId,
+      pageNo: pageNo || 1,
+      pageSize: pageSize || 20,
+      search: search || null,
+    });
 
-    let result;
-
-    if (type === "custom") {
-      // 自定义相册目录
-      result = await albumService.getAlbumsList({
-        userId,
-        pageNo: pageNo || 1,
-        pageSize: pageSize || 20,
-        search: search || null,
-      });
-      res.sendResponse({ data: result });
-    } else {
-      // 时间相册目录（year/month/date）
-      let queryResult;
-      if (type === "year") {
-        queryResult = await imageService.getGroupsByYear({ userId, pageNo: pageNo || 1, pageSize: pageSize || 20 });
-      } else if (type === "month") {
-        queryResult = await imageService.getGroupsByMonth({ userId, pageNo: pageNo || 1, pageSize: pageSize || 20 });
-      } else if (type === "date") {
-        queryResult = await imageService.getGroupsByDate({ userId, pageNo: pageNo || 1, pageSize: pageSize || 20 });
-      }
-
-      res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
-    }
+    res.sendResponse({ data: result });
   } catch (error) {
     next(error);
   }
@@ -162,12 +135,12 @@ async function queryAlbumPhotos(req, res, next) {
     const { type, pageNo, pageSize, clusterId } = req.query;
 
     // 验证 type 参数
-    if (!type || !["year", "month", "date", "custom"].includes(type)) {
+    if (!type || !["year", "month", "date", "custom", "location", "unknown"].includes(type)) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
         messageType: "error",
-        message: "type 参数是必需的，且必须是 year/month/date/custom 之一",
+        message: "type 参数是必需的，且必须是 year/month/date/custom/location/unknown 之一",
       });
     }
 
@@ -205,8 +178,16 @@ async function queryAlbumPhotos(req, res, next) {
           clusterId: clusterIdParam,
         });
       } else if (type === "date") {
-        // date 类型暂不支持 clusterId，保持原有逻辑
         queryResult = await imageService.getImagesByDate({ userId, pageNo, pageSize, albumId });
+      } else if (type === "location") {
+        queryResult = await imageService.getImagesByCity({ userId, pageNo, pageSize, albumId });
+      } else if (type === "unknown") {
+        queryResult = await imageService.getImagesByYear({
+          userId,
+          pageNo,
+          pageSize,
+          albumId: "unknown",
+        });
       }
 
       // 为每条数据添加 albumId 字段（统一返回格式）
@@ -317,7 +298,7 @@ module.exports = {
   getAlbumById,
   updateAlbum,
   deleteAlbum,
-  queryAlbums,
+  getCustomAlbums,
   queryAlbumPhotos,
   addImagesToAlbum,
   removeImagesFromAlbum,

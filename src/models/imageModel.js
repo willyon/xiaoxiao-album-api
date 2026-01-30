@@ -507,6 +507,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
       FROM images
       WHERE user_id = ?
         AND deleted_at IS NULL
+        AND month_key != 'unknown'
     ),
     latest AS (
       -- 选择每个月份的第一张图片作为封面
@@ -520,34 +521,33 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
       WHERE rn = 1
     ),
     counts AS (
-      -- 📊 统计每个月份的照片数量
+      -- 📊 统计每个月份的照片数量（排除 unknown）
       SELECT month_key, COUNT(*) AS imageCount
       FROM images
       WHERE user_id = ?
         AND deleted_at IS NULL
+        AND month_key != 'unknown'
       GROUP BY month_key
     )
     SELECT
-      latest.month_key AS album_id,  -- 相册ID（统一使用 album_id，mapper 会映射为 albumId）
-      latest.thumbnail_storage_key AS latestImagekey,  -- 封面图片的缩略图存储键
-      latest.image_created_at,  -- 封面图片的拍摄时间
-      latest.storage_type,      -- 封面图片的存储类型
-      counts.imageCount         -- 该月份的照片总数
+      latest.month_key AS album_id,
+      latest.thumbnail_storage_key AS latestImagekey,
+      latest.image_created_at,
+      latest.storage_type,
+      counts.imageCount
     FROM latest
     JOIN counts ON counts.month_key = latest.month_key
-    ORDER BY
-      -- 📅 排序：未知月份放最后，其他按月份倒序（最新的在前）
-      CASE WHEN latest.month_key = 'unknown' THEN 1 ELSE 0 END,
-      latest.month_key DESC
+    ORDER BY latest.month_key DESC
     LIMIT ? OFFSET ?;
   `);
 
-  // 📊 组总数：直接对 month_key 去重计数
+  // 📊 组总数：排除 unknown
   const countQuery = db.prepare(`
     SELECT COUNT(DISTINCT month_key) AS groupCount
     FROM images
     WHERE user_id = ?
-      AND deleted_at IS NULL;
+      AND deleted_at IS NULL
+      AND month_key != 'unknown';
   `);
 
   try {
@@ -559,7 +559,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
   }
 }
 
-// 分页获取用户按年分组（YYYY / 'unknown'）数据 —— 基于物化 yearKey
+// 分页获取用户按年分组（YYYY，排除 unknown）数据 —— 基于物化 yearKey
 function selectGroupsByYear({ pageNo, pageSize, userId }) {
   const offset = (pageNo - 1) * pageSize;
 
@@ -610,6 +610,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
       FROM images
       WHERE user_id = ?
         AND deleted_at IS NULL
+        AND year_key != 'unknown'
     ),
     latest AS (
       -- 选择每个年份的第一张图片作为封面
@@ -623,38 +624,87 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
       WHERE rn = 1
     ),
     counts AS (
-      -- 统计每个年份的图片数量
+      -- 统计每个年份的图片数量（排除 unknown）
       SELECT year_key, COUNT(*) AS imageCount
       FROM images
       WHERE user_id = ?
         AND deleted_at IS NULL
+        AND year_key != 'unknown'
       GROUP BY year_key
     )
     SELECT
-      latest.year_key AS album_id,  -- 相册ID（统一使用 album_id，mapper 会映射为 albumId）
+      latest.year_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.image_created_at,
       latest.storage_type,
       counts.imageCount
     FROM latest
     JOIN counts ON counts.year_key = latest.year_key
-    ORDER BY
-      CASE WHEN latest.year_key = 'unknown' THEN 1 ELSE 0 END,
-      latest.year_key DESC
+    ORDER BY latest.year_key DESC
     LIMIT ? OFFSET ?;
   `);
 
-  // 组总数：直接对 year_key 去重计数
+  // 组总数：排除 unknown
   const countQuery = db.prepare(`
     SELECT COUNT(DISTINCT year_key) AS groupCount
     FROM images
     WHERE user_id = ?
-      AND deleted_at IS NULL;
+      AND deleted_at IS NULL
+      AND year_key != 'unknown';
   `);
 
   try {
     const data = dataQuery.all(userId, userId, pageSize, offset);
     const { groupCount: total } = countQuery.get(userId);
+    return { data: mapFields("images", data), total };
+  } catch (error) {
+    throw error;
+  }
+}
+
+// 获取「未知时间」相册（year_key='unknown' 的单个分组）
+function selectUnknownGroup({ userId }) {
+  const dataQuery = db.prepare(`
+    WITH ranked AS (
+      SELECT 
+        year_key,
+        thumbnail_storage_key,
+        image_created_at,
+        id,
+        storage_type,
+        ROW_NUMBER() OVER (
+          ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
+        ) AS rn
+      FROM images
+      WHERE user_id = ? AND deleted_at IS NULL AND year_key = 'unknown'
+    ),
+    cover AS (
+      SELECT year_key, thumbnail_storage_key, image_created_at, storage_type
+      FROM ranked WHERE rn = 1
+    ),
+    cnt AS (
+      SELECT COUNT(*) AS imageCount FROM images
+      WHERE user_id = ? AND deleted_at IS NULL AND year_key = 'unknown'
+    )
+    SELECT
+      'unknown' AS album_id,
+      cover.thumbnail_storage_key AS latestImagekey,
+      cover.image_created_at,
+      cover.storage_type,
+      cnt.imageCount
+    FROM cover CROSS JOIN cnt;
+  `);
+  const countQuery = db.prepare(`
+    SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END AS groupCount
+    FROM images
+    WHERE user_id = ? AND deleted_at IS NULL AND year_key = 'unknown';
+  `);
+  try {
+    const data = dataQuery.all(userId, userId);
+    const { groupCount: total } = countQuery.get(userId);
+    if (!data || data.length === 0) {
+      return { data: [], total: 0 };
+    }
     return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;
@@ -957,6 +1007,127 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
   try {
     const data = dataQuery.all(userId, userId, pageSize, offset);
     const { groupCount: total } = countQuery.get(userId);
+    return { data: mapFields("images", data), total };
+  } catch (error) {
+    throw error;
+  }
+}
+
+// 分页获取用户按地点（city）分组的数据
+// 使用 COALESCE(NULLIF(TRIM(city), ''), 'unknown') 统一处理 NULL/空/unknown
+function selectGroupsByCity({ pageNo, pageSize, userId }) {
+  const offset = (pageNo - 1) * pageSize;
+
+  const dataQuery = db.prepare(`
+    WITH city_normalized AS (
+      SELECT 
+        id,
+        COALESCE(NULLIF(TRIM(city), ''), 'unknown') AS city_key,
+        thumbnail_storage_key,
+        image_created_at,
+        storage_type
+      FROM images
+      WHERE user_id = ? AND deleted_at IS NULL
+    ),
+    ranked_images AS (
+      SELECT 
+        city_key,
+        thumbnail_storage_key,
+        image_created_at,
+        id,
+        storage_type,
+        ROW_NUMBER() OVER (
+          PARTITION BY city_key 
+          ORDER BY image_created_at DESC, id DESC
+        ) AS rn
+      FROM city_normalized
+    ),
+    latest AS (
+      SELECT city_key, thumbnail_storage_key, image_created_at, id, storage_type
+      FROM ranked_images
+      WHERE rn = 1
+    ),
+    counts AS (
+      SELECT city_key, COUNT(*) AS imageCount
+      FROM city_normalized
+      GROUP BY city_key
+    )
+    SELECT
+      latest.city_key AS album_id,
+      latest.thumbnail_storage_key AS latestImagekey,
+      latest.image_created_at,
+      latest.storage_type,
+      counts.imageCount
+    FROM latest
+    JOIN counts ON counts.city_key = latest.city_key
+    ORDER BY
+      CASE WHEN latest.city_key = 'unknown' THEN 1 ELSE 0 END,
+      counts.imageCount DESC,
+      latest.city_key ASC
+    LIMIT ? OFFSET ?;
+  `);
+
+  const countQuery = db.prepare(`
+    SELECT COUNT(DISTINCT COALESCE(NULLIF(TRIM(city), ''), 'unknown')) AS groupCount
+    FROM images
+    WHERE user_id = ? AND deleted_at IS NULL;
+  `);
+
+  try {
+    const data = dataQuery.all(userId, pageSize, offset);
+    const { groupCount: total } = countQuery.get(userId);
+    return { data: mapFields("images", data), total };
+  } catch (error) {
+    throw error;
+  }
+}
+
+// 分页获取用户具体某个地点的图片数据
+// albumId: 城市名称或 'unknown'
+function selectImagesByCity({ pageNo, pageSize, albumId, userId }) {
+  const offset = (pageNo - 1) * pageSize;
+  const isUnknown = albumId === "unknown";
+
+  const baseSelect = `
+    SELECT 
+      id,
+      high_res_storage_key, 
+      thumbnail_storage_key, 
+      image_created_at, 
+      date_key, 
+      day_key, 
+      month_key, 
+      year_key, 
+      storage_type, 
+      gps_location,
+      width_px,
+      height_px,
+      aspect_ratio,
+      layout_type,
+      color_theme,
+      file_size_bytes,
+      face_count,
+      person_count,
+      age_tags,
+      gender_tags,
+      expression_tags,
+      has_young,
+      has_adult,
+      is_favorite
+    FROM images
+    WHERE user_id = ? AND deleted_at IS NULL
+  `;
+  const cityCondition = isUnknown ? " AND (city IS NULL OR TRIM(COALESCE(city, '')) = '' OR city = 'unknown')" : " AND city = ?";
+  const orderLimit = " ORDER BY COALESCE(image_created_at, 0) DESC, id DESC LIMIT ? OFFSET ?";
+
+  const dataQuery = db.prepare(baseSelect + cityCondition + orderLimit);
+  const countQuery = db.prepare("SELECT COUNT(*) AS total FROM images WHERE user_id = ? AND deleted_at IS NULL" + cityCondition);
+
+  try {
+    const params = isUnknown ? [userId, pageSize, offset] : [userId, albumId, pageSize, offset];
+    const countParams = isUnknown ? [userId] : [userId, albumId];
+    const data = dataQuery.all(...params);
+    const { total } = countQuery.get(...countParams);
     return { data: mapFields("images", data), total };
   } catch (error) {
     throw error;
@@ -1399,6 +1570,9 @@ module.exports = {
   selectGroupsByYear,
   selectGroupsByMonth,
   selectGroupsByDate,
+  selectUnknownGroup,
+  selectGroupsByCity,
+  selectImagesByCity,
   selectGroupsByYearForCluster,
   selectGroupsByMonthForCluster,
   selectHashesByUserId,

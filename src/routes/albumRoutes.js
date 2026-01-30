@@ -11,15 +11,15 @@ const {
   updateAlbum,
   deleteAlbum,
   queryAlbumPhotos,
-  queryAlbums,
+  getCustomAlbums,
   addImagesToAlbum,
   removeImagesFromAlbum,
   setAlbumCover,
 } = require("../controllers/albumController");
 
 // ========== 相册列表接口 ========== //
-// 获取相册列表（统一接口：year/month/date/custom，type 作为 query param）
-router.get("/", queryAlbums);
+// 获取自定义相册列表
+router.get("/", getCustomAlbums);
 
 // ========== 相册 CRUD 接口 ========== //
 // 创建相册

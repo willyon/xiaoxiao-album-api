@@ -11,17 +11,10 @@ const { ERROR_CODES } = require("../constants/messageCodes");
 const logger = require("../utils/logger");
 
 /**
- * 获取用户的相册列表（包含封面图片URL）
+ * 获取用户的自定义相册列表（包含封面图片URL）
  */
 async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null }) {
-  // 确保"喜欢"相册存在（这样用户至少能看到一个相册）
-  try {
-    albumModel.getOrCreateFavoriteAlbum(userId);
-  } catch (error) {
-    // 继续执行，即使创建失败也尝试查询现有相册
-  }
-
-  const allAlbums = albumModel.getAlbumsByUserId({ userId, search });
+  const allAlbums = albumModel.getAlbumsByUserId({ userId, search, albumType: "custom" });
 
   // 分页处理
   const total = allAlbums.length;
@@ -358,6 +351,28 @@ async function getAlbumById({ userId, albumId }) {
 }
 
 /**
+ * 获取喜欢图片列表（同时返回喜欢相册元数据，供 AddToAlbumDialog 等使用）
+ */
+async function getFavoritesList({ userId, pageNo = 1, pageSize = 20 }) {
+  const favoriteAlbum = albumModel.getOrCreateFavoriteAlbum(userId);
+  let coverImageUrl = null;
+  if (favoriteAlbum.coverImageId) {
+    const coverImage = _getImageById(favoriteAlbum.coverImageId);
+    if (coverImage) {
+      coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
+    }
+  }
+  const album = { ...favoriteAlbum, coverImageUrl };
+  const { list, total } = await getAlbumImagesList({
+    userId,
+    albumId: favoriteAlbum.albumId,
+    pageNo,
+    pageSize,
+  });
+  return { album, list, total };
+}
+
+/**
  * 切换图片喜欢状态
  */
 async function toggleFavoriteImage({ userId, imageId, isFavorite }) {
@@ -431,6 +446,7 @@ function _getImageById(imageId) {
 
 module.exports = {
   getAlbumsList,
+  getFavoritesList,
   createAlbum,
   getAlbumById,
   updateAlbum,

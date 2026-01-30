@@ -6,16 +6,7 @@
 
 const express = require("express");
 const router = express.Router();
-const {
-  handleGetTrashSummary,
-  handleGetDeletedImages,
-  handleRestoreImages,
-  handlePermanentlyDeleteImages,
-  handleClearTrash,
-} = require("../controllers/trashController");
-
-// 获取回收站统计信息
-router.get("/summary", handleGetTrashSummary);
+const { handleGetDeletedImages, handleRestoreImages, handlePermanentlyDeleteImages, handleClearTrash } = require("../controllers/trashController");
 
 // 分页获取已删除图片列表
 router.get("/", handleGetDeletedImages);

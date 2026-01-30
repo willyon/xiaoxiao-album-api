@@ -10,28 +10,6 @@ const { ERROR_CODES } = require("../constants/messageCodes");
 const logger = require("../utils/logger");
 
 /**
- * 获取回收站统计信息
- * GET /images/trash/summary
- */
-async function handleGetTrashSummary(req, res, next) {
-  try {
-    const { userId } = req?.user;
-    if (!userId) {
-      throw new CustomError({
-        httpStatus: 401,
-        messageCode: ERROR_CODES.UNAUTHORIZED,
-        messageType: "error",
-      });
-    }
-
-    const summary = await trashService.getTrashSummary(userId);
-    res.sendResponse({ data: summary });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
  * 分页获取已删除图片列表
  * GET /images/trash/list?pageNo=1&pageSize=20&cursor=123
  */
@@ -171,7 +149,6 @@ async function handleClearTrash(req, res, next) {
 }
 
 module.exports = {
-  handleGetTrashSummary,
   handleGetDeletedImages,
   handleRestoreImages,
   handlePermanentlyDeleteImages,
