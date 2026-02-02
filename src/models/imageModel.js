@@ -452,6 +452,150 @@ function selectImagesByDate({ pageNo, pageSize, albumId, userId }) {
   }
 }
 
+/**
+ * 分页获取用户收藏的图片（is_favorite = 1）
+ */
+function getImagesByFavorite({ userId, pageNo, pageSize }) {
+  const offset = (pageNo - 1) * pageSize;
+
+  const dataQuery = db.prepare(`
+    SELECT 
+      id,
+      high_res_storage_key, 
+      thumbnail_storage_key, 
+      image_created_at, 
+      date_key, 
+      day_key, 
+      month_key, 
+      year_key, 
+      storage_type, 
+      gps_location,
+      width_px,
+      height_px,
+      aspect_ratio,
+      layout_type,
+      color_theme,
+      file_size_bytes,
+      face_count,
+      person_count,
+      age_tags,
+      gender_tags,
+      expression_tags,
+      has_young,
+      has_adult,
+      is_favorite
+    FROM images
+    WHERE user_id = ?
+      AND is_favorite = 1
+      AND deleted_at IS NULL
+    ORDER BY image_created_at DESC, id DESC
+    LIMIT ? OFFSET ?
+  `);
+
+  const countQuery = db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM images
+    WHERE user_id = ?
+      AND is_favorite = 1
+      AND deleted_at IS NULL
+  `);
+
+  try {
+    const data = dataQuery.all(userId, pageSize, offset);
+    const { total } = countQuery.get(userId);
+    return { data: mapFields("images", data), total };
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * 分页获取用户模糊图列表（is_blurry = 1）
+ */
+function getImagesByBlurry({ userId, pageNo, pageSize }) {
+  const offset = (pageNo - 1) * pageSize;
+
+  const dataQuery = db.prepare(`
+    SELECT
+      id,
+      high_res_storage_key,
+      thumbnail_storage_key,
+      image_created_at,
+      created_at,
+      date_key,
+      day_key,
+      month_key,
+      year_key,
+      storage_type,
+      gps_location,
+      width_px,
+      height_px,
+      aspect_ratio,
+      layout_type,
+      color_theme,
+      file_size_bytes,
+      face_count,
+      person_count,
+      age_tags,
+      gender_tags,
+      expression_tags,
+      has_young,
+      has_adult,
+      is_favorite
+    FROM images
+    WHERE user_id = ?
+      AND is_blurry = 1
+      AND deleted_at IS NULL
+    ORDER BY sharpness_score ASC, id ASC
+    LIMIT ? OFFSET ?
+  `);
+
+  const countQuery = db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM images
+    WHERE user_id = ?
+      AND is_blurry = 1
+      AND deleted_at IS NULL
+  `);
+
+  try {
+    const data = dataQuery.all(userId, pageSize, offset);
+    const { total } = countQuery.get(userId);
+    return { data: mapFields("images", data), total };
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * 按用户更新模糊图标记（分组重建时调用）
+ * @param {number} userId
+ * @param {number[]} blurryImageIds - 当前应标记为模糊的图片 ID 列表
+ */
+function updateBlurryForUser(userId, blurryImageIds) {
+  if (!userId) return;
+  const idsSet = blurryImageIds && blurryImageIds.length > 0 ? blurryImageIds : [];
+  const placeholders = idsSet.length > 0 ? idsSet.map(() => "?").join(", ") : "NULL";
+  const setBlurry =
+    idsSet.length > 0
+      ? db.prepare(`
+        UPDATE images SET is_blurry = 1
+        WHERE user_id = ? AND id IN (${placeholders}) AND deleted_at IS NULL
+      `)
+      : null;
+  const clearBlurry = db.prepare(`
+    UPDATE images SET is_blurry = 0
+    WHERE user_id = ? AND deleted_at IS NULL
+    ${idsSet.length > 0 ? `AND id NOT IN (${placeholders})` : ""}
+  `);
+  if (setBlurry) setBlurry.run(userId, ...idsSet);
+  if (idsSet.length > 0) {
+    clearBlurry.run(userId, ...idsSet);
+  } else {
+    clearBlurry.run(userId);
+  }
+}
+
 // 分页获取用户按月分组（YYYY-MM / 'unknown'）数据 —— 基于物化 monthKey
 // 🎯 功能：按月分组显示相册封面，智能选择最开心最清晰的照片作为封面
 function selectGroupsByMonth({ pageNo, pageSize, userId }) {
@@ -1567,6 +1711,9 @@ module.exports = {
   selectImagesByYear,
   selectImagesByMonth,
   selectImagesByDate,
+  getImagesByFavorite,
+  getImagesByBlurry,
+  updateBlurryForUser,
   selectGroupsByYear,
   selectGroupsByMonth,
   selectGroupsByDate,

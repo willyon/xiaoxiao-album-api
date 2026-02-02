@@ -6,7 +6,7 @@
  * @Description: File description
  */
 const imageService = require("../services/imageService");
-const cleanupService = require("../services/cleanupService");
+const similarService = require("../services/similarService");
 const CustomError = require("../errors/customError");
 const { ERROR_CODES, SUCCESS_CODES } = require("../constants/messageCodes");
 const { getRedisClient } = require("../services/redisClient");
@@ -30,7 +30,41 @@ async function handleGetAllByPage(req, res, next) {
       clusterId: clusterId ? parseInt(clusterId) : null,
     });
 
-    res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
+    res.sendResponse({ data: queryResult });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// 分页获取模糊图列表（is_blurry = 1），用于清理页模糊图 tab
+// GET /api/images/blurry?pageNo=1&pageSize=20
+async function handleGetBlurryImages(req, res, next) {
+  try {
+    const { userId } = req?.user;
+    const { pageNo, pageSize } = req.query;
+    const result = await imageService.getBlurryImages({
+      userId,
+      pageNo,
+      pageSize,
+    });
+    res.sendResponse({ data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// 分页获取相似图分组列表（清理页相似图 tab）
+// GET /api/images/similar?pageNo=1&pageSize=12
+async function handleGetSimilarGroups(req, res, next) {
+  try {
+    const { userId } = req?.user;
+    const { pageNo, pageSize } = req.query;
+    const data = await similarService.getSimilarGroups({
+      userId,
+      pageNo: Number(pageNo) || 1,
+      pageSize: Number(pageSize) || 12,
+    });
+    res.sendResponse({ data });
   } catch (error) {
     next(error);
   }
@@ -110,7 +144,6 @@ async function handlePatchImage(req, res, next) {
       });
     }
 
-    // 调用服务层部分更新（服务层会处理 favorite 的特殊逻辑）
     const result = await imageService.patchImage({ userId, imageId: parseInt(imageId), patchData });
 
     res.sendResponse({ data: result });
@@ -133,11 +166,10 @@ async function handleDeleteImages(req, res, next) {
       });
     }
 
-    // 如果提供了 groupId，使用 cleanupService 删除（会更新分组统计）
-    // 否则使用 imageService 删除（通用删除，不涉及清理分组）
+    // 相似图删除：提供 groupId 时走 similarService（需刷新分组统计）；其余（含模糊图、首页等）走 imageService 通用删除
     let result;
     if (groupId) {
-      result = await cleanupService.deleteImages({
+      result = await similarService.deleteImages({
         userId,
         groupId,
         imageIds,
@@ -157,6 +189,8 @@ async function handleDeleteImages(req, res, next) {
 
 module.exports = {
   handleGetAllByPage,
+  handleGetBlurryImages,
+  handleGetSimilarGroups,
   handleCheckFileExists,
   handlePatchImage,
   handleDeleteImages,

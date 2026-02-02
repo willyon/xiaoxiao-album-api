@@ -14,7 +14,7 @@ const logger = require("../utils/logger");
  * 获取用户的自定义相册列表（包含封面图片URL）
  */
 async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null }) {
-  const allAlbums = albumModel.getAlbumsByUserId({ userId, search, albumType: "custom" });
+  const allAlbums = albumModel.getAlbumsByUserId({ userId, search });
 
   // 分页处理
   const total = allAlbums.length;
@@ -82,7 +82,7 @@ async function createAlbum({ userId, name, description }) {
 
   // 检查相册名称是否已存在
   const existingAlbums = albumModel.getAlbumsByUserId({ userId });
-  const nameExists = existingAlbums.some((album) => album.name === name.trim() && album.albumType === "custom");
+  const nameExists = existingAlbums.some((album) => album.name === name.trim());
 
   if (nameExists) {
     throw new CustomError({
@@ -97,7 +97,6 @@ async function createAlbum({ userId, name, description }) {
     userId,
     name: name.trim(),
     description: description?.trim() || null,
-    albumType: "custom",
   });
 
   return albumModel.getAlbumById({
@@ -142,7 +141,7 @@ async function updateAlbum({ userId, albumId, name, description, coverImageId })
     }
 
     const existingAlbums = albumModel.getAlbumsByUserId({ userId });
-    const nameExists = existingAlbums.some((a) => a.albumId !== albumId && a.name === name.trim() && a.albumType === "custom");
+    const nameExists = existingAlbums.some((a) => a.albumId !== albumId && a.name === name.trim());
 
     if (nameExists) {
       throw new CustomError({
@@ -214,8 +213,6 @@ async function deleteAlbum({ userId, albumId }) {
     });
   }
 
-  // 注意：SQL 中已经包含了 album_type != 'favorite' 的保护
-  // 如果尝试删除"喜欢"相册，SQL 会返回 affectedRows === 0
   const result = albumModel.deleteAlbum({ albumId, userId });
 
   if (result.affectedRows === 0) {
@@ -247,7 +244,7 @@ async function addImagesToAlbum({ userId, albumId, imageIds }) {
   // 验证图片存在且属于当前用户
   // TODO: 添加图片验证逻辑（可以调用imageModel检查）
 
-  const result = albumModel.addImagesToAlbum({ albumId, imageIds, userId, albumType: album.albumType });
+  const result = albumModel.addImagesToAlbum({ albumId, imageIds, userId });
 
   return result;
 }
@@ -267,7 +264,7 @@ async function removeImagesFromAlbum({ userId, albumId, imageIds }) {
     });
   }
 
-  const result = albumModel.removeImagesFromAlbum({ albumId, imageIds, userId, albumType: album.albumType });
+  const result = albumModel.removeImagesFromAlbum({ albumId, imageIds, userId });
 
   return result;
 }
@@ -351,44 +348,6 @@ async function getAlbumById({ userId, albumId }) {
 }
 
 /**
- * 获取喜欢图片列表（同时返回喜欢相册元数据，供 AddToAlbumDialog 等使用）
- */
-async function getFavoritesList({ userId, pageNo = 1, pageSize = 20 }) {
-  const favoriteAlbum = albumModel.getOrCreateFavoriteAlbum(userId);
-  let coverImageUrl = null;
-  if (favoriteAlbum.coverImageId) {
-    const coverImage = _getImageById(favoriteAlbum.coverImageId);
-    if (coverImage) {
-      coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
-    }
-  }
-  const album = { ...favoriteAlbum, coverImageUrl };
-  const { list, total } = await getAlbumImagesList({
-    userId,
-    albumId: favoriteAlbum.albumId,
-    pageNo,
-    pageSize,
-  });
-  return { album, list, total };
-}
-
-/**
- * 切换图片喜欢状态
- */
-async function toggleFavoriteImage({ userId, imageId, isFavorite }) {
-  // 验证图片存在且属于当前用户
-  // TODO: 添加图片验证逻辑
-
-  const result = albumModel.toggleFavoriteImage({
-    userId,
-    imageId,
-    isFavorite,
-  });
-
-  return result;
-}
-
-/**
  * 获取相册中的图片列表（包含完整URL）
  */
 async function getAlbumImagesList({ userId, albumId, pageNo, pageSize }) {
@@ -446,14 +405,12 @@ function _getImageById(imageId) {
 
 module.exports = {
   getAlbumsList,
-  getFavoritesList,
   createAlbum,
   getAlbumById,
   updateAlbum,
   deleteAlbum,
   addImagesToAlbum,
   removeImagesFromAlbum,
-  toggleFavoriteImage,
   getAlbumImagesList,
   setAlbumCover,
 };

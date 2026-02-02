@@ -53,7 +53,7 @@ async function getSearchSuggestions(params) {
  * @param {number} params.pageNo - 页码（从1开始）
  * @param {number} params.pageSize - 每页数量（默认20）
  * @param {string} params.timeDimension - 时间维度（可选）
- * @returns {Object} { data: [], total: 0, hasMore: false }
+ * @returns {Object} { list: [], total: number }
  */
 async function getFilterOptionsPaginated(params) {
   return searchModel.getFilterOptionsPaginated(params);

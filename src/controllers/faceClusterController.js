@@ -113,8 +113,6 @@ async function getClusters(req, res, next) {
       data: {
         list: listWithUrls,
         total: result.total,
-        pageNo: parseInt(pageNo),
-        pageSize: parseInt(pageSize),
       },
     });
   } catch (error) {
@@ -270,8 +268,6 @@ async function getClusterYearAlbums(req, res, next) {
       data: {
         list: result.data,
         total: result.total,
-        pageNo: parseInt(pageNo),
-        pageSize: parseInt(pageSize),
       },
     });
   } catch (error) {
@@ -300,8 +296,6 @@ async function getClusterMonthAlbums(req, res, next) {
       data: {
         list: result.data,
         total: result.total,
-        pageNo: parseInt(pageNo),
-        pageSize: parseInt(pageSize),
       },
     });
   } catch (error) {

@@ -13,7 +13,7 @@ function findImagesNeedingCleanup({ userId }) {
   }
 
   // 从 model 层直接获取未分析的图片（数据库层面过滤，性能更好）
-  // 注意：已分析但未分组的图片（不在 cleanup_group_members 中）是正常的（可能是唯一图片），
+  // 注意：已分析但未分组的图片（不在 similar_group_members 中）是正常的（可能是唯一图片），
   // 不需要再次入队分析，分组逻辑会通过去抖机制自动触发
   return cleanupModel.selectUnanalyzedImagesByUser(userId);
 }

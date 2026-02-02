@@ -204,13 +204,23 @@ async function queryAlbumPhotos(req, res, next) {
 }
 
 /**
- * 添加图片到相册
+ * 添加图片到相册（albumId 为数字相册 ID）
  */
 async function addImagesToAlbum(req, res, next) {
   try {
     const userId = req.user.userId;
     const { albumId } = req.params;
     const { imageIds } = req.body;
+
+    const albumIdNum = parseInt(albumId, 10);
+    if (Number.isNaN(albumIdNum)) {
+      return next({
+        httpStatus: 400,
+        messageCode: "INVALID_PARAMETERS",
+        messageType: "warning",
+        message: "相册 ID 无效",
+      });
+    }
 
     if (!Array.isArray(imageIds) || imageIds.length === 0) {
       return next({
@@ -223,7 +233,7 @@ async function addImagesToAlbum(req, res, next) {
 
     const result = await albumService.addImagesToAlbum({
       userId,
-      albumId: parseInt(albumId),
+      albumId: albumIdNum,
       imageIds: imageIds.map((id) => parseInt(id)),
     });
 
@@ -234,13 +244,23 @@ async function addImagesToAlbum(req, res, next) {
 }
 
 /**
- * 从相册中移除图片
+ * 从相册中移除图片（albumId 为数字相册 ID）
  */
 async function removeImagesFromAlbum(req, res, next) {
   try {
     const userId = req.user.userId;
     const { albumId } = req.params;
     const { imageIds } = req.body;
+
+    const albumIdNum = parseInt(albumId, 10);
+    if (Number.isNaN(albumIdNum)) {
+      return next({
+        httpStatus: 400,
+        messageCode: "INVALID_PARAMETERS",
+        messageType: "warning",
+        message: "相册 ID 无效",
+      });
+    }
 
     if (!Array.isArray(imageIds) || imageIds.length === 0) {
       return next({
@@ -253,7 +273,7 @@ async function removeImagesFromAlbum(req, res, next) {
 
     const result = await albumService.removeImagesFromAlbum({
       userId,
-      albumId: parseInt(albumId),
+      albumId: albumIdNum,
       imageIds: imageIds.map((id) => parseInt(id)),
     });
 

@@ -23,6 +23,7 @@ const FIELD_MAPPING = {
     high_res_storage_key: "highResStorageKey",
     thumbnail_storage_key: "thumbnailStorageKey",
     image_created_at: "creationDate",
+    created_at: "createdAt", // 缩略图入库时间（毫秒）
     year_key: "yearKey",
     month_key: "monthKey",
     date_key: "dateKey",
@@ -50,6 +51,7 @@ const FIELD_MAPPING = {
     person_count: "personCount", // 新增：人物数量（YOLOv10检测）
     added_at: "addedAt", // 添加到相册的时间
     is_favorite: "isFavorite", // 是否已喜欢
+    is_blurry: "isBlurry", // 是否模糊图（清理用）
   },
 
   // albums表字段映射
@@ -59,7 +61,6 @@ const FIELD_MAPPING = {
     name: "name",
     description: "description",
     cover_image_id: "coverImageId",
-    album_type: "albumType",
     image_count: "imageCount",
     created_at: "createdAt",
     updated_at: "updatedAt",

@@ -8,7 +8,14 @@
 const express = require("express");
 const router = express.Router();
 const upload = require("../middlewares/upload"); // 引入 upload 中间件
-const { handleGetAllByPage, handleCheckFileExists, handlePatchImage, handleDeleteImages } = require("../controllers/imageController");
+const {
+  handleGetAllByPage,
+  handleGetBlurryImages,
+  handleGetSimilarGroups,
+  handleCheckFileExists,
+  handlePatchImage,
+  handleDeleteImages,
+} = require("../controllers/imageController");
 const { handleDownloadSingleImage, handleDownloadBatchImages } = require("../controllers/downloadController");
 const { handlePostImages } = require("../controllers/uploadController");
 const { handleGetUploadSignature } = require("../controllers/ossUploadController");
@@ -19,6 +26,12 @@ router.post("/", upload, handlePostImages);
 
 // 分页获取图片列表（参数从 body 改为 query params）
 router.get("/", handleGetAllByPage);
+
+// 分页获取模糊图列表（清理页模糊图 tab）
+router.get("/blurry", handleGetBlurryImages);
+
+// 分页获取相似图分组列表（清理页相似图 tab）
+router.get("/similar", handleGetSimilarGroups);
 
 // 部分更新图片信息（仅用于 favorite 字段）
 router.patch("/:imageId", handlePatchImage);

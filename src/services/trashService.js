@@ -270,8 +270,7 @@ async function _deleteImagesFiles(images) {
  * @param {number} params.userId - 用户ID
  * @param {number} params.pageNo - 页码
  * @param {number} params.pageSize - 每页数量
- * @param {number} [params.cursor] - 游标
- * @returns {Promise<Object>} 图片列表和分页信息
+ * @returns {Promise<{ list: Array, total: number }>} 图片列表与总数
  */
 async function getDeletedImages({ userId, pageNo, pageSize }) {
   try {
@@ -338,13 +337,9 @@ async function getDeletedImages({ userId, pageNo, pageSize }) {
       }),
     );
 
-    // 判断是否还有更多数据：通过比较已加载的数据量和总数
-    const hasMore = list.length === pageSize && pageNo * pageSize < result.total;
-
     return {
       list,
       total: result.total,
-      hasMore,
     };
   } catch (error) {
     logger.error({
@@ -461,7 +456,7 @@ async function permanentlyDeleteImages({ userId, imageIds }) {
   // 删除存储文件（根据存储类型使用对应适配器）
   const fileDeleteResult = await _deleteImagesFiles(images);
 
-  // 物理删除数据库记录（会触发 CASCADE 删除 album_images 和 cleanup_group_members）
+  // 物理删除数据库记录（会触发 CASCADE 删除 album_images 和 similar_group_members）
   const dbResult = trashModel.permanentlyDeleteImages(normalizedIds);
 
   // 更新相册统计（图片数量、封面）
@@ -475,7 +470,7 @@ async function permanentlyDeleteImages({ userId, imageIds }) {
   }
 
   // 更新 cleanup 分组统计（member_count、primary_image_id、total_size_bytes）
-  // 注意：cleanup_group_members 已被 CASCADE 删除，所以需要更新分组统计
+  // 注意：similar_group_members 已被 CASCADE 删除，所以需要更新分组统计
   if (groupIds.length > 0) {
     const now = Date.now();
     groupIds.forEach((groupId) => {

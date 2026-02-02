@@ -37,7 +37,6 @@ const authRoutes = require("./src/routes/authRoutes");
 const imagesRoutes = require("./src/routes/imagesRoutes");
 const albumRoutes = require("./src/routes/albumRoutes");
 const searchRoutes = require("./src/routes/searchRoutes");
-const cleanupRoutes = require("./src/routes/cleanupRoutes");
 const trashRoutes = require("./src/routes/trashRoutes");
 const aliyunOssCallbackRoutes = require("./src/routes/aliyunOssCallbackRoutes");
 const uploadSessionRoutes = require("./src/routes/uploadSessionRoutes");
@@ -131,9 +130,6 @@ app.use("/api/albums", [authMiddleware], albumRoutes);
 
 // 注册搜索路由+鉴权中间件(authMiddleware)
 app.use("/api/search", [authMiddleware], searchRoutes);
-
-// 注册清理路由+鉴权中间件(authMiddleware)
-app.use("/api/cleanup", [authMiddleware], cleanupRoutes);
 
 // 注册回收站路由+鉴权中间件(authMiddleware)
 app.use("/api/trash", [authMiddleware], trashRoutes);

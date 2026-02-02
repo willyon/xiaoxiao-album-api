@@ -11,7 +11,7 @@ const storageService = require("./storageService");
 const imageModel = require("../models/imageModel");
 const cleanupModel = require("../models/cleanupModel");
 const albumModel = require("../models/albumModel");
-const albumService = require("./albumService");
+const favoriteService = require("./favoriteService");
 const exifr = require("exifr");
 const exiftool = require("exiftool-vendored").exiftool;
 const fs = require("fs");
@@ -161,9 +161,9 @@ async function getAllImagesByPage({ pageNo, pageSize, userId, clusterId = null }
     });
 
     // 添加完整URL（isFavorite字段已从数据库直接返回）
-    result.data = await addFullUrlToImage(result.data);
+    const list = await addFullUrlToImage(result.data);
 
-    return result;
+    return { list, total: result.total };
   } catch (error) {
     logger.error({
       message: "分页获取用户全部图片失败",
@@ -171,6 +171,49 @@ async function getAllImagesByPage({ pageNo, pageSize, userId, clusterId = null }
     });
     throw new CustomError(ERROR_CODES.INTERNAL_SERVER_ERROR, "获取用户图片失败");
   }
+}
+
+/**
+ * 分页获取用户模糊图列表（is_blurry = 1），用于清理页模糊图 tab
+ * @returns {{ list: Array<{ imageId, thumbnailUrl, highResUrl, creationDate, createdAt, isFavorite }>, total: number }}
+ */
+async function getBlurryImages({ userId, pageNo = 1, pageSize = 20 }) {
+  const safePageSize = Math.max(Number(pageSize) || 20, 1);
+  const queryResult = imageModel.getImagesByBlurry({
+    userId,
+    pageNo,
+    pageSize: safePageSize,
+  });
+  const total = queryResult.total;
+  const list = await Promise.all(
+    (queryResult.data || []).map(async (img) => {
+      let thumbnailUrl = null;
+      let highResUrl = null;
+      if (img.thumbnailStorageKey != null) {
+        try {
+          thumbnailUrl = await storageService.getFileUrl(img.thumbnailStorageKey, img.storageType);
+        } catch (e) {
+          logger.warn({ message: "获取模糊图缩略图 URL 失败", details: { error: e?.message } });
+        }
+      }
+      if (img.highResStorageKey != null) {
+        try {
+          highResUrl = await storageService.getFileUrl(img.highResStorageKey, img.storageType);
+        } catch (e) {
+          logger.warn({ message: "获取模糊图高清 URL 失败", details: { error: e?.message } });
+        }
+      }
+      return {
+        imageId: img.imageId,
+        thumbnailUrl,
+        highResUrl,
+        creationDate: img.creationDate,
+        createdAt: img.createdAt,
+        isFavorite: img.isFavorite,
+      };
+    }),
+  );
+  return { list, total };
 }
 
 // 分页获取用户某年份图片
@@ -439,20 +482,17 @@ async function getGroupsByMonthForCluster({ userId, clusterId, pageNo = 1, pageS
   }
 }
 
-// 部分更新图片信息（仅用于 favorite 字段）
-// 注意：此方法只处理 favorite 字段，会调用 albumService.toggleFavoriteImage 以同步更新相册
+// 部分更新图片信息（仅用于 favorite 字段，更新 images.is_favorite）
 async function patchImage({ userId, imageId, patchData }) {
-  // 只支持 favorite 字段的更新
   if (patchData.favorite !== undefined || patchData.isFavorite !== undefined) {
     const isFavorite = patchData.favorite !== undefined ? patchData.favorite : patchData.isFavorite;
-    return await albumService.toggleFavoriteImage({
+    return await favoriteService.toggleFavoriteImage({
       userId,
       imageId,
       isFavorite,
     });
   }
 
-  // 如果不包含 favorite 字段，抛出错误
   throw new CustomError({
     httpStatus: 400,
     messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -553,6 +593,7 @@ module.exports = {
 
   // ========== 图片查询服务函数 ==========
   getAllImagesByPage,
+  getBlurryImages,
   getImagesByYear,
   getImagesByMonth,
   getImagesByDate,

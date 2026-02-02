@@ -120,7 +120,9 @@ function createTableImages() {
         aesthetic_score REAL DEFAULT NULL,   -- 美学评分（0-1）
         sharpness_score REAL DEFAULT NULL,   -- 清晰度分数（0-1，值越大越清晰，模糊图判断在业务逻辑中进行）
         -- 喜欢状态字段
-        is_favorite INTEGER DEFAULT 0 NOT NULL -- 是否已喜欢（0=未喜欢，1=已喜欢）
+        is_favorite INTEGER DEFAULT 0 NOT NULL, -- 是否已喜欢（0=未喜欢，1=已喜欢）
+        -- 模糊图标记（清理页用，不依赖 similar_groups）
+        is_blurry INTEGER DEFAULT 0,
 
         -- 同一用户下，内容哈希唯一（避免跨用户互相影响）
         UNIQUE (user_id, image_hash),
@@ -342,6 +344,22 @@ function createTableImages() {
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_is_favorite
       ON images(user_id, is_favorite);
+    `,
+    ).run();
+
+    // 2.25.2 用户模糊图索引（清理页模糊图列表）
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_is_blurry
+      ON images(user_id, is_blurry);
+    `,
+    ).run();
+
+    // 2.25.3 用户模糊图+清晰度索引（模糊图列表按 sharpness_score 排序）
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_is_blurry_sharpness
+      ON images(user_id, is_blurry, sharpness_score);
     `,
     ).run();
 
@@ -654,12 +672,12 @@ function createTableFaceClusters() {
 }
 
 /**
- * 创建 cleanup_groups 表
+ * 创建 similar_groups 表（相似图分组，原 cleanup_groups）
  */
-function createTableCleanupGroups() {
+function createTableSimilarGroups() {
   try {
     const sql = `
-      CREATE TABLE IF NOT EXISTS cleanup_groups (
+      CREATE TABLE IF NOT EXISTS similar_groups (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         group_type TEXT NOT NULL,
@@ -676,32 +694,32 @@ function createTableCleanupGroups() {
 
     db.prepare(
       `
-      CREATE INDEX IF NOT EXISTS idx_cleanup_groups_user_type
-      ON cleanup_groups(user_id, group_type);
+      CREATE INDEX IF NOT EXISTS idx_similar_groups_user_type
+      ON similar_groups(user_id, group_type);
     `,
     ).run();
 
     db.prepare(
       `
-      CREATE INDEX IF NOT EXISTS idx_cleanup_groups_user_updated
-      ON cleanup_groups(user_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_similar_groups_user_updated
+      ON similar_groups(user_id, updated_at DESC);
     `,
     ).run();
 
-    console.log("✅ 创建 cleanup_groups 表及索引");
+    console.log("✅ 创建 similar_groups 表及索引");
   } catch (err) {
-    console.error("创建 cleanup_groups 表失败：", err.message);
+    console.error("创建 similar_groups 表失败：", err.message);
     throw err;
   }
 }
 
 /**
- * 创建 cleanup_group_members 表
+ * 创建 similar_group_members 表（相似图分组成员，原 cleanup_group_members）
  */
-function createTableCleanupGroupMembers() {
+function createTableSimilarGroupMembers() {
   try {
     const sql = `
-      CREATE TABLE IF NOT EXISTS cleanup_group_members (
+      CREATE TABLE IF NOT EXISTS similar_group_members (
         group_id INTEGER NOT NULL,
         image_id INTEGER NOT NULL,
         rank_score REAL,
@@ -710,7 +728,7 @@ function createTableCleanupGroupMembers() {
         created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
         updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
         PRIMARY KEY (group_id, image_id),
-        FOREIGN KEY (group_id) REFERENCES cleanup_groups(id) ON DELETE CASCADE,
+        FOREIGN KEY (group_id) REFERENCES similar_groups(id) ON DELETE CASCADE,
         FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE
       );
     `;
@@ -718,21 +736,21 @@ function createTableCleanupGroupMembers() {
 
     db.prepare(
       `
-      CREATE INDEX IF NOT EXISTS idx_cleanup_members_group_rank
-      ON cleanup_group_members(group_id, rank_score DESC);
+      CREATE INDEX IF NOT EXISTS idx_similar_members_group_rank
+      ON similar_group_members(group_id, rank_score DESC);
     `,
     ).run();
 
     db.prepare(
       `
-      CREATE INDEX IF NOT EXISTS idx_cleanup_members_image
-      ON cleanup_group_members(image_id);
+      CREATE INDEX IF NOT EXISTS idx_similar_members_image
+      ON similar_group_members(image_id);
     `,
     ).run();
 
-    console.log("✅ 创建 cleanup_group_members 表及索引");
+    console.log("✅ 创建 similar_group_members 表及索引");
   } catch (err) {
-    console.error("创建 cleanup_group_members 表失败：", err.message);
+    console.error("创建 similar_group_members 表失败：", err.message);
     throw err;
   }
 }
@@ -749,7 +767,6 @@ function createTableAlbums() {
         name TEXT NOT NULL,
         description TEXT,
         cover_image_id INTEGER,
-        album_type TEXT DEFAULT 'custom',
         image_count INTEGER DEFAULT 0,
         created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
         updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
@@ -772,12 +789,6 @@ function createTableAlbums() {
     db.prepare(
       `
       CREATE UNIQUE INDEX IF NOT EXISTS idx_albums_user_name_unique ON albums(user_id, name) WHERE deleted_at IS NULL;
-    `,
-    ).run();
-
-    db.prepare(
-      `
-      CREATE INDEX IF NOT EXISTS idx_albums_user_type ON albums(user_id, album_type);
     `,
     ).run();
 
@@ -846,8 +857,8 @@ module.exports = {
   createTableImageEmbeddings,
   createTableFaceEmbeddings,
   createTableFaceClusters,
-  createTableCleanupGroups,
-  createTableCleanupGroupMembers,
+  createTableSimilarGroups,
+  createTableSimilarGroupMembers,
   createTableAlbums,
   createTableAlbumImages,
 };

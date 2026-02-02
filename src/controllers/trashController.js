@@ -11,7 +11,7 @@ const logger = require("../utils/logger");
 
 /**
  * 分页获取已删除图片列表
- * GET /images/trash/list?pageNo=1&pageSize=20&cursor=123
+ * GET /api/trash?pageNo=1&pageSize=20
  */
 async function handleGetDeletedImages(req, res, next) {
   try {
@@ -45,7 +45,6 @@ async function handleGetDeletedImages(req, res, next) {
       data: {
         list: result.list,
         total: result.total,
-        hasMore: result.hasMore,
       },
     });
   } catch (error) {

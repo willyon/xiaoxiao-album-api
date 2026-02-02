@@ -447,12 +447,12 @@ function getFilterOptions(userId) {
  * @param {string} params.type - 选项类型: 'city' | 'year' | 'month' | 'weekday'
  * @param {number} params.pageNo - 页码（从1开始）
  * @param {number} params.pageSize - 每页数量（默认20）
- * @returns {Object} { data: [], total: 0, hasMore: false }
+ * @returns {Object} { list: [], total: number }
  */
 function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, timeDimension = null }) {
   try {
     const offset = (pageNo - 1) * pageSize;
-    let data = [];
+    let list = [];
     let total = 0;
 
     switch (type) {
@@ -481,7 +481,7 @@ function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, ti
           )
           .get(userId);
 
-        data = cityData.map((c) => c.city);
+        list = cityData.map((c) => c.city);
         total = cityTotal.total;
         break;
       }
@@ -511,7 +511,7 @@ function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, ti
           )
           .get(userId);
 
-        data = yearData.map((y) => y.year_key);
+        list = yearData.map((y) => y.year_key);
         total = yearTotal.total;
         break;
       }
@@ -541,7 +541,7 @@ function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, ti
           )
           .get(userId);
 
-        data = monthData.map((m) => m.month_key);
+        list = monthData.map((m) => m.month_key);
         total = monthTotal.total;
         break;
       }
@@ -582,7 +582,7 @@ function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, ti
           )
           .get(userId);
 
-        data = weekdayData.map((w) => w.day_key);
+        list = weekdayData.map((w) => w.day_key);
         total = weekdayTotal.total;
         break;
       }
@@ -592,11 +592,8 @@ function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, ti
     }
 
     return {
-      data,
+      list,
       total,
-      pageNo,
-      pageSize,
-      hasMore: offset + data.length < total,
     };
   } catch (error) {
     console.error("分页获取筛选选项失败:", error);

@@ -726,11 +726,6 @@ async function handleAdvancedSearch(req, res, next) {
       data: {
         list: resultsWithUrls,
         total: resultsWithUrls.length,
-        pageNo,
-        pageSize,
-        hasMore: resultsWithUrls.length === pageSize,
-        searchQuery,
-        appliedFilters: filters,
       },
       messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
     });

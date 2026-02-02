@@ -3,8 +3,10 @@
  */
 const express = require("express");
 const router = express.Router();
-const { getFavorites } = require("../controllers/favoritesController");
+const { getFavorites, addToFavorites, removeFromFavorites } = require("../controllers/favoritesController");
 
 router.get("/", getFavorites);
+router.post("/images", addToFavorites);
+router.delete("/images", removeFromFavorites);
 
 module.exports = router;
