@@ -9,7 +9,6 @@ const express = require("express");
 const router = express.Router();
 const upload = require("../middlewares/upload"); // 引入 upload 中间件
 const {
-  handleGetAllByPage,
   handleGetBlurryImages,
   handleGetSimilarGroups,
   handleCheckFileExists,
@@ -23,9 +22,6 @@ const { handleGetUploadSignature } = require("../controllers/ossUploadController
 // ========== 图片 CRUD 接口 ========== //
 // 批量上传图片
 router.post("/", upload, handlePostImages);
-
-// 分页获取图片列表（参数从 body 改为 query params）
-router.get("/", handleGetAllByPage);
 
 // 分页获取模糊图列表（清理页模糊图 tab）
 router.get("/blurry", handleGetBlurryImages);

@@ -41,14 +41,14 @@ async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
   const safePageNo = Math.max(Number(pageNo) || 1, 1);
   const offset = (safePageNo - 1) * safePageSize;
 
-  const totalCount = cleanupModel.countGroupsByType({ userId, groupType });
+  // 相似图只统计/分页「可展示」分组（至少 2 个未删除成员），避免 total 与 list 不一致
+  const totalCount = cleanupModel.countDisplayableSimilarGroups(userId);
   if (totalCount === 0) {
     return { list: [], total: 0 };
   }
 
-  const rawGroups = cleanupModel.selectGroupsByType({
+  const rawGroups = cleanupModel.selectDisplayableSimilarGroups({
     userId,
-    groupType,
     limit: safePageSize,
     offset,
   });

@@ -18,12 +18,13 @@ const logger = require("../utils/logger");
  * 构建 FTS 查询和 WHERE 条件
  * @param {string} query - 用户搜索关键词
  * @param {Object} filters - 筛选条件（可能包含前端值，需要转换为后端值）
+ * @param {Object} [options] - 可选，{ userId, clusterId } 当 clusterId 存在时限定在人物相册内
  * @returns {Object} { ftsQuery, whereConditions, whereParams }
  * @returns {string|null} ftsQuery - FTS 查询字符串（如果为 null，则不使用 FTS）
  * @returns {Array<string>} whereConditions - WHERE 条件数组
  * @returns {Array} whereParams - WHERE 条件参数
  */
-function buildSearchConditions(query, filters) {
+function buildSearchConditions(query, filters, options = {}) {
   // 将前端值转换为后端值（创建一个新的 filters 对象，避免修改原始对象）
   const convertedFilters = { ...filters };
 
@@ -278,6 +279,15 @@ function buildSearchConditions(query, filters) {
     }
   }
 
+  // 14. 人物范围（可选 clusterId：仅查询该人脸聚类下的图片）
+  const clusterId = options.clusterId != null ? Number(options.clusterId) : null;
+  if (clusterId != null && !Number.isNaN(clusterId) && options.userId != null) {
+    whereConditions.push(
+      "i.id IN (SELECT fe.image_id FROM face_embeddings fe INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id WHERE fc.user_id = ? AND fc.cluster_id = ?)",
+    );
+    whereParams.push(options.userId, clusterId);
+  }
+
   return {
     ftsQuery,
     whereConditions,
@@ -343,7 +353,11 @@ async function handleSearchImages(req, res, next) {
       pageNo = 1,
       pageSize = 20,
       searchType = "hybrid", // 'text', 'vector', 'hybrid'
+      clusterId: clusterIdRaw, // 可选，人物相册内搜索时传入
     } = req.body;
+
+    const clusterId = clusterIdRaw != null && clusterIdRaw !== "" ? parseInt(clusterIdRaw, 10) : null;
+    const validClusterId = Number.isNaN(clusterId) ? null : clusterId;
 
     // 允许空查询或通配符查询（用于纯筛选或查询所有图片）
     let searchQuery = query && query.trim() ? query.trim() : "*";
@@ -371,11 +385,15 @@ async function handleSearchImages(req, res, next) {
         pageNo,
         pageSize,
         searchType,
+        clusterId: validClusterId,
       },
     });
 
-    // 构建搜索条件（使用增强后的 filters）
-    const { ftsQuery, whereConditions, whereParams } = buildSearchConditions(searchQuery, enhancedFilters);
+    // 构建搜索条件（使用增强后的 filters；可选 clusterId 限定人物相册内）
+    const { ftsQuery, whereConditions, whereParams } = buildSearchConditions(searchQuery, enhancedFilters, {
+      userId,
+      clusterId: validClusterId,
+    });
 
     logger.info({
       message: "搜索条件构建完成",

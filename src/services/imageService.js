@@ -150,29 +150,6 @@ async function getUserImageHashes(userId) {
 
 // ========== 图片查询服务函数 ==========
 
-// 分页获取用户全部图片
-async function getAllImagesByPage({ pageNo, pageSize, userId, clusterId = null }) {
-  try {
-    const result = await imageModel.selectImagesByPage({
-      pageNo,
-      pageSize,
-      userId,
-      clusterId,
-    });
-
-    // 添加完整URL（isFavorite字段已从数据库直接返回）
-    const list = await addFullUrlToImage(result.data);
-
-    return { list, total: result.total };
-  } catch (error) {
-    logger.error({
-      message: "分页获取用户全部图片失败",
-      details: { pageNo, pageSize, userId, clusterId, error: error.message },
-    });
-    throw new CustomError(ERROR_CODES.INTERNAL_SERVER_ERROR, "获取用户图片失败");
-  }
-}
-
 /**
  * 分页获取用户模糊图列表（is_blurry = 1），用于清理页模糊图 tab
  * @returns {{ list: Array<{ imageId, thumbnailUrl, highResUrl, creationDate, createdAt, isFavorite }>, total: number }}
@@ -592,7 +569,6 @@ module.exports = {
   getUserImageHashes,
 
   // ========== 图片查询服务函数 ==========
-  getAllImagesByPage,
   getBlurryImages,
   getImagesByYear,
   getImagesByMonth,

@@ -35,124 +35,6 @@ function selectHashesByUserId(userId) {
   return stmt.all(userId);
 }
 
-//分页获取用户全部图片数据
-// 支持可选的 clusterId 参数，用于查询特定人物的照片
-function selectImagesByPage({ pageNo, pageSize, userId, clusterId = null }) {
-  const offset = (pageNo - 1) * pageSize;
-
-  // 如果指定了 clusterId，需要通过 face_clusters 表关联查询
-  if (clusterId !== null && clusterId !== undefined) {
-    // 分页数据查询（使用 JOIN + GROUP BY 确保每张照片只返回一次，性能更好）
-    // 注意：当指定 clusterId 时，返回对应的 face_embedding_id（用于移出功能）
-    // 如果一张图片中有多个人脸都属于同一 cluster，使用 MIN 取第一个 face_embedding_id
-    const dataQuery = db.prepare(`
-      SELECT 
-        i.id,
-        i.high_res_storage_key, 
-        i.thumbnail_storage_key, 
-        i.image_created_at, 
-        i.date_key, 
-        i.day_key, 
-        i.month_key, 
-        i.year_key, 
-        i.storage_type, 
-        i.gps_location,
-        i.width_px,
-        i.height_px,
-        i.aspect_ratio,
-        i.layout_type,
-        i.color_theme,
-        i.file_size_bytes,
-        i.face_count,
-        i.person_count,
-        i.age_tags,
-        i.gender_tags,
-        i.expression_tags,
-        i.has_young,
-        i.has_adult,
-        i.is_favorite,
-        MIN(fe.id) AS face_embedding_id
-      FROM images i
-      INNER JOIN face_embeddings fe ON i.id = fe.image_id
-      INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id
-      WHERE i.user_id = ?
-        AND fc.cluster_id = ?
-        AND i.deleted_at IS NULL
-      GROUP BY i.id
-      ORDER BY i.image_created_at DESC, i.id DESC
-      LIMIT ? OFFSET ?
-    `);
-
-    // 总数统计（使用 COUNT(DISTINCT) 确保统计的是照片数量，与数据查询逻辑一致）
-    const countQuery = db.prepare(`
-      SELECT COUNT(DISTINCT i.id) AS total
-      FROM images i
-      INNER JOIN face_embeddings fe ON i.id = fe.image_id
-      INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id
-      WHERE i.user_id = ?
-        AND fc.cluster_id = ?
-        AND i.deleted_at IS NULL
-    `);
-
-    try {
-      const data = dataQuery.all(userId, clusterId, pageSize, offset);
-      const { total } = countQuery.get(userId, clusterId);
-      return { data: mapFields("images", data), total };
-    } catch (error) {
-      throw error;
-    }
-  } else {
-    // 原有逻辑：查询所有图片
-    const dataQuery = db.prepare(`
-      SELECT 
-        id,
-        high_res_storage_key, 
-        thumbnail_storage_key, 
-        image_created_at, 
-        date_key, 
-        day_key, 
-        month_key, 
-        year_key, 
-        storage_type, 
-        gps_location,
-        width_px,
-        height_px,
-        aspect_ratio,
-        layout_type,
-        color_theme,
-        file_size_bytes,
-        face_count,
-        person_count,
-        age_tags,
-        gender_tags,
-        expression_tags,
-        has_young,
-        has_adult,
-        is_favorite
-      FROM images
-      WHERE user_id = ?
-        AND deleted_at IS NULL
-      ORDER BY image_created_at DESC, id DESC
-      LIMIT ? OFFSET ?
-    `);
-
-    const countQuery = db.prepare(`
-      SELECT COUNT(*) AS total
-      FROM images
-      WHERE user_id = ?
-        AND deleted_at IS NULL
-    `);
-
-    try {
-      const data = dataQuery.all(userId, pageSize, offset);
-      const { total } = countQuery.get(userId);
-      return { data: mapFields("images", data), total };
-    } catch (error) {
-      throw error;
-    }
-  }
-}
-
 // 分页获取用户具体某年份的图片数据 —— 基于物化的 yearKey
 // albumId: 对于时间相册，实际上是 year_key (如 "2024")
 // 支持可选的 clusterId 参数，用于查询特定人物的某年份照片
@@ -1707,7 +1589,6 @@ module.exports = {
   updateImageSearchMetadata,
   updateLocationInfo,
   insertFaceEmbeddings,
-  selectImagesByPage,
   selectImagesByYear,
   selectImagesByMonth,
   selectImagesByDate,
