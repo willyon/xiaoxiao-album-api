@@ -4,8 +4,13 @@ node_modules/
 localStorage/
 logs/
 test/
+# 数据库与备份（避免误提交，含 database copy 2.db 等变体）
+database
 database.db
 database.db.*
+database*.db
+*.db-wal
+*.db-shm
 build/
 backend-dist/
 deployment-scripts/
