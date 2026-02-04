@@ -1,42 +1,33 @@
 #!/bin/bash
 
-# ========================== 一键部署脚本 ==========================
-# 结合本地打包上传和服务器部署的完整流程
+# ========================== 一键全流程部署 ==========================
+# 在本地执行：打包 → 上传 → 在服务器上执行 server-deploy.sh（环境/依赖/数据/数据库/PM2）
 #
 # 功能说明：
 #   1. 本地打包：执行 npm run build 打包源代码
 #   2. 上传文件：使用 rsync 上传到服务器
-#   3. 服务器部署：在服务器上执行环境准备、依赖安装、数据清理、数据库操作、服务管理
-#   4. 验证部署：检查服务状态和API接口
+#   3. 服务器部署：SSH 到服务器执行 server-deploy.sh（环境准备、依赖、数据清理、数据库、服务管理）
+#   4. 验证部署：检查服务状态和 API 接口
 #
-# 使用方法：
-#   ./deploy-one-click.sh                    # 默认部署（不安装依赖，不清理数据，不操作数据库）
-#   ./deploy-one-click.sh --npm              # 安装npm依赖后部署
-#   ./deploy-one-click.sh --clear-data       # 清理所有数据后部署
-#   ./deploy-one-click.sh --init-db          # 初始化数据库后部署
-#   ./deploy-one-click.sh --rebuild-db       # 重建数据库后部署
-#   ./deploy-one-click.sh --npm --clear-data # 安装依赖并清理数据后部署
-#   ./deploy-one-click.sh --npm --init-db    # 安装依赖并初始化数据库后部署
-#   ./deploy-one-click.sh --npm --rebuild-db # 安装依赖并重建数据库后部署
-#   ./deploy-one-click.sh --clear-data --rebuild-db # 清理数据并重建数据库后部署
-#   ./deploy-one-click.sh --npm --clear-data --rebuild-db # 完整重置部署
-#   ./deploy-one-click.sh --sudo-password PASSWORD  # 提供sudo密码（用于安装Redis和PM2）
-#   ./deploy-one-click.sh --npm --sudo-password PASSWORD # 安装依赖并提供sudo密码
-#   ./deploy-one-click.sh --rebuild-db --sudo-password PASSWORD # 重建数据库并提供sudo密码
+# 使用方法（在项目根目录）：
+#   ./scripts/deployment/full-deploy.sh                    # 默认部署（不安装依赖，不清理数据，不操作数据库）
+#   ./scripts/deployment/full-deploy.sh --npm             # 安装npm依赖后部署
+#   ./scripts/deployment/full-deploy.sh --clear-data      # 清理所有数据后部署
+#   ./scripts/deployment/full-deploy.sh --init-db         # 初始化数据库后部署
+#   ./scripts/deployment/full-deploy.sh --rebuild-db      # 重建数据库后部署
+#   ./scripts/deployment/full-deploy.sh --npm --clear-data # 安装依赖并清理数据后部署
+#   ./scripts/deployment/full-deploy.sh --sudo-password PASSWORD # 提供sudo密码（用于安装Redis和PM2）
 #
 # 参数说明：
 #   --npm        安装npm依赖并修复Sharp模块（默认跳过）
 #   --clear-data 清理所有数据（数据库表、存储文件、队列、Redis键）
-#   --init-db    初始化数据库（创建表结构，如果表已存在则跳过）
+#   --init-db    初始化数据库（创建表结构，若表已存在则跳过）
 #   --rebuild-db 重建数据库（删除所有表和数据，重新创建）
 #   --sudo-password PASSWORD  提供sudo密码（用于安装Redis和PM2）
 #   -h, --help   显示帮助信息
 #
 # 部署流程：
-#   第一步：本地打包代码
-#   第二步：上传文件到服务器
-#   第三步：服务器部署（环境准备 → 依赖管理 → 数据清理 → 数据库操作 → 服务管理）
-#   第四步：验证部署
+#   第一步：本地打包代码 → 第二步：上传到服务器 → 第三步：服务器执行 server-deploy.sh → 第四步：验证
 
 set -e  # 遇到错误立即退出
 
@@ -47,7 +38,7 @@ SERVER_HOST="8.134.118.242"
 SERVER_PATH="/var/www/photos.bingbingcloud.com/backend"
 
 # 创建日志文件（每天一个文件）
-LOG_FILE="./one-click-deployment-$(date +%Y%m%d).log"
+LOG_FILE="./full-deploy-$(date +%Y%m%d).log"
 echo "📝 一键部署日志将保存到: $LOG_FILE"
 echo "📝 一键部署日志将保存到: $LOG_FILE" | tee -a "$LOG_FILE"
 
@@ -116,7 +107,7 @@ done
 
 # 添加部署分隔符
 echo "================================================" >> "$LOG_FILE"
-log_with_time "🚀 开始一键部署流程..."
+log_with_time "🚀 开始一键全流程部署..."
 log_with_time "📋 部署参数："
 log_with_time "   - 安装依赖: $INSTALL_NPM"
 log_with_time "   - 清理数据: $CLEAR_DATA"
@@ -153,7 +144,6 @@ fi
 # ========================== 第一步：本地打包 ==========================
 log "📦 第一步：本地打包代码..."
 
-# 执行打包
 log "🔨 执行 npm run build..."
 npm run build
 
@@ -167,7 +157,6 @@ log "✅ 本地打包完成"
 # ========================== 第二步：上传文件 ==========================
 log "📤 第二步：上传文件到服务器..."
 
-# 测试SSH连接
 log "🔐 测试SSH连接..."
 ssh -i "$SSH_KEY" -o ConnectTimeout=10 -o BatchMode=yes "$SERVER_USER@$SERVER_HOST" "echo 'SSH连接成功'" 2>/dev/null
 if [ $? -ne 0 ]; then
@@ -180,14 +169,12 @@ if [ $? -ne 0 ]; then
 fi
 log "✅ SSH连接测试成功"
 
-# 上传打包后的代码
 log "📦 上传代码文件..."
 rsync -avz --progress --delete --no-times --exclude ".DS_Store" --exclude "database.db" --exclude "localStorage/" --exclude "logs/" --exclude "node_modules/" -e "ssh -i $SSH_KEY -o BatchMode=yes" backend-dist/ "$SERVER_USER@$SERVER_HOST:$SERVER_PATH/"
 
-# 给脚本执行权限
 log "🔑 设置脚本执行权限..."
-ssh -i "$SSH_KEY" -o BatchMode=yes "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && chmod +x deployment-scripts/fix-sharp-complete.sh"
-ssh -i "$SSH_KEY" -o BatchMode=yes "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && chmod +x deployment-scripts/deploy-server.sh"
+ssh -i "$SSH_KEY" -o BatchMode=yes "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && chmod +x scripts/deployment/fix-sharp-complete.sh"
+ssh -i "$SSH_KEY" -o BatchMode=yes "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && chmod +x scripts/deployment/server-deploy.sh"
 
 if [ $? -ne 0 ]; then
     log "❌ 文件上传失败，退出部署"
@@ -199,8 +186,7 @@ log "✅ 文件上传完成"
 # ========================== 第三步：服务器部署 ==========================
 log "🖥️ 第三步：在服务器上执行部署..."
 
-# 构建服务器部署命令
-SERVER_CMD="./deployment-scripts/deploy-server.sh"
+SERVER_CMD="./scripts/deployment/server-deploy.sh"
 
 if [ "$INSTALL_NPM" = true ]; then
     SERVER_CMD="$SERVER_CMD --npm"
@@ -222,7 +208,6 @@ if [ -n "$SUDO_PASSWORD" ]; then
     SERVER_CMD="$SERVER_CMD --sudo-password '$SUDO_PASSWORD'"
 fi
 
-# 在服务器上执行部署
 log "🚀 执行服务器部署命令: $SERVER_CMD"
 ssh -i "$SSH_KEY" -o BatchMode=yes "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && $SERVER_CMD"
 
@@ -236,20 +221,17 @@ log "✅ 服务器部署完成"
 # ========================== 第四步：验证部署 ==========================
 log "🧪 第四步：验证部署..."
 
-# 等待服务启动
 log "⏳ 等待服务启动..."
 sleep 5
 
-# 检查服务状态
 log "📊 检查服务状态..."
 ssh -i "$SSH_KEY" -o BatchMode=yes "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && pm2 status"
 
-# 测试API接口
 log "🌐 测试API接口..."
 curl -s -X POST -H 'Content-Type: application/json' -d '{"email":"test@example.com","password":"test123"}' http://localhost:3000/auth/loginOrRegister | head -c 200
 
 log_with_time ""
-log_with_time "🎉 一键部署完成！"
+log_with_time "🎉 一键全流程部署完成！"
 log_with_time ""
 log_with_time "📋 部署总结："
 log_with_time "✅ 本地代码打包"
@@ -267,11 +249,10 @@ fi
 if [ "$REBUILD_DB" = true ]; then
     log_with_time "✅ 数据库重建"
 fi
-log_with_time "✅ 数据库表创建"
 log_with_time "✅ 目录结构创建"
 log_with_time "✅ 服务启动和配置"
 log_with_time ""
-log_with_time "🌐 你的API现在可以通过以下地址访问："
+log_with_time "🌐 API 地址："
 log_with_time "   https://photos.bingbingcloud.com/auth/loginOrRegister"
 log_with_time "   https://photos.bingbingcloud.com/images/queryAllByPage"
 log_with_time ""
@@ -281,4 +262,4 @@ log_with_time "   ssh -i $SSH_KEY $SERVER_USER@$SERVER_HOST 'pm2 logs'"
 log_with_time "   ssh -i $SSH_KEY $SERVER_USER@$SERVER_HOST 'pm2 restart all'"
 log_with_time "   ssh -i $SSH_KEY $SERVER_USER@$SERVER_HOST 'pm2 stop all'"
 log_with_time ""
-log_with_time "📄 一键部署日志已保存到: $LOG_FILE"
+log_with_time "📄 部署日志已保存到: $LOG_FILE"

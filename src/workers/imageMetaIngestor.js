@@ -295,15 +295,13 @@ async function processImageMeta(job) {
 
   // ======== 添加到搜索索引队列（可选） ========
   // 🎯 策略说明：
-  // • 方案1（自动入队）：上传后自动触发AI分析
-  // • 方案2（手动入队）：使用 batchEnqueueAIAnalysis.js 批量分析
-  //
-
+  // • 方案1（自动入队）：上传后自动触发 AI 分析（searchIndex + cleanup）
+  // • 方案2（手动入队）：ENABLE_AUTO_AI_ENQUEUE=false 时跳过入队，可使用 scripts/development/enqueue-ai-analysis.js 批量触发
   const enableAutoEnqueue = process.env.ENABLE_AUTO_AI_ENQUEUE !== "false"; // 默认启用
 
   if (!enableAutoEnqueue) {
     logger.info({
-      message: "自动AI分析入队已禁用，请使用 batchEnqueueAIAnalysis.js 手动触发",
+      message: "自动AI分析入队已禁用，请使用 scripts/development/enqueue-ai-analysis.js 手动触发",
       details: { imageHash, userId, imageId },
     });
     return;

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# ========================== 服务器部署脚本 ==========================
-# 在服务器上执行：环境准备、依赖安装、数据清理、数据库操作、服务管理
+# ========================== 服务器端部署 ==========================
+# 在服务器上执行：环境准备、依赖安装、数据清理、数据库操作、服务启停
 #
 # 功能说明：
 #   1. 服务器环境准备：创建目录结构、检查Redis服务、安装PM2
@@ -11,23 +11,19 @@
 #   5. 服务管理：停止旧服务、启动新服务、保存PM2配置
 #   6. 验证部署：检查服务状态
 #
-# 使用方法：
-#   ./deploy-server.sh                    # 默认部署（不安装依赖，不清理数据，不操作数据库）
-#   ./deploy-server.sh --npm              # 安装npm依赖后部署
-#   ./deploy-server.sh --clear-data       # 清理所有数据后部署
-#   ./deploy-server.sh --init-db          # 初始化数据库后部署
-#   ./deploy-server.sh --rebuild-db       # 重建数据库后部署
-#   ./deploy-server.sh --npm --clear-data # 安装依赖并清理数据后部署
-#   ./deploy-server.sh --npm --init-db    # 安装依赖并初始化数据库后部署
-#   ./deploy-server.sh --npm --rebuild-db # 安装依赖并重建数据库后部署
-#   ./deploy-server.sh --clear-data --rebuild-db # 清理数据并重建数据库后部署
-#   ./deploy-server.sh --npm --clear-data --rebuild-db # 完整重置部署
-#   ./deploy-server.sh --sudo-password PASSWORD # 提供sudo密码（用于安装Redis和PM2）
+# 使用方法（在服务器项目目录下）：
+#   ./deployment-scripts/server-deploy.sh                    # 默认部署（不安装依赖，不清理数据，不操作数据库）
+#   ./deployment-scripts/server-deploy.sh --npm              # 安装npm依赖后部署
+#   ./deployment-scripts/server-deploy.sh --clear-data        # 清理所有数据后部署
+#   ./deployment-scripts/server-deploy.sh --init-db           # 初始化数据库后部署
+#   ./deployment-scripts/server-deploy.sh --rebuild-db        # 重建数据库后部署
+#   ./deployment-scripts/server-deploy.sh --npm --clear-data  # 安装依赖并清理数据后部署
+#   ./deployment-scripts/server-deploy.sh --sudo-password PASSWORD # 提供sudo密码（用于安装Redis和PM2）
 #
 # 参数说明：
 #   --npm        安装npm依赖并修复Sharp模块（默认跳过）
 #   --clear-data 清理所有数据（数据库表、存储文件、队列、Redis键）
-#   --init-db    初始化数据库（创建表结构，如果表已存在则跳过）
+#   --init-db    初始化数据库（创建表结构，若表已存在则跳过）
 #   --rebuild-db 重建数据库（删除所有表和数据，重新创建）
 #   --sudo-password PASSWORD  提供sudo密码（用于安装Redis和PM2）
 #   -h, --help   显示帮助信息
@@ -213,7 +209,7 @@ if [ "$CLEAR_DATA" = true ]; then
     
     # 清理所有数据（存储文件、队列、Redis）
     log "📊 清理所有数据..."
-    if node "$(dirname "$0")/clearAllAboutImageData.js" --clear-all; then
+    if node "$(dirname "$0")/../development/clear-image-data.js" --clear-all; then
         log "✅ 所有数据清理完成"
     else
         log "❌ 数据清理失败"
@@ -261,7 +257,7 @@ pm2 delete all || true
 
 # 启动新服务
 log "🚀 启动新服务..."
-pm2 start "$(dirname "$0")/../ecosystem.config.js"
+pm2 start "$(dirname "$0")/../../ecosystem.config.js"
 
 # 保存PM2配置
 log "💾 保存PM2配置..."

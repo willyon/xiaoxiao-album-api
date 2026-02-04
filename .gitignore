@@ -13,9 +13,7 @@ database*.db
 *.db-shm
 build/
 backend-dist/
-deployment-scripts/
 migrations
-scripts
 docs
 
 # Python 基础文件

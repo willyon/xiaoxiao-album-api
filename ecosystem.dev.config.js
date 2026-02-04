@@ -70,7 +70,7 @@ module.exports = {
     // ========== 定时任务 (开发版) ==========
     // {
     //   name: "cleanup-rebuild-all-dev",
-    //   script: "deployment-scripts/cleanupRebuildAll.js",
+    //   script: "scripts/development/rebuild-similar-groups.js",
     //   cwd: ".",
     //   // 定时执行：每天凌晨 3 点执行一次（开发环境可根据需要调整）
     //   // 如需测试，可以改为更频繁的时间，如 "0 */6 * * *" (每6小时) 或注释掉 cron 手动执行
@@ -96,7 +96,7 @@ module.exports = {
     // },
     // {
     //   name: "face-cluster-rebuild-all-dev",
-    //   script: "deployment-scripts/faceClusterRebuildAll.js",
+    //   script: "scripts/development/rebuild-face-clusters.js",
     //   cwd: ".",
     //   // 定时执行：每天凌晨 3 点执行一次（开发环境可根据需要调整）
     //   // 如需测试，可以改为更频繁的时间，如 "0 */6 * * *" (每6小时) 或注释掉 cron 手动执行

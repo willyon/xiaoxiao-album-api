@@ -5,10 +5,8 @@
   "scripts": {
     "dev": "NODE_ENV=development node server.js",
     "prod": "NODE_ENV=production node server.js",
-    "build": "mkdir -p backend-dist && cp -r src backend-dist/ && cp server.js backend-dist/ && cp package.json backend-dist/ && cp package-lock.json backend-dist/ && cp ecosystem.config.js backend-dist/ && cp .npmrc backend-dist/ && cp README.md backend-dist/ && cp -r deployment-scripts backend-dist/ && cp -r scripts backend-dist/ && node scripts/build-production.js && echo 'Package built in backend-dist/ directory'",
-    "test": "mocha",
-    "test-build": "node scripts/test-build.js",
-    "db": "node scripts/db-manager.js"
+    "build": "mkdir -p backend-dist && cp -r src backend-dist/ && cp server.js backend-dist/ && cp package.json backend-dist/ && cp package-lock.json backend-dist/ && cp ecosystem.config.js backend-dist/ && cp .npmrc backend-dist/ && cp README.md backend-dist/ && cp -r scripts backend-dist/ && node scripts/deployment/sanitize-env-for-dist.js && echo 'Package built in backend-dist/ directory'",
+    "test": "mocha"
   },
   "dependencies": {
     "@alicloud/credentials": "^2.4.4",

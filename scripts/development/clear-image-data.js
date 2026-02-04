@@ -4,7 +4,7 @@
  * @LastEditors: zhangshouchang
  * @LastEditTime: 2025-01-09 10:30:00
  * @Description: 数据清理脚本 - 支持选择性清理存储文件、队列和Redis键
- * @Usage: node clearAllAboutImageData.js [选项]
+ * @Usage: node scripts/development/clear-image-data.js [选项]
  *
  * 功能说明：
  *   1. 清理存储文件：清空数据库表、删除本地存储文件和OSS存储文件
@@ -20,7 +20,7 @@ const path = require("path");
 
 // 获取脚本所在目录的绝对路径
 const scriptDir = path.dirname(__filename);
-const projectRoot = path.resolve(scriptDir, "..");
+const projectRoot = path.resolve(scriptDir, "..", "..");
 
 // 设置工作目录为项目根目录
 process.chdir(projectRoot);
@@ -38,7 +38,7 @@ const CLEAR_ALL = args.includes("--clear-all");
 // 如果没有指定任何参数，显示帮助信息
 if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
   console.log("使用方法：");
-  console.log("  node clearAllAboutImageData.js [选项]");
+  console.log("  node scripts/development/clear-image-data.js [选项]");
   console.log("");
   console.log("选项：");
   console.log("  --clear-storage  清理存储文件（数据库表、本地文件、OSS文件）");
@@ -48,8 +48,8 @@ if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
   console.log("  -h, --help       显示帮助信息");
   console.log("");
   console.log("示例：");
-  console.log("  node clearAllAboutImageData.js --clear-all");
-  console.log("  node clearAllAboutImageData.js --clear-storage --clear-queues");
+  console.log("  node scripts/development/clear-image-data.js --clear-all");
+  console.log("  node scripts/development/clear-image-data.js --clear-storage --clear-queues");
   process.exit(0);
 }
 
@@ -72,6 +72,18 @@ function clearFaceEmbeddingsTable() {
 function clearFaceClustersTable() {
   db.prepare("DELETE FROM face_clusters").run();
   console.log("face_clusters数据表已清空");
+}
+
+function clearImageEmbeddingsTable() {
+  db.prepare("DELETE FROM image_embeddings").run();
+  console.log("image_embeddings数据表已清空");
+}
+
+function clearSimilarGroupsTables() {
+  db.prepare("DELETE FROM similar_group_members").run();
+  console.log("similar_group_members数据表已清空");
+  db.prepare("DELETE FROM similar_groups").run();
+  console.log("similar_groups数据表已清空");
 }
 // ============清空数据库相关表所有数据==========//
 
@@ -120,11 +132,13 @@ async function clearOSSStorageFiles() {
 async function clearStorageFiles() {
   console.log("🗂️  开始清空所有存储类型的文件...");
 
-  // 1. 清空数据库表数据
+  // 1. 清空数据库表数据（顺序：先子表后主表，避免外键约束）
   console.log("\n📊 第一步：清空数据库表数据");
   clearImagesTable();
   clearFaceEmbeddingsTable();
   clearFaceClustersTable();
+  clearImageEmbeddingsTable();
+  clearSimilarGroupsTables();
 
   // 2. 清空本地存储文件
   console.log("\n📁 第二步：清空本地存储文件");
@@ -197,8 +211,8 @@ async function clearAllQueueJobs() {
 // ============清空 BullMQ 队列中所有任务（等待、活跃、失败、完成、延迟）==========//
 
 // ============清空 Redis 中 readyKeyOf、lockKeyOf、userSetKey 和进度 session 相关键，用于开发测试环境快速重置==========//
-const { readyKeyOf, lockKeyOf, userSetKey } = require("../src/workers/userImageHashset");
-const { getRedisClient } = require("../src/services/redisClient");
+const { readyKeyOf, lockKeyOf, userSetKey } = require("../../src/workers/userImageHashset");
+const { getRedisClient } = require("../../src/services/redisClient");
 const redisClient = getRedisClient();
 
 async function clearRedisKeys() {
@@ -207,15 +221,18 @@ async function clearRedisKeys() {
   // 原有的三类键：readyKeyOf、lockKeyOf、userSetKey
   const originalPatterns = [readyKeyOf("*"), lockKeyOf("*"), userSetKey("*")];
 
-  // 新增的进度 session 相关键模式
+  // 进度 session 与其它业务键
   const sessionPatterns = [
     "upload:session:*", // 上传会话进度数据
     "user:latest:session:*", // 用户最新会话ID
-    "session:*:progress", // 进度推送频道（虽然这些是频道名，但为了完整性也包含）
+    "session:*:progress", // 进度推送频道
+  ];
+  const lockAndCooldownPatterns = [
+    `${process.env.IMAGES_HASH_LOCK_KEY_PREFIX || "lock:image:hash:"}*`, // 图片哈希分布式锁
+    "*_cooldown_*", // 冷却键（如邮件验证码）
   ];
 
-  // 合并所有模式
-  const allPatterns = [...originalPatterns, ...sessionPatterns];
+  const allPatterns = [...originalPatterns, ...sessionPatterns, ...lockAndCooldownPatterns];
 
   let totalDeletedKeys = 0;
 
@@ -243,12 +260,9 @@ async function clearRedisKeys() {
 
   console.log(`🎉 Redis清理完成！总共删除了 ${totalDeletedKeys} 个键`);
   console.log("📋 清理的键类型包括：");
-  console.log("  - readyKeyOf: 用户图片集合准备状态");
-  console.log("  - lockKeyOf: 用户图片集合锁定状态");
-  console.log("  - userSetKey: 用户图片集合数据");
-  console.log("  - upload:session:*: 上传会话进度数据");
-  console.log("  - user:latest:session:*: 用户最新会话ID");
-  console.log("  - session:*:progress: 进度推送频道");
+  console.log("  - images:hashset:ready:* / lock:images:hashset:init:* / images:hashset:user:*");
+  console.log("  - upload:session:* / user:latest:session:* / session:*:progress");
+  console.log("  - lock:image:hash:*（图片哈希锁） / *_cooldown_*（冷却键）");
 }
 
 // 主函数：根据参数协调清理操作
