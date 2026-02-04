@@ -4,28 +4,6 @@
 const favoriteService = require("../services/favoriteService");
 
 /**
- * 分页获取喜欢图片列表
- * GET /api/favorites?pageNo=1&pageSize=20
- * 返回 { list, total }
- */
-async function getFavorites(req, res, next) {
-  try {
-    const userId = req.user.userId;
-    const { pageNo = 1, pageSize = 20 } = req.query;
-
-    const result = await favoriteService.getFavoritesList({
-      userId,
-      pageNo: parseInt(pageNo, 10) || 1,
-      pageSize: parseInt(pageSize, 10) || 20,
-    });
-
-    res.sendResponse({ data: result });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
  * 批量添加图片到收藏
  * POST /api/favorites/images  body: { imageIds: number[] }
  */
@@ -82,7 +60,6 @@ async function removeFromFavorites(req, res, next) {
 }
 
 module.exports = {
-  getFavorites,
   addToFavorites,
   removeFromFavorites,
 };

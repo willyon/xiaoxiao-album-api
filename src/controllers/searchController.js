@@ -296,6 +296,71 @@ function buildSearchConditions(query, filters, options = {}) {
 }
 
 /**
+ * 根据 source + scope 构建「范围」条件（用于统一列表与按维度筛选选项）
+ * 返回的 whereConditions 使用表别名 "i."，可直接与 buildSearchConditions 的结果合并。
+ * @param {Object} scope - { source, type?, albumId?, clusterId? }
+ * @param {number} userId - 用户ID
+ * @returns {{ scopeConditions: string[], scopeParams: any[] }}
+ */
+function buildScopeConditions(scope, userId) {
+  const scopeConditions = [];
+  const scopeParams = [];
+  if (!scope || !scope.source) return { scopeConditions, scopeParams };
+
+  const { source, type, albumId, clusterId } = scope;
+
+  switch (source) {
+    case "favorites":
+      scopeConditions.push("i.is_favorite = 1");
+      break;
+    case "timeline":
+      if (type === "year" && albumId != null) {
+        scopeConditions.push("i.year_key = ?");
+        scopeParams.push(String(albumId));
+      } else if (type === "month" && albumId != null) {
+        scopeConditions.push("i.month_key = ?");
+        scopeParams.push(String(albumId));
+      } else if (type === "unknown") {
+        scopeConditions.push(
+          "(i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown')"
+        );
+      }
+      break;
+    case "album":
+      if (albumId != null && albumId !== "") {
+        const aid = parseInt(albumId, 10);
+        if (!Number.isNaN(aid)) {
+          scopeConditions.push("i.id IN (SELECT image_id FROM album_images WHERE album_id = ?)");
+          scopeParams.push(aid);
+        }
+      }
+      break;
+    case "location":
+      if (albumId == null || albumId === "") break;
+      if (albumId === "unknown") {
+        scopeConditions.push("(i.city IS NULL OR i.city = '' OR i.city = 'unknown')");
+      } else {
+        scopeConditions.push("i.city = ?");
+        scopeParams.push(String(albumId));
+      }
+      break;
+    case "people":
+      if (clusterId != null && !Number.isNaN(Number(clusterId)) && userId != null) {
+        scopeConditions.push(
+          "i.id IN (SELECT fe.image_id FROM face_embeddings fe INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id WHERE fc.user_id = ? AND fc.cluster_id = ?)"
+        );
+        scopeParams.push(userId, Number(clusterId));
+      }
+      break;
+    case "search":
+    default:
+      break;
+  }
+
+  return { scopeConditions, scopeParams };
+}
+
+/**
  * 合并 FTS 和向量搜索结果，使用倒数排名融合（RRF）排序
  * @param {Array} ftsResults - FTS 搜索结果（包含 id 字段）
  * @param {Array<{image_id: number, score: number}>} vectorResults - 向量搜索结果
@@ -341,8 +406,10 @@ function mergeAndRank(ftsResults, vectorResults, k = 60) {
 }
 
 /**
- * 搜索图片
+ * 搜索/列表图片（统一接口）
  * POST /search/images
+ * body: query?, filters?, pageNo, pageSize, clusterId?
+ *       可选 scope：source?, type?, albumId?（传了 source 且不为 search 时在范围内列表/搜索，不做向量；未传或 source=search 为全局搜索，有 query 时做向量）
  */
 async function handleSearchImages(req, res, next) {
   try {
@@ -352,58 +419,93 @@ async function handleSearchImages(req, res, next) {
       filters = {},
       pageNo = 1,
       pageSize = 20,
-      searchType = "hybrid", // 'text', 'vector', 'hybrid'
-      clusterId: clusterIdRaw, // 可选，人物相册内搜索时传入
+      searchType = "hybrid",
+      clusterId: clusterIdRaw,
+      source,
+      type,
+      albumId,
     } = req.body;
 
     const clusterId = clusterIdRaw != null && clusterIdRaw !== "" ? parseInt(clusterIdRaw, 10) : null;
     const validClusterId = Number.isNaN(clusterId) ? null : clusterId;
 
-    // 允许空查询或通配符查询（用于纯筛选或查询所有图片）
+    const validSources = ["search", "favorites", "timeline", "album", "location", "people"];
+    const hasScope = source && source !== "search" && validSources.includes(source);
+
     let searchQuery = query && query.trim() ? query.trim() : "*";
     const hasQuery = searchQuery !== "*" && searchQuery.trim() !== "";
 
-    // 解析查询意图，自动填充筛选条件（不覆盖用户已设置的筛选）
     let enhancedFilters = { ...filters };
     if (hasQuery) {
       const parsedIntent = parseQueryIntent(searchQuery);
       enhancedFilters = mergeFilters(filters, parsedIntent);
-
-      // 如果有场景关键词，将其添加到查询文本中（通过 FTS 匹配）
-      if (parsedIntent._sceneKeywords && parsedIntent._sceneKeywords.length > 0) {
-        // 场景关键词通过 FTS 查询处理，不需要修改 filters
-        // 这些关键词会在 FTS 匹配时自动命中 scene_tags 字段
-      }
     }
 
     logger.info({
-      message: `用户搜索: ${userId}`,
+      message: hasScope ? `范围列表/搜索: ${userId}` : `用户搜索: ${userId}`,
       details: {
         query: searchQuery,
-        originalFilters: filters,
-        enhancedFilters,
+        filters: enhancedFilters,
         pageNo,
         pageSize,
-        searchType,
         clusterId: validClusterId,
+        source: hasScope ? source : null,
       },
     });
 
-    // 构建搜索条件（使用增强后的 filters；可选 clusterId 限定人物相册内）
-    const { ftsQuery, whereConditions, whereParams } = buildSearchConditions(searchQuery, enhancedFilters, {
-      userId,
-      clusterId: validClusterId,
-    });
+    const offset = (pageNo - 1) * pageSize;
+    let whereConditions = [];
+    let whereParams = [];
+    let ftsQuery = null;
+
+    if (hasScope) {
+      const scope = { source, type, albumId, clusterId: validClusterId };
+      const { scopeConditions, scopeParams } = buildScopeConditions(scope, userId);
+      const filterOptions = { userId };
+      const filterBuilt = buildSearchConditions(hasQuery ? searchQuery : "*", enhancedFilters, filterOptions);
+      ftsQuery = filterBuilt.ftsQuery;
+      whereConditions = [...scopeConditions, ...filterBuilt.whereConditions];
+      whereParams = [...scopeParams, ...filterBuilt.whereParams];
+
+      const [list, total] = await Promise.all([
+        searchService.searchImagesByText({
+          userId,
+          ftsQuery,
+          whereConditions,
+          whereParams,
+          limit: pageSize,
+          offset,
+        }),
+        searchService.getSearchResultsCount({
+          userId,
+          ftsQuery,
+          whereConditions,
+          whereParams,
+        }),
+      ]);
+      const resultsWithUrls = await addFullUrlToImage(list);
+      logger.info({
+        message: `范围列表/搜索完成: ${userId}`,
+        details: { source, resultCount: resultsWithUrls.length, total },
+      });
+      return res.sendResponse({
+        data: { list: resultsWithUrls, total },
+        messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
+      });
+    }
+
+    // 全局搜索（无 scope 或 source=search）：原有逻辑，含向量
+    const filterOptions = { userId, clusterId: validClusterId };
+    const built = buildSearchConditions(searchQuery, enhancedFilters, filterOptions);
+    ftsQuery = built.ftsQuery;
+    whereConditions = built.whereConditions;
+    whereParams = built.whereParams;
 
     logger.info({
       message: "搜索条件构建完成",
       details: { ftsQuery, whereConditionsCount: whereConditions.length, whereParamsCount: whereParams.length },
     });
 
-    // 执行搜索
-    const offset = (pageNo - 1) * pageSize;
-
-    // 并行执行 FTS 搜索和向量搜索（如果有查询词）
     const searchPromises = [
       // FTS 搜索：获取更多结果用于合并（取 pageSize * 2，确保有足够的结果用于 RRF）
       searchService.searchImagesByText({
@@ -663,103 +765,23 @@ async function handleGetQueueStatus(req, res, next) {
 }
 
 /**
- * 高级搜索（支持多条件组合）
- * POST /search/advanced
- */
-async function handleAdvancedSearch(req, res, next) {
-  try {
-    const { userId } = req.user;
-    const {
-      textQuery = "",
-      filters = {},
-      sortBy = "relevance", // 'relevance', 'date', 'size'
-      pageNo = 1,
-      pageSize = 20,
-    } = req.body;
-
-    logger.info({
-      message: `高级搜索: ${userId}`,
-      details: { textQuery, filters, sortBy },
-    });
-
-    // 构建复合查询
-    let searchQuery = "";
-
-    if (textQuery.trim()) {
-      searchQuery += textQuery.trim();
-    }
-
-    // 添加结构化过滤
-    const filterConditions = [];
-
-    if (filters.year) {
-      filterConditions.push(`year_key:${filters.year}`);
-    }
-    if (filters.month) {
-      filterConditions.push(`month_key:${filters.month}`);
-    }
-    if (filters.date) {
-      filterConditions.push(`date_key:${filters.date}`);
-    }
-    if (filters.location) {
-      filterConditions.push(`gps_location:${filters.location}`);
-    }
-    if (filters.scene) {
-      filterConditions.push(`scene_tags:${filters.scene}`);
-    }
-    if (filters.objects) {
-      filterConditions.push(`object_tags:${filters.objects}`);
-    }
-    if (filters.layout) {
-      filterConditions.push(`layout_type:${filters.layout}`);
-    }
-
-    if (filterConditions.length > 0) {
-      if (searchQuery) {
-        searchQuery += " AND " + filterConditions.join(" AND ");
-      } else {
-        searchQuery = filterConditions.join(" AND ");
-      }
-    }
-
-    // 执行搜索
-    const offset = (pageNo - 1) * pageSize;
-    // 构建 FTS 查询：如果有条件则使用，否则为 null（不使用 FTS）
-    const finalFtsQuery = searchQuery || null;
-
-    const searchResults = await searchService.searchImagesByText({
-      userId,
-      ftsQuery: finalFtsQuery,
-      whereConditions: [],
-      whereParams: [],
-      limit: pageSize,
-      offset,
-    });
-
-    // 添加完整URL（thumbnailUrl 和 highResUrl）
-    // isFavorite字段已从数据库直接返回，searchResults 已经通过 mapFields 转换为 camelCase
-    const resultsWithUrls = await addFullUrlToImage(searchResults);
-
-    res.sendResponse({
-      data: {
-        list: resultsWithUrls,
-        total: resultsWithUrls.length,
-      },
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
  * 分页获取筛选选项（用于滚动加载）
  * GET /search/filters?type=city&pageNo=1&pageSize=20
+ * 可选 scope：scopeSource, scopeType, scopeAlbumId, scopeClusterId（与统一列表的 source/scope 一致，用于在当前维度下获取选项）
  */
 async function handleGetFilterOptionsPaginated(req, res, next) {
   try {
     const { userId } = req.user;
-    const { type, pageNo = 1, pageSize = 20, timeDimension = null } = req.query;
+    const {
+      type,
+      pageNo = 1,
+      pageSize = 20,
+      timeDimension = null,
+      scopeSource,
+      scopeType,
+      scopeAlbumId,
+      scopeClusterId,
+    } = req.query;
 
     if (!type || !["city", "year", "month", "weekday"].includes(type)) {
       throw new CustomError({
@@ -770,9 +792,23 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
       });
     }
 
+    let scopeConditions = [];
+    let scopeParams = [];
+    if (scopeSource) {
+      const scope = {
+        source: scopeSource,
+        type: scopeType,
+        albumId: scopeAlbumId,
+        clusterId: scopeClusterId,
+      };
+      const built = buildScopeConditions(scope, userId);
+      scopeConditions = built.scopeConditions;
+      scopeParams = built.scopeParams;
+    }
+
     logger.info({
       message: `分页获取筛选选项: ${userId}`,
-      details: { type, pageNo, pageSize },
+      details: { type, pageNo, pageSize, scopeSource: scopeSource || null },
     });
 
     const result = await searchService.getFilterOptionsPaginated({
@@ -781,6 +817,8 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
       pageNo: parseInt(pageNo),
       pageSize: parseInt(pageSize),
       timeDimension,
+      scopeConditions: scopeConditions.length ? scopeConditions : null,
+      scopeParams: scopeParams.length ? scopeParams : null,
     });
 
     res.sendResponse({
@@ -802,6 +840,6 @@ module.exports = {
   handleGetSearchSuggestions,
   handleIndexImage,
   handleGetQueueStatus,
-  handleAdvancedSearch,
   handleGetFilterOptionsPaginated,
+  buildScopeConditions,
 };

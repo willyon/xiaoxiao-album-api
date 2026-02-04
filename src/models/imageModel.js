@@ -335,63 +335,6 @@ function selectImagesByDate({ pageNo, pageSize, albumId, userId }) {
 }
 
 /**
- * 分页获取用户收藏的图片（is_favorite = 1）
- */
-function getImagesByFavorite({ userId, pageNo, pageSize }) {
-  const offset = (pageNo - 1) * pageSize;
-
-  const dataQuery = db.prepare(`
-    SELECT 
-      id,
-      high_res_storage_key, 
-      thumbnail_storage_key, 
-      image_created_at, 
-      date_key, 
-      day_key, 
-      month_key, 
-      year_key, 
-      storage_type, 
-      gps_location,
-      width_px,
-      height_px,
-      aspect_ratio,
-      layout_type,
-      color_theme,
-      file_size_bytes,
-      face_count,
-      person_count,
-      age_tags,
-      gender_tags,
-      expression_tags,
-      has_young,
-      has_adult,
-      is_favorite
-    FROM images
-    WHERE user_id = ?
-      AND is_favorite = 1
-      AND deleted_at IS NULL
-    ORDER BY image_created_at DESC, id DESC
-    LIMIT ? OFFSET ?
-  `);
-
-  const countQuery = db.prepare(`
-    SELECT COUNT(*) AS total
-    FROM images
-    WHERE user_id = ?
-      AND is_favorite = 1
-      AND deleted_at IS NULL
-  `);
-
-  try {
-    const data = dataQuery.all(userId, pageSize, offset);
-    const { total } = countQuery.get(userId);
-    return { data: mapFields("images", data), total };
-  } catch (error) {
-    throw error;
-  }
-}
-
-/**
  * 分页获取用户模糊图列表（is_blurry = 1）
  */
 function getImagesByBlurry({ userId, pageNo, pageSize }) {
@@ -1592,7 +1535,6 @@ module.exports = {
   selectImagesByYear,
   selectImagesByMonth,
   selectImagesByDate,
-  getImagesByFavorite,
   getImagesByBlurry,
   updateBlurryForUser,
   selectGroupsByYear,

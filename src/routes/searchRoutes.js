@@ -12,14 +12,13 @@ const {
   handleGetSearchSuggestions,
   handleIndexImage,
   handleGetQueueStatus,
-  handleAdvancedSearch,
   handleGetFilterOptionsPaginated,
 } = require("../controllers/searchController");
 
 // 应用认证中间件
 router.use(authMiddleware);
 
-// 搜索图片（基础搜索和高级搜索统一，通过 advanced query param 区分）
+// 搜索/列表图片（统一接口：可选 scope + 可选 query + filters）
 router.post("/images", handleSearchImages);
 
 // 搜索建议

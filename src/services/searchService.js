@@ -53,6 +53,8 @@ async function getSearchSuggestions(params) {
  * @param {number} params.pageNo - 页码（从1开始）
  * @param {number} params.pageSize - 每页数量（默认20）
  * @param {string} params.timeDimension - 时间维度（可选）
+ * @param {string[]} [params.scopeConditions] - 范围条件（与统一列表 scope 一致，用于当前维度下选项）
+ * @param {any[]} [params.scopeParams] - 范围条件参数
  * @returns {Object} { list: [], total: number }
  */
 async function getFilterOptionsPaginated(params) {

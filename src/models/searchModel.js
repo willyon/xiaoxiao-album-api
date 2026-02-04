@@ -441,45 +441,62 @@ function getFilterOptions(userId) {
 }
 
 /**
- * 分页获取筛选选项列表
+ * 分页获取筛选选项列表（支持 scope：在当前维度下的选项）
  * @param {Object} params
  * @param {number} params.userId - 用户ID
  * @param {string} params.type - 选项类型: 'city' | 'year' | 'month' | 'weekday'
  * @param {number} params.pageNo - 页码（从1开始）
  * @param {number} params.pageSize - 每页数量（默认20）
+ * @param {string} params.timeDimension - 时间维度（可选）
+ * @param {string[]} [params.scopeConditions] - 范围条件（表别名 i.，内部会转为 images.）
+ * @param {any[]} [params.scopeParams] - 范围条件参数
  * @returns {Object} { list: [], total: number }
  */
-function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, timeDimension = null }) {
+function getFilterOptionsPaginated({
+  userId,
+  type,
+  pageNo = 1,
+  pageSize = 20,
+  timeDimension = null,
+  scopeConditions = null,
+  scopeParams = null,
+}) {
   try {
     const offset = (pageNo - 1) * pageSize;
     let list = [];
     let total = 0;
 
+    // 将 scope 条件从 "i." 转为 "images." 以匹配本模型中的 FROM images
+    const scopeClause =
+      scopeConditions && scopeConditions.length > 0
+        ? " AND " + scopeConditions.map((c) => c.replace(/\bi\./g, "images.")).join(" AND ")
+        : "";
+    const baseParams = scopeParams && scopeParams.length > 0 ? [...scopeParams] : [];
+
     switch (type) {
       case "city": {
-        // 获取城市列表（按图片数量降序）
         const cityData = db
           .prepare(
             `
           SELECT city, COUNT(*) as count
           FROM images 
-          WHERE user_id = ? AND city IS NOT NULL AND city != ''
+          WHERE user_id = ? AND city IS NOT NULL AND city != ''${scopeClause}
           GROUP BY city
           ORDER BY count DESC
           LIMIT ? OFFSET ?
-        `,
+        `
           )
-          .all(userId, pageSize, offset);
+          .all(userId, ...baseParams, pageSize, offset);
 
         const cityTotal = db
           .prepare(
             `
           SELECT COUNT(DISTINCT city) as total
           FROM images 
-          WHERE user_id = ? AND city IS NOT NULL AND city != ''
-        `,
+          WHERE user_id = ? AND city IS NOT NULL AND city != ''${scopeClause}
+        `
           )
-          .get(userId);
+          .get(userId, ...baseParams);
 
         list = cityData.map((c) => c.city);
         total = cityTotal.total;
@@ -487,29 +504,28 @@ function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, ti
       }
 
       case "year": {
-        // 获取年份列表（降序）
         const yearData = db
           .prepare(
             `
           SELECT year_key, COUNT(*) as count
           FROM images 
-          WHERE user_id = ? AND year_key != 'unknown'
+          WHERE user_id = ? AND year_key != 'unknown'${scopeClause}
           GROUP BY year_key
           ORDER BY year_key DESC
           LIMIT ? OFFSET ?
-        `,
+        `
           )
-          .all(userId, pageSize, offset);
+          .all(userId, ...baseParams, pageSize, offset);
 
         const yearTotal = db
           .prepare(
             `
           SELECT COUNT(DISTINCT year_key) as total
           FROM images 
-          WHERE user_id = ? AND year_key != 'unknown'
-        `,
+          WHERE user_id = ? AND year_key != 'unknown'${scopeClause}
+        `
           )
-          .get(userId);
+          .get(userId, ...baseParams);
 
         list = yearData.map((y) => y.year_key);
         total = yearTotal.total;
@@ -517,29 +533,28 @@ function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, ti
       }
 
       case "month": {
-        // 获取月份列表（YYYY-MM格式，降序）
         const monthData = db
           .prepare(
             `
           SELECT month_key, COUNT(*) as count
           FROM images 
-          WHERE user_id = ? AND month_key != 'unknown'
+          WHERE user_id = ? AND month_key != 'unknown'${scopeClause}
           GROUP BY month_key
           ORDER BY month_key DESC
           LIMIT ? OFFSET ?
-        `,
+        `
           )
-          .all(userId, pageSize, offset);
+          .all(userId, ...baseParams, pageSize, offset);
 
         const monthTotal = db
           .prepare(
             `
           SELECT COUNT(DISTINCT month_key) as total
           FROM images 
-          WHERE user_id = ? AND month_key != 'unknown'
-        `,
+          WHERE user_id = ? AND month_key != 'unknown'${scopeClause}
+        `
           )
-          .get(userId);
+          .get(userId, ...baseParams);
 
         list = monthData.map((m) => m.month_key);
         total = monthTotal.total;
@@ -547,14 +562,12 @@ function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, ti
       }
 
       case "weekday": {
-        // 获取星期几列表（从 day_key 字段，固定顺序）
-        // day_key 存储的是星期几：'Monday', 'Tuesday', ..., 'Sunday'
         const weekdayData = db
           .prepare(
             `
           SELECT day_key, COUNT(*) as count
           FROM images 
-          WHERE user_id = ? AND day_key != 'unknown'
+          WHERE user_id = ? AND day_key != 'unknown'${scopeClause}
           GROUP BY day_key
           ORDER BY 
             CASE day_key
@@ -568,19 +581,19 @@ function getFilterOptionsPaginated({ userId, type, pageNo = 1, pageSize = 20, ti
               ELSE 8
             END
           LIMIT ? OFFSET ?
-        `,
+        `
           )
-          .all(userId, pageSize, offset);
+          .all(userId, ...baseParams, pageSize, offset);
 
         const weekdayTotal = db
           .prepare(
             `
           SELECT COUNT(DISTINCT day_key) as total
           FROM images 
-          WHERE user_id = ? AND day_key != 'unknown'
-        `,
+          WHERE user_id = ? AND day_key != 'unknown'${scopeClause}
+        `
           )
-          .get(userId);
+          .get(userId, ...baseParams);
 
         list = weekdayData.map((w) => w.day_key);
         total = weekdayTotal.total;
