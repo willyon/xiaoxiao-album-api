@@ -56,4 +56,6 @@ module.exports = {
   BAD_GATEWAY: "上游服务暂时不可用，请稍后重试",
   FILE_NOT_FOUND: "文件不存在或路径无效",
   EXIF_READ_FAILED: "读取图片 EXIF 元数据失败，请检查文件是否为有效的图片",
+  RESOURCE_NOT_FOUND: "资源不存在",
+  PERSON_COVER_FACE_THUMBNAIL_UNAVAILABLE: "无法生成该照片的人脸封面，请换一张照片试试",
 };

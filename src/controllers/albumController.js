@@ -43,11 +43,10 @@ async function getAlbumById(req, res, next) {
     });
 
     if (!album) {
-      return next({
+      throw new CustomError({
         httpStatus: 404,
-        messageCode: "RESOURCE_NOT_FOUND",
+        messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
         messageType: "error",
-        message: "相册不存在",
       });
     }
 
@@ -138,9 +137,8 @@ async function queryAlbumPhotos(req, res, next) {
     if (!type || !["year", "month", "date", "custom", "location", "unknown"].includes(type)) {
       throw new CustomError({
         httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
         messageType: "error",
-        message: "type 参数是必需的，且必须是 year/month/date/custom/location/unknown 之一",
       });
     }
 
@@ -214,20 +212,18 @@ async function addImagesToAlbum(req, res, next) {
 
     const albumIdNum = parseInt(albumId, 10);
     if (Number.isNaN(albumIdNum)) {
-      return next({
+      throw new CustomError({
         httpStatus: 400,
-        messageCode: "INVALID_PARAMETERS",
-        messageType: "warning",
-        message: "相册 ID 无效",
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
     if (!Array.isArray(imageIds) || imageIds.length === 0) {
-      return next({
+      throw new CustomError({
         httpStatus: 400,
-        messageCode: "INVALID_PARAMETERS",
-        messageType: "warning",
-        message: "图片ID列表不能为空",
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
@@ -254,20 +250,18 @@ async function removeImagesFromAlbum(req, res, next) {
 
     const albumIdNum = parseInt(albumId, 10);
     if (Number.isNaN(albumIdNum)) {
-      return next({
+      throw new CustomError({
         httpStatus: 400,
-        messageCode: "INVALID_PARAMETERS",
-        messageType: "warning",
-        message: "相册 ID 无效",
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
     if (!Array.isArray(imageIds) || imageIds.length === 0) {
-      return next({
+      throw new CustomError({
         httpStatus: 400,
-        messageCode: "INVALID_PARAMETERS",
-        messageType: "warning",
-        message: "图片ID列表不能为空",
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
@@ -293,11 +287,10 @@ async function setAlbumCover(req, res, next) {
     const { imageId } = req.body;
 
     if (!imageId) {
-      return next({
+      throw new CustomError({
         httpStatus: 400,
-        messageCode: "INVALID_PARAMETERS",
-        messageType: "warning",
-        message: "图片ID不能为空",
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 

@@ -9,6 +9,7 @@ const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
 const { COLOR_THEME_FRONTEND_TO_BACKEND, AGE_GROUP_FRONTEND_TO_BACKEND } = require("../constants/filterMappings");
 const searchService = require("../services/searchService");
 const { addFullUrlToImage } = require("../services/imageService");
+const faceClusterModel = require("../models/faceClusterModel");
 const pythonSearchClient = require("../services/pythonSearchClient");
 const { parseQueryIntent, mergeFilters } = require("../utils/queryIntentParser");
 // 移除队列引用，简化控制器
@@ -483,7 +484,15 @@ async function handleSearchImages(req, res, next) {
           whereParams,
         }),
       ]);
-      const resultsWithUrls = await addFullUrlToImage(list);
+      let resultsWithUrls = await addFullUrlToImage(list);
+      if (source === "people" && validClusterId != null && resultsWithUrls.length > 0) {
+        const imageIds = resultsWithUrls.map((item) => item.imageId).filter((id) => id != null);
+        const faceEmbeddingIdMap = faceClusterModel.getFaceEmbeddingIdByImageIdInCluster(userId, validClusterId, imageIds);
+        resultsWithUrls = resultsWithUrls.map((item) => ({
+          ...item,
+          faceEmbeddingId: faceEmbeddingIdMap.get(item.imageId) ?? null,
+        }));
+      }
       logger.info({
         message: `范围列表/搜索完成: ${userId}`,
         details: { source, resultCount: resultsWithUrls.length, total },
@@ -719,7 +728,7 @@ async function handleIndexImage(req, res, next) {
     if (!imageId) {
       throw new CustomError({
         httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
         messageType: "error",
         message: "缺少图片ID",
       });
@@ -786,7 +795,7 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
     if (!type || !["city", "year", "month", "weekday"].includes(type)) {
       throw new CustomError({
         httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
         messageType: "error",
         message: "type 参数必须是 city、year、month 或 weekday",
       });

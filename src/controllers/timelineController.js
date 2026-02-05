@@ -25,7 +25,7 @@ async function getTimelineAlbums(req, res, next) {
     if (!by || !["year", "month"].includes(by)) {
       throw new CustomError({
         httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
         messageType: "error",
         message: "by 参数必需，且必须是 year 或 month；或传入 unknown=1 查询未知时间相册",
       });

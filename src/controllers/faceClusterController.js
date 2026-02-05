@@ -15,6 +15,8 @@ const {
 } = require("../models/faceClusterModel");
 const { addFullUrlToImage, getGroupsByYearForCluster, getGroupsByMonthForCluster } = require("../services/imageService");
 const logger = require("../utils/logger");
+const CustomError = require("../errors/customError");
+const { ERROR_CODES } = require("../constants/messageCodes");
 
 /**
  * 获取聚类统计信息
@@ -131,16 +133,20 @@ async function updateCluster(req, res, next) {
     const { name } = req.body;
 
     if (name !== undefined && typeof name !== "string" && name !== null) {
-      return res.status(400).sendResponse({
-        error: "名称必须是字符串或 null",
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
     const result = updateClusterName(userId, parseInt(clusterId), name || null);
 
     if (result.affectedRows === 0) {
-      return res.status(404).sendResponse({
-        error: "聚类不存在",
+      throw new CustomError({
+        httpStatus: 404,
+        messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
+        messageType: "error",
       });
     }
 
@@ -166,16 +172,20 @@ async function removeFaces(req, res, next) {
     const { faceEmbeddingIds } = req.body;
 
     if (!Array.isArray(faceEmbeddingIds) || faceEmbeddingIds.length === 0) {
-      return res.status(400).sendResponse({
-        error: "faceEmbeddingIds 必须是非空数组",
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
     // 验证所有 faceEmbeddingIds 都是数字
     const invalidIds = faceEmbeddingIds.filter((id) => typeof id !== "number" && !Number.isInteger(Number(id)));
     if (invalidIds.length > 0) {
-      return res.status(400).sendResponse({
-        error: "faceEmbeddingIds 必须都是数字",
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
@@ -206,24 +216,30 @@ async function moveFaces(req, res, next) {
     const { faceEmbeddingIds, targetClusterId, newClusterName } = req.body;
 
     if (!Array.isArray(faceEmbeddingIds) || faceEmbeddingIds.length === 0) {
-      return res.status(400).sendResponse({
-        error: "faceEmbeddingIds 必须是非空数组",
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
     // 验证所有 faceEmbeddingIds 都是数字
     const invalidIds = faceEmbeddingIds.filter((id) => typeof id !== "number" && !Number.isInteger(Number(id)));
     if (invalidIds.length > 0) {
-      return res.status(400).sendResponse({
-        error: "faceEmbeddingIds 必须都是数字",
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
     // 如果提供了 targetClusterId，验证它是数字
     if (targetClusterId !== null && targetClusterId !== undefined) {
       if (typeof targetClusterId !== "number" && !Number.isInteger(Number(targetClusterId))) {
-        return res.status(400).sendResponse({
-          error: "targetClusterId 必须是数字或 null",
+        throw new CustomError({
+          httpStatus: 400,
+          messageCode: ERROR_CODES.INVALID_PARAMETERS,
+          messageType: "error",
         });
       }
     }
@@ -314,8 +330,10 @@ async function restoreClusterCoverImage(req, res, next) {
 
     const clusterIdNum = parseInt(clusterId);
     if (isNaN(clusterIdNum)) {
-      return res.status(400).sendResponse({
-        error: "clusterId 必须是数字",
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
@@ -323,8 +341,10 @@ async function restoreClusterCoverImage(req, res, next) {
     const result = await faceClusterService.restoreDefaultCover(userId, clusterIdNum);
 
     if (!result) {
-      return res.status(404).sendResponse({
-        error: "恢复默认封面失败，请检查聚类是否存在",
+      throw new CustomError({
+        httpStatus: 404,
+        messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
+        messageType: "error",
       });
     }
 
@@ -374,54 +394,72 @@ async function setClusterCoverImage(req, res, next) {
     const { faceEmbeddingId } = req.body;
 
     if (!faceEmbeddingId) {
-      return res.status(400).sendResponse({
-        error: "faceEmbeddingId 是必需的",
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
     // 验证 faceEmbeddingId 是否为数字
     const faceEmbeddingIdNum = parseInt(faceEmbeddingId);
     if (isNaN(faceEmbeddingIdNum)) {
-      return res.status(400).sendResponse({
-        error: "faceEmbeddingId 必须是数字",
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
     const clusterIdNum = parseInt(clusterId);
     if (isNaN(clusterIdNum)) {
-      return res.status(400).sendResponse({
-        error: "clusterId 必须是数字",
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
     // 验证 faceEmbeddingId 是否属于该 clusterId
     if (!verifyFaceEmbeddingInCluster(userId, clusterIdNum, faceEmbeddingIdNum)) {
-      return res.status(400).sendResponse({
-        error: "该 faceEmbeddingId 不属于该聚类",
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
-    // 1. 生成缩略图（如果还没有）
+    // 1. 生成人脸缩略图（大头像裁剪图）；没有则无法设置为封面，必须用人脸图而非整张图
     const thumbnailStorageKey = await faceClusterService.generateThumbnailForFaceEmbedding(faceEmbeddingIdNum);
     if (!thumbnailStorageKey) {
       logger.warn({
-        message: `生成缩略图失败，但继续设置封面: faceEmbeddingId=${faceEmbeddingIdNum}`,
+        message: `无法生成人脸缩略图，拒绝设置封面: faceEmbeddingId=${faceEmbeddingIdNum}`,
         details: { userId, clusterId: clusterIdNum },
+      });
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.PERSON_COVER_FACE_THUMBNAIL_UNAVAILABLE,
+        messageType: "error",
       });
     }
 
-    // 2. 设置封面（更新 is_representative）
+    // 2. 设置封面（更新 is_representative，封面为人脸缩略图）
     const result = setClusterCover(userId, clusterIdNum, faceEmbeddingIdNum);
 
     if (result.error) {
-      return res.status(400).sendResponse({
-        error: result.error,
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
+        message: result.error,
       });
     }
 
     if (result.affectedRows === 0) {
-      return res.status(404).sendResponse({
-        error: "设置封面失败，请检查参数",
+      throw new CustomError({
+        httpStatus: 404,
+        messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
+        messageType: "error",
       });
     }
 

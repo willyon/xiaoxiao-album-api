@@ -181,9 +181,8 @@ async function handleDownloadSingleImage(req, res, next) {
     if (!imageId) {
       throw new CustomError({
         httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
         messageType: "error",
-        details: "imageId is required",
       });
     }
 
@@ -198,10 +197,13 @@ async function handleDownloadSingleImage(req, res, next) {
     res.send(buffer);
   } catch (error) {
     if (error.message === "图片不存在" || error.message === "图片文件不存在") {
-      return res.status(404).json({
-        success: false,
-        message: error.message,
-      });
+      return next(
+        new CustomError({
+          httpStatus: 404,
+          messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
+          messageType: "error",
+        }),
+      );
     }
     next(error);
   }
@@ -219,9 +221,8 @@ async function handleDownloadBatchImages(req, res, next) {
     if (!imageIds || !Array.isArray(imageIds) || imageIds.length === 0) {
       throw new CustomError({
         httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
         messageType: "error",
-        details: "imageIds is required and must be a non-empty array",
       });
     }
 
@@ -229,9 +230,8 @@ async function handleDownloadBatchImages(req, res, next) {
     if (imageIds.length > 100) {
       throw new CustomError({
         httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
         messageType: "error",
-        details: "最多只能下载100张图片",
       });
     }
 
@@ -258,10 +258,13 @@ async function handleDownloadBatchImages(req, res, next) {
         details: { error: err.message },
       });
       if (!res.headersSent) {
-        res.status(500).json({
-          success: false,
-          message: "创建压缩包失败",
-        });
+        next(
+          new CustomError({
+            httpStatus: 500,
+            messageCode: ERROR_CODES.SERVER_ERROR,
+            messageType: "error",
+          }),
+        );
       }
     });
 
@@ -269,10 +272,13 @@ async function handleDownloadBatchImages(req, res, next) {
     archive.finalize();
   } catch (error) {
     if (error.message === "未找到任何图片" || error.message === "图片ID列表为空") {
-      return res.status(404).json({
-        success: false,
-        message: error.message,
-      });
+      return next(
+        new CustomError({
+          httpStatus: 404,
+          messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
+          messageType: "error",
+        }),
+      );
     }
     next(error);
   }

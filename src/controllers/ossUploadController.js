@@ -27,7 +27,7 @@ async function handleGetUploadSignature(req, res, next) {
     if (!hash || !contentType || !contentLength) {
       throw new CustomError({
         httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
         messageType: "error",
       });
     }
@@ -36,7 +36,7 @@ async function handleGetUploadSignature(req, res, next) {
     if (!SUPPORTED_IMAGE_MIME_TYPES.has(contentType)) {
       throw new CustomError({
         httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
         messageType: "error",
         message: `不支持的图片格式: ${contentType}`,
       });

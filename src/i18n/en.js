@@ -56,4 +56,6 @@ module.exports = {
   BAD_GATEWAY: "Upstream service is temporarily unavailable. Please try again later.",
   FILE_NOT_FOUND: "File does not exist or the path is invalid.",
   EXIF_READ_FAILED: "Failed to read EXIF metadata from the image. Please check if the file is a valid image.",
+  RESOURCE_NOT_FOUND: "Resource not found",
+  PERSON_COVER_FACE_THUMBNAIL_UNAVAILABLE: "Cannot generate face cover for this photo. Please try another photo.",
 };

@@ -63,7 +63,7 @@ async function handleCheckFileExists(req, res, next) {
     if (!hash) {
       throw new CustomError({
         httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
         messageType: "error",
       });
     }
@@ -117,7 +117,7 @@ async function handlePatchImage(req, res, next) {
     if (!imageId) {
       throw new CustomError({
         httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_REQUEST_PARAMS,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
         messageType: "error",
       });
     }

@@ -2,6 +2,8 @@
  * @Description: 收藏（喜欢）接口控制器
  */
 const favoriteService = require("../services/favoriteService");
+const CustomError = require("../errors/customError");
+const { ERROR_CODES } = require("../constants/messageCodes");
 
 /**
  * 批量添加图片到收藏
@@ -13,11 +15,10 @@ async function addToFavorites(req, res, next) {
     const { imageIds } = req.body;
 
     if (!Array.isArray(imageIds) || imageIds.length === 0) {
-      return next({
+      throw new CustomError({
         httpStatus: 400,
-        messageCode: "INVALID_PARAMETERS",
-        messageType: "warning",
-        message: "图片ID列表不能为空",
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
@@ -41,11 +42,10 @@ async function removeFromFavorites(req, res, next) {
     const { imageIds } = req.body;
 
     if (!Array.isArray(imageIds) || imageIds.length === 0) {
-      return next({
+      throw new CustomError({
         httpStatus: 400,
-        messageCode: "INVALID_PARAMETERS",
-        messageType: "warning",
-        message: "图片ID列表不能为空",
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
       });
     }
 
