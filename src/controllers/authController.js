@@ -198,6 +198,53 @@ const handleResendVerificationEmail = async (req, res, next) => {
   }
 };
 
+// 请求发送重置密码邮件（不暴露用户是否存在，统一返回成功；带冷却）
+const handleRequestPasswordReset = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.EMAIL_REQUIRED,
+        messageType: "warning",
+      });
+    }
+    const cooldownManager = new CooldownManager(redisClient, {
+      defaultCooldown: parseInt(process.env.EMAIL_COOLDOWN_SECONDS) || 60,
+    });
+    const isCooling = await cooldownManager.isCoolingDown("password_reset", email);
+    if (isCooling) {
+      const remaining = await cooldownManager.getRemainingCooldown("password_reset", email);
+      throw new CustomError({
+        httpStatus: 429,
+        messageCode: ERROR_CODES.REQUESTS_TOO_FREQUENT,
+        messageType: "warning",
+        details: { retryAfterSeconds: remaining },
+      });
+    }
+    await authService.requestPasswordReset(email, req);
+    cooldownManager.setCooldown("password_reset", email);
+    return res.sendResponse({
+      messageCode: SUCCESS_CODES.PASSWORD_RESET_EMAIL_SENT,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// 使用 token + 新密码完成重置
+const handleConfirmPasswordReset = async (req, res, next) => {
+  try {
+    const { token, newPassword } = req.body;
+    await authService.confirmPasswordReset(token, newPassword);
+    return res.sendResponse({
+      messageCode: SUCCESS_CODES.PASSWORD_RESET_SUCCESS,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 //重发邮件
 const resendEmailHandler = async ({ req, res, email }) => {
   try {
@@ -273,6 +320,8 @@ module.exports = {
   handleVerifyEmail,
   handleCheckLoginStatus,
   handleResendVerificationEmail,
+  handleRequestPasswordReset,
+  handleConfirmPasswordReset,
   // getCsrfToken,
   // checkCsrfToken,
 };

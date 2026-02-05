@@ -45,13 +45,17 @@ const updateVerificationTokenToNull = async (userId) => {
   stmt.run(userId);
 };
 
+const updatePassword = async (userId, hashedPassword) => {
+  const stmt = db.prepare("UPDATE users SET password = ? WHERE id = ?");
+  stmt.run(hashedPassword, userId);
+};
+
 module.exports = {
   findUserById,
   findUserByEmail,
-  // findUserByToken,
   insertUser,
-  // updateUserEmailVerification,
   updateUserVerificationToken,
   updateUserStatus,
   updateVerificationTokenToNull,
+  updatePassword,
 };

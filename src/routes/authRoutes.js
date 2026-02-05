@@ -15,6 +15,8 @@ const {
   handleCheckLoginStatus,
   handleResendVerificationEmail,
   handleVerifyEmail,
+  handleRequestPasswordReset,
+  handleConfirmPasswordReset,
 } = require("../controllers/authController");
 
 // 创建会话（登录/注册统一接口）
@@ -27,6 +29,10 @@ router.delete("/session", authMiddleware, handleLogoutUser);
 router.post("/verify-email/resend", handleResendVerificationEmail);
 // 验证邮箱的接口
 router.get("/verify-email", handleVerifyEmail);
+// 请求发送重置密码邮件
+router.post("/password-reset/request", handleRequestPasswordReset);
+// 提交新密码完成重置
+router.post("/password-reset/confirm", handleConfirmPasswordReset);
 //通过refresh token 更新 jwt token
 router.post("/refreshToken", handleRefreshToken);
 

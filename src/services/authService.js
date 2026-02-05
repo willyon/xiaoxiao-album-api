@@ -297,6 +297,120 @@ const _getEmailContent = (language, JWTToken) => {
   return content[language] || content.zh;
 };
 
+// 密码重置：生成短期 JWT 并存入 Redis，过期时间 15 分钟
+const PASSWORD_RESET_TOKEN_EXPIRY = "15m";
+const PASSWORD_RESET_REDIS_TTL = 15 * 60; // 秒
+
+const generatePasswordResetToken = (userId) => {
+  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: PASSWORD_RESET_TOKEN_EXPIRY });
+};
+
+const requestPasswordReset = async (email, req) => {
+  validateEmail(email);
+  const user = await authModel.findUserByEmail(email);
+  if (!user || user.verifiedStatus !== "active") {
+    return; // 不暴露用户是否存在，统一返回成功由 controller 处理
+  }
+  const token = generatePasswordResetToken(user.id);
+  const redisClient = getRedisClient();
+  const redisKey = `password_reset:${token}`;
+  await redisClient.set(redisKey, String(user.id), "EX", PASSWORD_RESET_REDIS_TTL);
+  await sendPasswordResetEmail({ email, token, language: req.userLanguage });
+};
+
+const sendPasswordResetEmail = async ({ email, token, language }) => {
+  validateEmail(email);
+  const emailContent = _getPasswordResetEmailContent(language, token);
+  const transporter = nodemailer.createTransport({
+    host: process.env.EMAIL_HOST,
+    port: process.env.EMAIL_PORT,
+    secure: true,
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+  const mailOptions = {
+    from: `${emailContent.mailName} <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: emailContent.subject,
+    html: emailContent.html,
+  };
+  try {
+    await transporter.sendMail(mailOptions);
+  } catch (error) {
+    if (error.message.includes("550") || error.message.toLowerCase().includes("not found")) {
+      throw new CustomError({
+        httpStatus: 422,
+        messageCode: ERROR_CODES.SEND_ACTIVATION_EMAIL_FAILED,
+        messageType: "error",
+      });
+    }
+    throw new CustomError({
+      httpStatus: 500,
+      messageCode: ERROR_CODES.SEND_MAIL_ERROR,
+      messageType: "error",
+    });
+  }
+};
+
+const _getPasswordResetEmailContent = (language, token) => {
+  const baseUrl = process.env.NODE_ENV === "development" ? "http://localhost:5173" : "https://photos.bingbingcloud.com";
+  const content = {
+    en: {
+      mailName: "Bingbing Cloud Photos",
+      subject: "Reset Your Password",
+      html: `
+        <h1>Reset Your Password</h1>
+        <p>Click the button below to set a new password:</p>
+        <a href="${baseUrl}/resetPassword?token=${encodeURIComponent(token)}&lang=en" 
+          style="display:inline-block;padding:10px 20px;background-color:#409eff;color:#fff;text-decoration:none;border-radius:4px;">
+          Reset Password
+        </a>
+        <p>This link will expire in 15 minutes. If you did not request this, please ignore this email.</p>
+      `,
+    },
+    zh: {
+      mailName: "冰冰云相册",
+      subject: "重置您的密码",
+      html: `
+        <h1>重置密码</h1>
+        <p>点击下面的按钮设置新密码：</p>
+        <a href="${baseUrl}/resetPassword?token=${encodeURIComponent(token)}&lang=zh" 
+          style="display:inline-block;padding:10px 20px;background-color:#409eff;color:#fff;text-decoration:none;border-radius:4px;">
+          重置密码
+        </a>
+        <p>该链接 15 分钟内有效。如非本人操作，请忽略此邮件。</p>
+      `,
+    },
+  };
+  return content[language] || content.zh;
+};
+
+const confirmPasswordReset = async (token, newPassword) => {
+  if (!token) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.RESET_TOKEN_INVALID_OR_EXPIRED,
+      messageType: "error",
+    });
+  }
+  validatePassword(newPassword);
+  const redisClient = getRedisClient();
+  const redisKey = `password_reset:${token}`;
+  const userId = await redisClient.get(redisKey);
+  if (!userId) {
+    throw new CustomError({
+      httpStatus: 401,
+      messageCode: ERROR_CODES.RESET_TOKEN_INVALID_OR_EXPIRED,
+      messageType: "error",
+    });
+  }
+  const hashedPassword = await _hashPassword(newPassword);
+  await authModel.updatePassword(Number(userId), hashedPassword);
+  await redisClient.del(redisKey);
+};
+
 // const findUserByToken = async (token) => {
 //   return await authModel.findUserByToken(token);
 // };
@@ -316,6 +430,8 @@ module.exports = {
   logout,
   sendVerificationEmail,
   resendVerificationEmail,
+  requestPasswordReset,
+  confirmPasswordReset,
   // findUserByToken,
   // activateUserAccount,
 };
