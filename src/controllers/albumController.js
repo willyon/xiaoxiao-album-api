@@ -100,18 +100,20 @@ async function deleteAlbum(req, res, next) {
 
 /**
  * 获取自定义相册列表
- * GET /api/albums?pageNo=1&pageSize=20&search=xxx
+ * GET /api/albums?pageNo=1&pageSize=20&search=xxx&excludeAlbumId=123
  */
 async function getCustomAlbums(req, res, next) {
   try {
     const userId = req.user.userId;
-    const { pageNo, pageSize, search } = req.query;
+    const { pageNo, pageSize, search, excludeAlbumId } = req.query;
+    const excludeId = excludeAlbumId ? parseInt(excludeAlbumId, 10) : null;
 
     const result = await albumService.getAlbumsList({
       userId,
       pageNo: pageNo || 1,
       pageSize: pageSize || 20,
       search: search || null,
+      excludeAlbumId: Number.isNaN(excludeId) ? null : excludeId,
     });
 
     res.sendResponse({ data: result });
@@ -122,14 +124,19 @@ async function getCustomAlbums(req, res, next) {
 
 /**
  * 获取最近使用的相册（前 limit 个，用于「添加到相册」递进式弹窗第一屏）
- * GET /api/albums/recent?limit=8
+ * GET /api/albums/recent?limit=8&excludeAlbumId=123
  */
 async function getRecentAlbums(req, res, next) {
   try {
     const userId = req.user.userId;
     const limit = Math.min(parseInt(req.query.limit, 10) || 8, 20);
+    const excludeAlbumId = req.query.excludeAlbumId ? parseInt(req.query.excludeAlbumId, 10) : null;
 
-    const result = await albumService.getRecentAlbumsList({ userId, limit });
+    const result = await albumService.getRecentAlbumsList({
+      userId,
+      limit,
+      excludeAlbumId: Number.isNaN(excludeAlbumId) ? null : excludeAlbumId,
+    });
     res.sendResponse({ data: result });
   } catch (error) {
     next(error);

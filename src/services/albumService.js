@@ -12,9 +12,11 @@ const logger = require("../utils/logger");
 
 /**
  * 获取最近使用的相册列表（前 limit 个，按 max(created_at, last_used_at) 倒序，含封面 URL）
+ * excludeAlbumId 可选，排除该相册（如当前相册）；返回 total 为排除后的相册总数，用于前端判断是否显示「选择其他相册」
  */
-async function getRecentAlbumsList({ userId, limit = 8 }) {
-  const albums = albumModel.getRecentAlbumsByUserId({ userId, limit });
+async function getRecentAlbumsList({ userId, limit = 8, excludeAlbumId = null }) {
+  const albums = albumModel.getRecentAlbumsByUserId({ userId, limit, excludeAlbumId });
+  const total = albumModel.getAlbumsCountByUserId({ userId, excludeAlbumId });
 
   const albumsWithCover = await Promise.all(
     albums.map(async (album) => {
@@ -34,14 +36,15 @@ async function getRecentAlbumsList({ userId, limit = 8 }) {
     }),
   );
 
-  return { list: albumsWithCover };
+  return { list: albumsWithCover, total };
 }
 
 /**
  * 获取用户的自定义相册列表（包含封面图片URL）
+ * excludeAlbumId 可选，排除该相册（如当前相册）
  */
-async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null }) {
-  const allAlbums = albumModel.getAlbumsByUserId({ userId, search });
+async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null, excludeAlbumId = null }) {
+  const allAlbums = albumModel.getAlbumsByUserId({ userId, search, excludeAlbumId });
 
   // 分页处理
   const total = allAlbums.length;
