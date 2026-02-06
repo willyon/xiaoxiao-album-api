@@ -12,6 +12,7 @@ const {
   deleteAlbum,
   queryAlbumPhotos,
   getCustomAlbums,
+  getRecentAlbums,
   addImagesToAlbum,
   removeImagesFromAlbum,
   setAlbumCover,
@@ -20,6 +21,9 @@ const {
 // ========== 相册列表接口 ========== //
 // 获取自定义相册列表
 router.get("/", getCustomAlbums);
+
+// 获取最近使用的相册（须在 /:albumId 之前注册）
+router.get("/recent", getRecentAlbums);
 
 // ========== 相册 CRUD 接口 ========== //
 // 创建相册

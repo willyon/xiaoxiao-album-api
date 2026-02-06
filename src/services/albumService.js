@@ -11,6 +11,33 @@ const { ERROR_CODES } = require("../constants/messageCodes");
 const logger = require("../utils/logger");
 
 /**
+ * 获取最近使用的相册列表（前 limit 个，按 max(created_at, last_used_at) 倒序，含封面 URL）
+ */
+async function getRecentAlbumsList({ userId, limit = 8 }) {
+  const albums = albumModel.getRecentAlbumsByUserId({ userId, limit });
+
+  const albumsWithCover = await Promise.all(
+    albums.map(async (album) => {
+      let coverImageUrl = null;
+      if (album.coverImageId) {
+        const coverImage = await _getImageById(album.coverImageId);
+        if (coverImage) {
+          coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
+        }
+      }
+      const timeRange = albumModel.getAlbumTimeRange(album.albumId);
+      return {
+        ...album,
+        coverImageUrl,
+        timeRange: timeRange || undefined,
+      };
+    }),
+  );
+
+  return { list: albumsWithCover };
+}
+
+/**
  * 获取用户的自定义相册列表（包含封面图片URL）
  */
 async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null }) {
@@ -31,7 +58,7 @@ async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null 
     }
   });
 
-  // 为每个相册添加封面图片URL
+  // 为每个相册添加封面图片URL与整本相册时间范围
   const albumsWithCover = await Promise.all(
     albums.map(async (album) => {
       let coverImageUrl = null;
@@ -44,9 +71,12 @@ async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null 
         }
       }
 
+      const timeRange = albumModel.getAlbumTimeRange(album.albumId);
+
       return {
         ...album,
         coverImageUrl,
+        timeRange: timeRange || undefined,
       };
     }),
   );
@@ -332,7 +362,7 @@ async function getAlbumById({ userId, albumId }) {
     return null;
   }
 
-  // 添加封面图片URL
+  // 添加封面图片URL与整本相册时间范围
   let coverImageUrl = null;
   if (album.coverImageId) {
     const coverImage = _getImageById(album.coverImageId);
@@ -341,9 +371,12 @@ async function getAlbumById({ userId, albumId }) {
     }
   }
 
+  const timeRange = albumModel.getAlbumTimeRange(albumId);
+
   return {
     ...album,
     coverImageUrl,
+    timeRange: timeRange || undefined,
   };
 }
 
@@ -405,6 +438,7 @@ function _getImageById(imageId) {
 
 module.exports = {
   getAlbumsList,
+  getRecentAlbumsList,
   createAlbum,
   getAlbumById,
   updateAlbum,

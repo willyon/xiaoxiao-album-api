@@ -121,6 +121,22 @@ async function getCustomAlbums(req, res, next) {
 }
 
 /**
+ * 获取最近使用的相册（前 limit 个，用于「添加到相册」递进式弹窗第一屏）
+ * GET /api/albums/recent?limit=8
+ */
+async function getRecentAlbums(req, res, next) {
+  try {
+    const userId = req.user.userId;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 8, 20);
+
+    const result = await albumService.getRecentAlbumsList({ userId, limit });
+    res.sendResponse({ data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * 统一获取相册图片列表（year/month/date/custom）
  * GET /albums/:albumId/images?type=year&pageNo=1&pageSize=20&clusterId=123
  * 注意：type 参数必须提供，用于明确指定相册类型
@@ -312,6 +328,7 @@ module.exports = {
   updateAlbum,
   deleteAlbum,
   getCustomAlbums,
+  getRecentAlbums,
   queryAlbumPhotos,
   addImagesToAlbum,
   removeImagesFromAlbum,

@@ -757,6 +757,7 @@ function createTableSimilarGroupMembers() {
 
 /**
  * 创建相册表
+ * last_used_at：上次添加/删除相册图片时间，与 created_at 一起用于「最近使用」排序（max(created_at, last_used_at) DESC）
  */
 function createTableAlbums() {
   try {
@@ -770,8 +771,9 @@ function createTableAlbums() {
         image_count INTEGER DEFAULT 0,
         created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
         updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+        last_used_at INTEGER,
         deleted_at INTEGER,
-        
+
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (cover_image_id) REFERENCES images(id) ON DELETE SET NULL
       );
@@ -801,6 +803,12 @@ function createTableAlbums() {
     db.prepare(
       `
       CREATE INDEX IF NOT EXISTS idx_albums_user_deleted ON albums(user_id, deleted_at) WHERE deleted_at IS NULL;
+    `,
+    ).run();
+
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_albums_user_last_used ON albums(user_id, last_used_at DESC) WHERE deleted_at IS NULL;
     `,
     ).run();
 

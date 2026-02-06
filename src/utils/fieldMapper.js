@@ -64,6 +64,7 @@ const FIELD_MAPPING = {
     image_count: "imageCount",
     created_at: "createdAt",
     updated_at: "updatedAt",
+    last_used_at: "lastUsedAt",
     deleted_at: "deletedAt",
   },
 };
