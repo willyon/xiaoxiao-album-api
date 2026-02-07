@@ -8,6 +8,9 @@ const imageService = require("../services/imageService");
 const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
 const logger = require("../utils/logger");
+
+/** 批量下载单次最多张数（与内存/超时权衡，见产品讨论） */
+const DOWNLOAD_BATCH_MAX = 100;
 const archiver = require("archiver");
 const path = require("path");
 const { DateTime } = require("luxon");
@@ -227,11 +230,12 @@ async function handleDownloadBatchImages(req, res, next) {
     }
 
     // 限制批量下载数量
-    if (imageIds.length > 100) {
+    if (imageIds.length > DOWNLOAD_BATCH_MAX) {
       throw new CustomError({
         httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: "error",
+        messageCode: ERROR_CODES.DOWNLOAD_BATCH_LIMIT_EXCEEDED,
+        messageType: "warning",
+        details: { max: DOWNLOAD_BATCH_MAX },
       });
     }
 

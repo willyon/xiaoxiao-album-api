@@ -58,4 +58,5 @@ module.exports = {
   EXIF_READ_FAILED: "Failed to read EXIF metadata from the image. Please check if the file is a valid image.",
   RESOURCE_NOT_FOUND: "Resource not found",
   PERSON_COVER_FACE_THUMBNAIL_UNAVAILABLE: "Cannot generate face cover for this photo. Please try another photo.",
+  DOWNLOAD_BATCH_LIMIT_EXCEEDED: "You can download at most {max} photos at a time. Please reduce the selection.",
 };
