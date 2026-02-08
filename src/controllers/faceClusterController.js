@@ -7,11 +7,13 @@
 const faceClusterService = require("../services/faceClusterService");
 const {
   getClustersByUserId,
+  getRecentClustersByUserId,
   updateClusterName,
   removeFacesFromCluster,
   moveFacesToCluster,
   setClusterCover,
   verifyFaceEmbeddingInCluster,
+  getFaceEmbeddingIdsByClusterId,
 } = require("../models/faceClusterModel");
 const { addFullUrlToImage, getGroupsByYearForCluster, getGroupsByMonthForCluster } = require("../services/imageService");
 const logger = require("../utils/logger");
@@ -37,27 +39,47 @@ async function getClusterStats(req, res, next) {
 }
 
 /**
+ * 获取指定人物（cluster）下所有 face_embedding_id（用于前端「合并到其他人」时一次性移整人）
+ * GET /face-clusters/:clusterId/face-embedding-ids
+ */
+async function getClusterFaceEmbeddingIds(req, res, next) {
+  try {
+    const { userId } = req.user;
+    const { clusterId } = req.params;
+
+    const clusterIdNum = parseInt(clusterId, 10);
+    if (Number.isNaN(clusterIdNum)) {
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
+      });
+    }
+
+    const faceEmbeddingIds = getFaceEmbeddingIdsByClusterId(userId, clusterIdNum);
+
+    res.sendResponse({
+      data: { faceEmbeddingIds },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
  * 获取用户的聚类列表（带分页、封面、时间范围）
  * GET /face-clusters?pageNo=1&pageSize=20
  */
 async function getClusters(req, res, next) {
   try {
     const { userId } = req.user;
-    const { pageNo = 1, pageSize = 20 } = req.query;
-
-    // 添加调试日志：记录查询参数
-    logger.info({
-      message: "查询人物列表",
-      details: {
-        userId,
-        pageNo: parseInt(pageNo),
-        pageSize: parseInt(pageSize),
-      },
-    });
+    const { pageNo = 1, pageSize = 20, search } = req.query;
+    const searchVal = search && typeof search === "string" ? search.trim() || null : null;
 
     const result = getClustersByUserId(userId, {
-      pageNo: parseInt(pageNo),
-      pageSize: parseInt(pageSize),
+      pageNo: parseInt(pageNo, 10) || 1,
+      pageSize: parseInt(pageSize, 10) || 20,
+      search: searchVal,
     });
 
     // 添加调试日志：记录查询结果
@@ -117,6 +139,56 @@ async function getClusters(req, res, next) {
         total: result.total,
       },
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * 获取最近使用的人物列表（用于 popover 第一屏，排序：最近使用 > 有名字 > 图片数量）
+ * GET /face-clusters/recent?limit=5&excludeClusterId=123
+ */
+async function getRecentClusters(req, res, next) {
+  try {
+    const { userId } = req.user;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 5, 20);
+    const excludeClusterId = req.query.excludeClusterId ? parseInt(req.query.excludeClusterId, 10) : null;
+
+    const result = getRecentClustersByUserId(userId, {
+      limit,
+      excludeClusterId: Number.isNaN(excludeClusterId) ? null : excludeClusterId,
+    });
+
+    const coverImages = result.list
+      .filter((cluster) => cluster.coverImage?.thumbnailStorageKey)
+      .map((cluster) => ({
+        thumbnailStorageKey: cluster.coverImage.thumbnailStorageKey,
+        storageType: cluster.coverImage.storageType || "aliyun-oss",
+      }));
+
+    const urlsMap = new Map();
+    if (coverImages.length > 0) {
+      const keyToIndexMap = new Map();
+      coverImages.forEach((img, index) => keyToIndexMap.set(index, img.thumbnailStorageKey));
+      const urls = await addFullUrlToImage(coverImages);
+      urls.forEach((urlItem, index) => {
+        const originalKey = keyToIndexMap.get(index);
+        if (originalKey && urlItem?.thumbnailUrl) urlsMap.set(originalKey, urlItem.thumbnailUrl);
+      });
+    }
+
+    const listWithUrls = result.list.map((cluster) => {
+      const url = cluster.coverImage?.thumbnailStorageKey ? urlsMap.get(cluster.coverImage.thumbnailStorageKey) : null;
+      return {
+        clusterId: cluster.clusterId,
+        name: cluster.name,
+        imageCount: cluster.imageCount,
+        coverImage: url ? { thumbnailUrl: url } : null,
+        timeRange: cluster.timeRange,
+      };
+    });
+
+    res.sendResponse({ data: { list: listWithUrls, total: result.total } });
   } catch (error) {
     next(error);
   }
@@ -501,6 +573,8 @@ async function setClusterCoverImage(req, res, next) {
 module.exports = {
   getClusterStats,
   getClusters,
+  getRecentClusters,
+  getClusterFaceEmbeddingIds,
   updateCluster,
   removeFaces,
   moveFaces,

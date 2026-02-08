@@ -9,6 +9,8 @@ const router = express.Router();
 const {
   getClusterStats,
   getClusters,
+  getRecentClusters,
+  getClusterFaceEmbeddingIds,
   updateCluster,
   removeFaces,
   moveFaces,
@@ -23,6 +25,12 @@ router.get("/stats", getClusterStats);
 
 // 获取用户的聚类列表（带分页）
 router.get("/", getClusters);
+
+// 获取最近使用的人物（用于 popover 第一屏，必须在 /:clusterId 之前）
+router.get("/recent", getRecentClusters);
+
+// 获取指定人物的 face_embedding_id 列表（用于合并到其他人，必须在 /:clusterId 之前）
+router.get("/:clusterId/face-embedding-ids", getClusterFaceEmbeddingIds);
 
 // 获取指定人物的年份相册列表（必须在 /:clusterId 之前）
 router.get("/:clusterId/albums/year", getClusterYearAlbums);

@@ -5,7 +5,7 @@
  * @Usage: node scripts/deployment/rebuild-database.js
  *
  * 覆盖表：users, images, albums, album_images, image_embeddings, face_embeddings,
- *        face_clusters, similar_groups, similar_group_members
+ *        face_clusters, face_cluster_representatives, similar_groups, similar_group_members
  */
 
 const path = require("path");
@@ -22,6 +22,8 @@ const {
   createTableImageEmbeddings,
   createTableFaceEmbeddings,
   createTableFaceClusters,
+  createTableFaceClusterRepresentatives,
+  createTableFaceClusterMeta,
   createTableSimilarGroups,
   createTableSimilarGroupMembers,
   createTableAlbums,
@@ -34,6 +36,7 @@ const TABLES_TO_DROP = [
   "albums",
   "similar_group_members",
   "similar_groups",
+  "face_cluster_representatives",
   "face_clusters",
   "face_embeddings",
   "image_embeddings",
@@ -77,13 +80,15 @@ async function rebuildDatabase() {
       createTableImageEmbeddings();
       createTableFaceEmbeddings();
       createTableFaceClusters();
+      createTableFaceClusterRepresentatives();
+      createTableFaceClusterMeta();
       createTableSimilarGroups();
       createTableSimilarGroupMembers();
 
       db.prepare("COMMIT").run();
 
       console.log("🎉 数据库重建完成！");
-      console.log("📋 已创建表：users, images, albums, album_images, image_embeddings, face_embeddings, face_clusters, similar_groups, similar_group_members");
+      console.log("📋 已创建表：users, images, albums, album_images, image_embeddings, face_embeddings, face_clusters, face_cluster_representatives, similar_groups, similar_group_members");
     } catch (err) {
       db.prepare("ROLLBACK").run();
       throw err;

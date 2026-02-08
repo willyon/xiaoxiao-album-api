@@ -672,6 +672,68 @@ function createTableFaceClusters() {
 }
 
 /**
+ * 创建人脸聚类代表向量表（每个 user_id + cluster_id 一条，用于增量匹配与全量后处理）
+ * 对齐大厂方案：新人脸与已有人物通过代表向量相似度自动归入
+ */
+function createTableFaceClusterRepresentatives() {
+  try {
+    const sql = `
+      CREATE TABLE IF NOT EXISTS face_cluster_representatives (
+        user_id INTEGER NOT NULL,
+        cluster_id INTEGER NOT NULL,
+        representative_embedding BLOB NOT NULL,
+        updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+        PRIMARY KEY (user_id, cluster_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `;
+    db.prepare(sql).run();
+    console.log("✅ 创建人脸聚类代表向量表");
+
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_face_cluster_repr_user_id
+      ON face_cluster_representatives(user_id);
+    `,
+    ).run();
+  } catch (err) {
+    console.error("创建人脸聚类代表向量表失败：", err.message);
+    throw err;
+  }
+}
+
+/**
+ * 创建人物最近使用元数据表（每个 user_id + cluster_id 一条，用于「最近使用人物」排序）
+ * last_used_at：上次移入/移出照片或新建人物时间
+ */
+function createTableFaceClusterMeta() {
+  try {
+    const sql = `
+      CREATE TABLE IF NOT EXISTS face_cluster_meta (
+        user_id INTEGER NOT NULL,
+        cluster_id INTEGER NOT NULL,
+        last_used_at INTEGER NOT NULL,
+        PRIMARY KEY (user_id, cluster_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `;
+    db.prepare(sql).run();
+
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_face_cluster_meta_user_last_used
+      ON face_cluster_meta(user_id, last_used_at DESC);
+    `
+    ).run();
+
+    console.log("✅ 创建 face_cluster_meta 表及索引");
+  } catch (err) {
+    console.error("创建 face_cluster_meta 表失败：", err.message);
+    throw err;
+  }
+}
+
+/**
  * 创建 similar_groups 表（相似图分组，原 cleanup_groups）
  */
 function createTableSimilarGroups() {
@@ -865,6 +927,8 @@ module.exports = {
   createTableImageEmbeddings,
   createTableFaceEmbeddings,
   createTableFaceClusters,
+  createTableFaceClusterRepresentatives,
+  createTableFaceClusterMeta,
   createTableSimilarGroups,
   createTableSimilarGroupMembers,
   createTableAlbums,

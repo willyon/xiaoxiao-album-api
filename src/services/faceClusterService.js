@@ -40,6 +40,9 @@ const {
   getFaceEmbeddingRepresentativeValue,
   getRepresentativeStatusByThumbnailKeys,
   getDefaultCoverFaceEmbeddingId,
+  computeAndUpsertClusterRepresentative,
+  getUnassignedFaceEmbeddingsByUserId,
+  getAllClusterRepresentativesByUserId,
 } = require("../models/faceClusterModel");
 const { getImageStorageInfo } = require("../models/imageModel");
 const storageService = require("../services/storageService");
@@ -53,6 +56,71 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_FACE_SERVICE_URL || "http://localh
 // 如果调用时未提供 threshold 参数，Python 服务将使用配置文件中的默认值
 // 这是余弦距离阈值，范围 [0, 2]，0.42 是平衡阈值，既能减少不同人被误合并，又能减少同一人被过度分割
 const DEFAULT_CLUSTERING_THRESHOLD = 0.42;
+
+// 增量分配：新人脸与已有人物代表向量的最小余弦相似度，超过则自动归入该人物
+const INCREMENTAL_ASSIGN_MIN_SIMILARITY = Number(process.env.FACE_INCREMENTAL_ASSIGN_MIN_SIMILARITY) || 0.75;
+
+/** 余弦相似度（向量需同维） */
+function cosineSimilarity(a, b) {
+  if (!a?.length || !b?.length || a.length !== b.length) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
+}
+
+/**
+ * 增量分配：将未归属的人脸与已有人物代表向量比较，相似度超过阈值则归入该人物
+ * 在 performFaceClustering 开始时调用，先分配再对剩余人脸做全量聚类
+ * @param {number} userId - 用户ID
+ * @returns {{ assigned: number, skipped: number }}
+ */
+function incrementalAssignFacesToExistingClusters(userId) {
+  const representatives = getAllClusterRepresentativesByUserId(userId);
+  if (representatives.length === 0) return { assigned: 0, skipped: 0 };
+
+  const unassigned = getUnassignedFaceEmbeddingsByUserId(userId);
+  if (unassigned.length === 0) return { assigned: 0, skipped: 0 };
+
+  let assigned = 0;
+  for (const { id: faceEmbeddingId, embedding } of unassigned) {
+    let bestClusterId = null;
+    let bestSim = INCREMENTAL_ASSIGN_MIN_SIMILARITY;
+    for (const { clusterId, embedding: repEmb } of representatives) {
+      const sim = cosineSimilarity(embedding, repEmb);
+      if (sim > bestSim) {
+        bestSim = sim;
+        bestClusterId = clusterId;
+      }
+    }
+    if (bestClusterId == null) continue;
+    try {
+      insertFaceClusters(userId, [
+        { clusterId: bestClusterId, faceEmbeddingId, isUserAssigned: true },
+      ]);
+      assigned += 1;
+      computeAndUpsertClusterRepresentative(userId, bestClusterId);
+    } catch (err) {
+      logger.warn({
+        message: `增量分配写入失败: faceEmbeddingId=${faceEmbeddingId}, clusterId=${bestClusterId}`,
+        details: { userId, error: err.message },
+      });
+    }
+  }
+  if (assigned > 0) {
+    logger.info({
+      message: `增量分配: ${assigned} 张人脸归入已有人物`,
+      details: { userId, assigned, skipped: unassigned.length - assigned },
+    });
+  }
+  return { assigned, skipped: unassigned.length - assigned };
+}
 
 /**
  * 执行人脸聚类
@@ -68,6 +136,9 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       message: `开始执行人脸聚类: userId=${userId}`,
       details: { threshold, recluster },
     });
+
+    // 0. 增量分配：未归属人脸与已有人物代表向量匹配，超过阈值则自动归入（对齐大厂方案）
+    incrementalAssignFacesToExistingClusters(userId);
 
     // 1. 获取用户的所有人脸 embedding（自动排除已经在手动聚类中的记录）
     const faceEmbeddings = getFaceEmbeddingsByUserId(userId);
@@ -271,6 +342,12 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
 
     // 7. 批量插入聚类结果
     const insertResult = insertFaceClusters(userId, clusterData);
+
+    // 7.5 为每个新 cluster 计算并写入代表向量（用于后续增量匹配）
+    const distinctClusterIds = [...new Set(clusterData.map((d) => d.clusterId))];
+    for (const cid of distinctClusterIds) {
+      computeAndUpsertClusterRepresentative(userId, cid);
+    }
 
     // 8. 如果重新聚类，尝试恢复聚类名称和封面设置
     if (recluster) {

@@ -156,16 +156,10 @@ class StorageService {
     // 获取当前存储类型
     this._currentStorageType = this.storage.type;
 
-    // 在实例化时就创建备用适配器（如果失败则跳过，不影响主流程）
-    try {
-      this._backupAdapter = this._createBackupAdapter();
-    } catch (error) {
-      logger.warn({
-        message: "初始化备用适配器失败，将跳过备用适配器",
-        details: { error: error.message },
-      });
-      this._backupAdapter = null;
-    }
+    // 备用适配器改为懒加载：仅在首次调用 getBackupStorageAdapter() 时创建
+    // 避免在仅使用主存储的场景（如本地跑人脸聚类脚本）时触发 OSS/ECS 元数据请求（100.100.100.200）
+    this._backupAdapter = null;
+    this._backupAdapterTried = false;
   }
 
   /**
@@ -207,9 +201,21 @@ class StorageService {
 
   /**
    * 获取备用存储适配器（与当前适配器不同的类型）
-   * @returns {Object} 备用存储适配器实例
+   * 懒加载：首次调用时才创建，避免仅用主存储时触发 OSS/元数据请求
+   * @returns {Object|null} 备用存储适配器实例，若创建失败或未需要则为 null
    */
   getBackupStorageAdapter() {
+    if (this._backupAdapterTried) return this._backupAdapter;
+    this._backupAdapterTried = true;
+    try {
+      this._backupAdapter = this._createBackupAdapter();
+    } catch (error) {
+      logger.warn({
+        message: "创建备用存储适配器失败，将跳过备用适配器",
+        details: { error: error.message },
+      });
+      this._backupAdapter = null;
+    }
     return this._backupAdapter;
   }
 

@@ -68,8 +68,11 @@ def perform_clustering(embeddings, threshold=None):
         # - eps: 邻域半径，使用余弦距离时，阈值范围通常是 0.2-0.8
         # - min_samples: 形成密集区域的最小样本数（设为1，允许单点聚类）
         # - metric: 'cosine' 表示使用余弦距离
+        n_vectors = len(embeddings_normalized)
+        logger.info(f"开始 DBSCAN 聚类计算: {n_vectors} 个向量, eps={threshold}, metric=cosine（数据量大时可能需数分钟，请勿中断）")
         clustering = DBSCAN(eps=threshold, min_samples=1, metric='cosine')
         cluster_labels = clustering.fit_predict(embeddings_normalized)
+        logger.info(f"DBSCAN 聚类计算完成: 得到 {len(set(cluster_labels))} 个聚类（含噪声点 -1）")
         
         # 记录实际使用的阈值和距离度量（用于调试和验证）
         logger.info(f"执行聚类: embedding数量={len(embeddings)}, 使用阈值={threshold}, 距离度量=cosine, 归一化=已归一化")
