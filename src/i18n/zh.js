@@ -59,4 +59,6 @@ module.exports = {
   RESOURCE_NOT_FOUND: "资源不存在",
   PERSON_COVER_FACE_THUMBNAIL_UNAVAILABLE: "无法生成该照片的人脸封面，请换一张照片试试",
   DOWNLOAD_BATCH_LIMIT_EXCEEDED: "单次最多下载 {max} 张，请减少选择数量",
+  DUPLICATE_ENTRY: "相册名称已存在，请换一个名称",
+  DUPLICATE_PERSON_NAME: "人物名称已存在，请换一个名称",
 };

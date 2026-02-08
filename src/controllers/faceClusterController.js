@@ -8,6 +8,7 @@ const faceClusterService = require("../services/faceClusterService");
 const {
   getClustersByUserId,
   getRecentClustersByUserId,
+  getExistingPersonNames,
   updateClusterName,
   removeFacesFromCluster,
   moveFacesToCluster,
@@ -212,7 +213,19 @@ async function updateCluster(req, res, next) {
       });
     }
 
-    const result = updateClusterName(userId, parseInt(clusterId), name || null);
+    const clusterIdNum = parseInt(clusterId);
+    if (name != null && String(name).trim() !== "") {
+      const existingNames = getExistingPersonNames(userId, clusterIdNum);
+      if (existingNames.includes(String(name).trim())) {
+        throw new CustomError({
+          httpStatus: 400,
+          messageCode: ERROR_CODES.DUPLICATE_PERSON_NAME,
+          messageType: "warning",
+        });
+      }
+    }
+
+    const result = updateClusterName(userId, clusterIdNum, name || null);
 
     if (result.affectedRows === 0) {
       throw new CustomError({
@@ -312,6 +325,19 @@ async function moveFaces(req, res, next) {
           httpStatus: 400,
           messageCode: ERROR_CODES.INVALID_PARAMETERS,
           messageType: "error",
+        });
+      }
+    }
+
+    // 新建人物时校验名称是否与现有人物重名
+    const newName = newClusterName != null ? String(newClusterName).trim() : "";
+    if (targetClusterId == null && newName !== "") {
+      const existingNames = getExistingPersonNames(userId, null);
+      if (existingNames.includes(newName)) {
+        throw new CustomError({
+          httpStatus: 400,
+          messageCode: ERROR_CODES.DUPLICATE_PERSON_NAME,
+          messageType: "warning",
         });
       }
     }

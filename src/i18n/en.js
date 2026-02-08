@@ -59,4 +59,6 @@ module.exports = {
   RESOURCE_NOT_FOUND: "Resource not found",
   PERSON_COVER_FACE_THUMBNAIL_UNAVAILABLE: "Cannot generate face cover for this photo. Please try another photo.",
   DOWNLOAD_BATCH_LIMIT_EXCEEDED: "You can download at most {max} photos at a time. Please reduce the selection.",
+  DUPLICATE_ENTRY: "This album name already exists. Please choose a different name.",
+  DUPLICATE_PERSON_NAME: "This person name already exists. Please choose a different name.",
 };
