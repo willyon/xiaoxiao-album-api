@@ -11,6 +11,7 @@ const { getRedisClient } = require("../services/redisClient");
 const { userSetKey } = require("./userImageHashset");
 const { imageMetaQueue } = require("../queues/imageMetaQueue");
 const storageService = require("../services/storageService");
+const videoProcessingService = require("../services/videoProcessingService");
 const timeIt = require("../utils/timeIt");
 const { getDefaultStorageType } = require("../storage/constants/StorageTypes");
 const { updateProgress } = require("../services/imageProcessingProgressService");
@@ -196,8 +197,8 @@ async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHas
  */
 async function processAndSaveSingleImage(job) {
   let fileInfo = job.data;
-  const { fileName, storageKey, userId, imageHash, fileSize, extension } = fileInfo;
-  logger.info({ message: "处理文件", details: { fileName } });
+  const { fileName, storageKey, userId, imageHash, fileSize, extension, mediaType = "image" } = fileInfo;
+  logger.info({ message: "处理文件", details: { fileName, mediaType } });
   const redisClient = getRedisClient();
   let lockKey;
   let thumbnailStorageKey;
@@ -215,22 +216,39 @@ async function processAndSaveSingleImage(job) {
     thumbnailStorageKey = storageService.storage.generateStorageKey(thumbnailType, fileName, extension);
 
     try {
-      await timeIt(
-        "processAndStoreImage",
-        async () => {
-          // 从存储读取原图，处理后存储缩略图
-          await storageService.processAndStoreImage({
-            fileSize,
-            sourceStorageKey: storageKey,
-            targetStorageKey: thumbnailStorageKey,
-            extension,
-            quality: 65, // webp建议 缩略图60-70 高清图75-85
-            resizeWidth: 600,
-            // resizeWidth: 512,
-          });
-        },
-        imageHash,
-      );
+      if (mediaType === "video") {
+        // 视频：FFmpeg 抽首帧 → Sharp 转 webp → 写入存储
+        await timeIt(
+          "storeVideoThumbnail",
+          async () => {
+            await videoProcessingService.storeVideoThumbnail(
+              storageKey,
+              thumbnailStorageKey,
+              storageService.storage,
+            );
+          },
+          imageHash,
+        );
+      } else if (mediaType === "audio") {
+        // 音频：不生成缩略图，thumbnailStorageKey 置为 null
+        thumbnailStorageKey = null;
+      } else {
+        // 图片：沿用 Sharp 处理
+        await timeIt(
+          "processAndStoreImage",
+          async () => {
+            await storageService.processAndStoreImage({
+              fileSize,
+              sourceStorageKey: storageKey,
+              targetStorageKey: thumbnailStorageKey,
+              extension,
+              quality: 65,
+              resizeWidth: 600,
+            });
+          },
+          imageHash,
+        );
+      }
     } catch (error) {
       // 缩略图处理失败
       logger.error({
@@ -264,7 +282,8 @@ async function processAndSaveSingleImage(job) {
       imageHash,
       thumbnailStorageKey,
       storageType: getDefaultStorageType(),
-      fileSizeBytes: fileSize, // 使用新字段名
+      fileSizeBytes: fileSize,
+      mediaType: mediaType === "video" ? "video" : mediaType === "audio" ? "audio" : "image",
     };
 
     try {
@@ -312,10 +331,11 @@ async function processAndSaveSingleImage(job) {
         userId,
         imageHash,
         fileName,
-        storageKey, // 传递原始文件的存储键名
+        storageKey,
+        mediaType, // 透传，供 imageMetaIngestor 分支判断
         extension: process.env.IMAGE_HIGHRES_EXTENSION || "avif",
-        fileSize, // 传递文件大小
-        sessionId: fileInfo.sessionId, // 传递会话ID用于进度跟踪
+        fileSize,
+        sessionId: fileInfo.sessionId,
       },
       {
         jobId: `${userId}:${imageHash}`, // 添加 jobId 防止重复加入队列

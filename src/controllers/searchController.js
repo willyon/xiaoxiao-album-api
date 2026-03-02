@@ -132,6 +132,12 @@ function buildSearchConditions(query, filters, options = {}) {
 
   // ========== 处理 WHERE 子句字段 ==========
 
+  // 4.5. 媒体类型（图片/视频）
+  if (filters.mediaType && filters.mediaType !== "all") {
+    whereConditions.push("(i.media_type = ? OR ? = 'all')");
+    whereParams.push(filters.mediaType, filters.mediaType);
+  }
+
   // 5. AI分析状态（新增筛选项）
   if (filters.aiAnalysisStatus && filters.aiAnalysisStatus !== "" && filters.aiAnalysisStatus !== "all") {
     if (filters.aiAnalysisStatus === "analyzed") {

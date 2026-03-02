@@ -9,8 +9,7 @@ const { db } = require("../services/database");
 const { mapFields } = require("../utils/fieldMapper");
 
 //保存用户上传的图片元数据到数据库（初始上传时的必要字段）
-function insertImage({ userId, imageHash, thumbnailStorageKey, storageType, fileSizeBytes }) {
-  // 使用固定 SQL，NULL 值会自动使用数据库 DEFAULT 值
+function insertImage({ userId, imageHash, thumbnailStorageKey, storageType, fileSizeBytes, mediaType }) {
   const sql = `
     INSERT OR IGNORE INTO images (
       user_id, 
@@ -18,12 +17,21 @@ function insertImage({ userId, imageHash, thumbnailStorageKey, storageType, file
       created_at,
       thumbnail_storage_key,
       storage_type,
-      file_size_bytes
-    ) VALUES (?, ?, ?, ?, ?, ?)
+      file_size_bytes,
+      media_type
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
 
   const stmt = db.prepare(sql);
-  const result = stmt.run(userId, imageHash, Date.now(), thumbnailStorageKey || null, storageType || null, fileSizeBytes || null);
+  const result = stmt.run(
+    userId,
+    imageHash,
+    Date.now(),
+    thumbnailStorageKey || null,
+    storageType || null,
+    fileSizeBytes || null,
+    mediaType || "image",
+  );
 
   return { affectedRows: result.changes };
 }
@@ -50,6 +58,9 @@ function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
         i.id,
         i.high_res_storage_key, 
         i.thumbnail_storage_key, 
+        i.original_storage_key,
+        i.media_type,
+        i.duration_sec,
         i.image_created_at, 
         i.date_key, 
         i.day_key, 
@@ -109,6 +120,9 @@ function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
         id,
         high_res_storage_key, 
         thumbnail_storage_key, 
+        original_storage_key,
+        media_type,
+        duration_sec,
         image_created_at, 
         date_key, 
         day_key, 
@@ -171,6 +185,9 @@ function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
         i.id,
         i.high_res_storage_key, 
         i.thumbnail_storage_key, 
+        i.original_storage_key,
+        i.media_type,
+        i.duration_sec,
         i.image_created_at, 
         i.date_key, 
         i.day_key, 
@@ -230,6 +247,9 @@ function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
         id,
         high_res_storage_key, 
         thumbnail_storage_key, 
+        original_storage_key,
+        media_type,
+        duration_sec,
         image_created_at, 
         date_key, 
         day_key, 
@@ -288,6 +308,9 @@ function selectImagesByDate({ pageNo, pageSize, albumId, userId }) {
       id,
       high_res_storage_key, 
       thumbnail_storage_key, 
+      original_storage_key,
+      media_type,
+      duration_sec,
       image_created_at, 
       date_key, 
       day_key, 
@@ -477,9 +500,10 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
       WHERE user_id = ?
         AND deleted_at IS NULL
         AND month_key != 'unknown'
+        AND (COALESCE(media_type, 'image') IN ('image', 'video'))
     ),
     latest AS (
-      -- 选择每个月份的第一张图片作为封面
+      -- 选择每个月份的第一张图片作为封面（排除音频，音频无缩略图）
       SELECT 
         month_key,
         thumbnail_storage_key,
@@ -580,9 +604,10 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
       WHERE user_id = ?
         AND deleted_at IS NULL
         AND year_key != 'unknown'
+        AND (COALESCE(media_type, 'image') IN ('image', 'video'))
     ),
     latest AS (
-      -- 选择每个年份的第一张图片作为封面
+      -- 选择每个年份的第一张图片作为封面（排除音频）
       SELECT 
         year_key,
         thumbnail_storage_key,
@@ -646,6 +671,7 @@ function selectUnknownGroup({ userId }) {
         ) AS rn
       FROM images
       WHERE user_id = ? AND deleted_at IS NULL AND year_key = 'unknown'
+        AND (COALESCE(media_type, 'image') IN ('image', 'video'))
     ),
     cover AS (
       SELECT year_key, thumbnail_storage_key, image_created_at, storage_type
@@ -726,6 +752,7 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
       WHERE fc.user_id = ? 
         AND fc.cluster_id = ?
         AND i.deleted_at IS NULL
+        AND (COALESCE(i.media_type, 'image') IN ('image', 'video'))
     ),
     latest AS (
       SELECT 
@@ -826,6 +853,7 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
       WHERE fc.user_id = ? 
         AND fc.cluster_id = ?
         AND i.deleted_at IS NULL
+        AND (COALESCE(i.media_type, 'image') IN ('image', 'video'))
     ),
     latest AS (
       SELECT 
@@ -931,9 +959,10 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
       FROM images
       WHERE user_id = ?
         AND deleted_at IS NULL
+        AND (COALESCE(media_type, 'image') IN ('image', 'video'))
     ),
     latest AS (
-      -- 选择每个日期的第一张图片作为封面
+      -- 选择每个日期的第一张图片作为封面（排除音频）
       SELECT 
         date_key,
         thumbnail_storage_key,
@@ -997,6 +1026,7 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
         storage_type
       FROM images
       WHERE user_id = ? AND deleted_at IS NULL
+        AND (COALESCE(media_type, 'image') IN ('image', 'video'))
     ),
     ranked_images AS (
       SELECT 
@@ -1062,6 +1092,9 @@ function selectImagesByCity({ pageNo, pageSize, albumId, userId }) {
       id,
       high_res_storage_key, 
       thumbnail_storage_key, 
+      original_storage_key,
+      media_type,
+      duration_sec,
       image_created_at, 
       date_key, 
       day_key, 
@@ -1129,6 +1162,9 @@ function updateImageMetadata({
   hdHeightPx,
   mime,
   colorTheme,
+  durationSec,
+  videoCodec,
+  mediaType,
 }) {
   const sql = `
     UPDATE images SET 
@@ -1153,7 +1189,10 @@ function updateImageMetadata({
       hd_width_px = COALESCE(?, hd_width_px),
       hd_height_px = COALESCE(?, hd_height_px),
       mime = COALESCE(?, mime),
-      color_theme = COALESCE(?, color_theme)
+      color_theme = COALESCE(?, color_theme),
+      duration_sec = COALESCE(?, duration_sec),
+      video_codec = COALESCE(?, video_codec),
+      media_type = COALESCE(?, media_type)
     WHERE user_id = ? AND image_hash = ? RETURNING id
   `;
 
@@ -1181,6 +1220,9 @@ function updateImageMetadata({
     hdHeightPx,
     mime,
     colorTheme,
+    durationSec,
+    videoCodec,
+    mediaType,
     userId,
     imageHash,
   );
@@ -1440,7 +1482,9 @@ function getImageStorageInfo(imageId) {
       id,
       thumbnail_storage_key,
       high_res_storage_key,
-      storage_type
+      original_storage_key,
+      storage_type,
+      media_type
     FROM images
     WHERE id = ? AND deleted_at IS NULL
     LIMIT 1
@@ -1457,7 +1501,9 @@ function getImageStorageInfo(imageId) {
     id: image.id,
     thumbnailStorageKey: image.thumbnail_storage_key,
     highResStorageKey: image.high_res_storage_key,
+    originalStorageKey: image.original_storage_key,
     storageType: image.storage_type,
+    mediaType: image.media_type || "image",
   };
 }
 

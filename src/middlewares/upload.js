@@ -10,7 +10,10 @@ const path = require("path");
 const crypto = require("crypto");
 const { DateTime } = require("luxon");
 const storageService = require("../services/storageService");
-const { isImageFile } = require("../utils/fileUtils");
+const { isMediaFile } = require("../utils/fileUtils");
+
+// 视频上传大小限制（默认 10GB）
+const VIDEO_MAX_FILE_SIZE = Number(process.env.VIDEO_MAX_FILE_SIZE) || 10 * 1024 * 1024 * 1024;
 
 // 生成文件名的通用函数
 function generateFilename(req, file) {
@@ -30,11 +33,11 @@ function generateFilename(req, file) {
 const storage = storageService.storage.getMulterStorage(generateFilename);
 
 const fileFilter = (req, file, cb) => {
-  // 使用智能图片检测，支持HEIC等格式
-  if (isImageFile(file)) {
+  // 支持图片和视频（HEIC 等格式通过 isMediaFile 内部 isImageFile 支持）
+  if (isMediaFile(file)) {
     cb(null, true);
   } else {
-    cb(new Error("Only image files are allowed"), false);
+    cb(new Error("Only image, video and audio files are allowed"), false);
   }
 };
 
@@ -42,7 +45,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 限制单张最大50MB
+  limits: { fileSize: VIDEO_MAX_FILE_SIZE },
 });
 
 // upload.single("file")表示创建一个中间件，专门处理名为file的单个文件上传 uploadMiddleware是返回的中间件函数(这个中间件的实例)

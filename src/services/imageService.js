@@ -47,17 +47,21 @@ async function _addFullUrls(items, type = "image") {
 
     // 根据类型选择处理逻辑
     if (type === "image") {
-      // 处理图片：生成高清图片URL和缩略图URL
+      // 处理图片/视频：生成高清图URL、缩略图URL、视频原片URL
       for (const item of items) {
+        const needsOriginalUrl = item.mediaType === "video" || item.mediaType === "audio" || !item.highResStorageKey;
         if (item.highResStorageKey) {
           item.highResUrl = await storageService.getFileUrl(item.highResStorageKey, item.storageType);
-          delete item.highResStorageKey; // 删除原始字段
+          delete item.highResStorageKey;
         }
         if (item.thumbnailStorageKey) {
           item.thumbnailUrl = await storageService.getFileUrl(item.thumbnailStorageKey, item.storageType);
-          delete item.thumbnailStorageKey; // 删除原始字段
+          delete item.thumbnailStorageKey;
         }
-        // 删除 storageType 字段
+        if (needsOriginalUrl && item.originalStorageKey) {
+          item.originalUrl = await storageService.getFileUrl(item.originalStorageKey, item.storageType);
+          delete item.originalStorageKey;
+        }
         delete item.storageType;
       }
     } else if (type === "group") {
@@ -96,9 +100,16 @@ async function _addFullUrlToGroupCover(groups) {
 
 // 保存新图片信息到数据库
 async function saveNewImage(imageData) {
-  // 参数校验
-  const { userId, imageHash, thumbnailStorageKey } = imageData;
-  if (!userId || !imageHash || !thumbnailStorageKey) {
+  // 参数校验（音频无缩略图，thumbnailStorageKey 可为 null）
+  const { userId, imageHash, thumbnailStorageKey, mediaType } = imageData;
+  if (!userId || !imageHash) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: "warning",
+    });
+  }
+  if (!thumbnailStorageKey && mediaType !== "audio") {
     throw new CustomError({
       httpStatus: 400,
       messageCode: ERROR_CODES.INVALID_PARAMETERS,

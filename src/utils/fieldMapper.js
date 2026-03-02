@@ -52,6 +52,9 @@ const FIELD_MAPPING = {
     added_at: "addedAt", // 添加到相册的时间
     is_favorite: "isFavorite", // 是否已喜欢
     is_blurry: "isBlurry", // 是否模糊图（清理用）
+    media_type: "mediaType", // 'image' | 'video' | 'audio'
+    duration_sec: "durationSec", // 视频时长（秒）
+    video_codec: "videoCodec", // 视频编码
   },
 
   // albums表字段映射

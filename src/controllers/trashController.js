@@ -26,6 +26,7 @@ async function handleGetDeletedImages(req, res, next) {
 
     const pageNo = Number(req.query.pageNo) || 1;
     const pageSize = Number(req.query.pageSize) || 20;
+    const mediaType = req.query.mediaType || "all";
 
     if (pageNo < 1 || pageSize < 1 || pageSize > 100) {
       throw new CustomError({
@@ -39,6 +40,7 @@ async function handleGetDeletedImages(req, res, next) {
       userId,
       pageNo,
       pageSize,
+      mediaType,
     });
 
     res.sendResponse({

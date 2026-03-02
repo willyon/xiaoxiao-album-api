@@ -40,6 +40,10 @@ function _getContentTypeFromFileName(fileName) {
     ".avif": "image/avif",
     ".heic": "image/heic",
     ".heif": "image/heif",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".webm": "video/webm",
+    ".avi": "video/x-msvideo",
   };
   return contentTypeMap[ext] || "application/octet-stream";
 }

@@ -87,6 +87,11 @@ function createTableImages() {
         -- 存储类型信息
         storage_type TEXT,  -- 存储类型：'local', 'aliyun-oss', 's3', 'qiniu', 'cos', 'bos', 'gcs', 'azure'
         
+        -- 媒体类型（视频功能）
+        media_type TEXT DEFAULT 'image',   -- 'image' | 'video'
+        duration_sec REAL,                 -- 视频时长（秒），图片为 NULL
+        video_codec TEXT,                  -- 视频编码，如 'h264', 'hevc'
+        
         -- 文件信息
         file_size_bytes INTEGER,            -- 文件大小（字节）
         mime TEXT,                          -- MIME类型: 'image/jpeg' | 'image/heic' | 'image/png' | 'image/webp'
@@ -275,6 +280,22 @@ function createTableImages() {
       `
       CREATE INDEX IF NOT EXISTS idx_images_user_mime
       ON images(user_id, mime);
+    `,
+    ).run();
+
+    // 2.18.1 媒体类型索引（用于按 media_type 筛选：image/video/audio）
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_media_type
+      ON images(media_type);
+    `,
+    ).run();
+
+    // 2.18.2 用户+媒体类型+创建时间索引（用于按类型分组的列表查询）
+    db.prepare(
+      `
+      CREATE INDEX IF NOT EXISTS idx_images_user_media_creation
+      ON images(user_id, media_type, image_created_at DESC);
     `,
     ).run();
 

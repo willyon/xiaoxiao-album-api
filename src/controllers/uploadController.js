@@ -9,6 +9,7 @@ const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
 const { imageUploadQueue } = require("../queues/imageUploadQueue");
 const { computeFileHash } = require("../utils/hash");
+const { getMediaTypeFromFile } = require("../utils/fileUtils");
 const storageService = require("../services/storageService");
 const { updateProgress } = require("../services/imageProcessingProgressService");
 const logger = require("../utils/logger");
@@ -26,6 +27,9 @@ async function handlePostImages(req, res, next) {
 
     const { size: fileSize, filename: fileName } = file;
     const userId = req?.user?.userId;
+
+    // 从 mimetype 或文件扩展名推断 mediaType（mimetype 可能不可靠，如拖入时为 application/octet-stream）
+    const mediaType = getMediaTypeFromFile(file);
 
     // 第一步：先计算哈希，用于去重检查
     // 统一使用适配器处理，支持Buffer和文件路径
@@ -94,6 +98,7 @@ async function handlePostImages(req, res, next) {
         storageKey, // 本地路径或存储键名
         userId,
         imageHash,
+        mediaType, // 'image' | 'video'，供 Worker 分支判断
         extension: process.env.IMAGE_THUMBNAIL_EXTENSION || "webp",
         sessionId: req.body.sessionId, // 传递会话ID
       },

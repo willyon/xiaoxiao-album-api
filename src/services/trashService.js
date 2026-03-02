@@ -270,14 +270,16 @@ async function _deleteImagesFiles(images) {
  * @param {number} params.userId - 用户ID
  * @param {number} params.pageNo - 页码
  * @param {number} params.pageSize - 每页数量
+ * @param {string} [params.mediaType] - 媒体类型：'all' | 'image' | 'video'
  * @returns {Promise<{ list: Array, total: number }>} 图片列表与总数
  */
-async function getDeletedImages({ userId, pageNo, pageSize }) {
+async function getDeletedImages({ userId, pageNo, pageSize, mediaType }) {
   try {
     const result = trashModel.selectDeletedImagesByPage({
       userId,
       pageNo,
       pageSize,
+      mediaType,
     });
 
     // 生成图片URL并精简返回字段
@@ -300,7 +302,7 @@ async function getDeletedImages({ userId, pageNo, pageSize }) {
           }
         }
 
-        // 生成高清图URL
+        // 生成高清图URL（图片有，视频无）
         let highResUrl = null;
         if (item.highResStorageKey) {
           try {
@@ -317,12 +319,31 @@ async function getDeletedImages({ userId, pageNo, pageSize }) {
           }
         }
 
+        // 视频需要 originalUrl
+        let originalUrl = null;
+        const needsOriginalUrl = item.mediaType === "video" || !item.highResStorageKey;
+        if (needsOriginalUrl && item.originalStorageKey) {
+          try {
+            originalUrl = await storageService.getFileUrl(item.originalStorageKey, item.storageType);
+          } catch (error) {
+            logger.warn({
+              message: "获取原片URL失败",
+              details: {
+                storageKey: item.originalStorageKey,
+                storageType: item.storageType,
+                error: error.message,
+              },
+            });
+          }
+        }
+
         // 返回精简后的字段（只包含前端需要的）
-        // isFavorite字段已从数据库直接返回
         return {
           imageId: item.imageId,
+          mediaType: item.mediaType || "image",
           thumbnailUrl,
           highResUrl,
+          originalUrl,
           isFavorite: item.isFavorite || false,
           creationDate: item.creationDate,
           gpsLocation: item.gpsLocation,
@@ -333,6 +354,7 @@ async function getDeletedImages({ userId, pageNo, pageSize }) {
           layoutType: item.layoutType,
           colorTheme: item.colorTheme,
           fileSizeBytes: item.fileSizeBytes,
+          durationSec: item.durationSec,
         };
       }),
     );

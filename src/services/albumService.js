@@ -23,7 +23,7 @@ async function getRecentAlbumsList({ userId, limit = 8, excludeAlbumId = null })
       let coverImageUrl = null;
       if (album.coverImageId) {
         const coverImage = await _getImageById(album.coverImageId);
-        if (coverImage) {
+        if (coverImage && coverImage.thumbnailStorageKey) {
           coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
         }
       }
@@ -67,9 +67,9 @@ async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null,
       let coverImageUrl = null;
 
       if (album.coverImageId) {
-        // 查询封面图片的存储信息
+        // 查询封面图片的存储信息（音频无缩略图，thumbnailStorageKey 为 null）
         const coverImage = await _getImageById(album.coverImageId);
-        if (coverImage) {
+        if (coverImage && coverImage.thumbnailStorageKey) {
           coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
         }
       }
@@ -328,6 +328,17 @@ async function setAlbumCover({ userId, albumId, imageId }) {
     });
   }
 
+  // 音频不能设为相册封面（无缩略图）
+  const imageInfo = imageModel.getImageStorageInfo(imageId);
+  if (imageInfo && imageInfo.mediaType === "audio") {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: "warning",
+      message: "音频不能设为相册封面",
+    });
+  }
+
   const result = albumModel.setAlbumCover({ albumId, imageId });
 
   if (result.affectedRows === 0) {
@@ -344,7 +355,7 @@ async function setAlbumCover({ userId, albumId, imageId }) {
 
   if (updatedAlbum.coverImageId) {
     const coverImage = await _getImageById(updatedAlbum.coverImageId);
-    if (coverImage) {
+    if (coverImage && coverImage.thumbnailStorageKey) {
       coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
     }
   }
@@ -369,7 +380,7 @@ async function getAlbumById({ userId, albumId }) {
   let coverImageUrl = null;
   if (album.coverImageId) {
     const coverImage = _getImageById(album.coverImageId);
-    if (coverImage) {
+    if (coverImage && coverImage.thumbnailStorageKey) {
       coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
     }
   }
@@ -407,14 +418,27 @@ async function getAlbumImagesList({ userId, albumId, pageNo, pageSize }) {
   // 为图片添加完整URL（isFavorite字段已从数据库直接返回）
   const imagesWithUrl = await Promise.all(
     queryResult.data.map(async (image) => {
-      const thumbnailUrl = await storageService.getFileUrl(image.thumbnailStorageKey, image.storageType);
-      const highResUrl = await storageService.getFileUrl(image.highResStorageKey, image.storageType);
+      let thumbnailUrl = null;
+      let highResUrl = null;
+      let originalUrl = null;
+      if (image.thumbnailStorageKey) {
+        thumbnailUrl = await storageService.getFileUrl(image.thumbnailStorageKey, image.storageType);
+      }
+      if (image.highResStorageKey) {
+        highResUrl = await storageService.getFileUrl(image.highResStorageKey, image.storageType);
+      }
+      if ((image.mediaType === "video" || image.mediaType === "audio") && image.originalStorageKey) {
+        originalUrl = await storageService.getFileUrl(image.originalStorageKey, image.storageType);
+      } else if (!image.highResStorageKey && image.originalStorageKey) {
+        originalUrl = await storageService.getFileUrl(image.originalStorageKey, image.storageType);
+      }
 
       return {
         ...image,
         albumId, // 添加 albumId 字段，统一返回格式
         thumbnailUrl,
         highResUrl,
+        originalUrl,
       };
     }),
   );

@@ -9,6 +9,8 @@ const { saveProcessedImageMetadata } = require("../services/imageService");
 const { timestampToYearMonth, timestampToYear, timestampToDate, timestampToDayOfWeek } = require("../utils/formatTime");
 const timeIt = require("../utils/timeIt");
 const storageService = require("../services/storageService");
+const videoProcessingService = require("../services/videoProcessingService");
+const audioProcessingService = require("../services/audioProcessingService");
 const { updateProgress } = require("../services/imageProcessingProgressService");
 const { searchIndexQueue } = require("../queues/searchIndexQueue");
 const { cleanupQueue } = require("../queues/cleanupQueue");
@@ -105,6 +107,168 @@ async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userI
 }
 
 /**
+ * 处理视频的 meta 阶段：ffprobe 元数据、移动原片、不入队 AI
+ */
+async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, originalStorageKey, sessionId }) {
+  let videoPath;
+  try {
+    videoPath = await storageService.storage.getFileData(storageKey);
+  } catch (err) {
+    await _handleMetaRetryFailure({ job, reason: "file_read_failed", fileName, imageHash, userId });
+    throw err;
+  }
+
+  let meta;
+  try {
+    meta = await videoProcessingService.getVideoMetadata(videoPath);
+  } catch (err) {
+    await _handleMetaRetryFailure({ job, reason: "metadata_analysis_failed", fileName, imageHash, userId });
+    throw err;
+  }
+
+  const captureTime = meta.creationTime || undefined;
+  const monthKey = timestampToYearMonth(captureTime);
+  const yearKey = timestampToYear(captureTime);
+  const dateKey = timestampToDate(captureTime);
+  const dayKey = timestampToDayOfWeek(captureTime);
+
+  let gpsLocation = null;
+  let country = null;
+  let city = null;
+  if (meta.gpsLatitude != null && meta.gpsLongitude != null) {
+    try {
+      const locInfo = await imageMetadataService.analyzeLocationInfo(meta.gpsLatitude, meta.gpsLongitude);
+      gpsLocation = locInfo?.gpsLocation || null;
+      country = locInfo?.country || null;
+      city = locInfo?.city || null;
+    } catch (e) {
+      logger.warn({ message: "Video GPS reverse geocode failed", details: { imageHash, error: e.message } });
+    }
+  }
+
+  const aspectRatio =
+    meta.width && meta.height && meta.height > 0 ? Math.round((meta.width / meta.height) * 1000) / 1000 : null;
+
+  try {
+    await saveProcessedImageMetadata({
+      userId,
+      imageHash,
+      creationDate: captureTime,
+      monthKey,
+      yearKey,
+      dateKey,
+      dayKey,
+      highResStorageKey: null,
+      originalStorageKey,
+      gpsLatitude: meta.gpsLatitude,
+      gpsLongitude: meta.gpsLongitude,
+      gpsLocation,
+      country,
+      city,
+      widthPx: meta.width,
+      heightPx: meta.height,
+      aspectRatio,
+      durationSec: meta.duration,
+      videoCodec: meta.codec,
+      mediaType: "video",
+    });
+  } catch (e) {
+    logger.error({
+      message: "Video metadata database update failed",
+      details: { imageHash, userId, err: e.message },
+    });
+    throw e;
+  }
+
+  if (sessionId) {
+    try {
+      await updateProgress({ sessionId, status: "highResDone" });
+    } catch (err) {}
+  }
+
+  try {
+    await storageService.storage.moveFile(storageKey, originalStorageKey);
+  } catch (e) {
+    logger.warn({
+      message: "Video original file move failed",
+      details: { imageHash, userId, sourceStorageKey: storageKey, targetStorageKey: originalStorageKey, error: e.message },
+    });
+  }
+
+  // Phase 1：视频不入队 searchIndex、cleanup
+}
+
+/**
+ * 处理音频的 meta 阶段：ffprobe 元数据、移动原片、不入队 AI
+ */
+async function processAudioMeta(job, { userId, imageHash, fileName, storageKey, originalStorageKey, sessionId }) {
+  let audioPath;
+  try {
+    audioPath = await storageService.storage.getFileData(storageKey);
+  } catch (err) {
+    await _handleMetaRetryFailure({ job, reason: "file_read_failed", fileName, imageHash, userId });
+    throw err;
+  }
+
+  let meta;
+  try {
+    meta = await audioProcessingService.getAudioMetadata(audioPath);
+  } catch (err) {
+    await _handleMetaRetryFailure({ job, reason: "metadata_analysis_failed", fileName, imageHash, userId });
+    throw err;
+  }
+
+  const captureTime = meta.creationTime || undefined;
+  const monthKey = timestampToYearMonth(captureTime);
+  const yearKey = timestampToYear(captureTime);
+  const dateKey = timestampToDate(captureTime);
+  const dayKey = timestampToDayOfWeek(captureTime);
+
+  try {
+    await saveProcessedImageMetadata({
+      userId,
+      imageHash,
+      creationDate: captureTime,
+      monthKey,
+      yearKey,
+      dateKey,
+      dayKey,
+      highResStorageKey: null,
+      originalStorageKey,
+      widthPx: null,
+      heightPx: null,
+      aspectRatio: null,
+      durationSec: meta.duration,
+      videoCodec: meta.codec,
+      mediaType: "audio",
+    });
+  } catch (e) {
+    logger.error({
+      message: "Audio metadata database update failed",
+      details: { imageHash, userId, err: e.message },
+    });
+    throw e;
+  }
+
+  if (sessionId) {
+    try {
+      await updateProgress({ sessionId, status: "highResDone" });
+    } catch (err) {}
+  }
+
+  try {
+    await storageService.storage.moveFile(storageKey, originalStorageKey);
+  } catch (e) {
+    logger.warn({
+      message: "Audio original file move failed",
+      details: { imageHash, userId, sourceStorageKey: storageKey, targetStorageKey: originalStorageKey, error: e.message },
+    });
+  }
+
+  // Phase 1：音频不入队 searchIndex、cleanup
+}
+
+/**
  * 处理单张图片的"后处理"：
  * 1) 读取 EXIF → creationDate/monthKey/yearKey
  * 2) 产出高清大图（默认 AVIF）
@@ -114,17 +278,41 @@ async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userI
  * @param {Object} job - BullMQ job对象
  */
 async function processImageMeta(job) {
-  const { userId, imageHash, fileName, storageKey, extension, fileSize, sessionId } = job.data;
+  const { userId, imageHash, fileName, storageKey, extension, fileSize, sessionId, mediaType = "image" } = job.data;
 
-  const highResType = process.env.IMAGE_STORAGE_KEY_HIGHRES || "highres";
   const originalType = process.env.IMAGE_STORAGE_KEY_ORIGINAL || "original";
+  const originalStorageKey = storageService.storage.generateStorageKey(originalType, fileName);
 
-  // 高清图相关变量
-  let highResStorageKeyResult = null; // 只有成功处理时才设置高清图存储键
+  // ========== 视频分支：ffprobe 元数据，不生成 highres，不入队 AI ==========
+  if (mediaType === "video") {
+    return processVideoMeta(job, {
+      userId,
+      imageHash,
+      fileName,
+      storageKey,
+      originalStorageKey,
+      sessionId,
+    });
+  }
+
+  // ========== 音频分支：ffprobe 元数据，不生成 highres，不入队 AI ==========
+  if (mediaType === "audio") {
+    return processAudioMeta(job, {
+      userId,
+      imageHash,
+      fileName,
+      storageKey,
+      originalStorageKey,
+      sessionId,
+    });
+  }
+
+  // ========== 图片分支：沿用现有逻辑 ==========
+  const highResType = process.env.IMAGE_STORAGE_KEY_HIGHRES || "highres";
+  let highResStorageKeyResult = null;
   let hdWidthPx = null;
   let hdHeightPx = null;
 
-  // 通过存储服务获取文件数据
   let fileData = null;
   try {
     fileData = await storageService.storage.getFileData(storageKey);
@@ -133,18 +321,16 @@ async function processImageMeta(job) {
     throw err;
   }
 
-  // 综合分析图片元数据（包含位置描述）
   let metadata = null;
   try {
     metadata = await imageMetadataService.analyzeImageMetadata(fileData, {
-      includeLocation: true, // 包含位置描述
+      includeLocation: true,
     });
   } catch (err) {
     await _handleMetaRetryFailure({ job, reason: "metadata_analysis_failed", fileName, imageHash, userId });
     throw err;
   }
 
-  // 从分析结果中提取所需字段
   const {
     colorTheme,
     captureTime,
@@ -162,16 +348,13 @@ async function processImageMeta(job) {
     mime,
   } = metadata;
 
-  // 时间分组（基于元数据分析结果）
   const monthKey = timestampToYearMonth(captureTime);
   const yearKey = timestampToYear(captureTime);
   const dateKey = timestampToDate(captureTime);
   const dayKey = timestampToDayOfWeek(captureTime);
 
-  // 使用存储服务生成高清图片的存储键名
   const highResStorageKey = storageService.storage.generateStorageKey(highResType, fileName, extension);
 
-  // 生成压缩高清图
   try {
     const hdResult = await timeIt(
       "processAndStoreImage",
@@ -181,26 +364,22 @@ async function processImageMeta(job) {
           sourceStorageKey: storageKey,
           targetStorageKey: highResStorageKey,
           extension,
-          quality: 65, // avif建议 缩略图50-60 高清图60-70
-          // resizeWidth: 2560,
+          quality: 65,
           resizeWidth: 2048,
         });
       },
       imageHash,
     );
 
-    // 高清图处理成功，设置存储键和实际尺寸
     highResStorageKeyResult = highResStorageKey;
     hdWidthPx = hdResult.width;
     hdHeightPx = hdResult.height;
   } catch (e) {
-    // 高清图生成失败
     logger.error({
       message: "Generate HQ image failed",
       details: { imageHash, userId, highResStorageKey, err: String(e) },
     });
 
-    // 处理重试失败逻辑
     await _handleMetaRetryFailure({
       job,
       reason: "highres_generation_failed",
@@ -213,9 +392,6 @@ async function processImageMeta(job) {
     throw e;
   }
 
-  // 生成原图的存储键名（不传extension，直接使用fileName）
-  const originalStorageKey = storageService.storage.generateStorageKey(originalType, fileName);
-  // 更新数据库并获取imageId
   let imageId = null;
   try {
     const result = await saveProcessedImageMetadata({
@@ -226,14 +402,14 @@ async function processImageMeta(job) {
       yearKey,
       dateKey,
       dayKey,
-      highResStorageKey: highResStorageKeyResult, // 只有高清图处理成功时才不为null
+      highResStorageKey: highResStorageKeyResult,
       originalStorageKey,
       gpsLatitude: latitude,
       gpsLongitude: longitude,
       gpsAltitude: altitude,
-      gpsLocation, // 位置描述（如"北京市朝阳区三里屯街道"）
-      country, // 国家（如"中国"）
-      city, // 城市（如"北京市"）
+      gpsLocation,
+      country,
+      city,
       widthPx: width,
       heightPx: height,
       aspectRatio,
