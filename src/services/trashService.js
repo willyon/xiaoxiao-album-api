@@ -319,9 +319,9 @@ async function getDeletedImages({ userId, pageNo, pageSize, mediaType }) {
           }
         }
 
-        // 视频需要 originalUrl
+        // 视频、音频需要 originalUrl（与 imageService、albumService 一致）
         let originalUrl = null;
-        const needsOriginalUrl = item.mediaType === "video" || !item.highResStorageKey;
+        const needsOriginalUrl = item.mediaType === "video" || item.mediaType === "audio" || !item.highResStorageKey;
         if (needsOriginalUrl && item.originalStorageKey) {
           try {
             originalUrl = await storageService.getFileUrl(item.originalStorageKey, item.storageType);

@@ -51,7 +51,7 @@ class LocalStorageAdapter extends BaseStorageAdapter {
           const highResDir = process.env.PROCESSED_HIGH_RES_IMAGE_DIR || "localStorage/processed/highres";
           return `${highResDir}/${fileName}`;
         case process.env.IMAGE_STORAGE_KEY_ORIGINAL || "original":
-          const originalDir = process.env.PROCESSED_ORIGINAL_IMAGE_DIR || "localStorage/processed/originals";
+          const originalDir = process.env.PROCESSED_ORIGINAL_IMAGE_DIR || "localStorage/processed/original";
           return `${originalDir}/${fileName}`;
         case process.env.IMAGE_STORAGE_KEY_FAILED || "failed":
           const failedDir = process.env.FAILED_IMAGE_DIR || "localStorage/processing/failed";
@@ -72,7 +72,7 @@ class LocalStorageAdapter extends BaseStorageAdapter {
         const highResDir = process.env.PROCESSED_HIGH_RES_IMAGE_DIR || "localStorage/processed/highres";
         return `${highResDir}/${baseName}.${extension}`;
       case process.env.IMAGE_STORAGE_KEY_ORIGINAL || "original":
-        const originalDir = process.env.PROCESSED_ORIGINAL_IMAGE_DIR || "localStorage/processed/originals";
+        const originalDir = process.env.PROCESSED_ORIGINAL_IMAGE_DIR || "localStorage/processed/original";
         return `${originalDir}/${baseName}.${extension}`;
       case process.env.IMAGE_STORAGE_KEY_FAILED || "failed":
         const failedDir = process.env.FAILED_IMAGE_DIR || "localStorage/processing/failed";
