@@ -457,6 +457,7 @@ function getFilterOptions(userId) {
  * @param {number} params.pageNo - 页码（从1开始）
  * @param {number} params.pageSize - 每页数量（默认20）
  * @param {string} params.timeDimension - 时间维度（可选）
+ * @param {string|null} [params.mediaType] - 媒体类型：'image' | 'video' | 'audio'，null 或 'all' 表示不过滤
  * @param {string[]} [params.scopeConditions] - 范围条件（表别名 i.，内部会转为 images.）
  * @param {any[]} [params.scopeParams] - 范围条件参数
  * @returns {Object} { list: [], total: number }
@@ -467,6 +468,7 @@ function getFilterOptionsPaginated({
   pageNo = 1,
   pageSize = 20,
   timeDimension = null,
+  mediaType = null,
   scopeConditions = null,
   scopeParams = null,
 }) {
@@ -480,7 +482,11 @@ function getFilterOptionsPaginated({
       scopeConditions && scopeConditions.length > 0
         ? " AND " + scopeConditions.map((c) => c.replace(/\bi\./g, "images.")).join(" AND ")
         : "";
-    const baseParams = scopeParams && scopeParams.length > 0 ? [...scopeParams] : [];
+    // mediaType 过滤：当为 image/video/audio 时，只统计对应类型的媒体
+    const mediaClause =
+      mediaType && ["image", "video", "audio"].includes(mediaType) ? " AND media_type = ?" : "";
+    const mediaParams = mediaClause ? [mediaType] : [];
+    const baseParams = [...mediaParams, ...(scopeParams && scopeParams.length > 0 ? scopeParams : [])];
 
     switch (type) {
       case "city": {
@@ -489,7 +495,7 @@ function getFilterOptionsPaginated({
             `
           SELECT city, COUNT(*) as count
           FROM images 
-          WHERE user_id = ? AND city IS NOT NULL AND city != ''${scopeClause}
+          WHERE user_id = ? AND city IS NOT NULL AND city != ''${mediaClause}${scopeClause}
           GROUP BY city
           ORDER BY count DESC
           LIMIT ? OFFSET ?
@@ -502,7 +508,7 @@ function getFilterOptionsPaginated({
             `
           SELECT COUNT(DISTINCT city) as total
           FROM images 
-          WHERE user_id = ? AND city IS NOT NULL AND city != ''${scopeClause}
+          WHERE user_id = ? AND city IS NOT NULL AND city != ''${mediaClause}${scopeClause}
         `
           )
           .get(userId, ...baseParams);
@@ -518,7 +524,7 @@ function getFilterOptionsPaginated({
             `
           SELECT year_key, COUNT(*) as count
           FROM images 
-          WHERE user_id = ? AND year_key != 'unknown'${scopeClause}
+          WHERE user_id = ? AND year_key != 'unknown'${mediaClause}${scopeClause}
           GROUP BY year_key
           ORDER BY year_key DESC
           LIMIT ? OFFSET ?
@@ -531,7 +537,7 @@ function getFilterOptionsPaginated({
             `
           SELECT COUNT(DISTINCT year_key) as total
           FROM images 
-          WHERE user_id = ? AND year_key != 'unknown'${scopeClause}
+          WHERE user_id = ? AND year_key != 'unknown'${mediaClause}${scopeClause}
         `
           )
           .get(userId, ...baseParams);
@@ -547,7 +553,7 @@ function getFilterOptionsPaginated({
             `
           SELECT month_key, COUNT(*) as count
           FROM images 
-          WHERE user_id = ? AND month_key != 'unknown'${scopeClause}
+          WHERE user_id = ? AND month_key != 'unknown'${mediaClause}${scopeClause}
           GROUP BY month_key
           ORDER BY month_key DESC
           LIMIT ? OFFSET ?
@@ -560,7 +566,7 @@ function getFilterOptionsPaginated({
             `
           SELECT COUNT(DISTINCT month_key) as total
           FROM images 
-          WHERE user_id = ? AND month_key != 'unknown'${scopeClause}
+          WHERE user_id = ? AND month_key != 'unknown'${mediaClause}${scopeClause}
         `
           )
           .get(userId, ...baseParams);
@@ -576,7 +582,7 @@ function getFilterOptionsPaginated({
             `
           SELECT day_key, COUNT(*) as count
           FROM images 
-          WHERE user_id = ? AND day_key != 'unknown'${scopeClause}
+          WHERE user_id = ? AND day_key != 'unknown'${mediaClause}${scopeClause}
           GROUP BY day_key
           ORDER BY 
             CASE day_key
@@ -599,7 +605,7 @@ function getFilterOptionsPaginated({
             `
           SELECT COUNT(DISTINCT day_key) as total
           FROM images 
-          WHERE user_id = ? AND day_key != 'unknown'${scopeClause}
+          WHERE user_id = ? AND day_key != 'unknown'${mediaClause}${scopeClause}
         `
           )
           .get(userId, ...baseParams);

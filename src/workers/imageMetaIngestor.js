@@ -224,6 +224,20 @@ async function processAudioMeta(job, { userId, imageHash, fileName, storageKey, 
   const dateKey = timestampToDate(captureTime);
   const dayKey = timestampToDayOfWeek(captureTime);
 
+  let gpsLocation = null;
+  let country = null;
+  let city = null;
+  if (meta.gpsLatitude != null && meta.gpsLongitude != null) {
+    try {
+      const locInfo = await imageMetadataService.analyzeLocationInfo(meta.gpsLatitude, meta.gpsLongitude);
+      gpsLocation = locInfo?.gpsLocation || null;
+      country = locInfo?.country || null;
+      city = locInfo?.city || null;
+    } catch (e) {
+      logger.warn({ message: "Audio GPS reverse geocode failed", details: { imageHash, error: e.message } });
+    }
+  }
+
   try {
     await saveProcessedImageMetadata({
       userId,
@@ -235,6 +249,11 @@ async function processAudioMeta(job, { userId, imageHash, fileName, storageKey, 
       dayKey,
       highResStorageKey: null,
       originalStorageKey,
+      gpsLatitude: meta.gpsLatitude,
+      gpsLongitude: meta.gpsLongitude,
+      gpsLocation,
+      country,
+      city,
       widthPx: null,
       heightPx: null,
       aspectRatio: null,
@@ -254,6 +273,15 @@ async function processAudioMeta(job, { userId, imageHash, fileName, storageKey, 
     try {
       await updateProgress({ sessionId, status: "highResDone" });
     } catch (err) {}
+  }
+
+  try {
+    await audioProcessingService.transcodeToAacIfNeeded(audioPath, meta.codec);
+  } catch (e) {
+    logger.warn({
+      message: "Audio transcode to AAC failed (Chrome compatibility), keeping original",
+      details: { imageHash, userId, codec: meta.codec, error: e.message },
+    });
   }
 
   try {

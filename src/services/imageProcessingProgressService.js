@@ -98,6 +98,48 @@ async function setupProgressStream(req, res, sessionId) {
 
     await subscriber.subscribe(`session:${sessionId}:progress`);
 
+    // 立即推送当前 Redis 状态，解决「连接建立晚于 publish」导致的 pending 问题
+    // 场景：Worker 处理快 / 重复文件时，publish 已发生，前端连接建立时已错过
+    const redisData = await redisClient.hgetall(`upload:session:${sessionId}`);
+    if (redisData && Object.keys(redisData).length > 0) {
+      const progressData = {
+        sessionId,
+        uploadedCount: parseInt(redisData.uploadedCount) || 0,
+        thumbDone: parseInt(redisData.thumbDone) || 0,
+        highResDone: parseInt(redisData.highResDone) || 0,
+        thumbErrors: parseInt(redisData.thumbErrors) || 0,
+        highResErrors: parseInt(redisData.highResErrors) || 0,
+        duplicateCount: parseInt(redisData.duplicateCount) || 0,
+        workerSkippedCount: parseInt(redisData.workerSkippedCount) || 0,
+        existingFiles: parseInt(redisData.existingFiles) || 0,
+      };
+      res.write(`data: ${JSON.stringify(progressData)}\n\n`);
+
+      // 立即检查是否已完成（如仅重复/已存在文件，或 Worker 已处理完）
+      const { uploadedCount, highResDone, highResErrors, workerSkippedCount, duplicateCount, existingFiles } = progressData;
+      const totalFiles = uploadedCount + duplicateCount + existingFiles;
+      const isCompleted =
+        totalFiles > 0 &&
+        (uploadedCount === 0 || highResDone + highResErrors + workerSkippedCount >= uploadedCount);
+
+      if (isCompleted) {
+        const completionMessage = { ...progressData, completed: true, timestamp: Date.now() };
+        res.write(`data: ${JSON.stringify(completionMessage)}\n\n`);
+        setTimeout(() => {
+          try {
+            if (subscriber.status === "ready" || subscriber.status === "connecting") {
+              subscriber.unsubscribe();
+              subscriber.disconnect();
+            }
+            res.end();
+          } catch (e) {
+            if (!res.headersSent) res.end();
+          }
+        }, 500);
+        return;
+      }
+    }
+
     // 延迟完成判断的定时器
     let completionCheckTimer = null;
 

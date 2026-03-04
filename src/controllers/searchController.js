@@ -792,6 +792,7 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
       pageNo = 1,
       pageSize = 20,
       timeDimension = null,
+      mediaType = "all",
       scopeSource,
       scopeType,
       scopeAlbumId,
@@ -832,6 +833,7 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
       pageNo: parseInt(pageNo),
       pageSize: parseInt(pageSize),
       timeDimension,
+      mediaType: mediaType === "all" ? null : mediaType,
       scopeConditions: scopeConditions.length ? scopeConditions : null,
       scopeParams: scopeParams.length ? scopeParams : null,
     });

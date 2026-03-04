@@ -500,7 +500,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
       WHERE user_id = ?
         AND deleted_at IS NULL
         AND month_key != 'unknown'
-        AND (COALESCE(media_type, 'image') IN ('image', 'video'))
+        AND (COALESCE(media_type, 'image') IN ('image', 'video', 'audio'))
     ),
     latest AS (
       -- 选择每个月份的第一张图片作为封面（排除音频，音频无缩略图）
@@ -604,7 +604,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
       WHERE user_id = ?
         AND deleted_at IS NULL
         AND year_key != 'unknown'
-        AND (COALESCE(media_type, 'image') IN ('image', 'video'))
+        AND (COALESCE(media_type, 'image') IN ('image', 'video', 'audio'))
     ),
     latest AS (
       -- 选择每个年份的第一张图片作为封面（排除音频）
@@ -671,7 +671,7 @@ function selectUnknownGroup({ userId }) {
         ) AS rn
       FROM images
       WHERE user_id = ? AND deleted_at IS NULL AND year_key = 'unknown'
-        AND (COALESCE(media_type, 'image') IN ('image', 'video'))
+        AND (COALESCE(media_type, 'image') IN ('image', 'video', 'audio'))
     ),
     cover AS (
       SELECT year_key, thumbnail_storage_key, image_created_at, storage_type
@@ -752,7 +752,7 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
       WHERE fc.user_id = ? 
         AND fc.cluster_id = ?
         AND i.deleted_at IS NULL
-        AND (COALESCE(i.media_type, 'image') IN ('image', 'video'))
+        AND (COALESCE(i.media_type, 'image') IN ('image', 'video', 'audio'))
     ),
     latest AS (
       SELECT 
@@ -853,7 +853,7 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
       WHERE fc.user_id = ? 
         AND fc.cluster_id = ?
         AND i.deleted_at IS NULL
-        AND (COALESCE(i.media_type, 'image') IN ('image', 'video'))
+        AND (COALESCE(i.media_type, 'image') IN ('image', 'video', 'audio'))
     ),
     latest AS (
       SELECT 
@@ -959,10 +959,10 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
       FROM images
       WHERE user_id = ?
         AND deleted_at IS NULL
-        AND (COALESCE(media_type, 'image') IN ('image', 'video'))
+        AND (COALESCE(media_type, 'image') IN ('image', 'video', 'audio'))
     ),
     latest AS (
-      -- 选择每个日期的第一张图片作为封面（排除音频）
+      -- 选择每个日期的第一张媒体作为封面（含图片/视频/音频）
       SELECT 
         date_key,
         thumbnail_storage_key,
@@ -1026,7 +1026,7 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
         storage_type
       FROM images
       WHERE user_id = ? AND deleted_at IS NULL
-        AND (COALESCE(media_type, 'image') IN ('image', 'video'))
+        AND (COALESCE(media_type, 'image') IN ('image', 'video', 'audio'))
     ),
     ranked_images AS (
       SELECT 
