@@ -270,7 +270,7 @@ async function _deleteImagesFiles(images) {
  * @param {number} params.userId - 用户ID
  * @param {number} params.pageNo - 页码
  * @param {number} params.pageSize - 每页数量
- * @param {string} [params.mediaType] - 媒体类型：'all' | 'image' | 'video'
+ * @param {string} [params.mediaType] - 媒体类型：'all' | 'image' | 'video' | 'audio'
  * @returns {Promise<{ list: Array, total: number }>} 图片列表与总数
  */
 async function getDeletedImages({ userId, pageNo, pageSize, mediaType }) {
@@ -319,9 +319,9 @@ async function getDeletedImages({ userId, pageNo, pageSize, mediaType }) {
           }
         }
 
-        // 视频、音频需要 originalUrl（与 imageService、albumService 一致）
+        // 视频需要 originalUrl
         let originalUrl = null;
-        const needsOriginalUrl = item.mediaType === "video" || item.mediaType === "audio" || !item.highResStorageKey;
+        const needsOriginalUrl = item.mediaType === "video" || !item.highResStorageKey;
         if (needsOriginalUrl && item.originalStorageKey) {
           try {
             originalUrl = await storageService.getFileUrl(item.originalStorageKey, item.storageType);

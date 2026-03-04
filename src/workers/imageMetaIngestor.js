@@ -257,15 +257,6 @@ async function processAudioMeta(job, { userId, imageHash, fileName, storageKey, 
   }
 
   try {
-    await audioProcessingService.transcodeToAacIfNeeded(audioPath, meta.codec);
-  } catch (e) {
-    logger.warn({
-      message: "Audio transcode to AAC failed (Chrome compatibility), keeping original",
-      details: { imageHash, userId, codec: meta.codec, error: e.message },
-    });
-  }
-
-  try {
     await storageService.storage.moveFile(storageKey, originalStorageKey);
   } catch (e) {
     logger.warn({

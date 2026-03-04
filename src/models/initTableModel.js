@@ -88,7 +88,7 @@ function createTableImages() {
         storage_type TEXT,  -- 存储类型：'local', 'aliyun-oss', 's3', 'qiniu', 'cos', 'bos', 'gcs', 'azure'
         
         -- 媒体类型（视频功能）
-        media_type TEXT DEFAULT 'image',   -- 'image' | 'video'
+        media_type TEXT DEFAULT 'image',   -- 'image' | 'video' | 'audio'
         duration_sec REAL,                 -- 视频时长（秒），图片为 NULL
         video_codec TEXT,                  -- 视频编码，如 'h264', 'hevc'
         
