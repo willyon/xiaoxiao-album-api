@@ -37,7 +37,7 @@ const fileFilter = (req, file, cb) => {
   if (isMediaFile(file)) {
     cb(null, true);
   } else {
-    cb(new Error("Only image, video and audio files are allowed"), false);
+    cb(new Error("Only image and video files are allowed"), false);
   }
 };
 

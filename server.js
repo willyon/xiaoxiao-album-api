@@ -55,7 +55,7 @@ const PORT = process.env.PORT || 3000;
 
 // 提升Express应用安全性 通过设置http响应头来防止一些常见的网页安全攻击 如xss、点击劫持等
 // app.use(helmet());
-//允许图片、音频、视频等静态资源可以被别的网页通过 <img>、<video>、<audio>、<iframe> 等标签加载。
+//允许图片、视频等静态资源可以被别的网页通过 <img>、<video>、<iframe> 等标签加载。
 // app.use(helmet({ crossOriginResourcePolicy: false }));
 
 // 防止xss攻击 自动过滤用户提交的数据里的恶意脚本。

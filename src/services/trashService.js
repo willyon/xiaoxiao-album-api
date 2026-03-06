@@ -270,7 +270,7 @@ async function _deleteImagesFiles(images) {
  * @param {number} params.userId - 用户ID
  * @param {number} params.pageNo - 页码
  * @param {number} params.pageSize - 每页数量
- * @param {string} [params.mediaType] - 媒体类型：'all' | 'image' | 'video' | 'audio'
+ * @param {string} [params.mediaType] - 媒体类型：'all' | 'image' | 'video'
  * @returns {Promise<{ list: Array, total: number }>} 图片列表与总数
  */
 async function getDeletedImages({ userId, pageNo, pageSize, mediaType }) {
@@ -352,7 +352,6 @@ async function getDeletedImages({ userId, pageNo, pageSize, mediaType }) {
           heightPx: item.heightPx,
           aspectRatio: item.aspectRatio,
           layoutType: item.layoutType,
-          colorTheme: item.colorTheme,
           fileSizeBytes: item.fileSizeBytes,
           durationSec: item.durationSec,
         };

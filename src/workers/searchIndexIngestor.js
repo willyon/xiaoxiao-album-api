@@ -25,8 +25,6 @@
  * • genderTags - 性别标签（逗号分隔）
  * • primaryExpressionConfidence - 主要人物表情置信度
  * • primaryFaceQuality - 主要人脸质量
- * • hasYoung - 是否包含青少年（0-19岁，快速筛选）
- * • hasAdult - 是否包含成人（20岁以上，快速筛选）
  * • avgFaceQuality - 平均人脸质量
  *
  * 🔧 依赖服务:
@@ -172,8 +170,6 @@ async function processFaceRecognition(job) {
       genderTags,
       primaryExpressionConfidence,
       primaryFaceQuality,
-      hasYoung,
-      hasAdult,
       faces,
     } = faceResult;
 
@@ -187,8 +183,6 @@ async function processFaceRecognition(job) {
       genderTags,
       primaryExpressionConfidence,
       primaryFaceQuality,
-      hasYoung,
-      hasAdult,
     });
 
     // 4. 插入人脸特征向量到face_embeddings表
@@ -222,8 +216,6 @@ async function processFaceRecognition(job) {
         ageTags,
         genderTags,
         expressionTags,
-        hasYoung,
-        hasAdult,
       },
     });
 

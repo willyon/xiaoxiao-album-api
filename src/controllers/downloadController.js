@@ -44,14 +44,6 @@ function _getContentTypeFromFileName(fileName) {
     ".mov": "video/quicktime",
     ".webm": "video/webm",
     ".avi": "video/x-msvideo",
-    ".mp3": "audio/mpeg",
-    ".m4a": "audio/mp4",
-    ".aac": "audio/aac",
-    ".wav": "audio/wav",
-    ".flac": "audio/flac",
-    ".ogg": "audio/ogg",
-    ".wma": "audio/x-ms-wma",
-    ".weba": "audio/webm",
   };
   return contentTypeMap[ext] || "application/octet-stream";
 }

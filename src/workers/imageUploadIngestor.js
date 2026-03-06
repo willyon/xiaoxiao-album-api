@@ -229,9 +229,6 @@ async function processAndSaveSingleImage(job) {
           },
           imageHash,
         );
-      } else if (mediaType === "audio") {
-        // 音频：不生成缩略图，thumbnailStorageKey 置为 null
-        thumbnailStorageKey = null;
       } else {
         // 图片：沿用 Sharp 处理
         await timeIt(
@@ -283,7 +280,7 @@ async function processAndSaveSingleImage(job) {
       thumbnailStorageKey,
       storageType: getDefaultStorageType(),
       fileSizeBytes: fileSize,
-      mediaType: mediaType === "video" ? "video" : mediaType === "audio" ? "audio" : "image",
+      mediaType: mediaType === "video" ? "video" : "image",
     };
 
     try {

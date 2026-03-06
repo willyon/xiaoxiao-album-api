@@ -72,15 +72,11 @@ function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
         i.height_px,
         i.aspect_ratio,
         i.layout_type,
-        i.color_theme,
         i.file_size_bytes,
         i.face_count,
         i.person_count,
         i.age_tags,
-        i.gender_tags,
         i.expression_tags,
-        i.has_young,
-        i.has_adult,
         i.is_favorite,
         MIN(fe.id) AS face_embedding_id
       FROM images i
@@ -134,15 +130,11 @@ function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
         height_px,
         aspect_ratio,
         layout_type,
-        color_theme,
         file_size_bytes,
         face_count,
         person_count,
         age_tags,
-        gender_tags,
         expression_tags,
-        has_young,
-        has_adult,
         is_favorite
       FROM images
       WHERE user_id = ?
@@ -199,15 +191,11 @@ function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
         i.height_px,
         i.aspect_ratio,
         i.layout_type,
-        i.color_theme,
         i.file_size_bytes,
         i.face_count,
         i.person_count,
         i.age_tags,
-        i.gender_tags,
         i.expression_tags,
-        i.has_young,
-        i.has_adult,
         i.is_favorite,
         MIN(fe.id) AS face_embedding_id
       FROM images i
@@ -261,15 +249,11 @@ function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
         height_px,
         aspect_ratio,
         layout_type,
-        color_theme,
         file_size_bytes,
         face_count,
         person_count,
         age_tags,
-        gender_tags,
         expression_tags,
-        has_young,
-        has_adult,
         is_favorite
       FROM images
       WHERE user_id = ?
@@ -321,16 +305,12 @@ function selectImagesByDate({ pageNo, pageSize, albumId, userId }) {
       width_px,
       height_px,
       aspect_ratio,
-      layout_type,
-      color_theme,
-      file_size_bytes,
+        layout_type,
+        file_size_bytes,
       face_count,
       person_count,
       age_tags,
-      gender_tags,
       expression_tags,
-      has_young,
-      has_adult,
       is_favorite
     FROM images
     WHERE user_id = ?
@@ -379,16 +359,12 @@ function getImagesByBlurry({ userId, pageNo, pageSize }) {
       width_px,
       height_px,
       aspect_ratio,
-      layout_type,
-      color_theme,
-      file_size_bytes,
+        layout_type,
+        file_size_bytes,
       face_count,
       person_count,
       age_tags,
-      gender_tags,
       expression_tags,
-      has_young,
-      has_adult,
       is_favorite
     FROM images
     WHERE user_id = ?
@@ -1105,16 +1081,12 @@ function selectImagesByCity({ pageNo, pageSize, albumId, userId }) {
       width_px,
       height_px,
       aspect_ratio,
-      layout_type,
-      color_theme,
-      file_size_bytes,
+        layout_type,
+        file_size_bytes,
       face_count,
       person_count,
       age_tags,
-      gender_tags,
       expression_tags,
-      has_young,
-      has_adult,
       is_favorite
     FROM images
     WHERE user_id = ? AND deleted_at IS NULL
@@ -1161,7 +1133,6 @@ function updateImageMetadata({
   hdWidthPx,
   hdHeightPx,
   mime,
-  colorTheme,
   durationSec,
   videoCodec,
   mediaType,
@@ -1189,7 +1160,6 @@ function updateImageMetadata({
       hd_width_px = COALESCE(?, hd_width_px),
       hd_height_px = COALESCE(?, hd_height_px),
       mime = COALESCE(?, mime),
-      color_theme = COALESCE(?, color_theme),
       duration_sec = COALESCE(?, duration_sec),
       video_codec = COALESCE(?, video_codec),
       media_type = COALESCE(?, media_type)
@@ -1219,7 +1189,6 @@ function updateImageMetadata({
     hdWidthPx,
     hdHeightPx,
     mime,
-    colorTheme,
     durationSec,
     videoCodec,
     mediaType,
@@ -1269,8 +1238,6 @@ function checkFileExists({ imageHash, userId }) {
  * @param {string} [params.genderTags] - 性别标签（逗号分隔）如："female,male"
  * @param {number} [params.primaryExpressionConfidence] - 主要人物表情置信度 (0-1)
  * @param {number} [params.primaryFaceQuality] - 主要人脸质量 (0-1)
- * @param {boolean} [params.hasYoung] - 是否包含青少年（0-19岁，快速筛选用）
- * @param {boolean} [params.hasAdult] - 是否包含成人（20岁以上，快速筛选用）
  * @param {string} [params.analysisVersion='1.0'] - 分析版本号，默认'1.0'
  *
  * @returns {Object} 返回对象 { affectedRows: 更新的行数 }
@@ -1283,7 +1250,6 @@ function checkFileExists({ imageHash, userId }) {
  * ⚠️ 注意事项:
  * • 传入null不会更新该字段（使用COALESCE保护）
  * • 传入undefined会被转为null
- * • hasYoung和hasAdult会自动转换为0/1
  * • analysisVersion默认为'1.0'，可传入其他版本如'2.0'
  */
 function updateImageSearchMetadata({
@@ -1300,8 +1266,6 @@ function updateImageSearchMetadata({
   genderTags,
   primaryExpressionConfidence,
   primaryFaceQuality,
-  hasYoung,
-  hasAdult,
   analysisVersion = "1.0",
 }) {
   //  COALESCE 如果传入null，则不更新该字段 保持原有值
@@ -1319,8 +1283,6 @@ function updateImageSearchMetadata({
       gender_tags = COALESCE(?, gender_tags),
       primary_expression_confidence = COALESCE(?, primary_expression_confidence),
       primary_face_quality = COALESCE(?, primary_face_quality),
-      has_young = COALESCE(?, has_young),
-      has_adult = COALESCE(?, has_adult),
       analysis_version = COALESCE(?, analysis_version)
     WHERE id = ?
   `;
@@ -1339,9 +1301,6 @@ function updateImageSearchMetadata({
     genderTags,
     primaryExpressionConfidence,
     primaryFaceQuality,
-    // 布尔值转换：true→1, false→0, null/undefined→null
-    hasYoung != null ? (hasYoung ? 1 : 0) : null,
-    hasAdult != null ? (hasAdult ? 1 : 0) : null,
     analysisVersion,
     imageId,
   );

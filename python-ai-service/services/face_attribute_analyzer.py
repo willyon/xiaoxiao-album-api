@@ -43,7 +43,7 @@ class FaceAttributeAnalyzer:
     
     使用场景：
     - 家庭相册：识别照片中的青少年和成人
-    - 快速筛选：通过 has_young/has_adult 标签快速查找
+    - 年龄段信息可从 media_face_embeddings.age 聚合推导
     - 详细分析：通过 age_tags 提供具体年龄段信息
     """
     

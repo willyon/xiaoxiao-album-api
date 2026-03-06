@@ -28,9 +28,6 @@ const logger = require("../utils/logger");
 const axios = require("axios");
 const { getMimeTypeByMagicBytes } = require("../utils/fileUtils");
 
-// 年龄段常量定义
-const YOUNG_AGE_BUCKETS = ["0-2", "3-9", "10-19"]; // 儿童/青少年年龄段
-
 /**
  * 🧠 图片内容理解服务类
  *
@@ -447,8 +444,6 @@ class ImageUnderstandingService {
           genderTags: "", // 已分析但无性别数据
           faces: [],
           primaryExpressionConfidence: null,
-          hasYoung: false, // 已分析，确认无儿童（布尔值）
-          hasAdult: false, // 已分析，确认无成人（布尔值）
           primaryFaceQuality: null,
         };
       }
@@ -464,8 +459,6 @@ class ImageUnderstandingService {
           genderTags: "", // 已分析但无性别数据（无人脸）
           faces: [],
           primaryExpressionConfidence: null,
-          hasYoung: false, // 已分析，确认无儿童（布尔值）
-          hasAdult: false, // 已分析，确认无成人（布尔值）
           primaryFaceQuality: null,
         };
       }
@@ -475,10 +468,6 @@ class ImageUnderstandingService {
 
       // Python已经按质量排序，faces[0]就是主要人脸
       const primaryFace = result.faces[0];
-
-      // 使用.some()高效判断：找到一个就返回，无需遍历所有
-      const hasYoung = result.faces.some((face) => face.age_bucket && YOUNG_AGE_BUCKETS.includes(face.age_bucket));
-      const hasAdult = result.faces.some((face) => face.age_bucket && face.age_bucket !== "unknown" && !YOUNG_AGE_BUCKETS.includes(face.age_bucket));
 
       return {
         faceCount: faceCount,
@@ -492,8 +481,6 @@ class ImageUnderstandingService {
         faces: result.faces,
         primaryExpressionConfidence: primaryFace?.expression_confidence || null,
         primaryFaceQuality: primaryFace?.quality_score || null,
-        hasYoung,
-        hasAdult,
       };
     } catch (error) {
       logger.error({ message: "人脸识别失败", details: { error: error.message } });

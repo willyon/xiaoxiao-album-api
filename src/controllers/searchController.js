@@ -6,7 +6,7 @@
 
 const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
-const { COLOR_THEME_FRONTEND_TO_BACKEND, AGE_GROUP_FRONTEND_TO_BACKEND } = require("../constants/filterMappings");
+const { AGE_GROUP_FRONTEND_TO_BACKEND } = require("../constants/filterMappings");
 const searchService = require("../services/searchService");
 const { addFullUrlToImage } = require("../services/imageService");
 const faceClusterModel = require("../models/faceClusterModel");
@@ -14,6 +14,8 @@ const pythonSearchClient = require("../services/pythonSearchClient");
 const { parseQueryIntent, mergeFilters } = require("../utils/queryIntentParser");
 // 移除队列引用，简化控制器
 const logger = require("../utils/logger");
+
+const ALLOWED_EXPRESSION_FILTERS = new Set(["happy", "sad", "anger", "surprise", "neutral"]);
 
 /**
  * 构建 FTS 查询和 WHERE 条件
@@ -29,16 +31,6 @@ function buildSearchConditions(query, filters, options = {}) {
   // 将前端值转换为后端值（创建一个新的 filters 对象，避免修改原始对象）
   const convertedFilters = { ...filters };
 
-  // 转换颜色主题：前端3分类 → 后端5分类
-  if (convertedFilters.colorTheme && Array.isArray(convertedFilters.colorTheme) && convertedFilters.colorTheme.length > 0) {
-    const backendValues = new Set();
-    convertedFilters.colorTheme.forEach((frontendTheme) => {
-      const backendThemeValues = COLOR_THEME_FRONTEND_TO_BACKEND[frontendTheme] || [frontendTheme];
-      backendThemeValues.forEach((val) => backendValues.add(val));
-    });
-    convertedFilters.colorTheme = Array.from(backendValues);
-  }
-
   // 转换年龄段：前端5分类 → 后端9分类
   if (convertedFilters.ageGroup && Array.isArray(convertedFilters.ageGroup) && convertedFilters.ageGroup.length > 0) {
     const backendValues = new Set();
@@ -47,6 +39,11 @@ function buildSearchConditions(query, filters, options = {}) {
       backendAgeValues.forEach((val) => backendValues.add(val));
     });
     convertedFilters.ageGroup = Array.from(backendValues);
+  }
+
+  // 收敛表情筛选：仅保留主筛选支持的高频稳定类别
+  if (Array.isArray(convertedFilters.expression)) {
+    convertedFilters.expression = convertedFilters.expression.filter((expr) => ALLOWED_EXPRESSION_FILTERS.has(expr));
   }
 
   // 使用转换后的 filters 进行后续处理
@@ -97,14 +94,7 @@ function buildSearchConditions(query, filters, options = {}) {
     }
   }
 
-  // 3. 性别（gender_tags 字段在 images 表中）
-  // 注意：避免 "male" 命中 "female" 的子串问题，使用 WHERE 精确匹配逗号分隔标签
-  if (filters.gender && filters.gender !== "" && filters.gender !== "all") {
-    whereConditions.push("(i.gender_tags = ? OR i.gender_tags LIKE ? OR i.gender_tags LIKE ? OR i.gender_tags LIKE ?)");
-    whereParams.push(`${filters.gender}`, `${filters.gender},%`, `%,${filters.gender},%`, `%,${filters.gender}`);
-  }
-
-  // 4. 图片版式（layout_type 字段在 FTS 中）
+  // 3. 图片版式（layout_type 字段在 FTS 中）
   if (filters.imageOrientation && Array.isArray(filters.imageOrientation) && filters.imageOrientation.length > 0) {
     const layoutConditions = filters.imageOrientation.map((layout) => `layout_type:${layout}`).join(" OR ");
     ftsConditions.push(`(${layoutConditions})`);
@@ -133,7 +123,7 @@ function buildSearchConditions(query, filters, options = {}) {
   // ========== 处理 WHERE 子句字段 ==========
 
   // 4.5. 媒体类型（图片/视频）
-  if (filters.mediaType && filters.mediaType !== "all") {
+  if (filters.mediaType && ["image", "video"].includes(filters.mediaType)) {
     whereConditions.push("(i.media_type = ? OR ? = 'all')");
     whereParams.push(filters.mediaType, filters.mediaType);
   }
@@ -242,14 +232,14 @@ function buildSearchConditions(query, filters, options = {}) {
   if (filters.resolution && Array.isArray(filters.resolution) && filters.resolution.length > 0) {
     const resConditions = [];
     filters.resolution.forEach((res) => {
-      if (res === "hd") {
-        // HD/标清：低于FHD标准（不满足1920×1080或1080×1920）
+      if (res === "sd") {
+        // 标清：低于FHD标准（不满足1920×1080或1080×1920）
         resConditions.push("(NOT ((i.width_px >= 1920 AND i.height_px >= 1080) OR (i.width_px >= 1080 AND i.height_px >= 1920)))");
-      } else if (res === "fhd1080p") {
+      } else if (res === "fhd") {
         resConditions.push("((i.width_px >= 1920 AND i.height_px >= 1080) OR (i.width_px >= 1080 AND i.height_px >= 1920))");
-      } else if (res === "4k") {
+      } else if (res === "uhd4k") {
         resConditions.push("((i.width_px >= 3840 AND i.height_px >= 2160) OR (i.width_px >= 2160 AND i.height_px >= 3840))");
-      } else if (res === "8k") {
+      } else if (res === "uhd8k") {
         resConditions.push("((i.width_px >= 7680 AND i.height_px >= 4320) OR (i.width_px >= 4320 AND i.height_px >= 7680))");
       }
     });
@@ -258,14 +248,7 @@ function buildSearchConditions(query, filters, options = {}) {
     }
   }
 
-  // 12. 颜色主题
-  if (filters.colorTheme && Array.isArray(filters.colorTheme) && filters.colorTheme.length > 0) {
-    const placeholders = filters.colorTheme.map(() => "?").join(",");
-    whereConditions.push(`i.color_theme IN (${placeholders})`);
-    whereParams.push(...filters.colorTheme);
-  }
-
-  // 13. 上传时间
+  // 12. 导入时间
   if (filters.uploadTime && filters.uploadTime !== "" && filters.uploadTime !== "all") {
     const now = Date.now();
     let timeThreshold;
@@ -833,7 +816,7 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
       pageNo: parseInt(pageNo),
       pageSize: parseInt(pageSize),
       timeDimension,
-      mediaType: mediaType === "all" ? null : mediaType,
+      mediaType: ["image", "video"].includes(mediaType) ? mediaType : null,
       scopeConditions: scopeConditions.length ? scopeConditions : null,
       scopeParams: scopeParams.length ? scopeParams : null,
     });

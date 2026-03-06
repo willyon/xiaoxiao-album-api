@@ -88,16 +88,13 @@ function createTableImages() {
         storage_type TEXT,  -- 存储类型：'local', 'aliyun-oss', 's3', 'qiniu', 'cos', 'bos', 'gcs', 'azure'
         
         -- 媒体类型（视频功能）
-        media_type TEXT DEFAULT 'image',   -- 'image' | 'video' | 'audio'
+        media_type TEXT DEFAULT 'image',   -- 'image' | 'video'
         duration_sec REAL,                 -- 视频时长（秒），图片为 NULL
         video_codec TEXT,                  -- 视频编码，如 'h264', 'hevc'
         
         -- 文件信息
         file_size_bytes INTEGER,            -- 文件大小（字节）
         mime TEXT,                          -- MIME类型: 'image/jpeg' | 'image/heic' | 'image/png' | 'image/webp'
-        
-        -- 颜色主题
-        color_theme TEXT DEFAULT 'neutral',    -- 颜色主题: 'vibrant' | 'bright' | 'neutral' | 'muted' | 'dim' (鲜艳|明亮|中性|柔和|暗淡)
         
         -- 时间戳信息
         created_at INTEGER,                 -- 缩略图入库时间戳（毫秒）
@@ -116,8 +113,6 @@ function createTableImages() {
         expression_tags TEXT DEFAULT NULL,  -- 表情标签（NULL=未分析，''=已分析但无表情）
         age_tags TEXT DEFAULT NULL,         -- 年龄段标签（NULL=未分析，''=已分析但无年龄数据）
         gender_tags TEXT DEFAULT NULL,      -- 性别标签（NULL=未分析，''=已分析但无性别数据）
-        has_young INTEGER DEFAULT NULL,     -- 是否有儿童（NULL=未分析，0=无儿童，1=有儿童）
-        has_adult INTEGER DEFAULT NULL,     -- 是否有成人（NULL=未分析，0=无成人，1=有成人）
         primary_face_quality REAL DEFAULT NULL, -- 主要人脸质量分数（0-1）
         primary_expression_confidence REAL DEFAULT NULL, -- 主要表情置信度（0-1）
         analysis_version TEXT DEFAULT '1.0', -- 分析版本号
@@ -316,22 +311,6 @@ function createTableImages() {
     `,
     ).run();
 
-    // 2.20 颜色主题筛选索引（用于按颜色主题筛选照片）
-    db.prepare(
-      `
-      CREATE INDEX IF NOT EXISTS idx_images_user_color_theme
-      ON images(user_id, color_theme);
-    `,
-    ).run();
-
-    // 2.21 年龄段筛选复合索引（用于快速筛选儿童/成人照片）
-    db.prepare(
-      `
-      CREATE INDEX IF NOT EXISTS idx_images_user_age_flags
-      ON images(user_id, has_young, has_adult);
-    `,
-    ).run();
-
     // 2.22 城市筛选索引（虽然city在FTS5中，但精确匹配查询仍需索引）
     db.prepare(
       `
@@ -454,7 +433,7 @@ function createTableImages() {
 
     // 注：expression_tags、gender_tags 为逗号分隔字符串，使用 LIKE 查询，索引效果有限，不建立索引
 
-    // 注：人脸相关索引（face_count、has_young、has_adult）已在上面的"筛选功能专用索引"部分创建，无需重复
+    // 注：人脸相关索引（face_count、person_count）已在上面的"筛选功能专用索引"部分创建，无需重复
 
     // 3) 创建搜索相关索引
     // 3.1 主要人脸质量索引（用于高质量照片筛选和排序）

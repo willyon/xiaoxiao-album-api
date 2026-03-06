@@ -46,20 +46,6 @@ const SUPPORTED_VIDEO_EXTENSIONS = new Set(Object.keys(VIDEO_FORMAT_MAP));
 const SUPPORTED_VIDEO_MIME_TYPES = new Set(Object.values(VIDEO_FORMAT_MAP));
 
 /**
- * 音频格式映射表（Phase 1：mp3, m4a, aac, wav, flac）
- */
-const AUDIO_FORMAT_MAP = {
-  mp3: "audio/mpeg",
-  m4a: "audio/mp4",
-  aac: "audio/aac",
-  wav: "audio/wav",
-  flac: "audio/flac",
-};
-
-const SUPPORTED_AUDIO_EXTENSIONS = new Set(Object.keys(AUDIO_FORMAT_MAP));
-const SUPPORTED_AUDIO_MIME_TYPES = new Set(Object.values(AUDIO_FORMAT_MAP));
-
-/**
  * 智能图片文件检测 - 解决HEIC等格式MIME类型识别问题
  *
  * 作用：
@@ -108,42 +94,24 @@ function isVideoFile(file) {
 }
 
 /**
- * 音频文件检测
- * @param {Object} file - multer文件对象 {originalname, mimetype, ...}
- * @returns {boolean} 是否为支持的音频文件
- */
-function isAudioFile(file) {
-  if (file.mimetype && SUPPORTED_AUDIO_MIME_TYPES.has(file.mimetype)) {
-    return true;
-  }
-  if (file.originalname) {
-    const extension = file.originalname.toLowerCase().split(".").pop();
-    return SUPPORTED_AUDIO_EXTENSIONS.has(extension);
-  }
-  return false;
-}
-
-/**
- * 媒体文件检测（图片、视频或音频）
+ * 媒体文件检测（图片或视频）
  * @param {Object} file - multer文件对象
  * @returns {boolean} 是否为支持的媒体文件
  */
 function isMediaFile(file) {
-  return isImageFile(file) || isVideoFile(file) || isAudioFile(file);
+  return isImageFile(file) || isVideoFile(file);
 }
 
 /**
- * 从文件对象推断 mediaType（'image' | 'video' | 'audio'）
+ * 从文件对象推断 mediaType（'image' | 'video'）
  * 解决 mimetype 不可靠场景（如从 Finder 拖入时为 application/octet-stream）
  * @param {Object} file - multer 文件对象 { mimetype, originalname, filename }
- * @returns {'video'|'audio'|'image'}
+ * @returns {'video'|'image'}
  */
 function getMediaTypeFromFile(file) {
-  if (file.mimetype?.startsWith("audio/")) return "audio";
   if (file.mimetype?.startsWith("video/")) return "video";
   const fileName = file.originalname || file.filename || "";
   const ext = fileName.toLowerCase().split(".").pop();
-  if (SUPPORTED_AUDIO_EXTENSIONS.has(ext)) return "audio";
   if (SUPPORTED_VIDEO_EXTENSIONS.has(ext)) return "video";
   return "image";
 }
@@ -335,7 +303,6 @@ function getMimeTypeByMagicBytes(input) {
 module.exports = {
   isImageFile,
   isVideoFile,
-  isAudioFile,
   isMediaFile,
   getMediaTypeFromFile,
   getStandardMimeType,
@@ -348,7 +315,4 @@ module.exports = {
   VIDEO_FORMAT_MAP,
   SUPPORTED_VIDEO_EXTENSIONS,
   SUPPORTED_VIDEO_MIME_TYPES,
-  AUDIO_FORMAT_MAP,
-  SUPPORTED_AUDIO_EXTENSIONS,
-  SUPPORTED_AUDIO_MIME_TYPES,
 };

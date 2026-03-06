@@ -49,7 +49,7 @@ async function _addFullUrls(items, type = "image") {
     if (type === "image") {
       // 处理图片/视频：生成高清图URL、缩略图URL、视频原片URL
       for (const item of items) {
-        const needsOriginalUrl = item.mediaType === "video" || item.mediaType === "audio" || !item.highResStorageKey;
+        const needsOriginalUrl = item.mediaType === "video" || !item.highResStorageKey;
         if (item.highResStorageKey) {
           item.highResUrl = await storageService.getFileUrl(item.highResStorageKey, item.storageType);
           delete item.highResStorageKey;
@@ -100,7 +100,7 @@ async function _addFullUrlToGroupCover(groups) {
 
 // 保存新图片信息到数据库
 async function saveNewImage(imageData) {
-  // 参数校验（音频无缩略图，thumbnailStorageKey 可为 null）
+  // 参数校验
   const { userId, imageHash, thumbnailStorageKey, mediaType } = imageData;
   if (!userId || !imageHash) {
     throw new CustomError({
@@ -109,7 +109,7 @@ async function saveNewImage(imageData) {
       messageType: "warning",
     });
   }
-  if (!thumbnailStorageKey && mediaType !== "audio") {
+  if (!thumbnailStorageKey) {
     throw new CustomError({
       httpStatus: 400,
       messageCode: ERROR_CODES.INVALID_PARAMETERS,

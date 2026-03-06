@@ -1,6 +1,5 @@
 /*
- * 仅清除指定用户（曾有那 8 个音频）的 Redis hash 缓存
- * 因 DB 已删除那 8 条记录，清除后重建的 hash set 将不再包含它们，可正常重新上传
+ * 清除指定用户的 Redis hash 缓存
  *
  * @Usage: node scripts/tmp-scripts/clear-redis-hashset.js [userId]
  *         默认 userId=1

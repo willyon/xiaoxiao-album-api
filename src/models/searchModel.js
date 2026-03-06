@@ -41,15 +41,11 @@ function searchImagesByText({ userId, ftsQuery, whereConditions = [], whereParam
         i.height_px,
         i.aspect_ratio,
         i.layout_type,
-        i.color_theme,
         i.file_size_bytes,
         i.face_count,
         i.person_count,
         i.age_tags,
-        i.gender_tags,
         i.expression_tags,
-        i.has_young,
-        i.has_adult,
         i.is_favorite
       FROM images_fts fts
       JOIN images i ON fts.rowid = i.id
@@ -88,15 +84,11 @@ function searchImagesByText({ userId, ftsQuery, whereConditions = [], whereParam
         i.height_px,
         i.aspect_ratio,
         i.layout_type,
-        i.color_theme,
         i.file_size_bytes,
         i.face_count,
         i.person_count,
         i.age_tags,
-        i.gender_tags,
         i.expression_tags,
-        i.has_young,
-        i.has_adult,
         i.is_favorite
       FROM images i
       WHERE i.user_id = ?
@@ -202,12 +194,10 @@ function getImagesByIds({ userId, imageIds }) {
       i.height_px,
       i.aspect_ratio,
       i.layout_type,
-      i.color_theme,
       i.file_size_bytes,
       i.face_count,
       i.person_count,
       i.age_tags,
-      i.gender_tags,
       i.expression_tags,
       i.has_young,
       i.has_adult,
@@ -318,22 +308,11 @@ function getFilterOptions(userId) {
         SUM(CASE WHEN face_count IS NOT NULL AND face_count = 2 THEN 1 ELSE 0 END) as face_two,
         SUM(CASE WHEN face_count IS NOT NULL AND face_count >= 3 THEN 1 ELSE 0 END) as face_three_plus,
         
-        -- 年龄段统计（只统计已分析的，排除NULL）
-        SUM(CASE WHEN has_young IS NOT NULL AND has_young = 1 THEN 1 ELSE 0 END) as has_young_count,
-        SUM(CASE WHEN has_adult IS NOT NULL AND has_adult = 1 THEN 1 ELSE 0 END) as has_adult_count,
-        
         -- 版式统计（使用 MAX 聚合函数配合 CASE 获取各类型数量）
         SUM(CASE WHEN layout_type = 'portrait' THEN 1 ELSE 0 END) as layout_portrait,
         SUM(CASE WHEN layout_type = 'landscape' THEN 1 ELSE 0 END) as layout_landscape,
         SUM(CASE WHEN layout_type = 'square' THEN 1 ELSE 0 END) as layout_square,
         SUM(CASE WHEN layout_type = 'panorama' THEN 1 ELSE 0 END) as layout_panorama,
-        
-        -- 颜色主题统计
-        SUM(CASE WHEN color_theme = 'vibrant' THEN 1 ELSE 0 END) as color_vibrant,
-        SUM(CASE WHEN color_theme = 'bright' THEN 1 ELSE 0 END) as color_bright,
-        SUM(CASE WHEN color_theme = 'neutral' THEN 1 ELSE 0 END) as color_neutral,
-        SUM(CASE WHEN color_theme = 'muted' THEN 1 ELSE 0 END) as color_muted,
-        SUM(CASE WHEN color_theme = 'dim' THEN 1 ELSE 0 END) as color_dim,
         
         -- 分辨率统计（与搜索条件保持一致：同时满足宽和高，支持横向/纵向）
         SUM(CASE WHEN ((width_px >= 7680 AND height_px >= 4320) OR (width_px >= 4320 AND height_px >= 7680)) THEN 1 ELSE 0 END) as res_8k,
@@ -346,8 +325,8 @@ function getFilterOptions(userId) {
       )
       .get(userId);
 
-    // 4. 获取表情和性别的不同值（需要解析逗号分隔字符串）
-    // 注意：expression_tags/gender_tags = NULL 表示未分析，排除NULL
+    // 4. 获取表情的不同值（需要解析逗号分隔字符串）
+    // 注意：expression_tags = NULL 表示未分析，排除NULL
     const expressionRows = db
       .prepare(
         `
@@ -360,33 +339,12 @@ function getFilterOptions(userId) {
       .pluck()
       .all(userId);
 
-    const genderRows = db
-      .prepare(
-        `
-      SELECT DISTINCT gender_tags
-      FROM images
-      WHERE user_id = ? AND gender_tags IS NOT NULL AND gender_tags != ''
-      LIMIT 100
-    `,
-      )
-      .pluck()
-      .all(userId);
-
     // 解析表情标签（去重）
     const expressionSet = new Set();
     expressionRows.forEach((tags) => {
       tags.split(",").forEach((tag) => {
         const trimmed = tag.trim();
         if (trimmed) expressionSet.add(trimmed);
-      });
-    });
-
-    // 解析性别标签（去重）
-    const genderSet = new Set();
-    genderRows.forEach((tags) => {
-      tags.split(",").forEach((tag) => {
-        const trimmed = tag.trim();
-        if (trimmed) genderSet.add(trimmed);
       });
     });
 
@@ -409,21 +367,12 @@ function getFilterOptions(userId) {
       // 表情选项（实际存在的表情）
       expressions: Array.from(expressionSet),
 
-      // 性别选项（实际存在的性别）
-      genders: Array.from(genderSet),
-
-      // 年龄段统计
-      ageStats: {
-        minor: stats.has_young_count || 0,
-        adult: stats.has_adult_count || 0,
-      },
-
       // 分辨率统计
       resolutionStats: {
-        hd: stats.res_hd || 0,
-        fhd1080p: stats.res_fhd || 0,
-        "4k": stats.res_4k || 0,
-        "8k": stats.res_8k || 0,
+        sd: stats.res_hd || 0,
+        fhd: stats.res_fhd || 0,
+        uhd4k: stats.res_4k || 0,
+        uhd8k: stats.res_8k || 0,
       },
 
       // 图片版式统计
@@ -434,14 +383,6 @@ function getFilterOptions(userId) {
         panorama: stats.layout_panorama || 0,
       },
 
-      // 颜色主题统计
-      colorThemeStats: {
-        vibrant: stats.color_vibrant || 0,
-        bright: stats.color_bright || 0,
-        neutral: stats.color_neutral || 0,
-        muted: stats.color_muted || 0,
-        dim: stats.color_dim || 0,
-      },
     };
   } catch (error) {
     console.error("获取筛选选项失败:", error);
@@ -457,7 +398,7 @@ function getFilterOptions(userId) {
  * @param {number} params.pageNo - 页码（从1开始）
  * @param {number} params.pageSize - 每页数量（默认20）
  * @param {string} params.timeDimension - 时间维度（可选）
- * @param {string|null} [params.mediaType] - 媒体类型：'image' | 'video' | 'audio'，null 或 'all' 表示不过滤
+ * @param {string|null} [params.mediaType] - 媒体类型：'image' | 'video'，null 或 'all' 表示不过滤
  * @param {string[]} [params.scopeConditions] - 范围条件（表别名 i.，内部会转为 images.）
  * @param {any[]} [params.scopeParams] - 范围条件参数
  * @returns {Object} { list: [], total: number }
@@ -482,9 +423,9 @@ function getFilterOptionsPaginated({
       scopeConditions && scopeConditions.length > 0
         ? " AND " + scopeConditions.map((c) => c.replace(/\bi\./g, "images.")).join(" AND ")
         : "";
-    // mediaType 过滤：当为 image/video/audio 时，只统计对应类型的媒体
+    // mediaType 过滤：当为 image/video 时，只统计对应类型的媒体
     const mediaClause =
-      mediaType && ["image", "video", "audio"].includes(mediaType) ? " AND media_type = ?" : "";
+      mediaType && ["image", "video"].includes(mediaType) ? " AND media_type = ?" : "";
     const mediaParams = mediaClause ? [mediaType] : [];
     const baseParams = [...mediaParams, ...(scopeParams && scopeParams.length > 0 ? scopeParams : [])];
 

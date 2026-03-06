@@ -10,7 +10,6 @@ const { timestampToYearMonth, timestampToYear, timestampToDate, timestampToDayOf
 const timeIt = require("../utils/timeIt");
 const storageService = require("../services/storageService");
 const videoProcessingService = require("../services/videoProcessingService");
-const audioProcessingService = require("../services/audioProcessingService");
 const { updateProgress } = require("../services/imageProcessingProgressService");
 const { searchIndexQueue } = require("../queues/searchIndexQueue");
 const { cleanupQueue } = require("../queues/cleanupQueue");
@@ -199,104 +198,6 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
 }
 
 /**
- * 处理音频的 meta 阶段：ffprobe 元数据、移动原片、不入队 AI
- */
-async function processAudioMeta(job, { userId, imageHash, fileName, storageKey, originalStorageKey, sessionId }) {
-  let audioPath;
-  try {
-    audioPath = await storageService.storage.getFileData(storageKey);
-  } catch (err) {
-    await _handleMetaRetryFailure({ job, reason: "file_read_failed", fileName, imageHash, userId });
-    throw err;
-  }
-
-  let meta;
-  try {
-    meta = await audioProcessingService.getAudioMetadata(audioPath);
-  } catch (err) {
-    await _handleMetaRetryFailure({ job, reason: "metadata_analysis_failed", fileName, imageHash, userId });
-    throw err;
-  }
-
-  const captureTime = meta.creationTime || undefined;
-  const monthKey = timestampToYearMonth(captureTime);
-  const yearKey = timestampToYear(captureTime);
-  const dateKey = timestampToDate(captureTime);
-  const dayKey = timestampToDayOfWeek(captureTime);
-
-  let gpsLocation = null;
-  let country = null;
-  let city = null;
-  if (meta.gpsLatitude != null && meta.gpsLongitude != null) {
-    try {
-      const locInfo = await imageMetadataService.analyzeLocationInfo(meta.gpsLatitude, meta.gpsLongitude);
-      gpsLocation = locInfo?.gpsLocation || null;
-      country = locInfo?.country || null;
-      city = locInfo?.city || null;
-    } catch (e) {
-      logger.warn({ message: "Audio GPS reverse geocode failed", details: { imageHash, error: e.message } });
-    }
-  }
-
-  try {
-    await saveProcessedImageMetadata({
-      userId,
-      imageHash,
-      creationDate: captureTime,
-      monthKey,
-      yearKey,
-      dateKey,
-      dayKey,
-      highResStorageKey: null,
-      originalStorageKey,
-      gpsLatitude: meta.gpsLatitude,
-      gpsLongitude: meta.gpsLongitude,
-      gpsLocation,
-      country,
-      city,
-      widthPx: null,
-      heightPx: null,
-      aspectRatio: null,
-      durationSec: meta.duration,
-      videoCodec: meta.codec,
-      mediaType: "audio",
-    });
-  } catch (e) {
-    logger.error({
-      message: "Audio metadata database update failed",
-      details: { imageHash, userId, err: e.message },
-    });
-    throw e;
-  }
-
-  if (sessionId) {
-    try {
-      await updateProgress({ sessionId, status: "highResDone" });
-    } catch (err) {}
-  }
-
-  try {
-    await audioProcessingService.transcodeToAacIfNeeded(audioPath, meta.codec);
-  } catch (e) {
-    logger.warn({
-      message: "Audio transcode to AAC failed (Chrome compatibility), keeping original",
-      details: { imageHash, userId, codec: meta.codec, error: e.message },
-    });
-  }
-
-  try {
-    await storageService.storage.moveFile(storageKey, originalStorageKey);
-  } catch (e) {
-    logger.warn({
-      message: "Audio original file move failed",
-      details: { imageHash, userId, sourceStorageKey: storageKey, targetStorageKey: originalStorageKey, error: e.message },
-    });
-  }
-
-  // Phase 1：音频不入队 searchIndex、cleanup
-}
-
-/**
  * 处理单张图片的"后处理"：
  * 1) 读取 EXIF → creationDate/monthKey/yearKey
  * 2) 产出高清大图（默认 AVIF）
@@ -314,18 +215,6 @@ async function processImageMeta(job) {
   // ========== 视频分支：ffprobe 元数据，不生成 highres，不入队 AI ==========
   if (mediaType === "video") {
     return processVideoMeta(job, {
-      userId,
-      imageHash,
-      fileName,
-      storageKey,
-      originalStorageKey,
-      sessionId,
-    });
-  }
-
-  // ========== 音频分支：ffprobe 元数据，不生成 highres，不入队 AI ==========
-  if (mediaType === "audio") {
-    return processAudioMeta(job, {
       userId,
       imageHash,
       fileName,
@@ -360,7 +249,6 @@ async function processImageMeta(job) {
   }
 
   const {
-    colorTheme,
     captureTime,
     latitude,
     longitude,
@@ -446,7 +334,6 @@ async function processImageMeta(job) {
       hdWidthPx,
       hdHeightPx,
       mime,
-      colorTheme,
     });
     imageId = result.imageId;
   } catch (e) {
