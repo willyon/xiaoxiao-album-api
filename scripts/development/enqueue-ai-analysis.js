@@ -1,16 +1,16 @@
 /*
  * @Author: zhangshouchang
  * @Date: 2025-11-02
- * @Description: 批量将未进行AI分析的图片加入队列
+ * @Description: 批量将未进行AI分析的媒体加入队列
  *
  * 🎯 功能：
- * • 查询所有有高清图但未进行AI分析的图片
- * • 将这些图片批量加入searchIndexQueue队列
+ * • 查询所有有高清图/原图且未完成AI分析的媒体
+ * • 将这些媒体批量加入searchIndexQueue队列
  * • 触发Python AI服务进行人脸识别分析
  *
  * 📋 判断标准：
- * • 有 high_res_storage_key 或 original_storage_key（图片处理完成）
- * • 但 person_count IS NULL（未进行AI分析）
+ * • 有 high_res_storage_key 或 original_storage_key（媒体处理完成）
+ * • media_analysis.analysis_status != 'done'
  *
  * 使用场景：
  * • 批量补充AI分析数据
@@ -35,36 +35,39 @@ const logger = require(path.join(projectRoot, "src", "utils", "logger"));
  * @returns {Array} 图片记录数组
  */
 function findImagesNeedingAI() {
-  console.log("🔍 步骤1: 查询需要进行AI分析的图片...");
+  console.log("🔍 步骤1: 查询需要进行AI分析的媒体...");
 
   const sql = `
     SELECT 
-      id,
-      user_id,
-      high_res_storage_key,
-      original_storage_key,
-      thumbnail_storage_key,
-      storage_type,
-      created_at,
-      image_created_at
-    FROM images
+      m.id AS media_id,
+      m.user_id,
+      m.high_res_storage_key,
+      m.original_storage_key,
+      m.thumbnail_storage_key,
+      m.storage_type,
+      m.created_at,
+      m.captured_at
+    FROM media m
+    LEFT JOIN media_analysis ma ON ma.media_id = m.id
     WHERE (
-        high_res_storage_key IS NOT NULL 
-        OR original_storage_key IS NOT NULL
+        m.high_res_storage_key IS NOT NULL 
+        OR m.original_storage_key IS NOT NULL
       )
-    ORDER BY created_at DESC
+      AND COALESCE(ma.analysis_status, 'pending') != 'done'
+      AND m.deleted_at IS NULL
+    ORDER BY m.created_at DESC
   `;
 
   const stmt = db.prepare(sql);
   const records = stmt.all();
 
-  console.log(`   ✅ 找到 ${records.length} 张需要重新AI分析的图片`);
+  console.log(`   ✅ 找到 ${records.length} 条需要重新AI分析的媒体`);
 
   if (records.length > 0) {
     console.log(`   📋 记录详情（前10条）:`);
     records.slice(0, 10).forEach((record, index) => {
       const date = new Date(record.created_at).toISOString();
-      console.log(`      ${index + 1}. ID=${record.id}, UserID=${record.user_id}, Date=${date}`);
+      console.log(`      ${index + 1}. ID=${record.media_id}, UserID=${record.user_id}, Date=${date}`);
       console.log(`         高清图: ${record.high_res_storage_key ? "✅" : "❌"}`);
       console.log(`         原图: ${record.original_storage_key ? "✅" : "❌"}`);
     });
@@ -134,13 +137,13 @@ async function enqueueForAIAnalysis(records) {
 
   for (const record of records) {
     try {
-      const jobId = `${record.user_id}:${record.id}`;
+      const jobId = `${record.user_id}:${record.media_id}`;
 
       // 尝试添加任务
       const job = await searchIndexQueue.add(
         process.env.SEARCH_INDEX_QUEUE_NAME,
         {
-          imageId: record.id,
+          imageId: record.media_id,
           userId: record.user_id,
           highResStorageKey: record.high_res_storage_key,
           originalStorageKey: record.original_storage_key,
@@ -154,7 +157,7 @@ async function enqueueForAIAnalysis(records) {
         successCount++;
         // 显示前10条成功记录
         if (successCount <= 10) {
-          console.log(`   ✅ [${successCount}] 加入队列: ImageID=${record.id}, UserID=${record.user_id}`);
+          console.log(`   ✅ [${successCount}] 加入队列: MediaID=${record.media_id}, UserID=${record.user_id}`);
         } else if (successCount % 50 === 0) {
           // 每50条显示一次进度
           console.log(`   📊 进度: 已加入 ${successCount}/${records.length} 张图片...`);
@@ -166,14 +169,14 @@ async function enqueueForAIAnalysis(records) {
     } catch (error) {
       failCount++;
       errors.push({
-        imageId: record.id,
+        imageId: record.media_id,
         userId: record.user_id,
         error: error.message,
       });
 
       // 显示前3条失败记录
       if (failCount <= 3) {
-        console.log(`   ❌ 加入队列失败: ImageID=${record.id} - ${error.message}`);
+        console.log(`   ❌ 加入队列失败: MediaID=${record.media_id} - ${error.message}`);
       }
     }
   }

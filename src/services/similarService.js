@@ -71,7 +71,7 @@ async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
   await Promise.all(
     rawMembers.map(async (row) => {
       const members = membersByGroup.get(row.group_id);
-      const target = members?.find((item) => item.imageId === row.image_id);
+      const target = members?.find((item) => item.mediaId === row.media_id);
       if (!target) return;
 
       // 补齐缩略图 URL
@@ -187,7 +187,7 @@ async function deleteImages({ userId, groupId, imageIds }) {
 
 function _mapMemberRow(row) {
   return {
-    imageId: row.image_id,
+    mediaId: row.media_id,
     groupId: row.group_id,
     rankScore: row.rank_score,
     similarity: row.similarity,
@@ -195,7 +195,7 @@ function _mapMemberRow(row) {
     highResUrl: null, // 后续补齐URL
     isFavorite: row.is_favorite === 1 || row.is_favorite === true,
     // PhotoPreview 和 PhotoInfoPanel 需要的字段
-    creationDate: row.image_created_at,
+    capturedAt: row.captured_at,
     dayKey: row.day_key,
     gpsLocation: row.gps_location,
     widthPx: row.width_px,

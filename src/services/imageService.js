@@ -145,6 +145,18 @@ async function saveProcessedImageMetadata(imageData) {
   }
 }
 
+async function setImageIngestStatus({ userId, imageHash, ingestStatus }) {
+  try {
+    return imageModel.updateIngestStatusByHash({ userId, imageHash, ingestStatus });
+  } catch (error) {
+    logger.warn({
+      message: "更新 ingest_status 失败",
+      details: { userId, imageHash, ingestStatus, error: error.message },
+    });
+    return { affectedRows: 0 };
+  }
+}
+
 // 获取用户图片哈希列表
 async function getUserImageHashes(userId) {
   try {
@@ -163,7 +175,7 @@ async function getUserImageHashes(userId) {
 
 /**
  * 分页获取用户模糊图列表（is_blurry = 1），用于清理页模糊图 tab
- * @returns {{ list: Array<{ imageId, thumbnailUrl, highResUrl, creationDate, createdAt, isFavorite }>, total: number }}
+ * @returns {{ list: Array<{ mediaId, thumbnailUrl, highResUrl, capturedAt, createdAt, isFavorite }>, total: number }}
  */
 async function getBlurryImages({ userId, pageNo = 1, pageSize = 20 }) {
   const safePageSize = Math.max(Number(pageSize) || 20, 1);
@@ -192,10 +204,10 @@ async function getBlurryImages({ userId, pageNo = 1, pageSize = 20 }) {
         }
       }
       return {
-        imageId: img.imageId,
+        mediaId: img.mediaId,
         thumbnailUrl,
         highResUrl,
-        creationDate: img.creationDate,
+        capturedAt: img.capturedAt,
         createdAt: img.createdAt,
         isFavorite: img.isFavorite,
       };
@@ -537,6 +549,18 @@ async function deleteImages({ userId, imageIds }) {
   // 执行删除操作：软删除，标记 deleted_at
   cleanupModel.markImagesDeleted(normalizedIds, now);
 
+  // 同步 media_search / media_fts（软删除后移除搜索文档）
+  normalizedIds.forEach((id) => {
+    try {
+      imageModel.rebuildMediaSearchDoc(id);
+    } catch (error) {
+      logger.warn({
+        message: "软删除后同步搜索索引失败",
+        details: { imageId: id, error: error.message },
+      });
+    }
+  });
+
   // 更新包含这些图片的相册统计（图片数量、封面）
   albumModel.updateAlbumsStatsForImages(normalizedIds);
 
@@ -577,6 +601,7 @@ module.exports = {
   // ========== 图片业务逻辑函数 ==========
   saveNewImage,
   saveProcessedImageMetadata,
+  setImageIngestStatus,
   getUserImageHashes,
 
   // ========== 图片查询服务函数 ==========

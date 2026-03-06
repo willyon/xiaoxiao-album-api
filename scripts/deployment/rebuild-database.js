@@ -4,8 +4,10 @@
  * @Description: 数据库重建脚本 - 删除所有业务表并按 initTableModel 标准 schema 重建
  * @Usage: node scripts/deployment/rebuild-database.js
  *
- * 覆盖表：users, images, albums, album_images, image_embeddings, face_embeddings,
- *        face_clusters, face_cluster_representatives, similar_groups, similar_group_members
+ * 覆盖表：users, media, media_analysis, media_captions, media_text_blocks, media_objects,
+ *        media_face_embeddings, media_embeddings, video_keyframes, video_transcripts,
+ *        albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta,
+ *        similar_groups, similar_group_members, media_search, media_fts
  */
 
 const path = require("path");
@@ -18,29 +20,46 @@ require("dotenv").config();
 const { db } = require(path.join(projectRoot, "src", "services", "database"));
 const {
   createTableUsers,
-  createTableImages,
-  createTableImageEmbeddings,
-  createTableFaceEmbeddings,
-  createTableFaceClusters,
+  createTableMedia,
+  createTableMediaAnalysis,
+  createTableMediaCaptions,
+  createTableMediaTextBlocks,
+  createTableMediaObjects,
+  createTableMediaFaceEmbeddings,
+  createTableMediaEmbeddings,
+  createTableVideoKeyframes,
+  createTableVideoTranscripts,
+  createTableAlbumsMediaVersion,
+  createTableAlbumMedia,
+  createTableFaceClustersMediaVersion,
   createTableFaceClusterRepresentatives,
   createTableFaceClusterMeta,
-  createTableSimilarGroups,
-  createTableSimilarGroupMembers,
-  createTableAlbums,
-  createTableAlbumImages,
+  createTableSimilarGroupsMediaVersion,
+  createTableSimilarGroupMembersMediaVersion,
+  createTableMediaSearch,
+  createTableMediaFts,
 } = require(path.join(projectRoot, "src", "models", "initTableModel"));
 
 // 按外键依赖顺序：先删被引用表，再删主表
 const TABLES_TO_DROP = [
-  "album_images",
+  "album_media",
   "albums",
+  "video_transcripts",
+  "video_keyframes",
+  "media_fts",
+  "media_search",
+  "media_analysis",
+  "media_captions",
+  "media_text_blocks",
+  "media_objects",
   "similar_group_members",
   "similar_groups",
   "face_cluster_representatives",
+  "face_cluster_meta",
   "face_clusters",
-  "face_embeddings",
-  "image_embeddings",
-  "images",
+  "media_face_embeddings",
+  "media_embeddings",
+  "media",
   "users",
 ];
 
@@ -74,21 +93,31 @@ async function rebuildDatabase() {
       console.log("📝 创建新表（与 initTableModel 一致）...");
 
       createTableUsers();
-      createTableImages();
-      createTableAlbums();
-      createTableAlbumImages();
-      createTableImageEmbeddings();
-      createTableFaceEmbeddings();
-      createTableFaceClusters();
+      createTableMedia();
+      createTableMediaAnalysis();
+      createTableMediaCaptions();
+      createTableMediaTextBlocks();
+      createTableMediaObjects();
+      createTableMediaFaceEmbeddings();
+      createTableMediaEmbeddings();
+      createTableVideoKeyframes();
+      createTableVideoTranscripts();
+      createTableAlbumsMediaVersion();
+      createTableAlbumMedia();
+      createTableFaceClustersMediaVersion();
       createTableFaceClusterRepresentatives();
       createTableFaceClusterMeta();
-      createTableSimilarGroups();
-      createTableSimilarGroupMembers();
+      createTableSimilarGroupsMediaVersion();
+      createTableSimilarGroupMembersMediaVersion();
+      createTableMediaSearch();
+      createTableMediaFts();
 
       db.prepare("COMMIT").run();
 
       console.log("🎉 数据库重建完成！");
-      console.log("📋 已创建表：users, images, albums, album_images, image_embeddings, face_embeddings, face_clusters, face_cluster_representatives, similar_groups, similar_group_members");
+      console.log(
+        "📋 已创建表：users, media, media_analysis, media_captions, media_text_blocks, media_objects, media_face_embeddings, media_embeddings, video_keyframes, video_transcripts, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_fts",
+      );
     } catch (err) {
       db.prepare("ROLLBACK").run();
       throw err;

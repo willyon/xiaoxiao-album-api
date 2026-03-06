@@ -7,6 +7,10 @@
 const { db } = require("../services/database");
 const { mapFields } = require("../utils/fieldMapper");
 
+function normalizeSearchRows(rows) {
+  return mapFields("media", rows);
+}
+
 /**
  * 全文搜索图片（支持复杂筛选条件）
  * @param {Object} params
@@ -32,7 +36,7 @@ function searchImagesByText({ userId, ftsQuery, whereConditions = [], whereParam
         i.original_storage_key,
         i.media_type,
         i.duration_sec,
-        i.image_created_at,
+        i.captured_at,
         i.date_key,
         i.month_key,
         i.day_key,
@@ -42,16 +46,18 @@ function searchImagesByText({ userId, ftsQuery, whereConditions = [], whereParam
         i.aspect_ratio,
         i.layout_type,
         i.file_size_bytes,
-        i.face_count,
-        i.person_count,
-        i.age_tags,
-        i.expression_tags,
+        COALESCE(ma.face_count, 0) AS face_count,
+        COALESCE(ma.person_count, 0) AS person_count,
+        NULL AS age_tags,
+        ma.primary_expression AS expression_tags,
         i.is_favorite
-      FROM images_fts fts
-      JOIN images i ON fts.rowid = i.id
+      FROM media_fts fts
+      JOIN media_search ms ON fts.rowid = ms.media_id
+      JOIN media i ON ms.media_id = i.id
+      LEFT JOIN media_analysis ma ON ma.media_id = i.id
       WHERE i.user_id = ? 
         AND i.deleted_at IS NULL
-        AND images_fts MATCH ?
+        AND media_fts MATCH ?
     `;
 
     // 添加额外的 WHERE 条件
@@ -60,13 +66,13 @@ function searchImagesByText({ userId, ftsQuery, whereConditions = [], whereParam
     }
 
     sql += `
-      ORDER BY fts.rank DESC, i.image_created_at DESC
+      ORDER BY fts.rank DESC, i.captured_at DESC
       LIMIT ? OFFSET ?
     `;
 
     params = [userId, ftsQuery, ...whereParams, limit, offset];
   } else {
-    // 不使用 FTS，直接查询 images 表（用于纯筛选或查询所有图片）
+    // 不使用 FTS，直接查询 media 表（用于纯筛选或查询所有媒体）
     sql = `
       SELECT 
         i.id,
@@ -75,7 +81,7 @@ function searchImagesByText({ userId, ftsQuery, whereConditions = [], whereParam
         i.original_storage_key,
         i.media_type,
         i.duration_sec,
-        i.image_created_at,
+        i.captured_at,
         i.date_key,
         i.month_key,
         i.day_key,
@@ -85,12 +91,13 @@ function searchImagesByText({ userId, ftsQuery, whereConditions = [], whereParam
         i.aspect_ratio,
         i.layout_type,
         i.file_size_bytes,
-        i.face_count,
-        i.person_count,
-        i.age_tags,
-        i.expression_tags,
+        COALESCE(ma.face_count, 0) AS face_count,
+        COALESCE(ma.person_count, 0) AS person_count,
+        NULL AS age_tags,
+        ma.primary_expression AS expression_tags,
         i.is_favorite
-      FROM images i
+      FROM media i
+      LEFT JOIN media_analysis ma ON ma.media_id = i.id
       WHERE i.user_id = ?
         AND i.deleted_at IS NULL
     `;
@@ -101,7 +108,7 @@ function searchImagesByText({ userId, ftsQuery, whereConditions = [], whereParam
     }
 
     sql += `
-      ORDER BY i.image_created_at DESC
+      ORDER BY i.captured_at DESC
       LIMIT ? OFFSET ?
     `;
 
@@ -110,7 +117,7 @@ function searchImagesByText({ userId, ftsQuery, whereConditions = [], whereParam
 
   const stmt = db.prepare(sql);
   const results = stmt.all(...params);
-  return mapFields("images", results);
+  return normalizeSearchRows(results);
 }
 
 /**
@@ -130,11 +137,13 @@ function getSearchResultsCount({ userId, ftsQuery, whereConditions = [], wherePa
     // 使用 FTS 查询计数
     sql = `
       SELECT COUNT(*) as total
-      FROM images_fts fts
-      JOIN images i ON fts.rowid = i.id
+      FROM media_fts fts
+      JOIN media_search ms ON fts.rowid = ms.media_id
+      JOIN media i ON ms.media_id = i.id
+      LEFT JOIN media_analysis ma ON ma.media_id = i.id
       WHERE i.user_id = ? 
         AND i.deleted_at IS NULL
-        AND images_fts MATCH ?
+        AND media_fts MATCH ?
     `;
 
     // 添加额外的 WHERE 条件
@@ -144,10 +153,11 @@ function getSearchResultsCount({ userId, ftsQuery, whereConditions = [], wherePa
 
     params = [userId, ftsQuery, ...whereParams];
   } else {
-    // 直接查询 images 表计数
+    // 直接查询 media 表计数
     sql = `
       SELECT COUNT(*) as total
-      FROM images i
+      FROM media i
+      LEFT JOIN media_analysis ma ON ma.media_id = i.id
       WHERE i.user_id = ?
         AND i.deleted_at IS NULL
     `;
@@ -185,7 +195,7 @@ function getImagesByIds({ userId, imageIds }) {
       i.original_storage_key,
       i.media_type,
       i.duration_sec,
-      i.image_created_at,
+      i.captured_at,
       i.date_key,
       i.month_key,
       i.day_key,
@@ -195,23 +205,22 @@ function getImagesByIds({ userId, imageIds }) {
       i.aspect_ratio,
       i.layout_type,
       i.file_size_bytes,
-      i.face_count,
-      i.person_count,
-      i.age_tags,
-      i.expression_tags,
-      i.has_young,
-      i.has_adult,
+      COALESCE(ma.face_count, 0) AS face_count,
+      COALESCE(ma.person_count, 0) AS person_count,
+      NULL AS age_tags,
+      ma.primary_expression AS expression_tags,
       i.is_favorite
-    FROM images i
+    FROM media i
+    LEFT JOIN media_analysis ma ON ma.media_id = i.id
     WHERE i.user_id = ?
       AND i.deleted_at IS NULL
       AND i.id IN (${placeholders})
-    ORDER BY i.image_created_at DESC
+    ORDER BY i.captured_at DESC
   `;
 
   const stmt = db.prepare(sql);
   const results = stmt.all(userId, ...imageIds);
-  return mapFields("images", results);
+  return normalizeSearchRows(results);
 }
 
 /**
@@ -228,41 +237,30 @@ function getSearchSuggestions({ userId, prefix = "", limit = 10 }) {
 
   const normalizedPrefix = prefix.trim().toLowerCase();
 
-  // 从各个标签字段获取建议
-  // 注意：这些字段 = NULL 表示未分析，排除NULL
-  const tagFields = ["scene_tags", "object_tags", "keywords"];
-
-  tagFields.forEach((field) => {
-    // 使用包含匹配（LIKE %prefix%），而不是前缀匹配（LIKE prefix%）
-    // 这样可以匹配到逗号分隔字符串中任意位置的 tag
-    const sql = `
-      SELECT DISTINCT ${field} as tags
-      FROM images 
-      WHERE user_id = ? 
-        AND ${field} IS NOT NULL
-        AND ${field} != '' 
-        AND ${field} LIKE ?
-      LIMIT ?
-    `;
-
-    const stmt = db.prepare(sql);
-    // 使用 %prefix% 进行包含匹配
-    const results = stmt.all(userId, `%${prefix}%`, limit * 3); // 多取一些，因为后面会去重和过滤
-
-    results.forEach((row) => {
-      if (row.tags) {
-        // 将逗号分隔的标签拆分成数组
-        const tags = row.tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter((tag) => tag);
-        tags.forEach((tag) => {
-          // 对每个 tag 进行包含匹配（不区分大小写）
-          if (tag.toLowerCase().includes(normalizedPrefix) && !suggestions.includes(tag)) {
-            suggestions.push(tag);
+  const sql = `
+    SELECT caption_text, object_text, scene_text
+    FROM media_search
+    WHERE user_id = ?
+      AND (
+        caption_text IS NOT NULL
+        OR object_text IS NOT NULL
+        OR scene_text IS NOT NULL
+      )
+    LIMIT ?
+  `;
+  const rows = db.prepare(sql).all(userId, limit * 20);
+  rows.forEach((row) => {
+    [row.caption_text, row.object_text, row.scene_text].forEach((text) => {
+      if (!text) return;
+      String(text)
+        .split(/[,\s]+/)
+        .map((v) => v.trim())
+        .filter(Boolean)
+        .forEach((token) => {
+          if (token.toLowerCase().includes(normalizedPrefix) && !suggestions.includes(token)) {
+            suggestions.push(token);
           }
         });
-      }
     });
   });
 
@@ -298,15 +296,13 @@ function getFilterOptions(userId) {
       .prepare(
         `
       SELECT 
-        -- 是否有人统计（只统计已分析的，排除NULL）
-        SUM(CASE WHEN person_count IS NOT NULL AND person_count > 0 THEN 1 ELSE 0 END) as has_person,
-        SUM(CASE WHEN person_count IS NOT NULL AND person_count = 0 THEN 1 ELSE 0 END) as no_person,
+        SUM(CASE WHEN COALESCE(ma.person_count, 0) > 0 THEN 1 ELSE 0 END) as has_person,
+        SUM(CASE WHEN COALESCE(ma.person_count, 0) = 0 THEN 1 ELSE 0 END) as no_person,
         
-        -- 人脸数量统计（只统计已分析的，排除NULL）
-        SUM(CASE WHEN face_count IS NOT NULL AND face_count = 0 THEN 1 ELSE 0 END) as face_zero,
-        SUM(CASE WHEN face_count IS NOT NULL AND face_count = 1 THEN 1 ELSE 0 END) as face_one,
-        SUM(CASE WHEN face_count IS NOT NULL AND face_count = 2 THEN 1 ELSE 0 END) as face_two,
-        SUM(CASE WHEN face_count IS NOT NULL AND face_count >= 3 THEN 1 ELSE 0 END) as face_three_plus,
+        SUM(CASE WHEN COALESCE(ma.face_count, 0) = 0 THEN 1 ELSE 0 END) as face_zero,
+        SUM(CASE WHEN COALESCE(ma.face_count, 0) = 1 THEN 1 ELSE 0 END) as face_one,
+        SUM(CASE WHEN COALESCE(ma.face_count, 0) = 2 THEN 1 ELSE 0 END) as face_two,
+        SUM(CASE WHEN COALESCE(ma.face_count, 0) >= 3 THEN 1 ELSE 0 END) as face_three_plus,
         
         -- 版式统计（使用 MAX 聚合函数配合 CASE 获取各类型数量）
         SUM(CASE WHEN layout_type = 'portrait' THEN 1 ELSE 0 END) as layout_portrait,
@@ -319,8 +315,9 @@ function getFilterOptions(userId) {
         SUM(CASE WHEN ((width_px >= 3840 AND height_px >= 2160) OR (width_px >= 2160 AND height_px >= 3840)) THEN 1 ELSE 0 END) as res_4k,
         SUM(CASE WHEN ((width_px >= 1920 AND height_px >= 1080) OR (width_px >= 1080 AND height_px >= 1920)) THEN 1 ELSE 0 END) as res_fhd,
         SUM(CASE WHEN (NOT ((width_px >= 1920 AND height_px >= 1080) OR (width_px >= 1080 AND height_px >= 1920))) THEN 1 ELSE 0 END) as res_hd
-      FROM images
-      WHERE user_id = ?
+      FROM media i
+      LEFT JOIN media_analysis ma ON ma.media_id = i.id
+      WHERE i.user_id = ?
     `,
       )
       .get(userId);
@@ -330,9 +327,10 @@ function getFilterOptions(userId) {
     const expressionRows = db
       .prepare(
         `
-      SELECT DISTINCT expression_tags
-      FROM images
-      WHERE user_id = ? AND expression_tags IS NOT NULL AND expression_tags != ''
+      SELECT DISTINCT primary_expression
+      FROM media_analysis ma
+      JOIN media i ON i.id = ma.media_id
+      WHERE i.user_id = ? AND ma.primary_expression IS NOT NULL AND ma.primary_expression != ''
       LIMIT 100
     `,
       )
@@ -342,10 +340,8 @@ function getFilterOptions(userId) {
     // 解析表情标签（去重）
     const expressionSet = new Set();
     expressionRows.forEach((tags) => {
-      tags.split(",").forEach((tag) => {
-        const trimmed = tag.trim();
-        if (trimmed) expressionSet.add(trimmed);
-      });
+      const trimmed = String(tags).trim();
+      if (trimmed) expressionSet.add(trimmed);
     });
 
     // 5. 组装返回数据（不再包含cities和years，改用分页接口）
@@ -418,10 +414,10 @@ function getFilterOptionsPaginated({
     let list = [];
     let total = 0;
 
-    // 将 scope 条件从 "i." 转为 "images." 以匹配本模型中的 FROM images
+    // 将 scope 条件从 "i." 转为 "media."
     const scopeClause =
       scopeConditions && scopeConditions.length > 0
-        ? " AND " + scopeConditions.map((c) => c.replace(/\bi\./g, "images.")).join(" AND ")
+        ? " AND " + scopeConditions.map((c) => c.replace(/\bi\./g, "media.")).join(" AND ")
         : "";
     // mediaType 过滤：当为 image/video 时，只统计对应类型的媒体
     const mediaClause =
@@ -435,7 +431,7 @@ function getFilterOptionsPaginated({
           .prepare(
             `
           SELECT city, COUNT(*) as count
-          FROM images 
+          FROM media 
           WHERE user_id = ? AND city IS NOT NULL AND city != ''${mediaClause}${scopeClause}
           GROUP BY city
           ORDER BY count DESC
@@ -448,7 +444,7 @@ function getFilterOptionsPaginated({
           .prepare(
             `
           SELECT COUNT(DISTINCT city) as total
-          FROM images 
+          FROM media 
           WHERE user_id = ? AND city IS NOT NULL AND city != ''${mediaClause}${scopeClause}
         `
           )
@@ -464,7 +460,7 @@ function getFilterOptionsPaginated({
           .prepare(
             `
           SELECT year_key, COUNT(*) as count
-          FROM images 
+          FROM media 
           WHERE user_id = ? AND year_key != 'unknown'${mediaClause}${scopeClause}
           GROUP BY year_key
           ORDER BY year_key DESC
@@ -477,7 +473,7 @@ function getFilterOptionsPaginated({
           .prepare(
             `
           SELECT COUNT(DISTINCT year_key) as total
-          FROM images 
+          FROM media 
           WHERE user_id = ? AND year_key != 'unknown'${mediaClause}${scopeClause}
         `
           )
@@ -493,7 +489,7 @@ function getFilterOptionsPaginated({
           .prepare(
             `
           SELECT month_key, COUNT(*) as count
-          FROM images 
+          FROM media 
           WHERE user_id = ? AND month_key != 'unknown'${mediaClause}${scopeClause}
           GROUP BY month_key
           ORDER BY month_key DESC
@@ -506,7 +502,7 @@ function getFilterOptionsPaginated({
           .prepare(
             `
           SELECT COUNT(DISTINCT month_key) as total
-          FROM images 
+          FROM media 
           WHERE user_id = ? AND month_key != 'unknown'${mediaClause}${scopeClause}
         `
           )
@@ -522,7 +518,7 @@ function getFilterOptionsPaginated({
           .prepare(
             `
           SELECT day_key, COUNT(*) as count
-          FROM images 
+          FROM media 
           WHERE user_id = ? AND day_key != 'unknown'${mediaClause}${scopeClause}
           GROUP BY day_key
           ORDER BY 
@@ -545,7 +541,7 @@ function getFilterOptionsPaginated({
           .prepare(
             `
           SELECT COUNT(DISTINCT day_key) as total
-          FROM images 
+          FROM media 
           WHERE user_id = ? AND day_key != 'unknown'${mediaClause}${scopeClause}
         `
           )

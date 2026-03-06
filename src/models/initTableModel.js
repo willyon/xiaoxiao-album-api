@@ -919,6 +919,376 @@ function createTableAlbumImages() {
   }
 }
 
+function createTableMedia() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS media (
+      id INTEGER PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      original_storage_key TEXT,
+      high_res_storage_key TEXT,
+      thumbnail_storage_key TEXT,
+      storage_type TEXT,
+      mime TEXT,
+      file_size_bytes INTEGER,
+      file_hash TEXT,
+      phash TEXT,
+      dhash TEXT,
+      media_type TEXT NOT NULL DEFAULT 'image' CHECK (media_type IN ('image','video')),
+      width_px INTEGER,
+      height_px INTEGER,
+      aspect_ratio REAL,
+      raw_orientation INTEGER,
+      layout_type TEXT,
+      hd_width_px INTEGER,
+      hd_height_px INTEGER,
+      captured_at INTEGER,
+      year_key TEXT DEFAULT 'unknown',
+      month_key TEXT DEFAULT 'unknown',
+      date_key TEXT DEFAULT 'unknown',
+      day_key TEXT DEFAULT 'unknown',
+      gps_latitude REAL,
+      gps_longitude REAL,
+      gps_altitude REAL,
+      gps_location TEXT,
+      country TEXT,
+      city TEXT,
+      duration_sec REAL,
+      video_codec TEXT,
+      ingest_status TEXT DEFAULT 'pending' CHECK (ingest_status IN ('pending','processing','ready','failed')),
+      deleted_at INTEGER,
+      created_at INTEGER,
+      is_favorite INTEGER DEFAULT 0 NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE (user_id, file_hash)
+    );
+  `;
+  db.prepare(sql).run();
+
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_captured_at ON media(user_id, captured_at DESC, id DESC);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_date_key ON media(user_id, date_key);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_city ON media(user_id, city) WHERE city IS NOT NULL AND city != '';").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_deleted ON media(user_id, deleted_at);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_type ON media(user_id, media_type);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_favorite ON media(user_id, is_favorite);").run();
+}
+
+function createTableMediaAnalysis() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS media_analysis (
+      media_id INTEGER PRIMARY KEY,
+      analysis_status TEXT DEFAULT 'pending' CHECK (analysis_status IN ('pending','running','done','failed')),
+      analysis_version TEXT NOT NULL DEFAULT '1.0',
+      analyzed_at INTEGER,
+      aesthetic_score REAL,
+      sharpness_score REAL,
+      is_blurry INTEGER DEFAULT 0,
+      face_count INTEGER DEFAULT 0,
+      person_count INTEGER DEFAULT 0,
+      primary_face_quality REAL,
+      primary_expression TEXT,
+      primary_expression_confidence REAL,
+      has_ocr INTEGER DEFAULT 0,
+      has_caption INTEGER DEFAULT 0,
+      scene_primary TEXT,
+      environment TEXT,
+      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_analysis_status_face ON media_analysis(analysis_status, face_count);").run();
+}
+
+function createTableMediaCaptions() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS media_captions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      media_id INTEGER NOT NULL,
+      source_type TEXT NOT NULL,
+      source_ref_id INTEGER,
+      language TEXT DEFAULT 'auto',
+      caption TEXT,
+      keywords_json TEXT,
+      model_id TEXT,
+      analysis_version TEXT,
+      confidence REAL,
+      created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
+      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_caption_media ON media_captions(media_id);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_caption_version ON media_captions(analysis_version);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_caption_media_source ON media_captions(media_id, source_type);").run();
+}
+
+function createTableMediaTextBlocks() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS media_text_blocks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      media_id INTEGER NOT NULL,
+      source_type TEXT NOT NULL DEFAULT 'ocr',
+      text TEXT NOT NULL,
+      confidence REAL,
+      bbox TEXT,
+      created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
+      analysis_version TEXT,
+      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_text_media ON media_text_blocks(media_id);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_text_version ON media_text_blocks(analysis_version);").run();
+}
+
+function createTableMediaObjects() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS media_objects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      media_id INTEGER NOT NULL,
+      source_type TEXT NOT NULL,
+      source_ref_id INTEGER,
+      label TEXT NOT NULL,
+      confidence REAL,
+      bbox TEXT,
+      created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
+      analysis_version TEXT,
+      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_objects_media ON media_objects(media_id);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_objects_label ON media_objects(label);").run();
+}
+
+function createTableVideoKeyframes() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS video_keyframes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      media_id INTEGER NOT NULL,
+      timestamp_ms INTEGER NOT NULL,
+      storage_key TEXT NOT NULL,
+      width_px INTEGER,
+      height_px INTEGER,
+      created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
+      analysis_version TEXT,
+      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_keyframes_video ON video_keyframes(media_id, timestamp_ms);").run();
+}
+
+function createTableVideoTranscripts() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS video_transcripts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      media_id INTEGER NOT NULL,
+      language TEXT,
+      transcript_text TEXT,
+      words_json TEXT,
+      created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
+      analysis_version TEXT,
+      model_id TEXT,
+      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_transcript_video ON video_transcripts(media_id);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_transcript_version ON video_transcripts(analysis_version);").run();
+}
+
+function createTableMediaFaceEmbeddings() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS media_face_embeddings (
+      id INTEGER PRIMARY KEY,
+      media_id INTEGER NOT NULL,
+      source_type TEXT NOT NULL DEFAULT 'image',
+      source_ref_id INTEGER,
+      face_index INTEGER NOT NULL,
+      embedding BLOB NOT NULL,
+      age INTEGER,
+      gender TEXT,
+      expression TEXT,
+      confidence REAL,
+      quality_score REAL,
+      bbox TEXT,
+      pose TEXT,
+      ignored_for_clustering BOOLEAN DEFAULT FALSE,
+      face_thumbnail_storage_key TEXT,
+      created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
+      analysis_version TEXT,
+      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE,
+      UNIQUE (media_id, source_type, source_ref_id, face_index)
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_face_embeddings_media_id ON media_face_embeddings(media_id);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_face_embeddings_age ON media_face_embeddings(age);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_face_embeddings_gender ON media_face_embeddings(gender);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_face_embeddings_expression ON media_face_embeddings(expression);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_face_embeddings_ignored ON media_face_embeddings(ignored_for_clustering);").run();
+}
+
+function createTableMediaEmbeddings() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS media_embeddings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      media_id INTEGER NOT NULL,
+      source_type TEXT NOT NULL,
+      source_ref_id INTEGER,
+      vector BLOB NOT NULL,
+      model_id TEXT NOT NULL,
+      created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
+      analysis_version TEXT,
+      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE,
+      UNIQUE (media_id, model_id, source_type)
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_media_embeddings_media_model_source ON media_embeddings(media_id, model_id, source_type);").run();
+}
+
+function createTableAlbumMedia() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS album_media (
+      album_id INTEGER NOT NULL,
+      media_id INTEGER NOT NULL,
+      added_at INTEGER DEFAULT (strftime('%s','now') * 1000),
+      PRIMARY KEY (album_id, media_id),
+      FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE,
+      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_album_media_album_id ON album_media(album_id, added_at DESC);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_album_media_media_id ON album_media(media_id);").run();
+}
+
+function createTableMediaSearch() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS media_search (
+      media_id INTEGER PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      caption_text TEXT,
+      ocr_text TEXT,
+      object_text TEXT,
+      scene_text TEXT,
+      transcript_text TEXT,
+      location_text TEXT,
+      updated_at INTEGER,
+      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_search_user_id ON media_search(user_id);").run();
+}
+
+function createTableMediaFts() {
+  const sql = `
+    CREATE VIRTUAL TABLE IF NOT EXISTS media_fts USING fts5(
+      caption_text,
+      ocr_text,
+      object_text,
+      scene_text,
+      transcript_text,
+      location_text,
+      content='media_search',
+      content_rowid='media_id'
+    );
+  `;
+  db.prepare(sql).run();
+}
+
+function createTableAlbumsMediaVersion() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS albums (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      cover_media_id INTEGER,
+      image_count INTEGER DEFAULT 0,
+      created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+      updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+      last_used_at INTEGER,
+      deleted_at INTEGER,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (cover_media_id) REFERENCES media(id) ON DELETE SET NULL
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_albums_user_id ON albums(user_id);").run();
+  db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_albums_user_name_unique ON albums(user_id, name) WHERE deleted_at IS NULL;").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_albums_user_created ON albums(user_id, created_at DESC);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_albums_user_deleted ON albums(user_id, deleted_at) WHERE deleted_at IS NULL;").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_albums_user_last_used ON albums(user_id, last_used_at DESC) WHERE deleted_at IS NULL;").run();
+}
+
+function createTableFaceClustersMediaVersion() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS face_clusters (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      cluster_id INTEGER NOT NULL,
+      face_embedding_id INTEGER NOT NULL,
+      similarity_score REAL,
+      representative_type INTEGER DEFAULT 0,
+      name TEXT,
+      created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+      updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+      FOREIGN KEY (face_embedding_id) REFERENCES media_face_embeddings(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE (user_id, cluster_id, face_embedding_id)
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_face_clusters_user_id ON face_clusters(user_id);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_face_clusters_cluster_id ON face_clusters(cluster_id);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_face_clusters_cluster_user ON face_clusters(cluster_id, user_id);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_face_clusters_embedding_cluster ON face_clusters(face_embedding_id, cluster_id);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_face_clusters_user_cluster_rep ON face_clusters(user_id, cluster_id, representative_type DESC, similarity_score DESC);").run();
+}
+
+function createTableSimilarGroupsMediaVersion() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS similar_groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      group_type TEXT NOT NULL,
+      primary_media_id INTEGER,
+      member_count INTEGER DEFAULT 0,
+      total_size_bytes INTEGER DEFAULT 0,
+      created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+      updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (primary_media_id) REFERENCES media(id) ON DELETE SET NULL
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_similar_groups_user_type ON similar_groups(user_id, group_type);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_similar_groups_user_updated ON similar_groups(user_id, updated_at DESC);").run();
+}
+
+function createTableSimilarGroupMembersMediaVersion() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS similar_group_members (
+      group_id INTEGER NOT NULL,
+      media_id INTEGER NOT NULL,
+      rank_score REAL,
+      similarity REAL,
+      aesthetic_score REAL,
+      created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+      updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+      PRIMARY KEY (group_id, media_id),
+      FOREIGN KEY (group_id) REFERENCES similar_groups(id) ON DELETE CASCADE,
+      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_similar_members_group_rank ON similar_group_members(group_id, rank_score DESC);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_similar_members_media ON similar_group_members(media_id);").run();
+}
+
 module.exports = {
   deleteTableUsers,
   createTableUsers,
@@ -933,4 +1303,20 @@ module.exports = {
   createTableSimilarGroupMembers,
   createTableAlbums,
   createTableAlbumImages,
+  createTableMedia,
+  createTableMediaAnalysis,
+  createTableMediaCaptions,
+  createTableMediaTextBlocks,
+  createTableMediaObjects,
+  createTableMediaFaceEmbeddings,
+  createTableMediaEmbeddings,
+  createTableVideoKeyframes,
+  createTableVideoTranscripts,
+  createTableMediaSearch,
+  createTableMediaFts,
+  createTableAlbumMedia,
+  createTableAlbumsMediaVersion,
+  createTableFaceClustersMediaVersion,
+  createTableSimilarGroupsMediaVersion,
+  createTableSimilarGroupMembersMediaVersion,
 };

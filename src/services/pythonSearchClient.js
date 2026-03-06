@@ -48,7 +48,7 @@ async function encodeText(text) {
  * @param {number} userId - 用户ID
  * @param {number[]} queryVector - 查询向量（1152 维）
  * @param {number} topK - 返回前 k 个结果（默认 50）
- * @returns {Promise<Array<{image_id: number, score: number}>>} 搜索结果列表
+ * @returns {Promise<Array<{media_id: number, score: number}>>} 搜索结果列表
  */
 async function annSearchByVector(userId, queryVector, topK = 50) {
   try {

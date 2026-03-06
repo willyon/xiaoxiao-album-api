@@ -7,14 +7,14 @@ const { ERROR_CODES } = require("../constants/messageCodes");
 
 /**
  * 批量添加图片到收藏
- * POST /api/favorites/images  body: { imageIds: number[] }
+ * POST /api/favorites/media  body: { mediaIds: number[] }
  */
 async function addToFavorites(req, res, next) {
   try {
     const userId = req.user.userId;
-    const { imageIds } = req.body;
+    const { mediaIds } = req.body;
 
-    if (!Array.isArray(imageIds) || imageIds.length === 0) {
+    if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -24,7 +24,7 @@ async function addToFavorites(req, res, next) {
 
     const result = await favoriteService.addImagesToFavorites({
       userId,
-      imageIds: imageIds.map((id) => parseInt(id)),
+      imageIds: mediaIds.map((id) => parseInt(id)),
     });
     res.sendResponse({ data: result });
   } catch (error) {
@@ -34,14 +34,14 @@ async function addToFavorites(req, res, next) {
 
 /**
  * 批量从收藏中移除图片
- * DELETE /api/favorites/images  body: { imageIds: number[] }
+ * DELETE /api/favorites/media  body: { mediaIds: number[] }
  */
 async function removeFromFavorites(req, res, next) {
   try {
     const userId = req.user.userId;
-    const { imageIds } = req.body;
+    const { mediaIds } = req.body;
 
-    if (!Array.isArray(imageIds) || imageIds.length === 0) {
+    if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -51,7 +51,7 @@ async function removeFromFavorites(req, res, next) {
 
     const result = await favoriteService.removeImagesFromFavorites({
       userId,
-      imageIds: imageIds.map((id) => parseInt(id)),
+      imageIds: mediaIds.map((id) => parseInt(id)),
     });
     res.sendResponse({ data: result });
   } catch (error) {

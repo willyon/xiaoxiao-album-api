@@ -28,7 +28,7 @@ __pycache__/
 venv/
 .venv/
 env/
-models/
+python-ai-service/models/
 
 # 构建和分发
 dist/

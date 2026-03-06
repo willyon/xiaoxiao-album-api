@@ -38,15 +38,15 @@ router.put("/:albumId", updateAlbum);
 // 删除相册
 router.delete("/:albumId", deleteAlbum);
 
-// ========== 相册图片管理接口 ========== //
-// 获取相册图片列表（移除 type 参数，直接从 albumId 判断类型）
-router.get("/:albumId/images", queryAlbumPhotos);
+// ========== 相册媒体管理接口 ========== //
+// 获取相册媒体列表（移除 type 参数，直接从 albumId 判断类型）
+router.get("/:albumId/media", queryAlbumPhotos);
 
-// 添加图片到相册
-router.post("/:albumId/images", addImagesToAlbum);
+// 添加媒体到相册
+router.post("/:albumId/media", addImagesToAlbum);
 
-// 从相册中移除图片
-router.delete("/:albumId/images", removeImagesFromAlbum);
+// 从相册中移除媒体
+router.delete("/:albumId/media", removeImagesFromAlbum);
 
 // 设置相册封面图片
 router.put("/:albumId/cover", setAlbumCover);

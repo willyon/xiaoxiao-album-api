@@ -183,9 +183,9 @@ async function _getBatchImagesDownload(imageIds, userId) {
 async function handleDownloadSingleImage(req, res, next) {
   try {
     const { userId } = req?.user;
-    const { imageId } = req.params;
+    const { mediaId } = req.params;
 
-    if (!imageId) {
+    if (!mediaId) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -193,7 +193,7 @@ async function handleDownloadSingleImage(req, res, next) {
       });
     }
 
-    const { buffer, fileName, contentType } = await _getSingleImageDownload(parseInt(imageId), userId);
+    const { buffer, fileName, contentType } = await _getSingleImageDownload(parseInt(mediaId), userId);
 
     // 设置响应头
     res.setHeader("Content-Type", contentType);
@@ -223,9 +223,9 @@ async function handleDownloadSingleImage(req, res, next) {
 async function handleDownloadBatchImages(req, res, next) {
   try {
     const { userId } = req?.user;
-    const { imageIds } = req.body;
+    const { mediaIds } = req.body;
 
-    if (!imageIds || !Array.isArray(imageIds) || imageIds.length === 0) {
+    if (!mediaIds || !Array.isArray(mediaIds) || mediaIds.length === 0) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -234,7 +234,7 @@ async function handleDownloadBatchImages(req, res, next) {
     }
 
     // 限制批量下载数量
-    if (imageIds.length > DOWNLOAD_BATCH_MAX) {
+    if (mediaIds.length > DOWNLOAD_BATCH_MAX) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.DOWNLOAD_BATCH_LIMIT_EXCEEDED,
@@ -244,7 +244,7 @@ async function handleDownloadBatchImages(req, res, next) {
     }
 
     const archive = await _getBatchImagesDownload(
-      imageIds.map((id) => parseInt(id)),
+      mediaIds.map((id) => parseInt(id)),
       userId,
     );
 

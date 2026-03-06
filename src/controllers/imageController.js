@@ -15,7 +15,7 @@ const { updateProgress } = require("../services/imageProcessingProgressService")
 const logger = require("../utils/logger");
 
 // 分页获取模糊图列表（is_blurry = 1），用于清理页模糊图 tab
-// GET /api/images/blurry?pageNo=1&pageSize=20
+// GET /api/media/blurry?pageNo=1&pageSize=20
 async function handleGetBlurryImages(req, res, next) {
   try {
     const { userId } = req?.user;
@@ -32,7 +32,7 @@ async function handleGetBlurryImages(req, res, next) {
 }
 
 // 分页获取相似图分组列表（清理页相似图 tab）
-// GET /api/images/similar?pageNo=1&pageSize=12
+// GET /api/media/similar?pageNo=1&pageSize=12
 async function handleGetSimilarGroups(req, res, next) {
   try {
     const { userId } = req?.user;
@@ -111,10 +111,10 @@ async function handleCheckFileExists(req, res, next) {
 async function handlePatchImage(req, res, next) {
   try {
     const { userId } = req?.user;
-    const { imageId } = req.params;
+    const { mediaId } = req.params;
     const patchData = req.body; // { favorite: true }
 
-    if (!imageId) {
+    if (!mediaId) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -122,7 +122,7 @@ async function handlePatchImage(req, res, next) {
       });
     }
 
-    const result = await imageService.patchImage({ userId, imageId: parseInt(imageId), patchData });
+    const result = await imageService.patchImage({ userId, imageId: parseInt(mediaId), patchData });
 
     res.sendResponse({ data: result });
   } catch (error) {
@@ -134,9 +134,9 @@ async function handlePatchImage(req, res, next) {
 async function handleDeleteImages(req, res, next) {
   try {
     const { userId } = req?.user;
-    const { imageIds, groupId } = req.body || {};
+    const { mediaIds, groupId } = req.body || {};
 
-    if (!imageIds || !Array.isArray(imageIds) || imageIds.length === 0) {
+    if (!mediaIds || !Array.isArray(mediaIds) || mediaIds.length === 0) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -150,12 +150,12 @@ async function handleDeleteImages(req, res, next) {
       result = await similarService.deleteImages({
         userId,
         groupId,
-        imageIds,
+        imageIds: mediaIds,
       });
     } else {
       result = await imageService.deleteImages({
         userId,
-        imageIds,
+        imageIds: mediaIds,
       });
     }
 

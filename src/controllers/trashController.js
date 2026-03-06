@@ -70,8 +70,8 @@ async function handleRestoreImages(req, res, next) {
       });
     }
 
-    const { imageIds } = req.body;
-    if (!Array.isArray(imageIds) || imageIds.length === 0) {
+    const { mediaIds } = req.body;
+    if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -79,7 +79,7 @@ async function handleRestoreImages(req, res, next) {
       });
     }
 
-    const result = await trashService.restoreImages({ userId, imageIds });
+    const result = await trashService.restoreImages({ userId, imageIds: mediaIds });
     res.sendResponse({
       data: result,
       messageCode: "trash.restore.success",
@@ -105,8 +105,8 @@ async function handlePermanentlyDeleteImages(req, res, next) {
       });
     }
 
-    const { imageIds } = req.body;
-    if (!Array.isArray(imageIds) || imageIds.length === 0) {
+    const { mediaIds } = req.body;
+    if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -114,7 +114,7 @@ async function handlePermanentlyDeleteImages(req, res, next) {
       });
     }
 
-    const result = await trashService.permanentlyDeleteImages({ userId, imageIds });
+    const result = await trashService.permanentlyDeleteImages({ userId, imageIds: mediaIds });
     res.sendResponse({
       data: result,
       messageCode: "trash.permanentlyDelete.success",

@@ -122,8 +122,8 @@ app.use("/api/auth", authRoutes);
 // 注册阿里云OSS回调路由 - 不需要鉴权（保持原路径，因为这是外部回调）
 app.use("/aliyunOss", aliyunOssCallbackRoutes);
 
-// 注册图片业务路由+鉴权中间件(authMiddleware)
-app.use("/api/images", [authMiddleware], imagesRoutes);
+// 注册媒体业务路由+鉴权中间件(authMiddleware)
+app.use("/api/media", [authMiddleware], imagesRoutes);
 
 // 注册相册路由+鉴权中间件(authMiddleware)
 app.use("/api/albums", [authMiddleware], albumRoutes);

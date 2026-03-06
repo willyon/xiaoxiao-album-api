@@ -29,7 +29,7 @@ class EncodeTextResponse(BaseModel):
 
 class VectorSearchResponse(BaseModel):
     """向量搜索响应"""
-    results: List[dict]  # [{"image_id": int, "score": float}]
+    results: List[dict]  # [{"media_id": int, "score": float}]
 
 
 class AnnSearchRequest(BaseModel):

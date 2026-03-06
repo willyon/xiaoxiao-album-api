@@ -29,8 +29,8 @@ router.get("/blurry", handleGetBlurryImages);
 // 分页获取相似图分组列表（清理页相似图 tab）
 router.get("/similar", handleGetSimilarGroups);
 
-// 部分更新图片信息（仅用于 favorite 字段）
-router.patch("/:imageId", handlePatchImage);
+// 部分更新媒体信息（仅用于 favorite 字段）
+router.patch("/:mediaId", handlePatchImage);
 
 // 批量删除图片（软删除，移至回收站）
 router.delete("/", handleDeleteImages);
@@ -43,8 +43,8 @@ router.post("/check-exists", handleCheckFileExists);
 router.post("/upload/signature", handleGetUploadSignature);
 
 // ========== 图片下载相关接口 ========== //
-// 单张图片下载
-router.get("/:imageId/download", handleDownloadSingleImage);
+// 单条媒体下载
+router.get("/:mediaId/download", handleDownloadSingleImage);
 
 // 批量图片下载（ZIP）
 router.post("/download", handleDownloadBatchImages);

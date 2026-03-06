@@ -18,8 +18,8 @@ const {
 // 应用认证中间件
 router.use(authMiddleware);
 
-// 搜索/列表图片（统一接口：可选 scope + 可选 query + filters）
-router.post("/images", handleSearchImages);
+// 搜索/列表媒体（统一接口：可选 scope + 可选 query + filters）
+router.post("/media", handleSearchImages);
 
 // 搜索建议
 router.get("/suggestions", handleGetSearchSuggestions);

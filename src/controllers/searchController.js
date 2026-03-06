@@ -81,13 +81,13 @@ function buildSearchConditions(query, filters, options = {}) {
     }
   }
 
-  // 2. 表情（expression_tags 字段在 images 表中）
+  // 2. 表情（media_analysis.primary_expression）
   // 注意：避免 FTS 子串/分词导致的误匹配，使用 WHERE 精确匹配逗号分隔标签
   if (filters.expression && Array.isArray(filters.expression) && filters.expression.length > 0) {
     const exprConditions = [];
     filters.expression.forEach((expr) => {
-      exprConditions.push("(i.expression_tags = ? OR i.expression_tags LIKE ? OR i.expression_tags LIKE ? OR i.expression_tags LIKE ?)");
-      whereParams.push(`${expr}`, `${expr},%`, `%,${expr},%`, `%,${expr}`);
+      exprConditions.push("ma.primary_expression = ?");
+      whereParams.push(`${expr}`);
     });
     if (exprConditions.length > 0) {
       whereConditions.push(`(${exprConditions.join(" OR ")})`);
@@ -132,10 +132,10 @@ function buildSearchConditions(query, filters, options = {}) {
   if (filters.aiAnalysisStatus && filters.aiAnalysisStatus !== "" && filters.aiAnalysisStatus !== "all") {
     if (filters.aiAnalysisStatus === "analyzed") {
       // 已识别：face_count不为NULL（已完成AI分析）
-      whereConditions.push("i.face_count IS NOT NULL");
+      whereConditions.push("ma.analysis_status = 'done'");
     } else if (filters.aiAnalysisStatus === "notAnalyzed") {
       // 待识别：face_count为NULL（未进行AI分析）
-      whereConditions.push("i.face_count IS NULL");
+      whereConditions.push("(ma.media_id IS NULL OR ma.analysis_status != 'done')");
     }
   }
 
@@ -178,13 +178,13 @@ function buildSearchConditions(query, filters, options = {}) {
     filters.personCount.forEach((count) => {
       if (count === "zero") {
         // 无人物：已分析且结果为0
-        personConditions.push("i.person_count = 0");
+        personConditions.push("COALESCE(ma.person_count, 0) = 0");
       } else if (count === "one") {
-        personConditions.push("i.person_count = 1");
+        personConditions.push("COALESCE(ma.person_count, 0) = 1");
       } else if (count === "two") {
-        personConditions.push("i.person_count = 2");
+        personConditions.push("COALESCE(ma.person_count, 0) = 2");
       } else if (count === "threePlus") {
-        personConditions.push("i.person_count >= 3");
+        personConditions.push("COALESCE(ma.person_count, 0) >= 3");
       }
     });
     if (personConditions.length > 0) {
@@ -197,34 +197,41 @@ function buildSearchConditions(query, filters, options = {}) {
   if (filters.faceVisibility) {
     if (filters.faceVisibility === "visible") {
       // 清晰人脸：有人脸（已分析且>0）
-      whereConditions.push("i.face_count > 0");
+      whereConditions.push("COALESCE(ma.face_count, 0) > 0");
     } else if (filters.faceVisibility === "notVisible") {
       // 无清晰人脸：已分析且无人脸
-      whereConditions.push("i.face_count = 0");
+      whereConditions.push("COALESCE(ma.face_count, 0) = 0");
     }
   }
 
-  // 10. 年龄段（多选，前端5分类 → 后端9分类）
-  // 注意：由于 age_tags 包含连字符（如 "0-2"），FTS5 无法正确解析
-  // 因此使用 WHERE 条件和 LIKE 查询，而不是 FTS MATCH
+  // 10. 年龄段（通过 media_face_embeddings.age 匹配）
   if (filters.ageGroup && Array.isArray(filters.ageGroup) && filters.ageGroup.length > 0) {
-    const ageConditions = [];
-
-    // 为每个年龄段添加 LIKE 条件
+    const ageRangeMap = {
+      "0-2": [0, 2],
+      "3-12": [3, 12],
+      "13-19": [13, 19],
+      "20-29": [20, 29],
+      "30-39": [30, 39],
+      "40-49": [40, 49],
+      "50-59": [50, 59],
+      "60-69": [60, 69],
+      "70+": [70, 200],
+    };
+    const ageRangeConditions = [];
     filters.ageGroup.forEach((age) => {
-      // 使用 LIKE 查询，精确匹配逗号分隔的标签
-      // 匹配情况：
-      // 1. 完全匹配：age_tags = "0-2"
-      // 2. 开头匹配：age_tags = "0-2,20-29"
-      // 3. 中间匹配：age_tags = "20-29,0-2,30-39"
-      // 4. 结尾匹配：age_tags = "20-29,0-2"
-      ageConditions.push(`(i.age_tags = ? OR i.age_tags LIKE ? OR i.age_tags LIKE ? OR i.age_tags LIKE ?)`);
-      whereParams.push(`${age}`, `${age},%`, `%,${age},%`, `%,${age}`);
+      const range = ageRangeMap[age];
+      if (!range) return;
+      ageRangeConditions.push("(mfe.age BETWEEN ? AND ?)");
+      whereParams.push(range[0], range[1]);
     });
-
-    // 将所有年龄段条件用 OR 连接
-    if (ageConditions.length > 0) {
-      whereConditions.push(`(${ageConditions.join(" OR ")})`);
+    if (ageRangeConditions.length > 0) {
+      whereConditions.push(`
+        EXISTS (
+          SELECT 1 FROM media_face_embeddings mfe
+          WHERE mfe.media_id = i.id
+            AND (${ageRangeConditions.join(" OR ")})
+        )
+      `);
     }
   }
 
@@ -273,7 +280,7 @@ function buildSearchConditions(query, filters, options = {}) {
   const clusterId = options.clusterId != null ? Number(options.clusterId) : null;
   if (clusterId != null && !Number.isNaN(clusterId) && options.userId != null) {
     whereConditions.push(
-      "i.id IN (SELECT fe.image_id FROM face_embeddings fe INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id WHERE fc.user_id = ? AND fc.cluster_id = ?)",
+      "i.id IN (SELECT mfe.media_id FROM media_face_embeddings mfe INNER JOIN face_clusters fc ON mfe.id = fc.face_embedding_id WHERE fc.user_id = ? AND fc.cluster_id = ?)",
     );
     whereParams.push(options.userId, clusterId);
   }
@@ -320,7 +327,7 @@ function buildScopeConditions(scope, userId) {
       if (albumId != null && albumId !== "") {
         const aid = parseInt(albumId, 10);
         if (!Number.isNaN(aid)) {
-          scopeConditions.push("i.id IN (SELECT image_id FROM album_images WHERE album_id = ?)");
+          scopeConditions.push("i.id IN (SELECT media_id FROM album_media WHERE album_id = ?)");
           scopeParams.push(aid);
         }
       }
@@ -337,7 +344,7 @@ function buildScopeConditions(scope, userId) {
     case "people":
       if (clusterId != null && !Number.isNaN(Number(clusterId)) && userId != null) {
         scopeConditions.push(
-          "i.id IN (SELECT fe.image_id FROM face_embeddings fe INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id WHERE fc.user_id = ? AND fc.cluster_id = ?)"
+          "i.id IN (SELECT mfe.media_id FROM media_face_embeddings mfe INNER JOIN face_clusters fc ON mfe.id = fc.face_embedding_id WHERE fc.user_id = ? AND fc.cluster_id = ?)"
         );
         scopeParams.push(userId, Number(clusterId));
       }
@@ -353,38 +360,38 @@ function buildScopeConditions(scope, userId) {
 /**
  * 合并 FTS 和向量搜索结果，使用倒数排名融合（RRF）排序
  * @param {Array} ftsResults - FTS 搜索结果（包含 id 字段）
- * @param {Array<{image_id: number, score: number}>} vectorResults - 向量搜索结果
+ * @param {Array<{media_id: number, score: number}>} vectorResults - 向量搜索结果
  * @param {number} k - RRF 常数（默认 60）
- * @returns {Array<{imageId: number, rrfScore: number}>} 合并排序后的结果
+ * @returns {Array<{mediaId: number, rrfScore: number}>} 合并排序后的结果
  */
 function mergeAndRank(ftsResults, vectorResults, k = 60) {
-  // 创建 imageId -> rank 的映射
+  // 创建 mediaId -> rank 的映射
   const ftsRankMap = new Map();
   ftsResults.forEach((result, index) => {
-    ftsRankMap.set(result.id, index + 1); // rank 从 1 开始
+    ftsRankMap.set(result.mediaId, index + 1); // rank 从 1 开始
   });
 
   const vectorRankMap = new Map();
   vectorResults.forEach((result, index) => {
-    vectorRankMap.set(result.image_id, index + 1);
+    vectorRankMap.set(result.media_id, index + 1);
   });
 
-  // 收集所有唯一的 imageId
-  const allImageIds = new Set();
-  ftsResults.forEach((result) => allImageIds.add(result.id));
-  vectorResults.forEach((result) => allImageIds.add(result.image_id));
+  // 收集所有唯一的 mediaId
+  const allMediaIds = new Set();
+  ftsResults.forEach((result) => allMediaIds.add(result.mediaId));
+  vectorResults.forEach((result) => allMediaIds.add(result.media_id));
 
-  // 计算每个 imageId 的 RRF 分数
+  // 计算每个 mediaId 的 RRF 分数
   const scoredResults = [];
-  allImageIds.forEach((imageId) => {
-    const ftsRank = ftsRankMap.get(imageId) || Infinity;
-    const vectorRank = vectorRankMap.get(imageId) || Infinity;
+  allMediaIds.forEach((mediaId) => {
+    const ftsRank = ftsRankMap.get(mediaId) || Infinity;
+    const vectorRank = vectorRankMap.get(mediaId) || Infinity;
 
     // RRF 公式：score = 1/(k + rank_fts) + 1/(k + rank_vector)
     const rrfScore = 1 / (k + ftsRank) + 1 / (k + vectorRank);
 
     scoredResults.push({
-      imageId,
+      mediaId,
       rrfScore,
     });
   });
@@ -397,7 +404,7 @@ function mergeAndRank(ftsResults, vectorResults, k = 60) {
 
 /**
  * 搜索/列表图片（统一接口）
- * POST /search/images
+ * POST /search/media
  * body: query?, filters?, pageNo, pageSize, clusterId?
  *       可选 scope：source?, type?, albumId?（传了 source 且不为 search 时在范围内列表/搜索，不做向量；未传或 source=search 为全局搜索，有 query 时做向量）
  */
@@ -475,11 +482,11 @@ async function handleSearchImages(req, res, next) {
       ]);
       let resultsWithUrls = await addFullUrlToImage(list);
       if (source === "people" && validClusterId != null && resultsWithUrls.length > 0) {
-        const imageIds = resultsWithUrls.map((item) => item.imageId).filter((id) => id != null);
-        const faceEmbeddingIdMap = faceClusterModel.getFaceEmbeddingIdByImageIdInCluster(userId, validClusterId, imageIds);
+        const mediaIds = resultsWithUrls.map((item) => item.mediaId).filter((id) => id != null);
+        const faceEmbeddingIdMap = faceClusterModel.getFaceEmbeddingIdByImageIdInCluster(userId, validClusterId, mediaIds);
         resultsWithUrls = resultsWithUrls.map((item) => ({
           ...item,
-          faceEmbeddingId: faceEmbeddingIdMap.get(item.imageId) ?? null,
+          faceEmbeddingId: faceEmbeddingIdMap.get(item.mediaId) ?? null,
         }));
       }
       logger.info({
@@ -538,7 +545,7 @@ async function handleSearchImages(req, res, next) {
             query: searchQuery,
             queryVectorLength: queryVector.length,
             vectorResultsCount: vectorResults.length,
-            vectorResults: vectorResults.slice(0, 5).map((r) => ({ image_id: r.image_id, score: r.score })),
+            vectorResults: vectorResults.slice(0, 5).map((r) => ({ media_id: r.media_id, score: r.score })),
           },
         });
       } catch (error) {
@@ -563,7 +570,7 @@ async function handleSearchImages(req, res, next) {
     if (hasQuery && vectorResults.length > 0) {
       // 情况 1：FTS 没有命中，但向量搜索有结果 —— 直接按向量结果取图片列表
       if (ftsResults.length === 0) {
-        const uniqueVectorIds = Array.from(new Set(vectorResults.map((r) => r.image_id)));
+        const uniqueVectorIds = Array.from(new Set(vectorResults.map((r) => r.media_id)));
         try {
           const vectorImages = await searchService.getImagesByIds({
             userId,
@@ -592,15 +599,15 @@ async function handleSearchImages(req, res, next) {
         // 情况 2：FTS 和向量都有结果，使用 RRF 合并
         const mergedRanks = mergeAndRank(ftsResults, vectorResults);
 
-        // 创建 imageId -> 完整结果对象的映射（FTS 结果）
+        // 创建 mediaId -> 完整结果对象的映射（FTS 结果）
         const ftsResultsMap = new Map();
         ftsResults.forEach((result) => {
-          ftsResultsMap.set(result.id, result);
+          ftsResultsMap.set(result.mediaId, result);
         });
 
         // 收集需要从数据库获取的图片 ID（只在向量结果中出现的）
-        const vectorImageIds = new Set(vectorResults.map((r) => r.image_id));
-        const ftsImageIds = new Set(ftsResults.map((r) => r.id));
+        const vectorImageIds = new Set(vectorResults.map((r) => r.media_id));
+        const ftsImageIds = new Set(ftsResults.map((r) => r.mediaId));
         const missingImageIds = Array.from(vectorImageIds).filter((id) => !ftsImageIds.has(id));
 
         // 如果有只在向量结果中的图片，从数据库获取
@@ -613,7 +620,7 @@ async function handleSearchImages(req, res, next) {
             });
             // 添加到映射中
             vectorOnlyImages.forEach((img) => {
-              ftsResultsMap.set(img.id, img);
+              ftsResultsMap.set(img.mediaId, img);
             });
           } catch (error) {
             logger.warn({
@@ -627,19 +634,19 @@ async function handleSearchImages(req, res, next) {
         const mergedResults = [];
         const mergedImageIds = new Set();
 
-        for (const { imageId } of mergedRanks) {
-          if (mergedImageIds.has(imageId)) continue;
+        for (const { mediaId } of mergedRanks) {
+          if (mergedImageIds.has(mediaId)) continue;
 
-          const result = ftsResultsMap.get(imageId);
+          const result = ftsResultsMap.get(mediaId);
           if (result) {
             mergedResults.push(result);
-            mergedImageIds.add(imageId);
+            mergedImageIds.add(mediaId);
           }
         }
 
         finalResults = mergedResults;
-        // 总数：FTS 和向量结果的并集大小（去重后的 imageId 数量）
-        const allUniqueImageIds = new Set([...ftsResults.map((r) => r.id), ...vectorResults.map((r) => r.image_id)]);
+        // 总数：FTS 和向量结果的并集大小（去重后的 mediaId 数量）
+        const allUniqueImageIds = new Set([...ftsResults.map((r) => r.mediaId), ...vectorResults.map((r) => r.media_id)]);
         finalTotal = Math.max(ftsTotalCount, allUniqueImageIds.size);
       }
     }
@@ -712,25 +719,25 @@ async function handleGetSearchSuggestions(req, res, next) {
 async function handleIndexImage(req, res, next) {
   try {
     const { userId } = req.user;
-    const { imageId } = req.body;
+    const { mediaId } = req.body;
 
-    if (!imageId) {
+    if (!mediaId) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
         messageType: "error",
-        message: "缺少图片ID",
+        message: "缺少媒体ID",
       });
     }
 
-    logger.info({ message: `手动重新索引图片请求: imageId=${imageId}, userId=${userId}` });
+    logger.info({ message: `手动重新索引媒体请求: mediaId=${mediaId}, userId=${userId}` });
 
     // 这里应该在 metaIngestor 中处理，直接返回成功
     // 实际的索引生成会在图片处理流程中自动触发
     res.sendResponse({
       data: {
         message: "重新索引请求已记录，将在图片处理流程中自动执行",
-        imageId,
+        mediaId,
         userId,
       },
       messageCode: SUCCESS_CODES.REQUEST_COMPLETED,

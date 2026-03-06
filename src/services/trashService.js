@@ -9,6 +9,7 @@ const { ERROR_CODES } = require("../constants/messageCodes");
 const trashModel = require("../models/trashModel");
 const albumModel = require("../models/albumModel");
 const cleanupModel = require("../models/cleanupModel");
+const imageModel = require("../models/imageModel");
 const storageService = require("./storageService");
 const StorageAdapterFactory = require("../storage/factory/StorageAdapterFactory");
 const { STORAGE_TYPES } = require("../storage/constants/StorageTypes");
@@ -339,13 +340,13 @@ async function getDeletedImages({ userId, pageNo, pageSize, mediaType }) {
 
         // 返回精简后的字段（只包含前端需要的）
         return {
-          imageId: item.imageId,
+          mediaId: item.mediaId,
           mediaType: item.mediaType || "image",
           thumbnailUrl,
           highResUrl,
           originalUrl,
           isFavorite: item.isFavorite || false,
-          creationDate: item.creationDate,
+          capturedAt: item.capturedAt,
           gpsLocation: item.gpsLocation,
           dayKey: item.dayKey,
           widthPx: item.widthPx,
@@ -415,6 +416,18 @@ async function restoreImages({ userId, imageIds }) {
   // 执行恢复操作
   const result = trashModel.restoreImages(normalizedIds);
 
+  // 恢复后重建 media_search 文档
+  normalizedIds.forEach((id) => {
+    try {
+      imageModel.rebuildMediaSearchDoc(id);
+    } catch (error) {
+      logger.warn({
+        message: "恢复回收站媒体后同步搜索索引失败",
+        details: { imageId: id, error: error.message },
+      });
+    }
+  });
+
   // 更新包含这些图片的相册统计（图片数量、封面）
   albumModel.updateAlbumsStatsForImages(normalizedIds);
 
@@ -477,11 +490,11 @@ async function permanentlyDeleteImages({ userId, imageIds }) {
   // 删除存储文件（根据存储类型使用对应适配器）
   const fileDeleteResult = await _deleteImagesFiles(images);
 
-  // 物理删除数据库记录（会触发 CASCADE 删除 album_images 和 similar_group_members）
+  // 物理删除数据库记录（会触发 CASCADE 删除 album_media 和 similar_group_members）
   const dbResult = trashModel.permanentlyDeleteImages(normalizedIds);
 
   // 更新相册统计（图片数量、封面）
-  // 注意：album_images 已被 CASCADE 删除，所以需要更新相册统计
+  // 注意：album_media 已被 CASCADE 删除，所以需要更新相册统计
   if (albumIds.length > 0) {
     const now = Date.now();
     albumIds.forEach((albumId) => {

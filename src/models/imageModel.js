@@ -8,38 +8,128 @@
 const { db } = require("../services/database");
 const { mapFields } = require("../utils/fieldMapper");
 
+function parseCommaTags(input) {
+  if (!input || typeof input !== "string") return [];
+  return input
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function toJsonArrayString(input) {
+  const arr = parseCommaTags(input);
+  return arr.length > 0 ? JSON.stringify(arr) : null;
+}
+
+function pickPrimaryTag(input) {
+  const arr = parseCommaTags(input);
+  return arr.length > 0 ? arr[0] : null;
+}
+
+function rebuildMediaSearchDoc(mediaId) {
+  const media = db.prepare("SELECT id, user_id, country, city, gps_location, deleted_at FROM media WHERE id = ?").get(mediaId);
+  if (!media) return { affectedRows: 0 };
+
+  if (media.deleted_at != null) {
+    const deleted = db.prepare("DELETE FROM media_search WHERE media_id = ?").run(mediaId);
+    db.prepare("INSERT INTO media_fts(media_fts) VALUES('rebuild')").run();
+    return { affectedRows: deleted.changes };
+  }
+
+  const captionTextRow = db.prepare("SELECT GROUP_CONCAT(caption, ' ') AS value FROM media_captions WHERE media_id = ?").get(mediaId);
+  const ocrTextRow = db.prepare("SELECT GROUP_CONCAT(text, ' ') AS value FROM media_text_blocks WHERE media_id = ?").get(mediaId);
+  const objectTextRow = db
+    .prepare(
+      `
+      SELECT GROUP_CONCAT(label, ' ') AS value
+      FROM (
+        SELECT DISTINCT label
+        FROM media_objects
+        WHERE media_id = ?
+      )
+    `,
+    )
+    .get(mediaId);
+  const sceneTextRow = db.prepare("SELECT scene_primary AS value FROM media_analysis WHERE media_id = ?").get(mediaId);
+  const transcriptTextRow = db
+    .prepare("SELECT GROUP_CONCAT(transcript_text, ' ') AS value FROM video_transcripts WHERE media_id = ?")
+    .get(mediaId);
+
+  const locationText = [media.country, media.city, media.gps_location].filter(Boolean).join(" ").trim() || null;
+
+  const upsert = db.prepare(`
+    INSERT INTO media_search (
+      media_id, user_id, caption_text, ocr_text, object_text, scene_text, transcript_text, location_text, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(media_id) DO UPDATE SET
+      user_id = excluded.user_id,
+      caption_text = excluded.caption_text,
+      ocr_text = excluded.ocr_text,
+      object_text = excluded.object_text,
+      scene_text = excluded.scene_text,
+      transcript_text = excluded.transcript_text,
+      location_text = excluded.location_text,
+      updated_at = excluded.updated_at
+  `);
+
+  const result = upsert.run(
+    media.id,
+    media.user_id,
+    captionTextRow?.value || null,
+    ocrTextRow?.value || null,
+    objectTextRow?.value || null,
+    sceneTextRow?.value || null,
+    transcriptTextRow?.value || null,
+    locationText,
+    Date.now(),
+  );
+
+  db.prepare("INSERT INTO media_fts(media_fts) VALUES('rebuild')").run();
+  return { affectedRows: result.changes };
+}
+
 //保存用户上传的图片元数据到数据库（初始上传时的必要字段）
 function insertImage({ userId, imageHash, thumbnailStorageKey, storageType, fileSizeBytes, mediaType }) {
-  const sql = `
-    INSERT OR IGNORE INTO images (
-      user_id, 
-      image_hash, 
+  const now = Date.now();
+  const normalizedType = mediaType === "video" ? "video" : "image";
+  const stmt = db.prepare(`
+    INSERT OR IGNORE INTO media (
+      user_id,
+      file_hash,
       created_at,
       thumbnail_storage_key,
       storage_type,
       file_size_bytes,
-      media_type
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-  `;
-
-  const stmt = db.prepare(sql);
+      media_type,
+      ingest_status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+  `);
   const result = stmt.run(
     userId,
     imageHash,
-    Date.now(),
+    now,
     thumbnailStorageKey || null,
     storageType || null,
     fileSizeBytes || null,
-    mediaType || "image",
+    normalizedType,
   );
+
+  if (result.changes > 0) {
+    const media = db.prepare("SELECT id FROM media WHERE user_id = ? AND file_hash = ? LIMIT 1").get(userId, imageHash);
+    if (media?.id) {
+      db.prepare(
+        "INSERT OR IGNORE INTO media_analysis (media_id, analysis_status, analysis_version) VALUES (?, 'pending', '1.0')",
+      ).run(media.id);
+      rebuildMediaSearchDoc(media.id);
+    }
+  }
 
   return { affectedRows: result.changes };
 }
 
 // 获取用户所有图片hash
 function selectHashesByUserId(userId) {
-  // pluck() 会让返回值从对象([{hash:'123'}, {hash:'2323'}])变为单列值(取结果的第一列也就是这里的{hash:'123'})['123', '2323']，
-  const stmt = db.prepare(`SELECT image_hash FROM images WHERE user_id = ? AND deleted_at IS NULL`).pluck();
+  const stmt = db.prepare(`SELECT file_hash FROM media WHERE user_id = ? AND deleted_at IS NULL`).pluck();
   return stmt.all(userId);
 }
 
@@ -61,7 +151,7 @@ function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
         i.original_storage_key,
         i.media_type,
         i.duration_sec,
-        i.image_created_at, 
+        i.captured_at, 
         i.date_key, 
         i.day_key, 
         i.month_key, 
@@ -79,22 +169,22 @@ function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
         i.expression_tags,
         i.is_favorite,
         MIN(fe.id) AS face_embedding_id
-      FROM images i
-      INNER JOIN face_embeddings fe ON i.id = fe.image_id
+      FROM media i
+      INNER JOIN media_face_embeddings fe ON i.id = fe.media_id
       INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id
       WHERE i.user_id = ?
         AND i.year_key = ?
         AND fc.cluster_id = ?
         AND i.deleted_at IS NULL
       GROUP BY i.id
-      ORDER BY i.image_created_at DESC, i.id DESC
+      ORDER BY i.captured_at DESC, i.id DESC
       LIMIT ? OFFSET ?
     `);
 
     const countQuery = db.prepare(`
       SELECT COUNT(DISTINCT i.id) AS total
-      FROM images i
-      INNER JOIN face_embeddings fe ON i.id = fe.image_id
+      FROM media i
+      INNER JOIN media_face_embeddings fe ON i.id = fe.media_id
       INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id
       WHERE i.user_id = ?
         AND i.year_key = ?
@@ -105,7 +195,7 @@ function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
     try {
       const data = dataQuery.all(userId, albumId, clusterId, pageSize, offset);
       const { total } = countQuery.get(userId, albumId, clusterId);
-      return { data: mapFields("images", data), total };
+      return { data: mapFields("media", data), total };
     } catch (error) {
       throw error;
     }
@@ -119,7 +209,7 @@ function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
         original_storage_key,
         media_type,
         duration_sec,
-        image_created_at, 
+        captured_at, 
         date_key, 
         day_key, 
         month_key, 
@@ -136,17 +226,17 @@ function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
         age_tags,
         expression_tags,
         is_favorite
-      FROM images
+      FROM media
       WHERE user_id = ?
         AND year_key = ?
         AND deleted_at IS NULL
-      ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
+      ORDER BY COALESCE(captured_at, 0) DESC, id DESC
       LIMIT ? OFFSET ?
     `);
 
     const countQuery = db.prepare(`
       SELECT COUNT(*) AS total
-      FROM images
+      FROM media
       WHERE user_id = ?
         AND year_key = ?
         AND deleted_at IS NULL
@@ -155,7 +245,7 @@ function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
     try {
       const data = dataQuery.all(userId, albumId, pageSize, offset);
       const { total } = countQuery.get(userId, albumId);
-      return { data: mapFields("images", data), total };
+      return { data: mapFields("media", data), total };
     } catch (error) {
       throw error;
     }
@@ -180,7 +270,7 @@ function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
         i.original_storage_key,
         i.media_type,
         i.duration_sec,
-        i.image_created_at, 
+        i.captured_at, 
         i.date_key, 
         i.day_key, 
         i.month_key, 
@@ -198,22 +288,22 @@ function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
         i.expression_tags,
         i.is_favorite,
         MIN(fe.id) AS face_embedding_id
-      FROM images i
-      INNER JOIN face_embeddings fe ON i.id = fe.image_id
+      FROM media i
+      INNER JOIN media_face_embeddings fe ON i.id = fe.media_id
       INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id
       WHERE i.user_id = ?
         AND i.month_key = ?
         AND fc.cluster_id = ?
         AND i.deleted_at IS NULL
       GROUP BY i.id
-      ORDER BY i.image_created_at DESC, i.id DESC
+      ORDER BY i.captured_at DESC, i.id DESC
       LIMIT ? OFFSET ?
     `);
 
     const countQuery = db.prepare(`
       SELECT COUNT(DISTINCT i.id) AS total
-      FROM images i
-      INNER JOIN face_embeddings fe ON i.id = fe.image_id
+      FROM media i
+      INNER JOIN media_face_embeddings fe ON i.id = fe.media_id
       INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id
       WHERE i.user_id = ?
         AND i.month_key = ?
@@ -224,7 +314,7 @@ function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
     try {
       const data = dataQuery.all(userId, albumId, clusterId, pageSize, offset);
       const { total } = countQuery.get(userId, albumId, clusterId);
-      return { data: mapFields("images", data), total };
+      return { data: mapFields("media", data), total };
     } catch (error) {
       throw error;
     }
@@ -238,7 +328,7 @@ function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
         original_storage_key,
         media_type,
         duration_sec,
-        image_created_at, 
+        captured_at, 
         date_key, 
         day_key, 
         month_key, 
@@ -255,17 +345,17 @@ function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
         age_tags,
         expression_tags,
         is_favorite
-      FROM images
+      FROM media
       WHERE user_id = ?
         AND month_key = ?
         AND deleted_at IS NULL
-      ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
+      ORDER BY COALESCE(captured_at, 0) DESC, id DESC
       LIMIT ? OFFSET ?
     `);
 
     const countQuery = db.prepare(`
       SELECT COUNT(*) AS total
-      FROM images
+      FROM media
       WHERE user_id = ?
         AND month_key = ?
         AND deleted_at IS NULL
@@ -274,7 +364,7 @@ function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
     try {
       const data = dataQuery.all(userId, albumId, pageSize, offset);
       const { total } = countQuery.get(userId, albumId);
-      return { data: mapFields("images", data), total };
+      return { data: mapFields("media", data), total };
     } catch (error) {
       throw error;
     }
@@ -295,7 +385,7 @@ function selectImagesByDate({ pageNo, pageSize, albumId, userId }) {
       original_storage_key,
       media_type,
       duration_sec,
-      image_created_at, 
+      captured_at, 
       date_key, 
       day_key, 
       month_key, 
@@ -312,17 +402,17 @@ function selectImagesByDate({ pageNo, pageSize, albumId, userId }) {
       age_tags,
       expression_tags,
       is_favorite
-    FROM images
+    FROM media
     WHERE user_id = ?
       AND date_key = ?
       AND deleted_at IS NULL
-    ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
+    ORDER BY COALESCE(captured_at, 0) DESC, id DESC
     LIMIT ? OFFSET ?
   `);
 
   const countQuery = db.prepare(`
     SELECT COUNT(*) AS total
-    FROM images
+    FROM media
     WHERE user_id = ?
       AND date_key = ?
       AND deleted_at IS NULL
@@ -331,7 +421,7 @@ function selectImagesByDate({ pageNo, pageSize, albumId, userId }) {
   try {
     const data = dataQuery.all(userId, albumId, pageSize, offset);
     const { total } = countQuery.get(userId, albumId);
-    return { data: mapFields("images", data), total };
+    return { data: mapFields("media", data), total };
   } catch (error) {
     throw error;
   }
@@ -348,7 +438,7 @@ function getImagesByBlurry({ userId, pageNo, pageSize }) {
       id,
       high_res_storage_key,
       thumbnail_storage_key,
-      image_created_at,
+      captured_at,
       created_at,
       date_key,
       day_key,
@@ -366,7 +456,7 @@ function getImagesByBlurry({ userId, pageNo, pageSize }) {
       age_tags,
       expression_tags,
       is_favorite
-    FROM images
+    FROM media
     WHERE user_id = ?
       AND is_blurry = 1
       AND deleted_at IS NULL
@@ -376,7 +466,7 @@ function getImagesByBlurry({ userId, pageNo, pageSize }) {
 
   const countQuery = db.prepare(`
     SELECT COUNT(*) AS total
-    FROM images
+    FROM media
     WHERE user_id = ?
       AND is_blurry = 1
       AND deleted_at IS NULL
@@ -385,7 +475,7 @@ function getImagesByBlurry({ userId, pageNo, pageSize }) {
   try {
     const data = dataQuery.all(userId, pageSize, offset);
     const { total } = countQuery.get(userId);
-    return { data: mapFields("images", data), total };
+    return { data: mapFields("media", data), total };
   } catch (error) {
     throw error;
   }
@@ -399,24 +489,37 @@ function getImagesByBlurry({ userId, pageNo, pageSize }) {
 function updateBlurryForUser(userId, blurryImageIds) {
   if (!userId) return;
   const idsSet = blurryImageIds && blurryImageIds.length > 0 ? blurryImageIds : [];
+  const now = Date.now();
   const placeholders = idsSet.length > 0 ? idsSet.map(() => "?").join(", ") : "NULL";
-  const setBlurry =
+
+  const upsertBlurry =
     idsSet.length > 0
       ? db.prepare(`
-        UPDATE images SET is_blurry = 1
-        WHERE user_id = ? AND id IN (${placeholders}) AND deleted_at IS NULL
+        INSERT INTO media_analysis (media_id, analysis_status, analysis_version, is_blurry, updated_at)
+        SELECT id, 'pending', '1.0', 1, ?
+        FROM media
+        WHERE user_id = ? AND deleted_at IS NULL AND id IN (${placeholders})
+        ON CONFLICT(media_id) DO UPDATE SET
+          is_blurry = 1,
+          updated_at = excluded.updated_at
       `)
       : null;
+
   const clearBlurry = db.prepare(`
-    UPDATE images SET is_blurry = 0
-    WHERE user_id = ? AND deleted_at IS NULL
-    ${idsSet.length > 0 ? `AND id NOT IN (${placeholders})` : ""}
+    UPDATE media_analysis
+    SET is_blurry = 0, updated_at = ?
+    WHERE media_id IN (
+      SELECT id FROM media
+      WHERE user_id = ? AND deleted_at IS NULL
+      ${idsSet.length > 0 ? `AND id NOT IN (${placeholders})` : ""}
+    )
   `);
-  if (setBlurry) setBlurry.run(userId, ...idsSet);
+
+  if (upsertBlurry) upsertBlurry.run(now, userId, ...idsSet);
   if (idsSet.length > 0) {
-    clearBlurry.run(userId, ...idsSet);
+    clearBlurry.run(now, userId, ...idsSet);
   } else {
-    clearBlurry.run(userId);
+    clearBlurry.run(now, userId);
   }
 }
 
@@ -431,7 +534,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
       SELECT 
         month_key,
         thumbnail_storage_key,
-        image_created_at,
+        captured_at,
         id,
         storage_type,
         ROW_NUMBER() OVER (
@@ -469,10 +572,10 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
             COALESCE(primary_face_quality, 0) DESC,           -- 人脸质量好的优先
             COALESCE(face_count, 0) DESC,                     -- 人脸数量多的优先（更热闹）
             COALESCE(person_count, 0) DESC,                   -- 人物数量多的优先
-            COALESCE(image_created_at, 0) DESC,             -- 时间最新的优先
+            COALESCE(captured_at, 0) DESC,             -- 时间最新的优先
             id DESC                                          -- ID最大的优先（保证排序稳定）
         ) AS rn
-      FROM images
+      FROM media
       WHERE user_id = ?
         AND deleted_at IS NULL
         AND month_key != 'unknown'
@@ -483,7 +586,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
       SELECT 
         month_key,
         thumbnail_storage_key,
-        image_created_at,
+        captured_at,
         id,
         storage_type
       FROM ranked_images
@@ -492,7 +595,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
     counts AS (
       -- 📊 统计每个月份的照片数量（排除 unknown）
       SELECT month_key, COUNT(*) AS imageCount
-      FROM images
+      FROM media
       WHERE user_id = ?
         AND deleted_at IS NULL
         AND month_key != 'unknown'
@@ -501,7 +604,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
     SELECT
       latest.month_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
-      latest.image_created_at,
+      latest.captured_at,
       latest.storage_type,
       counts.imageCount
     FROM latest
@@ -513,7 +616,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
   // 📊 组总数：排除 unknown
   const countQuery = db.prepare(`
     SELECT COUNT(DISTINCT month_key) AS groupCount
-    FROM images
+    FROM media
     WHERE user_id = ?
       AND deleted_at IS NULL
       AND month_key != 'unknown';
@@ -522,7 +625,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
   try {
     const data = dataQuery.all(userId, userId, pageSize, offset);
     const { groupCount: total } = countQuery.get(userId);
-    return { data: mapFields("images", data), total };
+    return { data: mapFields("media", data), total };
   } catch (error) {
     throw error;
   }
@@ -538,7 +641,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
       SELECT 
         year_key,
         thumbnail_storage_key,
-        image_created_at,
+        captured_at,
         id,
         storage_type,
         ROW_NUMBER() OVER (
@@ -573,10 +676,10 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
             COALESCE(primary_face_quality, 0) DESC,
             COALESCE(face_count, 0) DESC,
             COALESCE(person_count, 0) DESC,
-            COALESCE(image_created_at, 0) DESC,
+            COALESCE(captured_at, 0) DESC,
             id DESC
         ) AS rn
-      FROM images
+      FROM media
       WHERE user_id = ?
         AND deleted_at IS NULL
         AND year_key != 'unknown'
@@ -587,7 +690,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
       SELECT 
         year_key,
         thumbnail_storage_key,
-        image_created_at,
+        captured_at,
         id,
         storage_type
       FROM ranked_images
@@ -596,7 +699,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
     counts AS (
       -- 统计每个年份的图片数量（排除 unknown）
       SELECT year_key, COUNT(*) AS imageCount
-      FROM images
+      FROM media
       WHERE user_id = ?
         AND deleted_at IS NULL
         AND year_key != 'unknown'
@@ -605,7 +708,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
     SELECT
       latest.year_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
-      latest.image_created_at,
+      latest.captured_at,
       latest.storage_type,
       counts.imageCount
     FROM latest
@@ -617,7 +720,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
   // 组总数：排除 unknown
   const countQuery = db.prepare(`
     SELECT COUNT(DISTINCT year_key) AS groupCount
-    FROM images
+    FROM media
     WHERE user_id = ?
       AND deleted_at IS NULL
       AND year_key != 'unknown';
@@ -626,7 +729,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
   try {
     const data = dataQuery.all(userId, userId, pageSize, offset);
     const { groupCount: total } = countQuery.get(userId);
-    return { data: mapFields("images", data), total };
+    return { data: mapFields("media", data), total };
   } catch (error) {
     throw error;
   }
@@ -639,35 +742,35 @@ function selectUnknownGroup({ userId }) {
       SELECT 
         year_key,
         thumbnail_storage_key,
-        image_created_at,
+        captured_at,
         id,
         storage_type,
         ROW_NUMBER() OVER (
-          ORDER BY COALESCE(image_created_at, 0) DESC, id DESC
+          ORDER BY COALESCE(captured_at, 0) DESC, id DESC
         ) AS rn
-      FROM images
+      FROM media
       WHERE user_id = ? AND deleted_at IS NULL AND year_key = 'unknown'
         AND (COALESCE(media_type, 'image') IN ('image', 'video', 'audio'))
     ),
     cover AS (
-      SELECT year_key, thumbnail_storage_key, image_created_at, storage_type
+      SELECT year_key, thumbnail_storage_key, captured_at, storage_type
       FROM ranked WHERE rn = 1
     ),
     cnt AS (
-      SELECT COUNT(*) AS imageCount FROM images
+      SELECT COUNT(*) AS imageCount FROM media
       WHERE user_id = ? AND deleted_at IS NULL AND year_key = 'unknown'
     )
     SELECT
       'unknown' AS album_id,
       cover.thumbnail_storage_key AS latestImagekey,
-      cover.image_created_at,
+      cover.captured_at,
       cover.storage_type,
       cnt.imageCount
     FROM cover CROSS JOIN cnt;
   `);
   const countQuery = db.prepare(`
     SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END AS groupCount
-    FROM images
+    FROM media
     WHERE user_id = ? AND deleted_at IS NULL AND year_key = 'unknown';
   `);
   try {
@@ -676,7 +779,7 @@ function selectUnknownGroup({ userId }) {
     if (!data || data.length === 0) {
       return { data: [], total: 0 };
     }
-    return { data: mapFields("images", data), total };
+    return { data: mapFields("media", data), total };
   } catch (error) {
     throw error;
   }
@@ -692,7 +795,7 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
       SELECT 
         i.year_key,
         i.thumbnail_storage_key,
-        i.image_created_at,
+        i.captured_at,
         i.id,
         i.storage_type,
         ROW_NUMBER() OVER (
@@ -719,12 +822,12 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
             COALESCE(i.primary_face_quality, 0) DESC,
             COALESCE(i.face_count, 0) DESC,
             COALESCE(i.person_count, 0) DESC,
-            COALESCE(i.image_created_at, 0) DESC,
+            COALESCE(i.captured_at, 0) DESC,
             i.id DESC
         ) AS rn
       FROM face_clusters fc
-      INNER JOIN face_embeddings fe ON fc.face_embedding_id = fe.id
-      INNER JOIN images i ON fe.image_id = i.id
+      INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
+      INNER JOIN media i ON fe.media_id = i.id
       WHERE fc.user_id = ? 
         AND fc.cluster_id = ?
         AND i.deleted_at IS NULL
@@ -734,7 +837,7 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
       SELECT 
         year_key,
         thumbnail_storage_key,
-        image_created_at,
+        captured_at,
         id,
         storage_type
       FROM ranked_images
@@ -743,8 +846,8 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
     counts AS (
       SELECT i.year_key, COUNT(DISTINCT i.id) AS imageCount
       FROM face_clusters fc
-      INNER JOIN face_embeddings fe ON fc.face_embedding_id = fe.id
-      INNER JOIN images i ON fe.image_id = i.id
+      INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
+      INNER JOIN media i ON fe.media_id = i.id
       WHERE fc.user_id = ?
         AND fc.cluster_id = ?
         AND i.deleted_at IS NULL
@@ -753,7 +856,7 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
     SELECT
       latest.year_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
-      latest.image_created_at,
+      latest.captured_at,
       latest.storage_type,
       counts.imageCount
     FROM latest
@@ -767,8 +870,8 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
   const countQuery = db.prepare(`
     SELECT COUNT(DISTINCT i.year_key) AS groupCount
     FROM face_clusters fc
-    INNER JOIN face_embeddings fe ON fc.face_embedding_id = fe.id
-    INNER JOIN images i ON fe.image_id = i.id
+    INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
+    INNER JOIN media i ON fe.media_id = i.id
       WHERE fc.user_id = ?
       AND fc.cluster_id = ?
       AND i.deleted_at IS NULL;
@@ -777,7 +880,7 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
   try {
     const data = dataQuery.all(userId, clusterId, userId, clusterId, pageSize, offset);
     const { groupCount: total } = countQuery.get(userId, clusterId);
-    return { data: mapFields("images", data), total };
+    return { data: mapFields("media", data), total };
   } catch (error) {
     throw error;
   }
@@ -793,7 +896,7 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
       SELECT 
         i.month_key,
         i.thumbnail_storage_key,
-        i.image_created_at,
+        i.captured_at,
         i.id,
         i.storage_type,
         ROW_NUMBER() OVER (
@@ -820,12 +923,12 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
             COALESCE(i.primary_face_quality, 0) DESC,
             COALESCE(i.face_count, 0) DESC,
             COALESCE(i.person_count, 0) DESC,
-            COALESCE(i.image_created_at, 0) DESC,
+            COALESCE(i.captured_at, 0) DESC,
             i.id DESC
         ) AS rn
       FROM face_clusters fc
-      INNER JOIN face_embeddings fe ON fc.face_embedding_id = fe.id
-      INNER JOIN images i ON fe.image_id = i.id
+      INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
+      INNER JOIN media i ON fe.media_id = i.id
       WHERE fc.user_id = ? 
         AND fc.cluster_id = ?
         AND i.deleted_at IS NULL
@@ -835,7 +938,7 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
       SELECT 
         month_key,
         thumbnail_storage_key,
-        image_created_at,
+        captured_at,
         id,
         storage_type
       FROM ranked_images
@@ -844,8 +947,8 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
     counts AS (
       SELECT i.month_key, COUNT(DISTINCT i.id) AS imageCount
       FROM face_clusters fc
-      INNER JOIN face_embeddings fe ON fc.face_embedding_id = fe.id
-      INNER JOIN images i ON fe.image_id = i.id
+      INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
+      INNER JOIN media i ON fe.media_id = i.id
       WHERE fc.user_id = ?
         AND fc.cluster_id = ?
         AND i.deleted_at IS NULL
@@ -854,7 +957,7 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
     SELECT
       latest.month_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
-      latest.image_created_at,
+      latest.captured_at,
       latest.storage_type,
       counts.imageCount
     FROM latest
@@ -868,8 +971,8 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
   const countQuery = db.prepare(`
     SELECT COUNT(DISTINCT i.month_key) AS groupCount
     FROM face_clusters fc
-    INNER JOIN face_embeddings fe ON fc.face_embedding_id = fe.id
-    INNER JOIN images i ON fe.image_id = i.id
+    INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
+    INNER JOIN media i ON fe.media_id = i.id
       WHERE fc.user_id = ?
       AND fc.cluster_id = ?
       AND i.deleted_at IS NULL;
@@ -878,7 +981,7 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
   try {
     const data = dataQuery.all(userId, clusterId, userId, clusterId, pageSize, offset);
     const { groupCount: total } = countQuery.get(userId, clusterId);
-    return { data: mapFields("images", data), total };
+    return { data: mapFields("media", data), total };
   } catch (error) {
     throw error;
   }
@@ -894,7 +997,7 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
       SELECT 
         date_key,
         thumbnail_storage_key,
-        image_created_at,
+        captured_at,
         id,
         storage_type,
         ROW_NUMBER() OVER (
@@ -929,10 +1032,10 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
             COALESCE(primary_face_quality, 0) DESC,
             COALESCE(face_count, 0) DESC,
             COALESCE(person_count, 0) DESC,
-            COALESCE(image_created_at, 0) DESC,
+            COALESCE(captured_at, 0) DESC,
             id DESC
         ) AS rn
-      FROM images
+      FROM media
       WHERE user_id = ?
         AND deleted_at IS NULL
         AND (COALESCE(media_type, 'image') IN ('image', 'video', 'audio'))
@@ -942,7 +1045,7 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
       SELECT 
         date_key,
         thumbnail_storage_key,
-        image_created_at,
+        captured_at,
         id,
         storage_type
       FROM ranked_images
@@ -951,7 +1054,7 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
     counts AS (
       -- 统计每个日期的图片数量
       SELECT date_key, COUNT(*) AS imageCount
-      FROM images
+      FROM media
       WHERE user_id = ?
         AND deleted_at IS NULL
       GROUP BY date_key
@@ -959,7 +1062,7 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
     SELECT
       latest.date_key AS album_id,  -- 相册ID（统一使用 album_id，mapper 会映射为 albumId）
       latest.thumbnail_storage_key AS latestImagekey,
-      latest.image_created_at,
+      latest.captured_at,
       latest.storage_type,
       counts.imageCount
     FROM latest
@@ -973,7 +1076,7 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
   // 组总数：直接对 date_key 去重计数
   const countQuery = db.prepare(`
     SELECT COUNT(DISTINCT date_key) AS groupCount
-    FROM images
+    FROM media
     WHERE user_id = ?
       AND deleted_at IS NULL;
   `);
@@ -981,7 +1084,7 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
   try {
     const data = dataQuery.all(userId, userId, pageSize, offset);
     const { groupCount: total } = countQuery.get(userId);
-    return { data: mapFields("images", data), total };
+    return { data: mapFields("media", data), total };
   } catch (error) {
     throw error;
   }
@@ -998,9 +1101,9 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
         id,
         COALESCE(NULLIF(TRIM(city), ''), 'unknown') AS city_key,
         thumbnail_storage_key,
-        image_created_at,
+        captured_at,
         storage_type
-      FROM images
+      FROM media
       WHERE user_id = ? AND deleted_at IS NULL
         AND (COALESCE(media_type, 'image') IN ('image', 'video', 'audio'))
     ),
@@ -1008,17 +1111,17 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
       SELECT 
         city_key,
         thumbnail_storage_key,
-        image_created_at,
+        captured_at,
         id,
         storage_type,
         ROW_NUMBER() OVER (
           PARTITION BY city_key 
-          ORDER BY image_created_at DESC, id DESC
+          ORDER BY captured_at DESC, id DESC
         ) AS rn
       FROM city_normalized
     ),
     latest AS (
-      SELECT city_key, thumbnail_storage_key, image_created_at, id, storage_type
+      SELECT city_key, thumbnail_storage_key, captured_at, id, storage_type
       FROM ranked_images
       WHERE rn = 1
     ),
@@ -1030,7 +1133,7 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
     SELECT
       latest.city_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
-      latest.image_created_at,
+      latest.captured_at,
       latest.storage_type,
       counts.imageCount
     FROM latest
@@ -1044,14 +1147,14 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
 
   const countQuery = db.prepare(`
     SELECT COUNT(DISTINCT COALESCE(NULLIF(TRIM(city), ''), 'unknown')) AS groupCount
-    FROM images
+    FROM media
     WHERE user_id = ? AND deleted_at IS NULL;
   `);
 
   try {
     const data = dataQuery.all(userId, pageSize, offset);
     const { groupCount: total } = countQuery.get(userId);
-    return { data: mapFields("images", data), total };
+    return { data: mapFields("media", data), total };
   } catch (error) {
     throw error;
   }
@@ -1071,7 +1174,7 @@ function selectImagesByCity({ pageNo, pageSize, albumId, userId }) {
       original_storage_key,
       media_type,
       duration_sec,
-      image_created_at, 
+      captured_at, 
       date_key, 
       day_key, 
       month_key, 
@@ -1088,21 +1191,21 @@ function selectImagesByCity({ pageNo, pageSize, albumId, userId }) {
       age_tags,
       expression_tags,
       is_favorite
-    FROM images
+    FROM media
     WHERE user_id = ? AND deleted_at IS NULL
   `;
   const cityCondition = isUnknown ? " AND (city IS NULL OR TRIM(COALESCE(city, '')) = '' OR city = 'unknown')" : " AND city = ?";
-  const orderLimit = " ORDER BY COALESCE(image_created_at, 0) DESC, id DESC LIMIT ? OFFSET ?";
+  const orderLimit = " ORDER BY COALESCE(captured_at, 0) DESC, id DESC LIMIT ? OFFSET ?";
 
   const dataQuery = db.prepare(baseSelect + cityCondition + orderLimit);
-  const countQuery = db.prepare("SELECT COUNT(*) AS total FROM images WHERE user_id = ? AND deleted_at IS NULL" + cityCondition);
+  const countQuery = db.prepare("SELECT COUNT(*) AS total FROM media WHERE user_id = ? AND deleted_at IS NULL" + cityCondition);
 
   try {
     const params = isUnknown ? [userId, pageSize, offset] : [userId, albumId, pageSize, offset];
     const countParams = isUnknown ? [userId] : [userId, albumId];
     const data = dataQuery.all(...params);
     const { total } = countQuery.get(...countParams);
-    return { data: mapFields("images", data), total };
+    return { data: mapFields("media", data), total };
   } catch (error) {
     throw error;
   }
@@ -1138,8 +1241,8 @@ function updateImageMetadata({
   mediaType,
 }) {
   const sql = `
-    UPDATE images SET 
-      image_created_at = COALESCE(?, image_created_at),
+    UPDATE media SET
+      captured_at = COALESCE(?, captured_at),
       month_key = COALESCE(?, month_key),
       year_key = COALESCE(?, year_key),
       date_key = COALESCE(?, date_key),
@@ -1162,8 +1265,9 @@ function updateImageMetadata({
       mime = COALESCE(?, mime),
       duration_sec = COALESCE(?, duration_sec),
       video_codec = COALESCE(?, video_codec),
-      media_type = COALESCE(?, media_type)
-    WHERE user_id = ? AND image_hash = ? RETURNING id
+      media_type = COALESCE(?, media_type),
+      ingest_status = 'ready'
+    WHERE user_id = ? AND file_hash = ? RETURNING id
   `;
 
   const stmt = db.prepare(sql);
@@ -1206,8 +1310,8 @@ function updateImageMetadata({
 function checkFileExists({ imageHash, userId }) {
   const stmt = db.prepare(`
     SELECT id
-    FROM images 
-    WHERE image_hash = ? AND user_id = ?
+    FROM media
+    WHERE file_hash = ? AND user_id = ?
     LIMIT 1
   `);
   return stmt.get(imageHash, userId);
@@ -1268,50 +1372,82 @@ function updateImageSearchMetadata({
   primaryFaceQuality,
   analysisVersion = "1.0",
 }) {
-  //  COALESCE 如果传入null，则不更新该字段 保持原有值
-  const updateSQL = `
-    UPDATE images SET 
-      alt_text = COALESCE(?, alt_text),
-      ocr_text = COALESCE(?, ocr_text),
-      keywords = COALESCE(?, keywords),
-      scene_tags = COALESCE(?, scene_tags),
-      object_tags = COALESCE(?, object_tags),
-      face_count = COALESCE(?, face_count),
-      person_count = COALESCE(?, person_count),
-      expression_tags = COALESCE(?, expression_tags),
-      age_tags = COALESCE(?, age_tags),
-      gender_tags = COALESCE(?, gender_tags),
-      primary_expression_confidence = COALESCE(?, primary_expression_confidence),
-      primary_face_quality = COALESCE(?, primary_face_quality),
-      analysis_version = COALESCE(?, analysis_version)
-    WHERE id = ?
-  `;
+  const tx = db.transaction(() => {
+    db.prepare(`
+      INSERT OR IGNORE INTO media_analysis (media_id, analysis_status, analysis_version)
+      VALUES (?, 'pending', ?)
+    `).run(imageId, analysisVersion);
 
-  const stmt = db.prepare(updateSQL);
-  const result = stmt.run(
-    altText,
-    ocrText,
-    keywords,
-    sceneTags,
-    objectTags,
-    faceCount,
-    personCount,
-    expressionTags,
-    ageTags,
-    genderTags,
-    primaryExpressionConfidence,
-    primaryFaceQuality,
-    analysisVersion,
-    imageId,
-  );
+    const analysisUpdate = db.prepare(`
+      UPDATE media_analysis
+      SET
+        face_count = COALESCE(?, face_count),
+        person_count = COALESCE(?, person_count),
+        primary_face_quality = COALESCE(?, primary_face_quality),
+        primary_expression = COALESCE(?, primary_expression),
+        primary_expression_confidence = COALESCE(?, primary_expression_confidence),
+        scene_primary = COALESCE(?, scene_primary),
+        has_caption = CASE WHEN ? IS NOT NULL THEN 1 ELSE has_caption END,
+        has_ocr = CASE WHEN ? IS NOT NULL THEN 1 ELSE has_ocr END,
+        analysis_version = COALESCE(?, analysis_version),
+        analysis_status = 'done',
+        analyzed_at = ?
+      WHERE media_id = ?
+    `);
+    const result = analysisUpdate.run(
+      faceCount,
+      personCount,
+      primaryFaceQuality,
+      pickPrimaryTag(expressionTags),
+      primaryExpressionConfidence,
+      pickPrimaryTag(sceneTags),
+      altText,
+      ocrText,
+      analysisVersion,
+      Date.now(),
+      imageId,
+    );
 
-  return { affectedRows: result.changes };
+    if (altText || keywords) {
+      db.prepare("DELETE FROM media_captions WHERE media_id = ? AND source_type = 'image'").run(imageId);
+      db.prepare(`
+        INSERT INTO media_captions (
+          media_id, source_type, source_ref_id, language, caption, keywords_json, analysis_version, created_at
+        ) VALUES (?, 'image', NULL, 'auto', ?, ?, ?, ?)
+      `).run(imageId, altText || null, toJsonArrayString(keywords), analysisVersion, Date.now());
+    }
+
+    if (ocrText) {
+      db.prepare("DELETE FROM media_text_blocks WHERE media_id = ? AND source_type = 'ocr'").run(imageId);
+      db.prepare(`
+        INSERT INTO media_text_blocks (media_id, source_type, text, analysis_version, created_at)
+        VALUES (?, 'ocr', ?, ?, ?)
+      `).run(imageId, ocrText, analysisVersion, Date.now());
+    }
+
+    if (objectTags) {
+      db.prepare("DELETE FROM media_objects WHERE media_id = ? AND source_type = 'image'").run(imageId);
+      const insertObject = db.prepare(`
+        INSERT INTO media_objects (
+          media_id, source_type, source_ref_id, label, confidence, bbox, analysis_version, created_at
+        ) VALUES (?, 'image', NULL, ?, NULL, NULL, ?, ?)
+      `);
+      for (const label of parseCommaTags(objectTags)) {
+        insertObject.run(imageId, label, analysisVersion, Date.now());
+      }
+    }
+
+    rebuildMediaSearchDoc(imageId);
+    return { affectedRows: result.changes };
+  });
+
+  return tx();
 }
 
 // 异步更新图片位置信息
 function updateLocationInfo(imageId, { gpsLocation, country, city }) {
   const sql = `
-    UPDATE images SET 
+    UPDATE media SET
       gps_location = COALESCE(?, gps_location),
       country = COALESCE(?, country),
       city = COALESCE(?, city)
@@ -1321,6 +1457,22 @@ function updateLocationInfo(imageId, { gpsLocation, country, city }) {
   const stmt = db.prepare(sql);
   const result = stmt.run(gpsLocation, country, city, imageId);
 
+  rebuildMediaSearchDoc(imageId);
+  return { affectedRows: result.changes };
+}
+
+function updateIngestStatusByHash({ userId, imageHash, ingestStatus }) {
+  const allowed = new Set(["pending", "processing", "ready", "failed"]);
+  const status = allowed.has(ingestStatus) ? ingestStatus : "pending";
+  const result = db
+    .prepare(
+      `
+      UPDATE media
+      SET ingest_status = ?
+      WHERE user_id = ? AND file_hash = ?
+    `,
+    )
+    .run(status, userId, imageHash);
   return { affectedRows: result.changes };
 }
 
@@ -1382,9 +1534,7 @@ function updateLocationInfo(imageId, { gpsLocation, country, city }) {
  */
 async function insertFaceEmbeddings(imageId, faceData) {
   try {
-    // 先删除该图片的旧人脸数据
-    // 原因：1. 避免重复数据 2. 支持重试机制 3. 确保数据一致性
-    const deleteSql = `DELETE FROM face_embeddings WHERE image_id = ?`;
+    const deleteSql = `DELETE FROM media_face_embeddings WHERE media_id = ? AND source_type = 'image'`;
     const deleteStmt = db.prepare(deleteSql);
     deleteStmt.run(imageId);
 
@@ -1396,9 +1546,9 @@ async function insertFaceEmbeddings(imageId, faceData) {
     // 优化（2025-12-XX）：添加quality_score、bbox、pose字段，移除face_thumbnail_storage_key处理
     // 缩略图将在聚类后，只为最佳人脸生成
     const insertSql = `
-      INSERT INTO face_embeddings (
-        image_id, face_index, embedding, age, gender, expression, confidence, quality_score, bbox, pose
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO media_face_embeddings (
+        media_id, source_type, source_ref_id, face_index, embedding, age, gender, expression, confidence, quality_score, bbox, pose, analysis_version
+      ) VALUES (?, 'image', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const insertStmt = db.prepare(insertSql);
 
@@ -1421,6 +1571,7 @@ async function insertFaceEmbeddings(imageId, faceData) {
         face.quality_score || null,
         JSON.stringify(face.bbox || []), // bbox存储为JSON字符串
         JSON.stringify(face.pose || {}), // pose存储为JSON字符串
+        "1.0",
       );
       totalAffected += result.changes;
     }
@@ -1444,7 +1595,7 @@ function getImageStorageInfo(imageId) {
       original_storage_key,
       storage_type,
       media_type
-    FROM images
+    FROM media
     WHERE id = ? AND deleted_at IS NULL
     LIMIT 1
   `;
@@ -1477,7 +1628,7 @@ function getImageDownloadInfo({ userId, imageId }) {
       high_res_storage_key,
       thumbnail_storage_key,
       storage_type
-    FROM images
+    FROM media
     WHERE id = ? AND user_id = ? AND deleted_at IS NULL
     LIMIT 1
   `;
@@ -1514,7 +1665,7 @@ function getImagesDownloadInfo({ userId, imageIds }) {
       high_res_storage_key,
       thumbnail_storage_key,
       storage_type
-    FROM images
+    FROM media
     WHERE id IN (${placeholders}) AND user_id = ? AND deleted_at IS NULL
   `;
 
@@ -1528,6 +1679,634 @@ function getImagesDownloadInfo({ userId, imageIds }) {
     thumbnailStorageKey: image.thumbnail_storage_key,
     storageType: image.storage_type,
   }));
+}
+
+// ==================== media 重构后的查询实现（覆盖旧 images 查询） ====================
+function _mediaSelectColumns(alias = "m") {
+  return `
+    ${alias}.id,
+    ${alias}.high_res_storage_key,
+    ${alias}.thumbnail_storage_key,
+    ${alias}.original_storage_key,
+    ${alias}.media_type,
+    ${alias}.duration_sec,
+    ${alias}.captured_at AS captured_at,
+    ${alias}.date_key,
+    ${alias}.day_key,
+    ${alias}.month_key,
+    ${alias}.year_key,
+    ${alias}.storage_type,
+    ${alias}.gps_location,
+    ${alias}.width_px,
+    ${alias}.height_px,
+    ${alias}.aspect_ratio,
+    ${alias}.layout_type,
+    ${alias}.file_size_bytes,
+    COALESCE(ma.face_count, 0) AS face_count,
+    COALESCE(ma.person_count, 0) AS person_count,
+    NULL AS age_tags,
+    ma.primary_expression AS expression_tags,
+    ${alias}.is_favorite
+  `;
+}
+
+function getImagesByBlurry({ userId, pageNo, pageSize }) {
+  const offset = (pageNo - 1) * pageSize;
+  const dataQuery = db.prepare(`
+    SELECT
+      m.id,
+      m.high_res_storage_key,
+      m.thumbnail_storage_key,
+      m.captured_at,
+      m.created_at,
+      m.date_key,
+      m.day_key,
+      m.month_key,
+      m.year_key,
+      m.storage_type,
+      m.gps_location,
+      m.width_px,
+      m.height_px,
+      m.aspect_ratio,
+      m.layout_type,
+      m.file_size_bytes,
+      COALESCE(ma.face_count, 0) AS face_count,
+      COALESCE(ma.person_count, 0) AS person_count,
+      NULL AS age_tags,
+      ma.primary_expression AS expression_tags,
+      m.is_favorite
+    FROM media m
+    LEFT JOIN media_analysis ma ON ma.media_id = m.id
+    WHERE m.user_id = ?
+      AND COALESCE(ma.is_blurry, 0) = 1
+      AND m.deleted_at IS NULL
+    ORDER BY COALESCE(ma.sharpness_score, 0) ASC, m.id ASC
+    LIMIT ? OFFSET ?
+  `);
+  const countQuery = db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM media m
+    LEFT JOIN media_analysis ma ON ma.media_id = m.id
+    WHERE m.user_id = ?
+      AND COALESCE(ma.is_blurry, 0) = 1
+      AND m.deleted_at IS NULL
+  `);
+  const data = dataQuery.all(userId, pageSize, offset);
+  const { total } = countQuery.get(userId);
+  return { data: mapFields("media", data), total };
+}
+
+function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = null }) {
+  const offset = (pageNo - 1) * pageSize;
+  if (clusterId !== null && clusterId !== undefined) {
+    const dataQuery = db.prepare(`
+      SELECT
+        ${_mediaSelectColumns("m")},
+        MIN(mfe.id) AS face_embedding_id
+      FROM media m
+      LEFT JOIN media_analysis ma ON ma.media_id = m.id
+      INNER JOIN media_face_embeddings mfe ON m.id = mfe.media_id
+      INNER JOIN face_clusters fc ON mfe.id = fc.face_embedding_id
+      WHERE m.user_id = ?
+        AND m.year_key = ?
+        AND fc.cluster_id = ?
+        AND m.deleted_at IS NULL
+      GROUP BY m.id
+      ORDER BY COALESCE(m.captured_at, 0) DESC, m.id DESC
+      LIMIT ? OFFSET ?
+    `);
+    const countQuery = db.prepare(`
+      SELECT COUNT(DISTINCT m.id) AS total
+      FROM media m
+      INNER JOIN media_face_embeddings mfe ON m.id = mfe.media_id
+      INNER JOIN face_clusters fc ON mfe.id = fc.face_embedding_id
+      WHERE m.user_id = ?
+        AND m.year_key = ?
+        AND fc.cluster_id = ?
+        AND m.deleted_at IS NULL
+    `);
+    const data = dataQuery.all(userId, albumId, clusterId, pageSize, offset);
+    const { total } = countQuery.get(userId, albumId, clusterId);
+    return { data: mapFields("media", data), total };
+  }
+  const dataQuery = db.prepare(`
+    SELECT ${_mediaSelectColumns("m")}
+    FROM media m
+    LEFT JOIN media_analysis ma ON ma.media_id = m.id
+    WHERE m.user_id = ?
+      AND m.year_key = ?
+      AND m.deleted_at IS NULL
+    ORDER BY COALESCE(m.captured_at, 0) DESC, m.id DESC
+    LIMIT ? OFFSET ?
+  `);
+  const countQuery = db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM media m
+    WHERE m.user_id = ?
+      AND m.year_key = ?
+      AND m.deleted_at IS NULL
+  `);
+  const data = dataQuery.all(userId, albumId, pageSize, offset);
+  const { total } = countQuery.get(userId, albumId);
+  return { data: mapFields("media", data), total };
+}
+
+function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = null }) {
+  const offset = (pageNo - 1) * pageSize;
+  if (clusterId !== null && clusterId !== undefined) {
+    const dataQuery = db.prepare(`
+      SELECT
+        ${_mediaSelectColumns("m")},
+        MIN(mfe.id) AS face_embedding_id
+      FROM media m
+      LEFT JOIN media_analysis ma ON ma.media_id = m.id
+      INNER JOIN media_face_embeddings mfe ON m.id = mfe.media_id
+      INNER JOIN face_clusters fc ON mfe.id = fc.face_embedding_id
+      WHERE m.user_id = ?
+        AND m.month_key = ?
+        AND fc.cluster_id = ?
+        AND m.deleted_at IS NULL
+      GROUP BY m.id
+      ORDER BY COALESCE(m.captured_at, 0) DESC, m.id DESC
+      LIMIT ? OFFSET ?
+    `);
+    const countQuery = db.prepare(`
+      SELECT COUNT(DISTINCT m.id) AS total
+      FROM media m
+      INNER JOIN media_face_embeddings mfe ON m.id = mfe.media_id
+      INNER JOIN face_clusters fc ON mfe.id = fc.face_embedding_id
+      WHERE m.user_id = ?
+        AND m.month_key = ?
+        AND fc.cluster_id = ?
+        AND m.deleted_at IS NULL
+    `);
+    const data = dataQuery.all(userId, albumId, clusterId, pageSize, offset);
+    const { total } = countQuery.get(userId, albumId, clusterId);
+    return { data: mapFields("media", data), total };
+  }
+  const dataQuery = db.prepare(`
+    SELECT ${_mediaSelectColumns("m")}
+    FROM media m
+    LEFT JOIN media_analysis ma ON ma.media_id = m.id
+    WHERE m.user_id = ?
+      AND m.month_key = ?
+      AND m.deleted_at IS NULL
+    ORDER BY COALESCE(m.captured_at, 0) DESC, m.id DESC
+    LIMIT ? OFFSET ?
+  `);
+  const countQuery = db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM media m
+    WHERE m.user_id = ?
+      AND m.month_key = ?
+      AND m.deleted_at IS NULL
+  `);
+  const data = dataQuery.all(userId, albumId, pageSize, offset);
+  const { total } = countQuery.get(userId, albumId);
+  return { data: mapFields("media", data), total };
+}
+
+function selectImagesByDate({ pageNo, pageSize, albumId, userId }) {
+  const offset = (pageNo - 1) * pageSize;
+  const dataQuery = db.prepare(`
+    SELECT ${_mediaSelectColumns("m")}
+    FROM media m
+    LEFT JOIN media_analysis ma ON ma.media_id = m.id
+    WHERE m.user_id = ?
+      AND m.date_key = ?
+      AND m.deleted_at IS NULL
+    ORDER BY COALESCE(m.captured_at, 0) DESC, m.id DESC
+    LIMIT ? OFFSET ?
+  `);
+  const countQuery = db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM media m
+    WHERE m.user_id = ?
+      AND m.date_key = ?
+      AND m.deleted_at IS NULL
+  `);
+  const data = dataQuery.all(userId, albumId, pageSize, offset);
+  const { total } = countQuery.get(userId, albumId);
+  return { data: mapFields("media", data), total };
+}
+
+function selectImagesByCity({ pageNo, pageSize, albumId, userId }) {
+  const offset = (pageNo - 1) * pageSize;
+  const isUnknown = albumId === "unknown";
+  const cityCondition = isUnknown ? "AND (m.city IS NULL OR TRIM(COALESCE(m.city, '')) = '' OR m.city = 'unknown')" : "AND m.city = ?";
+
+  const dataQuery = db.prepare(`
+    SELECT ${_mediaSelectColumns("m")}
+    FROM media m
+    LEFT JOIN media_analysis ma ON ma.media_id = m.id
+    WHERE m.user_id = ?
+      AND m.deleted_at IS NULL
+      ${cityCondition}
+    ORDER BY COALESCE(m.captured_at, 0) DESC, m.id DESC
+    LIMIT ? OFFSET ?
+  `);
+  const countQuery = db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM media m
+    WHERE m.user_id = ?
+      AND m.deleted_at IS NULL
+      ${cityCondition}
+  `);
+
+  const params = isUnknown ? [userId, pageSize, offset] : [userId, albumId, pageSize, offset];
+  const countParams = isUnknown ? [userId] : [userId, albumId];
+  const data = dataQuery.all(...params);
+  const { total } = countQuery.get(...countParams);
+  return { data: mapFields("media", data), total };
+}
+
+function selectGroupsByMonth({ pageNo, pageSize, userId }) {
+  const offset = (pageNo - 1) * pageSize;
+  const dataQuery = db.prepare(`
+    WITH ranked_media AS (
+      SELECT
+        m.month_key,
+        m.thumbnail_storage_key,
+        m.captured_at,
+        m.id,
+        m.storage_type,
+        ROW_NUMBER() OVER (PARTITION BY m.month_key ORDER BY COALESCE(m.captured_at,0) DESC, m.id DESC) AS rn
+      FROM media m
+      WHERE m.user_id = ?
+        AND m.deleted_at IS NULL
+        AND m.month_key != 'unknown'
+    ),
+    latest AS (
+      SELECT month_key, thumbnail_storage_key, captured_at, storage_type
+      FROM ranked_media
+      WHERE rn = 1
+    ),
+    counts AS (
+      SELECT month_key, COUNT(*) AS imageCount
+      FROM media
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+        AND month_key != 'unknown'
+      GROUP BY month_key
+    )
+    SELECT
+      latest.month_key AS album_id,
+      latest.thumbnail_storage_key AS latestImagekey,
+      latest.captured_at,
+      latest.storage_type,
+      counts.imageCount
+    FROM latest
+    JOIN counts ON counts.month_key = latest.month_key
+    ORDER BY latest.month_key DESC
+    LIMIT ? OFFSET ?
+  `);
+  const countQuery = db.prepare(`
+    SELECT COUNT(DISTINCT month_key) AS groupCount
+    FROM media
+    WHERE user_id = ?
+      AND deleted_at IS NULL
+      AND month_key != 'unknown'
+  `);
+  const data = dataQuery.all(userId, userId, pageSize, offset);
+  const { groupCount: total } = countQuery.get(userId);
+  return { data: mapFields("media", data), total };
+}
+
+function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
+  const offset = (pageNo - 1) * pageSize;
+  const dataQuery = db.prepare(`
+    WITH ranked_media AS (
+      SELECT
+        m.year_key,
+        m.thumbnail_storage_key,
+        m.captured_at,
+        m.id,
+        m.storage_type,
+        ROW_NUMBER() OVER (
+          PARTITION BY m.year_key
+          ORDER BY COALESCE(m.captured_at,0) DESC, m.id DESC
+        ) AS rn
+      FROM face_clusters fc
+      INNER JOIN media_face_embeddings mfe ON fc.face_embedding_id = mfe.id
+      INNER JOIN media m ON mfe.media_id = m.id
+      WHERE fc.user_id = ?
+        AND fc.cluster_id = ?
+        AND m.deleted_at IS NULL
+    ),
+    latest AS (
+      SELECT year_key, thumbnail_storage_key, captured_at, storage_type
+      FROM ranked_media
+      WHERE rn = 1
+    ),
+    counts AS (
+      SELECT m.year_key, COUNT(DISTINCT m.id) AS imageCount
+      FROM face_clusters fc
+      INNER JOIN media_face_embeddings mfe ON fc.face_embedding_id = mfe.id
+      INNER JOIN media m ON mfe.media_id = m.id
+      WHERE fc.user_id = ?
+        AND fc.cluster_id = ?
+        AND m.deleted_at IS NULL
+      GROUP BY m.year_key
+    )
+    SELECT
+      latest.year_key AS album_id,
+      latest.thumbnail_storage_key AS latestImagekey,
+      latest.captured_at,
+      latest.storage_type,
+      counts.imageCount
+    FROM latest
+    JOIN counts ON counts.year_key = latest.year_key
+    ORDER BY
+      CASE WHEN latest.year_key = 'unknown' THEN 1 ELSE 0 END,
+      latest.year_key DESC
+    LIMIT ? OFFSET ?
+  `);
+  const countQuery = db.prepare(`
+    SELECT COUNT(DISTINCT m.year_key) AS groupCount
+    FROM face_clusters fc
+    INNER JOIN media_face_embeddings mfe ON fc.face_embedding_id = mfe.id
+    INNER JOIN media m ON mfe.media_id = m.id
+    WHERE fc.user_id = ?
+      AND fc.cluster_id = ?
+      AND m.deleted_at IS NULL
+  `);
+  const data = dataQuery.all(userId, clusterId, userId, clusterId, pageSize, offset);
+  const { groupCount: total } = countQuery.get(userId, clusterId);
+  return { data: mapFields("media", data), total };
+}
+
+function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) {
+  const offset = (pageNo - 1) * pageSize;
+  const dataQuery = db.prepare(`
+    WITH ranked_media AS (
+      SELECT
+        m.month_key,
+        m.thumbnail_storage_key,
+        m.captured_at,
+        m.id,
+        m.storage_type,
+        ROW_NUMBER() OVER (
+          PARTITION BY m.month_key
+          ORDER BY COALESCE(m.captured_at,0) DESC, m.id DESC
+        ) AS rn
+      FROM face_clusters fc
+      INNER JOIN media_face_embeddings mfe ON fc.face_embedding_id = mfe.id
+      INNER JOIN media m ON mfe.media_id = m.id
+      WHERE fc.user_id = ?
+        AND fc.cluster_id = ?
+        AND m.deleted_at IS NULL
+    ),
+    latest AS (
+      SELECT month_key, thumbnail_storage_key, captured_at, storage_type
+      FROM ranked_media
+      WHERE rn = 1
+    ),
+    counts AS (
+      SELECT m.month_key, COUNT(DISTINCT m.id) AS imageCount
+      FROM face_clusters fc
+      INNER JOIN media_face_embeddings mfe ON fc.face_embedding_id = mfe.id
+      INNER JOIN media m ON mfe.media_id = m.id
+      WHERE fc.user_id = ?
+        AND fc.cluster_id = ?
+        AND m.deleted_at IS NULL
+      GROUP BY m.month_key
+    )
+    SELECT
+      latest.month_key AS album_id,
+      latest.thumbnail_storage_key AS latestImagekey,
+      latest.captured_at,
+      latest.storage_type,
+      counts.imageCount
+    FROM latest
+    JOIN counts ON counts.month_key = latest.month_key
+    ORDER BY
+      CASE WHEN latest.month_key = 'unknown' THEN 1 ELSE 0 END,
+      latest.month_key DESC
+    LIMIT ? OFFSET ?
+  `);
+  const countQuery = db.prepare(`
+    SELECT COUNT(DISTINCT m.month_key) AS groupCount
+    FROM face_clusters fc
+    INNER JOIN media_face_embeddings mfe ON fc.face_embedding_id = mfe.id
+    INNER JOIN media m ON mfe.media_id = m.id
+    WHERE fc.user_id = ?
+      AND fc.cluster_id = ?
+      AND m.deleted_at IS NULL
+  `);
+  const data = dataQuery.all(userId, clusterId, userId, clusterId, pageSize, offset);
+  const { groupCount: total } = countQuery.get(userId, clusterId);
+  return { data: mapFields("media", data), total };
+}
+
+function selectGroupsByYear({ pageNo, pageSize, userId }) {
+  const offset = (pageNo - 1) * pageSize;
+  const dataQuery = db.prepare(`
+    WITH ranked_media AS (
+      SELECT
+        m.year_key,
+        m.thumbnail_storage_key,
+        m.captured_at,
+        m.id,
+        m.storage_type,
+        ROW_NUMBER() OVER (PARTITION BY m.year_key ORDER BY COALESCE(m.captured_at,0) DESC, m.id DESC) AS rn
+      FROM media m
+      WHERE m.user_id = ?
+        AND m.deleted_at IS NULL
+        AND m.year_key != 'unknown'
+    ),
+    latest AS (
+      SELECT year_key, thumbnail_storage_key, captured_at, storage_type
+      FROM ranked_media
+      WHERE rn = 1
+    ),
+    counts AS (
+      SELECT year_key, COUNT(*) AS imageCount
+      FROM media
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+        AND year_key != 'unknown'
+      GROUP BY year_key
+    )
+    SELECT
+      latest.year_key AS album_id,
+      latest.thumbnail_storage_key AS latestImagekey,
+      latest.captured_at,
+      latest.storage_type,
+      counts.imageCount
+    FROM latest
+    JOIN counts ON counts.year_key = latest.year_key
+    ORDER BY latest.year_key DESC
+    LIMIT ? OFFSET ?
+  `);
+  const countQuery = db.prepare(`
+    SELECT COUNT(DISTINCT year_key) AS groupCount
+    FROM media
+    WHERE user_id = ?
+      AND deleted_at IS NULL
+      AND year_key != 'unknown'
+  `);
+  const data = dataQuery.all(userId, userId, pageSize, offset);
+  const { groupCount: total } = countQuery.get(userId);
+  return { data: mapFields("media", data), total };
+}
+
+function selectUnknownGroup({ userId }) {
+  const dataQuery = db.prepare(`
+    WITH ranked AS (
+      SELECT
+        year_key,
+        thumbnail_storage_key,
+        captured_at,
+        id,
+        storage_type,
+        ROW_NUMBER() OVER (ORDER BY COALESCE(captured_at,0) DESC, id DESC) AS rn
+      FROM media
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+        AND year_key = 'unknown'
+    ),
+    cover AS (
+      SELECT year_key, thumbnail_storage_key, captured_at, storage_type
+      FROM ranked WHERE rn = 1
+    ),
+    cnt AS (
+      SELECT COUNT(*) AS imageCount
+      FROM media
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+        AND year_key = 'unknown'
+    )
+    SELECT
+      'unknown' AS album_id,
+      cover.thumbnail_storage_key AS latestImagekey,
+      cover.captured_at,
+      cover.storage_type,
+      cnt.imageCount
+    FROM cover CROSS JOIN cnt
+  `);
+  const countQuery = db.prepare(`
+    SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END AS groupCount
+    FROM media
+    WHERE user_id = ?
+      AND deleted_at IS NULL
+      AND year_key = 'unknown'
+  `);
+  const data = dataQuery.all(userId, userId);
+  const { groupCount: total } = countQuery.get(userId);
+  return { data: mapFields("media", data), total };
+}
+
+function selectGroupsByDate({ pageNo, pageSize, userId }) {
+  const offset = (pageNo - 1) * pageSize;
+  const dataQuery = db.prepare(`
+    WITH ranked_media AS (
+      SELECT
+        m.date_key,
+        m.thumbnail_storage_key,
+        m.captured_at,
+        m.id,
+        m.storage_type,
+        ROW_NUMBER() OVER (PARTITION BY m.date_key ORDER BY COALESCE(m.captured_at,0) DESC, m.id DESC) AS rn
+      FROM media m
+      WHERE m.user_id = ?
+        AND m.deleted_at IS NULL
+    ),
+    latest AS (
+      SELECT date_key, thumbnail_storage_key, captured_at, storage_type
+      FROM ranked_media
+      WHERE rn = 1
+    ),
+    counts AS (
+      SELECT date_key, COUNT(*) AS imageCount
+      FROM media
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+      GROUP BY date_key
+    )
+    SELECT
+      latest.date_key AS album_id,
+      latest.thumbnail_storage_key AS latestImagekey,
+      latest.captured_at,
+      latest.storage_type,
+      counts.imageCount
+    FROM latest
+    JOIN counts ON counts.date_key = latest.date_key
+    ORDER BY
+      CASE WHEN latest.date_key = 'unknown' THEN 1 ELSE 0 END,
+      latest.date_key DESC
+    LIMIT ? OFFSET ?
+  `);
+  const countQuery = db.prepare(`
+    SELECT COUNT(DISTINCT date_key) AS groupCount
+    FROM media
+    WHERE user_id = ?
+      AND deleted_at IS NULL
+  `);
+  const data = dataQuery.all(userId, userId, pageSize, offset);
+  const { groupCount: total } = countQuery.get(userId);
+  return { data: mapFields("media", data), total };
+}
+
+function selectGroupsByCity({ pageNo, pageSize, userId }) {
+  const offset = (pageNo - 1) * pageSize;
+  const dataQuery = db.prepare(`
+    WITH city_normalized AS (
+      SELECT
+        id,
+        COALESCE(NULLIF(TRIM(city), ''), 'unknown') AS city_key,
+        thumbnail_storage_key,
+        captured_at,
+        storage_type
+      FROM media
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+    ),
+    ranked_media AS (
+      SELECT
+        city_key,
+        thumbnail_storage_key,
+        captured_at,
+        id,
+        storage_type,
+        ROW_NUMBER() OVER (
+          PARTITION BY city_key
+          ORDER BY COALESCE(captured_at,0) DESC, id DESC
+        ) AS rn
+      FROM city_normalized
+    ),
+    latest AS (
+      SELECT city_key, thumbnail_storage_key, captured_at, storage_type
+      FROM ranked_media
+      WHERE rn = 1
+    ),
+    counts AS (
+      SELECT city_key, COUNT(*) AS imageCount
+      FROM city_normalized
+      GROUP BY city_key
+    )
+    SELECT
+      latest.city_key AS album_id,
+      latest.thumbnail_storage_key AS latestImagekey,
+      latest.captured_at,
+      latest.storage_type,
+      counts.imageCount
+    FROM latest
+    JOIN counts ON counts.city_key = latest.city_key
+    ORDER BY
+      CASE WHEN latest.city_key = 'unknown' THEN 1 ELSE 0 END,
+      counts.imageCount DESC,
+      latest.city_key ASC
+    LIMIT ? OFFSET ?
+  `);
+  const countQuery = db.prepare(`
+    SELECT COUNT(DISTINCT COALESCE(NULLIF(TRIM(city), ''), 'unknown')) AS groupCount
+    FROM media
+    WHERE user_id = ?
+      AND deleted_at IS NULL
+  `);
+  const data = dataQuery.all(userId, pageSize, offset);
+  const { groupCount: total } = countQuery.get(userId);
+  return { data: mapFields("media", data), total };
 }
 
 module.exports = {
@@ -1554,4 +2333,6 @@ module.exports = {
   getImageStorageInfo,
   getImageDownloadInfo,
   getImagesDownloadInfo,
+  rebuildMediaSearchDoc,
+  updateIngestStatusByHash,
 };

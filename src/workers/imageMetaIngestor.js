@@ -5,7 +5,7 @@
  */
 
 const logger = require("../utils/logger");
-const { saveProcessedImageMetadata } = require("../services/imageService");
+const { saveProcessedImageMetadata, setImageIngestStatus } = require("../services/imageService");
 const { timestampToYearMonth, timestampToYear, timestampToDate, timestampToDayOfWeek } = require("../utils/formatTime");
 const timeIt = require("../utils/timeIt");
 const storageService = require("../services/storageService");
@@ -71,6 +71,12 @@ async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userI
         status: "highResErrors",
       });
     }
+
+    await setImageIngestStatus({
+      userId,
+      imageHash,
+      ingestStatus: "failed",
+    });
   } else {
     // 还有重试机会，只清理已生成的高清图，保留源文件
     let highResCleaned = false;
@@ -208,6 +214,12 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
  */
 async function processImageMeta(job) {
   const { userId, imageHash, fileName, storageKey, extension, fileSize, sessionId, mediaType = "image" } = job.data;
+
+  await setImageIngestStatus({
+    userId,
+    imageHash,
+    ingestStatus: "processing",
+  });
 
   const originalType = process.env.IMAGE_STORAGE_KEY_ORIGINAL || "original";
   const originalStorageKey = storageService.storage.generateStorageKey(originalType, fileName);

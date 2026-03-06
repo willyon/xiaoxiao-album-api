@@ -3,9 +3,9 @@
 """
 向量搜索服务（基于 hnswlib 的 ANN 索引）
 
-- 从 SQLite 的 image_embeddings + images 表加载所有图片向量
+- 从 SQLite 的 media_embeddings + media 表加载所有媒体向量
 - 在内存中构建 hnswlib 索引（space='cosine', dim=1152）
-- 按 user_id 过滤，返回当前用户下最相似的图片
+- 按 user_id 过滤，返回当前用户下最相似的媒体
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def _get_db_path() -> Path:
 
 def init_hnsw_index(ef_construction: int = 200, m: int = 16) -> None:
   """
-  从 SQLite 全量加载 image_embeddings，构建 hnswlib 索引。
+  从 SQLite 全量加载 media_embeddings，构建 hnswlib 索引。
   该函数在服务启动时调用一次，后续重复调用会直接返回。
   """
   global _index, _label_meta, _initialized
@@ -57,13 +57,13 @@ def init_hnsw_index(ef_construction: int = 200, m: int = 16) -> None:
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    # 仅加载未删除图片的 embedding
+    # 仅加载未删除媒体的 embedding
     cur.execute(
       """
-      SELECT e.image_id, e.vector, i.user_id
-      FROM image_embeddings e
-      INNER JOIN images i ON e.image_id = i.id
-      WHERE i.deleted_at IS NULL
+      SELECT e.media_id, e.vector, m.user_id
+      FROM media_embeddings e
+      INNER JOIN media m ON e.media_id = m.id
+      WHERE m.deleted_at IS NULL
       """
     )
 
@@ -71,7 +71,7 @@ def init_hnsw_index(ef_construction: int = 200, m: int = 16) -> None:
     conn.close()
 
     if not rows:
-      logger.warning("向量索引初始化：没有可用的 image_embeddings 记录")
+      logger.warning("向量索引初始化：没有可用的 media_embeddings 记录")
       _initialized = True
       return
 
@@ -88,11 +88,11 @@ def init_hnsw_index(ef_construction: int = 200, m: int = 16) -> None:
         if vec.size != _dim:
           # 维度不匹配的向量跳过
           continue
-        image_id = int(row["image_id"])
+        media_id = int(row["media_id"])
         user_id = int(row["user_id"])
         vectors.append(vec)
-        labels.append(image_id)
-        _label_meta[image_id] = {"image_id": image_id, "user_id": user_id}
+        labels.append(media_id)
+        _label_meta[media_id] = {"media_id": media_id, "user_id": user_id}
       except Exception:
         continue
 
@@ -129,7 +129,7 @@ def init_hnsw_index(ef_construction: int = 200, m: int = 16) -> None:
 
 def ann_search(user_id: int, query_vector: List[float], top_k: int = 50) -> List[Dict[str, float]]:
   """
-  使用 hnsw 索引进行 ANN 搜索，只返回当前用户的图片。
+  使用 hnsw 索引进行 ANN 搜索，只返回当前用户的媒体。
 
   Args:
       user_id: 当前用户 ID
@@ -181,7 +181,7 @@ def ann_search(user_id: int, query_vector: List[float], top_k: int = 50) -> List
       if meta["user_id"] != int(user_id):
         continue
       score = float(1.0 - float(dist))
-      results.append({"image_id": meta["image_id"], "score": score})
+      results.append({"media_id": meta["media_id"], "score": score})
       if len(results) >= top_k:
         break
 
