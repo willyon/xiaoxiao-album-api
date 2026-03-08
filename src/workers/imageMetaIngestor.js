@@ -10,10 +10,11 @@ const { timestampToYearMonth, timestampToYear, timestampToDate, timestampToDayOf
 const timeIt = require("../utils/timeIt");
 const storageService = require("../services/storageService");
 const videoProcessingService = require("../services/videoProcessingService");
-const { updateProgress } = require("../services/imageProcessingProgressService");
+const { updateProgress, updateProgressOnce } = require("../services/imageProcessingProgressService");
 const { searchIndexQueue } = require("../queues/searchIndexQueue");
 const { cleanupQueue } = require("../queues/cleanupQueue");
 const imageMetadataService = require("../services/imageMetadataService");
+const { addMediaToSession } = require("../services/uploadSessionService");
 
 /**
  * 处理重试失败后的清理工作（用于imageMetaIngestor）
@@ -112,7 +113,7 @@ async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userI
 }
 
 /**
- * 处理视频的 meta 阶段：ffprobe 元数据、移动原片、不入队 AI
+ * 处理视频的 meta 阶段：ffprobe 元数据、移动原片、入队 AI 阶段
  */
 async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, originalStorageKey, sessionId }) {
   let videoPath;
@@ -154,8 +155,9 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
   const aspectRatio =
     meta.width && meta.height && meta.height > 0 ? Math.round((meta.width / meta.height) * 1000) / 1000 : null;
 
+  let imageId = null;
   try {
-    await saveProcessedImageMetadata({
+    const result = await saveProcessedImageMetadata({
       userId,
       imageHash,
       creationDate: captureTime,
@@ -177,6 +179,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
       videoCodec: meta.codec,
       mediaType: "video",
     });
+    imageId = result.imageId;
   } catch (e) {
     logger.error({
       message: "Video metadata database update failed",
@@ -191,6 +194,12 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
     } catch (err) {}
   }
 
+  if (sessionId && imageId) {
+    try {
+      await addMediaToSession({ sessionId, mediaId: imageId });
+    } catch (error) {}
+  }
+
   try {
     await storageService.storage.moveFile(storageKey, originalStorageKey);
   } catch (e) {
@@ -200,7 +209,98 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
     });
   }
 
-  // Phase 1：视频不入队 searchIndex、cleanup
+  await _enqueueAiAndCleanup({
+    imageId,
+    userId,
+    highResStorageKey: null,
+    originalStorageKey,
+    sessionId,
+    mediaType: "video",
+    fileName,
+    imageHash,
+  });
+}
+
+async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType, fileName, imageHash }) {
+  const enableAutoEnqueue = process.env.ENABLE_AUTO_AI_ENQUEUE !== "false"; // 默认启用
+
+  if (!enableAutoEnqueue) {
+    logger.info({
+      message: "自动AI分析入队已禁用，请使用 scripts/development/enqueue-ai-analysis.js 手动触发",
+      details: { imageHash, userId, imageId },
+    });
+    return;
+  }
+
+  if (!imageId) {
+    logger.warn({
+      message: "Cannot add to queues - imageId is null",
+      details: { imageHash, userId },
+    });
+    return;
+  }
+
+  try {
+    await searchIndexQueue.add(
+      process.env.SEARCH_INDEX_QUEUE_NAME,
+      {
+        imageId,
+        userId,
+        highResStorageKey,
+        originalStorageKey,
+        sessionId,
+        mediaType: mediaType || "image",
+        fileName: fileName || "",
+      },
+      {
+        jobId: `${userId}:${imageId}`,
+      },
+    );
+
+    if (sessionId) {
+      await updateProgressOnce({
+        sessionId,
+        status: "aiEligibleCount",
+        dedupeKey: imageId,
+      });
+      await updateProgressOnce({
+        sessionId,
+        status: "aiQueuedCount",
+        dedupeKey: imageId,
+      });
+    }
+  } catch (searchQueueError) {
+    logger.warn({
+      message: "Failed to add image to search index queue",
+      details: {
+        imageHash,
+        userId,
+        error: searchQueueError.message,
+      },
+    });
+  }
+
+  try {
+    await cleanupQueue.add(
+      process.env.CLEANUP_QUEUE_NAME,
+      {
+        userId,
+        imageId,
+        highResStorageKey,
+        originalStorageKey,
+      },
+      { jobId: `cleanup:${userId}:${imageId}` },
+    );
+  } catch (cleanupQueueError) {
+    logger.warn({
+      message: "Failed to add image to cleanup queue",
+      details: {
+        imageHash,
+        userId,
+        error: cleanupQueueError.message,
+      },
+    });
+  }
 }
 
 /**
@@ -396,73 +496,22 @@ async function processImageMeta(job) {
     // 不抛出错误，让任务正常完成
   }
 
-  // ======== 添加到搜索索引队列（可选） ========
-  // 🎯 策略说明：
-  // • 方案1（自动入队）：上传后自动触发 AI 分析（searchIndex + cleanup）
-  // • 方案2（手动入队）：ENABLE_AUTO_AI_ENQUEUE=false 时跳过入队，可使用 scripts/development/enqueue-ai-analysis.js 批量触发
-  const enableAutoEnqueue = process.env.ENABLE_AUTO_AI_ENQUEUE !== "false"; // 默认启用
-
-  if (!enableAutoEnqueue) {
-    logger.info({
-      message: "自动AI分析入队已禁用，请使用 scripts/development/enqueue-ai-analysis.js 手动触发",
-      details: { imageHash, userId, imageId },
-    });
-    return;
+  if (sessionId && imageId) {
+    try {
+      await addMediaToSession({ sessionId, mediaId: imageId });
+    } catch (error) {}
   }
 
-  if (imageId) {
-    try {
-      await searchIndexQueue.add(
-        process.env.SEARCH_INDEX_QUEUE_NAME,
-        {
-          imageId,
-          userId,
-          highResStorageKey: highResStorageKeyResult,
-          originalStorageKey, // 移动后的原图路径
-        },
-        {
-          jobId: `${userId}:${imageId}`, // 使用 imageId 作为去重标识
-        },
-      );
-    } catch (searchQueueError) {
-      // 搜索索引失败不影响主流程
-      logger.warn({
-        message: "Failed to add image to search index queue",
-        details: {
-          imageHash,
-          userId,
-          error: searchQueueError.message,
-        },
-      });
-    }
-
-    try {
-      await cleanupQueue.add(
-        process.env.CLEANUP_QUEUE_NAME,
-        {
-          userId,
-          imageId,
-          highResStorageKey: highResStorageKeyResult,
-          originalStorageKey,
-        },
-        { jobId: `cleanup:${userId}:${imageId}` },
-      );
-    } catch (cleanupQueueError) {
-      logger.warn({
-        message: "Failed to add image to cleanup queue",
-        details: {
-          imageHash,
-          userId,
-          error: cleanupQueueError.message,
-        },
-      });
-    }
-  } else {
-    logger.warn({
-      message: "Cannot add to queues - imageId is null",
-      details: { imageHash, userId },
-    });
-  }
+  await _enqueueAiAndCleanup({
+    imageId,
+    userId,
+    highResStorageKey: highResStorageKeyResult,
+    originalStorageKey,
+    sessionId,
+    mediaType: "image",
+    fileName,
+    imageHash,
+  });
 }
 
 module.exports = {

@@ -94,6 +94,31 @@ function buildSearchConditions(query, filters, options = {}) {
     }
   }
 
+  // 2.1 场景（media_analysis.scene_primary）
+  if (filters.scene && Array.isArray(filters.scene) && filters.scene.length > 0) {
+    const sceneConditions = [];
+    filters.scene.forEach((scene) => {
+      sceneConditions.push("ma.scene_primary = ?");
+      whereParams.push(scene);
+    });
+    if (sceneConditions.length > 0) {
+      whereConditions.push(`(${sceneConditions.join(" OR ")})`);
+    }
+  }
+
+  // 2.2 物体（media_objects.label）
+  if (filters.object && Array.isArray(filters.object) && filters.object.length > 0) {
+    const placeholders = filters.object.map(() => "?").join(",");
+    whereConditions.push(`
+      EXISTS (
+        SELECT 1 FROM media_objects mo
+        WHERE mo.media_id = i.id
+          AND mo.label IN (${placeholders})
+      )
+    `);
+    whereParams.push(...filters.object);
+  }
+
   // 3. 图片版式（layout_type 字段在 FTS 中）
   if (filters.imageOrientation && Array.isArray(filters.imageOrientation) && filters.imageOrientation.length > 0) {
     const layoutConditions = filters.imageOrientation.map((layout) => `layout_type:${layout}`).join(" OR ");
@@ -136,6 +161,29 @@ function buildSearchConditions(query, filters, options = {}) {
     } else if (filters.aiAnalysisStatus === "notAnalyzed") {
       // 待识别：face_count为NULL（未进行AI分析）
       whereConditions.push("(ma.media_id IS NULL OR ma.analysis_status != 'done')");
+    }
+  }
+
+  // 5.1 是否含文字（基于 media_search.ocr_text）
+  if (filters.hasText && filters.hasText !== "" && filters.hasText !== "all") {
+    if (filters.hasText === "withText") {
+      whereConditions.push(`
+        EXISTS (
+          SELECT 1 FROM media_search ms2
+          WHERE ms2.media_id = i.id
+            AND ms2.ocr_text IS NOT NULL
+            AND TRIM(ms2.ocr_text) != ''
+        )
+      `);
+    } else if (filters.hasText === "withoutText") {
+      whereConditions.push(`
+        NOT EXISTS (
+          SELECT 1 FROM media_search ms2
+          WHERE ms2.media_id = i.id
+            AND ms2.ocr_text IS NOT NULL
+            AND TRIM(ms2.ocr_text) != ''
+        )
+      `);
     }
   }
 
@@ -273,6 +321,18 @@ function buildSearchConditions(query, filters, options = {}) {
     if (timeThreshold) {
       whereConditions.push("i.created_at >= ?");
       whereParams.push(timeThreshold);
+    }
+  }
+
+  // 13. 视频时长（仅视频）
+  if (filters.videoDuration && filters.videoDuration !== "" && filters.videoDuration !== "all") {
+    whereConditions.push("i.media_type = 'video'");
+    if (filters.videoDuration === "short") {
+      whereConditions.push("COALESCE(i.duration_sec, 0) > 0 AND i.duration_sec <= 60");
+    } else if (filters.videoDuration === "medium") {
+      whereConditions.push("i.duration_sec > 60 AND i.duration_sec <= 300");
+    } else if (filters.videoDuration === "long") {
+      whereConditions.push("i.duration_sec > 300");
     }
   }
 
@@ -789,12 +849,12 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
       scopeClusterId,
     } = req.query;
 
-    if (!type || !["city", "year", "month", "weekday"].includes(type)) {
+    if (!type || !["city", "year", "month", "weekday", "scene", "object"].includes(type)) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
         messageType: "error",
-        message: "type 参数必须是 city、year、month 或 weekday",
+        message: "type 参数必须是 city、year、month、weekday、scene 或 object",
       });
     }
 
@@ -842,11 +902,31 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
   }
 }
 
+/**
+ * 分页获取场景筛选选项
+ * GET /search/filters/scenes?pageNo=1&pageSize=20
+ */
+async function handleGetSceneFilterOptionsPaginated(req, res, next) {
+  req.query.type = "scene";
+  return handleGetFilterOptionsPaginated(req, res, next);
+}
+
+/**
+ * 分页获取物体筛选选项
+ * GET /search/filters/objects?pageNo=1&pageSize=20
+ */
+async function handleGetObjectFilterOptionsPaginated(req, res, next) {
+  req.query.type = "object";
+  return handleGetFilterOptionsPaginated(req, res, next);
+}
+
 module.exports = {
   handleSearchImages,
   handleGetSearchSuggestions,
   handleIndexImage,
   handleGetQueueStatus,
   handleGetFilterOptionsPaginated,
+  handleGetSceneFilterOptionsPaginated,
+  handleGetObjectFilterOptionsPaginated,
   buildScopeConditions,
 };

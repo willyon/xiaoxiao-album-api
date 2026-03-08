@@ -390,7 +390,7 @@ function getFilterOptions(userId) {
  * 分页获取筛选选项列表（支持 scope：在当前维度下的选项）
  * @param {Object} params
  * @param {number} params.userId - 用户ID
- * @param {string} params.type - 选项类型: 'city' | 'year' | 'month' | 'weekday'
+ * @param {string} params.type - 选项类型: 'city' | 'year' | 'month' | 'weekday' | 'scene' | 'object'
  * @param {number} params.pageNo - 页码（从1开始）
  * @param {number} params.pageSize - 每页数量（默认20）
  * @param {string} params.timeDimension - 时间维度（可选）
@@ -549,6 +549,74 @@ function getFilterOptionsPaginated({
 
         list = weekdayData.map((w) => w.day_key);
         total = weekdayTotal.total;
+        break;
+      }
+      case "scene": {
+        const sceneData = db
+          .prepare(
+            `
+          SELECT ma.scene_primary, COUNT(*) as count
+          FROM media_analysis ma
+          INNER JOIN media ON media.id = ma.media_id
+          WHERE media.user_id = ?
+            AND ma.scene_primary IS NOT NULL
+            AND TRIM(ma.scene_primary) != ''${mediaClause}${scopeClause}
+          GROUP BY ma.scene_primary
+          ORDER BY count DESC, ma.scene_primary ASC
+          LIMIT ? OFFSET ?
+        `,
+          )
+          .all(userId, ...baseParams, pageSize, offset);
+
+        const sceneTotal = db
+          .prepare(
+            `
+          SELECT COUNT(DISTINCT ma.scene_primary) as total
+          FROM media_analysis ma
+          INNER JOIN media ON media.id = ma.media_id
+          WHERE media.user_id = ?
+            AND ma.scene_primary IS NOT NULL
+            AND TRIM(ma.scene_primary) != ''${mediaClause}${scopeClause}
+        `,
+          )
+          .get(userId, ...baseParams);
+
+        list = sceneData.map((s) => s.scene_primary);
+        total = sceneTotal.total;
+        break;
+      }
+      case "object": {
+        const objectData = db
+          .prepare(
+            `
+          SELECT mo.label, COUNT(*) as count
+          FROM media_objects mo
+          INNER JOIN media ON media.id = mo.media_id
+          WHERE media.user_id = ?
+            AND mo.label IS NOT NULL
+            AND TRIM(mo.label) != ''${mediaClause}${scopeClause}
+          GROUP BY mo.label
+          ORDER BY count DESC, mo.label ASC
+          LIMIT ? OFFSET ?
+        `,
+          )
+          .all(userId, ...baseParams, pageSize, offset);
+
+        const objectTotal = db
+          .prepare(
+            `
+          SELECT COUNT(DISTINCT mo.label) as total
+          FROM media_objects mo
+          INNER JOIN media ON media.id = mo.media_id
+          WHERE media.user_id = ?
+            AND mo.label IS NOT NULL
+            AND TRIM(mo.label) != ''${mediaClause}${scopeClause}
+        `,
+          )
+          .get(userId, ...baseParams);
+
+        list = objectData.map((o) => o.label);
+        total = objectTotal.total;
         break;
       }
 

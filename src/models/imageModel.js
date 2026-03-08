@@ -1624,6 +1624,7 @@ function getImageDownloadInfo({ userId, imageId }) {
   const sql = `
     SELECT 
       id,
+      media_type,
       original_storage_key,
       high_res_storage_key,
       thumbnail_storage_key,
@@ -1642,6 +1643,7 @@ function getImageDownloadInfo({ userId, imageId }) {
 
   return {
     id: image.id,
+    mediaType: image.media_type || "image",
     originalStorageKey: image.original_storage_key,
     highResStorageKey: image.high_res_storage_key,
     thumbnailStorageKey: image.thumbnail_storage_key,

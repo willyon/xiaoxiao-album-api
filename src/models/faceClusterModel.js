@@ -139,7 +139,7 @@ function insertFaceClusters(userId, clusterData) {
       cluster_id,
       face_embedding_id,
       similarity_score,
-      is_representative,
+      representative_type,
       is_user_assigned,
       created_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -156,7 +156,7 @@ function insertFaceClusters(userId, clusterData) {
         item.clusterId,
         item.faceEmbeddingId,
         item.similarityScore || null,
-        item.isRepresentative ? 1 : 0, // SQLite 使用 0/1 表示布尔值
+        item.representativeType ?? (item.isRepresentative ? 1 : 0),
         item.isUserAssigned ? 1 : 0, // SQLite 使用 0/1 表示布尔值，默认 FALSE（自动聚类）
         now,
       );
@@ -226,7 +226,7 @@ function getOldCoverMapping(userId) {
       face_embedding_id
     FROM face_clusters
     WHERE user_id = ? 
-      AND is_representative = 2
+      AND representative_type = 2
       AND (is_user_assigned IS NULL OR is_user_assigned = FALSE)
   `;
   const stmt = db.prepare(sql);
@@ -386,7 +386,7 @@ function restoreCoverSettings(userId, oldCoverMapping, newClusterData) {
   let restoredCount = 0;
   const updateCoverStmt = db.prepare(`
     UPDATE face_clusters
-    SET is_representative = 2
+    SET representative_type = 2
     WHERE user_id = ? AND cluster_id = ? AND face_embedding_id = ?
   `);
 
@@ -505,8 +505,8 @@ function getFacesByClusterId(userId, clusterId, options = {}) {
       AND m.deleted_at IS NULL
     ORDER BY 
       CASE 
-        WHEN fc.is_representative = 2 THEN 1  -- 手动设置的封面优先级最高
-        WHEN fc.is_representative = 1 THEN 2  -- 默认封面次之
+        WHEN fc.representative_type = 2 THEN 1  -- 手动设置的封面优先级最高
+        WHEN fc.representative_type = 1 THEN 2  -- 默认封面次之
         ELSE 3  -- 其他
       END,
       fc.similarity_score DESC, 
@@ -623,7 +623,7 @@ function getClustersByUserId(userId, options = {}) {
       fc.cluster_id,
       fc.name,
       COUNT(*) OVER (PARTITION BY fc.cluster_id) AS faceCount,
-      MAX(fc.is_representative) OVER (PARTITION BY fc.cluster_id) AS hasRepresentative
+      MAX(fc.representative_type) OVER (PARTITION BY fc.cluster_id) AS hasRepresentative
     FROM face_clusters fc
     INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
     INNER JOIN media m ON fe.media_id = m.id
@@ -734,7 +734,7 @@ function getClustersByUserId(userId, options = {}) {
       fe.face_thumbnail_storage_key,
       m.thumbnail_storage_key,
       COALESCE(m.storage_type, 'aliyun-oss') AS storage_type,
-      fc.is_representative,
+      fc.representative_type,
       fc.similarity_score
     FROM face_clusters fc
     INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
@@ -744,8 +744,8 @@ function getClustersByUserId(userId, options = {}) {
       AND m.deleted_at IS NULL
     ORDER BY fc.cluster_id, 
       CASE 
-        WHEN fc.is_representative = 2 THEN 1  -- 手动设置的封面优先级最高
-        WHEN fc.is_representative = 1 THEN 2  -- 默认封面次之
+        WHEN fc.representative_type = 2 THEN 1  -- 手动设置的封面优先级最高
+        WHEN fc.representative_type = 1 THEN 2  -- 默认封面次之
         ELSE 3  -- 其他
       END,
       fc.similarity_score DESC
@@ -909,12 +909,12 @@ function getRecentClustersByUserId(userId, options = {}) {
   const clusterIds = basicRows.map((row) => row.cluster_id);
   const coverPlaceholders = clusterIds.map(() => "?").join(", ");
   const coverSql = `
-    SELECT fc.cluster_id, fe.face_thumbnail_storage_key, m.thumbnail_storage_key, COALESCE(m.storage_type, 'aliyun-oss') AS storage_type, fc.is_representative, fc.similarity_score
+    SELECT fc.cluster_id, fe.face_thumbnail_storage_key, m.thumbnail_storage_key, COALESCE(m.storage_type, 'aliyun-oss') AS storage_type, fc.representative_type, fc.similarity_score
     FROM face_clusters fc
     INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
     INNER JOIN media m ON fe.media_id = m.id
     WHERE fc.user_id = ? AND fc.cluster_id IN (${coverPlaceholders}) AND m.deleted_at IS NULL
-    ORDER BY fc.cluster_id, CASE WHEN fc.is_representative = 2 THEN 1 WHEN fc.is_representative = 1 THEN 2 ELSE 3 END, fc.similarity_score DESC
+    ORDER BY fc.cluster_id, CASE WHEN fc.representative_type = 2 THEN 1 WHEN fc.representative_type = 1 THEN 2 ELSE 3 END, fc.similarity_score DESC
   `;
   const coverRows = db.prepare(coverSql).all(userId, ...clusterIds);
   const coversMap = new Map();
@@ -1113,7 +1113,7 @@ function moveFacesToCluster(userId, sourceClusterId, faceEmbeddingIds, targetClu
         cluster_id,
         face_embedding_id,
         similarity_score,
-        is_representative,
+        representative_type,
         is_user_assigned,
         name,
         created_at,
@@ -1131,7 +1131,7 @@ function moveFacesToCluster(userId, sourceClusterId, faceEmbeddingIds, targetClu
           finalTargetClusterId,
           faceEmbeddingId,
           null, // similarity_score 设为 null（因为是手动分配）
-          0, // is_representative 设为 0（SQLite 使用 0/1 表示布尔值）
+          0, // representative_type 设为 0（非代表）
           1, // is_user_assigned 设为 1（标记为用户手动分配，SQLite 使用 0/1 表示布尔值）
           clusterNameToUse,
           now,
@@ -1288,7 +1288,7 @@ function verifyFaceEmbeddingInCluster(userId, clusterId, faceEmbeddingId) {
 function clearClusterRepresentatives(userId, clusterId) {
   const clearSql = `
     UPDATE face_clusters
-    SET is_representative = 0
+    SET representative_type = 0
     WHERE user_id = ? AND cluster_id = ?
   `;
   const stmt = db.prepare(clearSql);
@@ -1305,8 +1305,8 @@ function clearClusterRepresentatives(userId, clusterId) {
 function clearManualCoverRepresentative(userId, clusterId) {
   const clearSql = `
     UPDATE face_clusters
-    SET is_representative = 0
-    WHERE user_id = ? AND cluster_id = ? AND is_representative = 2
+    SET representative_type = 0
+    WHERE user_id = ? AND cluster_id = ? AND representative_type = 2
   `;
   const stmt = db.prepare(clearSql);
   const result = stmt.run(userId, clusterId);
@@ -1323,10 +1323,10 @@ function clearManualCoverRepresentative(userId, clusterId) {
 function clearOtherDefaultCoverRepresentative(userId, clusterId, keepFaceEmbeddingId) {
   const clearSql = `
     UPDATE face_clusters
-    SET is_representative = 0
+    SET representative_type = 0
     WHERE user_id = ? 
       AND cluster_id = ? 
-      AND is_representative = 1
+      AND representative_type = 1
       AND face_embedding_id != ?
   `;
   const stmt = db.prepare(clearSql);
@@ -1345,7 +1345,7 @@ function clearOtherDefaultCoverRepresentative(userId, clusterId, keepFaceEmbeddi
 function updateFaceClusterRepresentative(userId, clusterId, faceEmbeddingId, representativeValue = 1) {
   const updateSql = `
     UPDATE face_clusters
-    SET is_representative = ?
+    SET representative_type = ?
     WHERE user_id = ? AND cluster_id = ? AND face_embedding_id = ?
   `;
   const stmt = db.prepare(updateSql);
@@ -1362,13 +1362,13 @@ function updateFaceClusterRepresentative(userId, clusterId, faceEmbeddingId, rep
  */
 function getFaceEmbeddingRepresentativeValue(userId, clusterId, faceEmbeddingId) {
   const sql = `
-    SELECT is_representative
+    SELECT representative_type
     FROM face_clusters
     WHERE user_id = ? AND cluster_id = ? AND face_embedding_id = ?
   `;
   const stmt = db.prepare(sql);
   const row = stmt.get(userId, clusterId, faceEmbeddingId);
-  return row ? row.is_representative : null;
+  return row ? row.representative_type : null;
 }
 
 /**
@@ -1386,7 +1386,7 @@ function getRepresentativeStatusByThumbnailKeys(userId, thumbnailStorageKeys) {
   const sql = `
     SELECT 
       fe.face_thumbnail_storage_key,
-      MAX(fc.is_representative) AS is_representative
+      MAX(fc.representative_type) AS representative_type
     FROM media_face_embeddings fe
     INNER JOIN face_clusters fc ON fe.id = fc.face_embedding_id
     INNER JOIN media m ON fe.media_id = m.id
@@ -1400,7 +1400,7 @@ function getRepresentativeStatusByThumbnailKeys(userId, thumbnailStorageKeys) {
 
   const result = new Map();
   for (const row of rows) {
-    result.set(row.face_thumbnail_storage_key, row.is_representative || 0);
+    result.set(row.face_thumbnail_storage_key, row.representative_type || 0);
   }
 
   return result;
@@ -1601,7 +1601,7 @@ function getDefaultCoverFaceEmbeddingId(userId, clusterId) {
     INNER JOIN media m ON fe.media_id = m.id
     WHERE fc.user_id = ? 
       AND fc.cluster_id = ?
-      AND fc.is_representative = 1
+      AND fc.representative_type = 1
       AND m.deleted_at IS NULL
     LIMIT 1
   `;

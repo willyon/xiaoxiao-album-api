@@ -38,6 +38,7 @@ const { updateImageSearchMetadata, insertFaceEmbeddings } = require("../models/i
 const storageService = require("../services/storageService");
 const faceClusterScheduler = require("../services/faceClusterScheduler");
 const logger = require("../utils/logger");
+const { updateProgressOnce } = require("../services/imageProcessingProgressService");
 
 /**
  * 处理搜索索引任务
@@ -126,9 +127,30 @@ const logger = require("../utils/logger");
  * 处理人脸识别任务
  */
 async function processFaceRecognition(job) {
-  const { imageId, userId, highResStorageKey, originalStorageKey } = job.data;
+  const { imageId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType = "image" } = job.data;
 
   try {
+    if (mediaType === "video") {
+      await updateImageSearchMetadata({
+        imageId,
+        analysisVersion: "1.0",
+      });
+
+      if (sessionId) {
+        await updateProgressOnce({
+          sessionId,
+          status: "aiDoneCount",
+          dedupeKey: imageId,
+        });
+      }
+
+      logger.info({
+        message: `✅ 视频AI阶段标记完成 imageid: ${imageId}`,
+        details: { sessionId, mediaType },
+      });
+      return;
+    }
+
     // 1. 获取图片数据
     // 策略：优先使用高清图（AVIF/WebP格式，imageUnderstandingService会自动转换）
     // 原图可能是HEIC格式，也会自动转换，但文件更大
@@ -229,6 +251,14 @@ async function processFaceRecognition(job) {
           message: `已调度人脸聚类任务: userId=${userId}, highQualityFaces=${highQualityFaces.length}`,
         });
       }
+    }
+
+    if (sessionId) {
+      await updateProgressOnce({
+        sessionId,
+        status: "aiDoneCount",
+        dedupeKey: imageId,
+      });
     }
   } catch (error) {
     const errorMessage = error.message || "unknown_error";

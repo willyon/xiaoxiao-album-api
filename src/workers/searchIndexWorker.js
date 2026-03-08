@@ -12,6 +12,8 @@ const logger = require("../utils/logger");
 const initGracefulShutdown = require("../utils/gracefulShutdown");
 // const { processSearchIndex } = require("./searchIndexIngestor");
 const { processFaceRecognition } = require("./searchIndexIngestor");
+const { updateProgressOnce } = require("../services/imageProcessingProgressService");
+const { addAiFailureToSession } = require("../services/uploadSessionService");
 
 // 在BullMQ场景下设为null可以避免ioredis在命令阻塞时抛MaxRetriesPerRequesterror,是必要的设置
 const connection = new IORedis({ maxRetriesPerRequest: null });
@@ -53,6 +55,23 @@ worker.on("failed", (job, error) => {
       data: job?.data,
     },
   });
+
+  if (!willRetry && job?.data?.sessionId && job?.data?.imageId) {
+    updateProgressOnce({
+      sessionId: job.data.sessionId,
+      status: "aiErrorCount",
+      dedupeKey: job.data.imageId,
+    }).catch(() => {});
+
+    addAiFailureToSession({
+      sessionId: job.data.sessionId,
+      mediaId: job.data.imageId,
+      fileName: job.data.fileName || "",
+      errorCode: "AI_ANALYSIS_FAILED",
+      errorMessage: error?.message || "AI analysis failed",
+      retryable: true,
+    }).catch(() => {});
+  }
 });
 
 worker.on("stalled", (job) => {

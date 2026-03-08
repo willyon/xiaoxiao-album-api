@@ -7,6 +7,7 @@
  */
 const { getRedisClient } = require("./redisClient");
 const logger = require("../utils/logger");
+const { normalizeProgressData, computeCompleted } = require("../utils/uploadProgressSnapshot");
 
 // 获取 Redis 客户端单实例
 const redisClient = getRedisClient();
@@ -35,6 +36,25 @@ async function updateProgress({ sessionId, status, increment = 1 }) {
   }
 }
 
+async function updateProgressOnce({ sessionId, status, dedupeKey, increment = 1 }) {
+  if (!sessionId || !status || !dedupeKey) return;
+
+  try {
+    const markerKey = `upload:session:${sessionId}:counter_marker:${status}`;
+    const isFirstUpdate = await redisClient.sadd(markerKey, String(dedupeKey));
+    await redisClient.expire(markerKey, 1 * 24 * 3600);
+
+    if (isFirstUpdate === 1) {
+      await updateProgress({ sessionId, status, increment });
+    }
+  } catch (error) {
+    logger.error({
+      message: "幂等进度更新失败",
+      details: { sessionId, status, dedupeKey, increment, error: error.message },
+    });
+  }
+}
+
 /**
  * 发布图片处理进度更新事件
  * @param {string} sessionId - 会话ID
@@ -45,18 +65,7 @@ async function _publishProgressUpdate(sessionId) {
     const redisData = await redisClient.hgetall(`upload:session:${sessionId}`);
 
     if (redisData && Object.keys(redisData).length > 0) {
-      // 构建进度数据
-      const progressData = {
-        sessionId,
-        uploadedCount: parseInt(redisData.uploadedCount) || 0,
-        thumbDone: parseInt(redisData.thumbDone) || 0,
-        highResDone: parseInt(redisData.highResDone) || 0,
-        thumbErrors: parseInt(redisData.thumbErrors) || 0,
-        highResErrors: parseInt(redisData.highResErrors) || 0,
-        duplicateCount: parseInt(redisData.duplicateCount) || 0, // Controller层检测的重复
-        workerSkippedCount: parseInt(redisData.workerSkippedCount) || 0, // Worker层跳过的
-        existingFiles: parseInt(redisData.existingFiles) || 0,
-      };
+      const progressData = normalizeProgressData(sessionId, redisData);
 
       // 发布到Redis频道
       await redisClient.publish(`session:${sessionId}:progress`, JSON.stringify(progressData));
@@ -102,25 +111,11 @@ async function setupProgressStream(req, res, sessionId) {
     // 场景：Worker 处理快 / 重复文件时，publish 已发生，前端连接建立时已错过
     const redisData = await redisClient.hgetall(`upload:session:${sessionId}`);
     if (redisData && Object.keys(redisData).length > 0) {
-      const progressData = {
-        sessionId,
-        uploadedCount: parseInt(redisData.uploadedCount) || 0,
-        thumbDone: parseInt(redisData.thumbDone) || 0,
-        highResDone: parseInt(redisData.highResDone) || 0,
-        thumbErrors: parseInt(redisData.thumbErrors) || 0,
-        highResErrors: parseInt(redisData.highResErrors) || 0,
-        duplicateCount: parseInt(redisData.duplicateCount) || 0,
-        workerSkippedCount: parseInt(redisData.workerSkippedCount) || 0,
-        existingFiles: parseInt(redisData.existingFiles) || 0,
-      };
+      const progressData = normalizeProgressData(sessionId, redisData);
       res.write(`data: ${JSON.stringify(progressData)}\n\n`);
 
       // 立即检查是否已完成（如仅重复/已存在文件，或 Worker 已处理完）
-      const { uploadedCount, highResDone, highResErrors, workerSkippedCount, duplicateCount, existingFiles } = progressData;
-      const totalFiles = uploadedCount + duplicateCount + existingFiles;
-      const isCompleted =
-        totalFiles > 0 &&
-        (uploadedCount === 0 || highResDone + highResErrors + workerSkippedCount >= uploadedCount);
+      const isCompleted = progressData.completed === true;
 
       if (isCompleted) {
         const completionMessage = { ...progressData, completed: true, timestamp: Date.now() };
@@ -160,32 +155,13 @@ async function setupProgressStream(req, res, sessionId) {
             // 直接使用当前消息的数据，因为只有最后一条消息的定时器会执行
             const progressData = JSON.parse(message);
 
-            // 集中解析所有数值字段
-            const uploadedCount = parseInt(progressData.uploadedCount) || 0;
-            const thumbDone = parseInt(progressData.thumbDone) || 0;
-            const highResDone = parseInt(progressData.highResDone) || 0;
-            const thumbErrors = parseInt(progressData.thumbErrors) || 0;
-            const highResErrors = parseInt(progressData.highResErrors) || 0;
-            const duplicateCount = parseInt(progressData.duplicateCount) || 0;
-            const workerSkippedCount = parseInt(progressData.workerSkippedCount) || 0;
-            const existingFiles = parseInt(progressData.existingFiles) || 0;
-
-            // 计算总文件数：实际上传 + 重复上传 + 已存在文件
-            const totalFiles = uploadedCount + duplicateCount + existingFiles;
-
-            // 完成判断逻辑：
-            // 1. 如果没有文件需要处理，不完成
-            // 2. 如果只有重复/已存在文件，立即完成
-            // 3. 如果有实际上传文件，等待处理完成（包含 Worker 层跳过的）
-            const isCompleted =
-              totalFiles > 0 &&
-              (uploadedCount === 0 || // 只有重复/已存在文件
-                highResDone + highResErrors + workerSkippedCount >= uploadedCount); // 实际上传文件处理完成
+            const normalizedData = normalizeProgressData(sessionId, progressData);
+            const isCompleted = computeCompleted(normalizedData);
 
             if (isCompleted) {
               // 发送完成确认消息，给前端时间处理
               const completionMessage = {
-                ...progressData,
+                ...normalizedData,
                 completed: true,
                 timestamp: Date.now(),
               };
@@ -277,5 +253,7 @@ async function setupProgressStream(req, res, sessionId) {
 
 module.exports = {
   updateProgress,
+  updateProgressOnce,
+  publishProgressSnapshot: _publishProgressUpdate,
   setupProgressStream,
 };

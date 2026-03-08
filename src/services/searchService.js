@@ -49,7 +49,7 @@ async function getSearchSuggestions(params) {
  * 分页获取筛选选项列表
  * @param {Object} params
  * @param {number} params.userId - 用户ID
- * @param {string} params.type - 选项类型: 'city' | 'year' | 'month' | 'weekday'
+ * @param {string} params.type - 选项类型: 'city' | 'year' | 'month' | 'weekday' | 'scene' | 'object'
  * @param {number} params.pageNo - 页码（从1开始）
  * @param {number} params.pageSize - 每页数量（默认20）
  * @param {string} params.timeDimension - 时间维度（可选）

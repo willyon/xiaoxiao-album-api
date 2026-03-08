@@ -8,6 +8,7 @@
 const { v4: uuidv4 } = require("uuid");
 const { getRedisClient } = require("./redisClient");
 const logger = require("../utils/logger");
+const { normalizeProgressData, hasAnyProgressData } = require("../utils/uploadProgressSnapshot");
 
 // 获取 Redis 客户端实例
 const redisClient = getRedisClient();
@@ -31,6 +32,10 @@ async function createSession(userId) {
     duplicateCount: 0, // Controller层检测的重复（不加入队列）
     workerSkippedCount: 0, // Worker层检测的重复（已加入队列但跳过）
     existingFiles: 0,
+    aiEligibleCount: 0,
+    aiQueuedCount: 0,
+    aiDoneCount: 0,
+    aiErrorCount: 0,
   });
 
   // 设置用户的最新会话ID（覆盖之前的会话）
@@ -50,6 +55,13 @@ async function createSession(userId) {
     duplicateCount: 0,
     workerSkippedCount: 0,
     existingFiles: 0,
+    aiEligibleCount: 0,
+    aiQueuedCount: 0,
+    aiDoneCount: 0,
+    aiErrorCount: 0,
+    phase: "uploading",
+    completed: false,
+    timestamp: Date.now(),
   };
 }
 
@@ -71,34 +83,14 @@ async function getActiveSession(userId) {
     const redisData = await redisClient.hgetall(`upload:session:${activeSessionId}`);
 
     if (redisData && Object.keys(redisData).length > 0) {
-      // 基于数据驱动判断会话是否完成
-      const uploadedCount = parseInt(redisData.uploadedCount) || 0;
-      const highResDone = parseInt(redisData.highResDone) || 0;
-      const thumbDone = parseInt(redisData.thumbDone) || 0;
-      const thumbErrors = parseInt(redisData.thumbErrors) || 0;
-      const highResErrors = parseInt(redisData.highResErrors) || 0;
-      const duplicateCount = parseInt(redisData.duplicateCount) || 0;
-      const existingFiles = parseInt(redisData.existingFiles) || 0;
-
-      // 活跃状态判断逻辑：
-      // 1. 如果有实际上传文件且未处理完成，活跃
-      // 2. 如果只有重复/已存在文件，不活跃（立即完成）
-      const isActive = uploadedCount > 0 && highResDone + highResErrors < uploadedCount;
+      const snapshot = normalizeProgressData(activeSessionId, redisData);
+      const isActive = hasAnyProgressData(snapshot) && !snapshot.completed;
 
       if (!isActive) {
         return null;
       }
 
-      return {
-        sessionId: activeSessionId,
-        uploadedCount,
-        thumbDone,
-        highResDone,
-        thumbErrors,
-        highResErrors,
-        duplicateCount,
-        existingFiles,
-      };
+      return snapshot;
     }
 
     return null;
@@ -111,7 +103,112 @@ async function getActiveSession(userId) {
   }
 }
 
+async function getCurrentProgressSnapshot(userId) {
+  const activeSessionId = await redisClient.get(`user:latest:session:${userId}`);
+  if (!activeSessionId) {
+    return { active: false, session: null };
+  }
+
+  const redisData = await redisClient.hgetall(`upload:session:${activeSessionId}`);
+  if (!redisData || Object.keys(redisData).length === 0) {
+    return { active: false, session: null };
+  }
+
+  const snapshot = normalizeProgressData(activeSessionId, redisData);
+  const active = hasAnyProgressData(snapshot) && !snapshot.completed;
+
+  if (!active) {
+    return { active: false, session: null };
+  }
+
+  return { active: true, session: snapshot };
+}
+
+async function addMediaToSession({ sessionId, mediaId }) {
+  if (!sessionId || !mediaId) return;
+  const sessionMediaSetKey = `upload:session:${sessionId}:media_ids`;
+  await redisClient.sadd(sessionMediaSetKey, String(mediaId));
+  await redisClient.expire(sessionMediaSetKey, 1 * 24 * 3600);
+}
+
+async function addAiFailureToSession({ sessionId, mediaId, fileName, errorCode, errorMessage, retryable = true }) {
+  if (!sessionId || !mediaId) return;
+
+  const failuresKey = `upload:session:${sessionId}:failures:ai`;
+  const failurePayload = {
+    mediaId: String(mediaId),
+    fileName: fileName || "",
+    status: "failed",
+    errorCode: errorCode || "AI_ANALYSIS_FAILED",
+    errorMessage: errorMessage || "AI analysis failed",
+    retryable: Boolean(retryable),
+    failedAt: new Date().toISOString(),
+  };
+
+  await redisClient.lpush(failuresKey, JSON.stringify(failurePayload));
+  await redisClient.ltrim(failuresKey, 0, 199);
+  await redisClient.expire(failuresKey, 1 * 24 * 3600);
+}
+
+async function getAiFailuresBySessionId(sessionId) {
+  if (!sessionId) return [];
+  const failuresKey = `upload:session:${sessionId}:failures:ai`;
+  const rows = await redisClient.lrange(failuresKey, 0, 199);
+
+  return rows
+    .map((row) => {
+      try {
+        return JSON.parse(row);
+      } catch (_error) {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+async function clearAiFailuresByMediaIds(sessionId, mediaIds = []) {
+  if (!sessionId || !Array.isArray(mediaIds) || mediaIds.length === 0) return;
+
+  const failuresKey = `upload:session:${sessionId}:failures:ai`;
+  const rows = await redisClient.lrange(failuresKey, 0, 199);
+  if (!rows || rows.length === 0) return;
+
+  const targetSet = new Set(mediaIds.map((id) => String(id)));
+  const remainedRows = rows.filter((row) => {
+    try {
+      const item = JSON.parse(row);
+      return !targetSet.has(String(item.mediaId));
+    } catch (_error) {
+      return true;
+    }
+  });
+
+  await redisClient.del(failuresKey);
+  if (remainedRows.length > 0) {
+    await redisClient.rpush(failuresKey, ...remainedRows);
+    await redisClient.expire(failuresKey, 1 * 24 * 3600);
+  }
+}
+
+async function resetAiErrorMarkersForRetry(sessionId, mediaIds = []) {
+  if (!sessionId || !Array.isArray(mediaIds) || mediaIds.length === 0) return;
+  const markerKey = `upload:session:${sessionId}:counter_marker:aiErrorCount`;
+  await redisClient.srem(markerKey, ...mediaIds.map((id) => String(id)));
+}
+
+async function decrementAiErrorCountForRetry(sessionId, count = 0) {
+  if (!sessionId || !count || count <= 0) return;
+  await redisClient.hincrby(`upload:session:${sessionId}`, "aiErrorCount", -count);
+}
+
 module.exports = {
   createSession,
   getActiveSession,
+  getCurrentProgressSnapshot,
+  addMediaToSession,
+  addAiFailureToSession,
+  getAiFailuresBySessionId,
+  clearAiFailuresByMediaIds,
+  resetAiErrorMarkersForRetry,
+  decrementAiErrorCountForRetry,
 };

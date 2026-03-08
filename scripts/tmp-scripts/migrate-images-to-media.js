@@ -1,6 +1,6 @@
 /*
  * @Description: images -> media 数据迁移脚本（可重跑）
- * @Usage: node scripts/deployment/migrate-images-to-media.js
+ * @Usage: node scripts/tmp-scripts/migrate-images-to-media.js
  */
 
 const path = require("path");
@@ -78,6 +78,90 @@ function ensureFaceClusterRepresentativeType() {
   if (!columnExists("face_clusters", "representative_type")) {
     db.prepare("ALTER TABLE face_clusters ADD COLUMN representative_type INTEGER DEFAULT 0").run();
   }
+}
+
+function ensureFaceClustersForeignKeyToMedia() {
+  if (!tableExists("face_clusters")) return;
+  if (!tableExists("media_face_embeddings")) {
+    throw new Error("未找到 media_face_embeddings，无法修复 face_clusters 外键");
+  }
+
+  const fkRows = db.prepare("PRAGMA foreign_key_list(face_clusters)").all();
+  const embeddingFk = fkRows.find((row) => row.from === "face_embedding_id");
+  if (embeddingFk?.table === "media_face_embeddings") {
+    return;
+  }
+
+  const hasIsRepresentative = columnExists("face_clusters", "is_representative");
+  const hasIsUserAssigned = columnExists("face_clusters", "is_user_assigned");
+  const hasRepresentativeType = columnExists("face_clusters", "representative_type");
+  const isRepresentativeExpr = hasIsRepresentative ? "COALESCE(is_representative, 0)" : "0";
+  const isUserAssignedExpr = hasIsUserAssigned ? "COALESCE(is_user_assigned, 0)" : "0";
+  const representativeTypeExpr = hasRepresentativeType
+    ? "COALESCE(representative_type, 0)"
+    : `CASE
+         WHEN ${isRepresentativeExpr} = 2 THEN 2
+         WHEN ${isRepresentativeExpr} = 1 THEN 1
+         WHEN ${isUserAssignedExpr} = 1 THEN 2
+         ELSE 0
+       END`;
+
+  db.prepare("DROP TABLE IF EXISTS face_clusters__migrate_new").run();
+  db.prepare(`
+    CREATE TABLE face_clusters__migrate_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      cluster_id INTEGER NOT NULL,
+      face_embedding_id INTEGER NOT NULL,
+      similarity_score REAL,
+      is_representative BOOLEAN DEFAULT FALSE,
+      created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+      name TEXT,
+      updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+      is_user_assigned BOOLEAN DEFAULT FALSE,
+      representative_type INTEGER DEFAULT 0,
+      FOREIGN KEY (face_embedding_id) REFERENCES media_face_embeddings(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE (user_id, cluster_id, face_embedding_id)
+    )
+  `).run();
+  db.prepare(`
+    INSERT INTO face_clusters__migrate_new (
+      id,
+      user_id,
+      cluster_id,
+      face_embedding_id,
+      similarity_score,
+      is_representative,
+      created_at,
+      name,
+      updated_at,
+      is_user_assigned,
+      representative_type
+    )
+    SELECT
+      id,
+      user_id,
+      cluster_id,
+      face_embedding_id,
+      similarity_score,
+      ${isRepresentativeExpr},
+      created_at,
+      name,
+      updated_at,
+      ${isUserAssignedExpr},
+      ${representativeTypeExpr}
+    FROM face_clusters
+  `).run();
+  db.prepare("DROP TABLE face_clusters").run();
+  db.prepare("ALTER TABLE face_clusters__migrate_new RENAME TO face_clusters").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_face_clusters_user_id ON face_clusters(user_id)").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_face_clusters_cluster_id ON face_clusters(cluster_id)").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_face_clusters_cluster_user ON face_clusters(cluster_id, user_id)").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_face_clusters_embedding_cluster ON face_clusters(face_embedding_id, cluster_id)").run();
+  db.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_face_clusters_user_cluster_rep ON face_clusters(user_id, cluster_id, representative_type DESC, similarity_score DESC)",
+  ).run();
 }
 
 function createNewSchema() {
@@ -308,6 +392,8 @@ function migrateAlbumAndGroupRefs() {
         END
     `).run();
   }
+
+  ensureFaceClustersForeignKeyToMedia();
 }
 
 function rebuildMediaSearchData() {

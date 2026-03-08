@@ -13,6 +13,8 @@ const {
   handleIndexImage,
   handleGetQueueStatus,
   handleGetFilterOptionsPaginated,
+  handleGetSceneFilterOptionsPaginated,
+  handleGetObjectFilterOptionsPaginated,
 } = require("../controllers/searchController");
 
 // 应用认证中间件
@@ -26,6 +28,8 @@ router.get("/suggestions", handleGetSearchSuggestions);
 
 // 获取筛选选项（用于滚动加载）
 router.get("/filters", handleGetFilterOptionsPaginated);
+router.get("/filters/scenes", handleGetSceneFilterOptionsPaginated);
+router.get("/filters/objects", handleGetObjectFilterOptionsPaginated);
 
 // 手动索引单个图片
 router.post("/index-image", handleIndexImage);
