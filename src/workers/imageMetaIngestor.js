@@ -188,12 +188,6 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
     throw e;
   }
 
-  if (sessionId) {
-    try {
-      await updateProgress({ sessionId, status: "highResDone" });
-    } catch (err) {}
-  }
-
   if (sessionId && imageId) {
     try {
       await addMediaToSession({ sessionId, mediaId: imageId });
@@ -219,6 +213,13 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
     fileName,
     imageHash,
   });
+
+  // 将 media 完成计数后移到 AI 入队之后，避免单图场景出现 completed 的短暂竞态窗口
+  if (sessionId) {
+    try {
+      await updateProgress({ sessionId, status: "highResDone" });
+    } catch (err) {}
+  }
 }
 
 async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType, fileName, imageHash }) {
@@ -467,15 +468,6 @@ async function processImageMeta(job) {
 
     throw e;
   }
-  try {
-    if (sessionId) {
-      await updateProgress({
-        sessionId,
-        status: "highResDone",
-      });
-    }
-  } catch (err) {}
-
   // ======== 移动原图到 original 存储位置 ========
   try {
     await storageService.storage.moveFile(storageKey, originalStorageKey);
@@ -512,6 +504,16 @@ async function processImageMeta(job) {
     fileName,
     imageHash,
   });
+
+  // 将 media 完成计数后移到 AI 入队之后，避免单图场景出现 completed 的短暂竞态窗口
+  try {
+    if (sessionId) {
+      await updateProgress({
+        sessionId,
+        status: "highResDone",
+      });
+    }
+  } catch (err) {}
 }
 
 module.exports = {
