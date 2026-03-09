@@ -327,12 +327,16 @@ function buildSearchConditions(query, filters, options = {}) {
   // 13. 视频时长（仅视频）
   if (filters.videoDuration && filters.videoDuration !== "" && filters.videoDuration !== "all") {
     whereConditions.push("i.media_type = 'video'");
-    if (filters.videoDuration === "short") {
-      whereConditions.push("COALESCE(i.duration_sec, 0) > 0 AND i.duration_sec <= 60");
+    if (filters.videoDuration === "ultraShort") {
+      whereConditions.push("COALESCE(i.duration_sec, 0) > 0 AND i.duration_sec <= 15");
+    } else if (filters.videoDuration === "short") {
+      whereConditions.push("i.duration_sec > 15 AND i.duration_sec <= 60");
     } else if (filters.videoDuration === "medium") {
       whereConditions.push("i.duration_sec > 60 AND i.duration_sec <= 300");
     } else if (filters.videoDuration === "long") {
-      whereConditions.push("i.duration_sec > 300");
+      whereConditions.push("i.duration_sec > 300 AND i.duration_sec <= 1200");
+    } else if (filters.videoDuration === "veryLong") {
+      whereConditions.push("i.duration_sec > 1200");
     }
   }
 
