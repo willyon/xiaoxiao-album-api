@@ -1488,6 +1488,7 @@ function updateIngestStatusByHash({ userId, imageHash, ingestStatus }) {
  * @function insertFaceEmbeddings
  * @param {number} imageId - 图片ID
  * @param {Array<Object>} faceData - 人脸数据数组
+ * @param {string} [analysisVersion] - 分析版本，写入 media_face_embeddings.analysis_version；不传时默认 '1.0'
  * @param {number} faceData[].face_index - 人脸序号（同一张图片中的第几个人脸）
  * @param {Array<number>} faceData[].embedding - 512维特征向量（InsightFace提取）
  * @param {number} faceData[].age - 年龄段中间值（用于数值计算）如：25代表20-29岁段
@@ -1532,7 +1533,8 @@ function updateIngestStatusByHash({ userId, imageHash, ingestStatus }) {
  * await insertFaceEmbeddings(imageId, faces);
  * ```
  */
-async function insertFaceEmbeddings(imageId, faceData) {
+async function insertFaceEmbeddings(imageId, faceData, analysisVersion) {
+  const version = analysisVersion != null && analysisVersion !== "" ? String(analysisVersion) : "1.0";
   try {
     const deleteSql = `DELETE FROM media_face_embeddings WHERE media_id = ? AND source_type = 'image'`;
     const deleteStmt = db.prepare(deleteSql);
@@ -1571,7 +1573,7 @@ async function insertFaceEmbeddings(imageId, faceData) {
         face.quality_score || null,
         JSON.stringify(face.bbox || []), // bbox存储为JSON字符串
         JSON.stringify(face.pose || {}), // pose存储为JSON字符串
-        "1.0",
+        version,
       );
       totalAffected += result.changes;
     }

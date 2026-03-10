@@ -13,6 +13,7 @@ const videoProcessingService = require("../services/videoProcessingService");
 const { updateProgress, updateProgressOnce } = require("../services/imageProcessingProgressService");
 const { searchIndexQueue } = require("../queues/searchIndexQueue");
 const { cleanupQueue } = require("../queues/cleanupQueue");
+const { mediaAnalysisQueue } = require("../queues/mediaAnalysisQueue");
 const imageMetadataService = require("../services/imageMetadataService");
 const { addMediaToSession } = require("../services/uploadSessionService");
 
@@ -238,6 +239,44 @@ async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, origin
       message: "Cannot add to queues - imageId is null",
       details: { imageHash, userId },
     });
+    return;
+  }
+
+  const useMediaAnalysisQueue = process.env.USE_MEDIA_ANALYSIS_QUEUE === "true";
+
+  if (useMediaAnalysisQueue) {
+    try {
+      await mediaAnalysisQueue.add(
+        "media-analysis",
+        {
+          imageId,
+          userId,
+          highResStorageKey,
+          originalStorageKey,
+          sessionId,
+          mediaType: mediaType || "image",
+          fileName: fileName || "",
+        },
+        { jobId: `analysis:${userId}:${imageId}` },
+      );
+      if (sessionId) {
+        await updateProgressOnce({
+          sessionId,
+          status: "aiEligibleCount",
+          dedupeKey: imageId,
+        });
+        await updateProgressOnce({
+          sessionId,
+          status: "aiQueuedCount",
+          dedupeKey: imageId,
+        });
+      }
+    } catch (err) {
+      logger.warn({
+        message: "Failed to add media to mediaAnalysisQueue",
+        details: { imageHash, userId, error: err.message },
+      });
+    }
     return;
   }
 

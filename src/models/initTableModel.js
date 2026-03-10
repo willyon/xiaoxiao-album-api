@@ -979,6 +979,8 @@ function createTableMediaAnalysis() {
       analysis_status TEXT DEFAULT 'pending' CHECK (analysis_status IN ('pending','running','done','failed')),
       analysis_version TEXT NOT NULL DEFAULT '1.0',
       analyzed_at INTEGER,
+      last_error TEXT,
+      last_error_at INTEGER,
       aesthetic_score REAL,
       sharpness_score REAL,
       is_blurry INTEGER DEFAULT 0,
@@ -995,6 +997,17 @@ function createTableMediaAnalysis() {
     );
   `;
   db.prepare(sql).run();
+  // 已有库迁移：若表已存在则无此列，ALTER 补充；新库 CREATE 已含列则 ALTER 会报 duplicate，忽略即可
+  try {
+    db.prepare("ALTER TABLE media_analysis ADD COLUMN last_error TEXT").run();
+  } catch (e) {
+    if (!/duplicate column name/i.test(e.message)) throw e;
+  }
+  try {
+    db.prepare("ALTER TABLE media_analysis ADD COLUMN last_error_at INTEGER").run();
+  } catch (e) {
+    if (!/duplicate column name/i.test(e.message)) throw e;
+  }
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_analysis_status_face ON media_analysis(analysis_status, face_count);").run();
 }
 

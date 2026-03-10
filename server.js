@@ -20,6 +20,7 @@ const { closeImageUploadQueue } = require("./src/queues/imageUploadQueue");
 const { closeImageMetaQueue } = require("./src/queues/imageMetaQueue");
 const { closeSearchIndexQueue } = require("./src/queues/searchIndexQueue");
 const { closeCleanupQueue } = require("./src/queues/cleanupQueue");
+const { closeMediaAnalysisQueue } = require("./src/queues/mediaAnalysisQueue");
 
 // 应用服务安全中间件
 const xss = require("xss");
@@ -173,5 +174,6 @@ initGracefulShutdown({
     async () => closeImageMetaQueue(),
     async () => closeSearchIndexQueue(),
     async () => closeCleanupQueue(),
+    async () => closeMediaAnalysisQueue(),
   ],
 });

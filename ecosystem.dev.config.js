@@ -45,19 +45,8 @@ module.exports = {
       },
     },
     {
-      name: "search-index-worker-dev",
-      script: "src/workers/searchIndexWorker.js",
-      // cwd: 未设置，使用 PM2 启动目录
-      cwd: ".", // 相对路径
-      watch: false,
-      max_restarts: 5,
-      env: {
-        NODE_ENV: "development",
-      },
-    },
-    {
-      name: "cleanup-worker-dev",
-      script: "src/workers/cleanupWorker.js",
+      name: "media-analysis-worker-dev",
+      script: "src/workers/mediaAnalysisWorker.js",
       // cwd: 未设置，使用 PM2 启动目录
       cwd: ".", // 相对路径
       watch: false,

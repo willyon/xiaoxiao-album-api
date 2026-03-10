@@ -27,6 +27,7 @@ const { createHash } = require("crypto");
 const logger = require("../utils/logger");
 const axios = require("axios");
 const { getMimeTypeByMagicBytes } = require("../utils/fileUtils");
+const { withAiSlot } = require("./aiConcurrencyLimiter");
 
 /**
  * 🧠 图片内容理解服务类
@@ -419,12 +420,19 @@ class ImageUnderstandingService {
       const imageBlob = new Blob([imageData], { type: mimeType });
       formData.append("image", imageBlob, fileName);
 
-      const response = await axios.post(`${this.pythonServiceUrl}/analyze_person`, formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-        timeout: 600000, // 10分钟超时，给模型下载(如果还没下载的话)足够时间
-      });
+      const profile = process.env.AI_ANALYSIS_PROFILE || "basic";
+      const device = process.env.AI_DEVICE || "auto";
+      formData.append("profile", profile);
+      formData.append("device", device);
+
+      const response = await withAiSlot(() =>
+        axios.post(`${this.pythonServiceUrl}/analyze_person`, formData, {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+          timeout: 600000, // 10分钟超时，给模型下载(如果还没下载的话)足够时间
+        }),
+      );
 
       const result = response.data;
       logger.info({ message: "人脸识别结果", details: result });

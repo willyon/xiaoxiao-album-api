@@ -6,6 +6,7 @@
 
 const axios = require("axios");
 const logger = require("../utils/logger");
+const { withAiSlot } = require("./aiConcurrencyLimiter");
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_FACE_SERVICE_URL || "http://localhost:5001";
 
@@ -16,14 +17,20 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_FACE_SERVICE_URL || "http://localh
  */
 async function encodeText(text) {
   try {
-    const response = await axios.post(
-      `${PYTHON_SERVICE_URL}/encode_text`,
-      {
-        text,
-      },
-      {
-        timeout: 10000, // 10秒超时
-      },
+    const profile = process.env.AI_ANALYSIS_PROFILE || "basic";
+    const device = process.env.AI_DEVICE || "auto";
+    const response = await withAiSlot(() =>
+      axios.post(
+        `${PYTHON_SERVICE_URL}/encode_text`,
+        {
+          text,
+          profile,
+          device,
+        },
+        {
+          timeout: 10000, // 10秒超时
+        },
+      ),
     );
 
     return {
@@ -52,16 +59,22 @@ async function encodeText(text) {
  */
 async function annSearchByVector(userId, queryVector, topK = 50) {
   try {
-    const response = await axios.post(
-      `${PYTHON_SERVICE_URL}/ann_search_by_vector`,
-      {
-        user_id: userId,
-        query_vector: queryVector,
-        top_k: topK,
-      },
-      {
-        timeout: 15000,
-      },
+    const profile = process.env.AI_ANALYSIS_PROFILE || "basic";
+    const device = process.env.AI_DEVICE || "auto";
+    const response = await withAiSlot(() =>
+      axios.post(
+        `${PYTHON_SERVICE_URL}/ann_search_by_vector`,
+        {
+          user_id: userId,
+          query_vector: queryVector,
+          top_k: topK,
+          profile,
+          device,
+        },
+        {
+          timeout: 15000,
+        },
+      ),
     );
 
     return response.data.results || [];
