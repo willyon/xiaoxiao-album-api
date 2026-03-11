@@ -160,8 +160,46 @@ class Settings:
      
     # ========== OCR 配置 ==========
     
-    # OCR功能开关配置
-    OCR_ENABLED = os.getenv("OCR_ENABLED", "false").lower() in ("true", "1", "yes")
+    # OCR 功能开关配置（默认启用，可通过 OCR_ENABLED 环境变量关闭）
+    OCR_ENABLED = os.getenv("OCR_ENABLED", "true").lower() in ("true", "1", "yes")
+    
+    # ========== 重构：Profile / 设备 / 能力开关 ==========
+    
+    # 默认设备：cpu | cuda | auto（与 utils.device 约定一致）
+    DEFAULT_DEVICE = os.getenv("DEFAULT_DEVICE", "auto").strip().lower() or "auto"
+    
+    # 分析档位：basic / standard / enhanced
+    SUPPORTED_PROFILES = ("basic", "standard", "enhanced")
+    
+    # 各能力开关（环境变量优先，用于 ModelManager 判断是否加载）
+    # 默认视为「standard 全家桶实例」：全部启用；如需关闭某能力，在环境变量中设为 false
+    ENABLE_CAPTION = os.getenv("ENABLE_CAPTION", "true").lower() in ("true", "1", "yes")
+    ENABLE_OBJECT_DETECTION = os.getenv("ENABLE_OBJECT_DETECTION", "true").lower() in ("true", "1", "yes")
+    ENABLE_SCENE_ANALYSIS = os.getenv("ENABLE_SCENE_ANALYSIS", "true").lower() in ("true", "1", "yes")
+    ENABLE_OCR = OCR_ENABLED  # 与 OCR_ENABLED 一致
+    ENABLE_EMBEDDING = os.getenv("ENABLE_EMBEDDING", "true").lower() in ("true", "1", "yes")
+    
+    # 推理与模型缓存（首版可不实现 LRU，仅占位）
+    AI_MAX_CONCURRENCY = int(os.getenv("AI_MAX_CONCURRENCY", "4"))
+    MODEL_CACHE_LIMIT = int(os.getenv("MODEL_CACHE_LIMIT", "16"))
+    
+    # OCR 长边限制（内部 resize 用）
+    OCR_MAX_LONG_EDGE = int(os.getenv("OCR_MAX_LONG_EDGE", "2048"))
+    
+    # 物体检测置信度阈值（YOLO）
+    YOLO_CONF_THRESHOLD = float(os.getenv("YOLO_CONF_THRESHOLD", "0.25"))
+    
+    # 场景分类 topk
+    SCENE_TOPK = int(os.getenv("SCENE_TOPK", "5"))
+    
+    # Caption 最大 token
+    CAPTION_MAX_TOKENS = int(os.getenv("CAPTION_MAX_TOKENS", "128"))
+
+    # 各能力单次推理超时时间（秒）
+    CAPTION_TIMEOUT_SECONDS = float(os.getenv("CAPTION_TIMEOUT_SECONDS", "30"))
+    OBJECT_TIMEOUT_SECONDS = float(os.getenv("OBJECT_TIMEOUT_SECONDS", "20"))
+    SCENE_TIMEOUT_SECONDS = float(os.getenv("SCENE_TIMEOUT_SECONDS", "20"))
+    OCR_TIMEOUT_SECONDS = float(os.getenv("OCR_TIMEOUT_SECONDS", "20"))
     
     # ========== ONNX Runtime 配置 ==========
     

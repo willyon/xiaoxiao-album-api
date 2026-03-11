@@ -24,6 +24,39 @@ const PYTHON_SERVICE_URL =
 
 const ANALYSIS_VERSION = process.env.ANALYSIS_VERSION || "1.0";
 
+/**
+ * 规范化来自 Python 服务的错误对象：
+ * - 若有 error.response.data.error_code / error_message，则透传到 error.code / error.message
+ * - Axios 超时（ECONNABORTED）统一映射为 AI_TIMEOUT
+ * 返回最终用于写入 stepResults.xxx.errorCode 的 code
+ */
+function normalizePythonError(error, fallbackCode) {
+  // Axios 超时优先映射为 AI_TIMEOUT
+  if (axios.isAxiosError && axios.isAxiosError(error) && error.code === "ECONNABORTED") {
+    error.code = "AI_TIMEOUT";
+    if (!error.message) {
+      error.message = "AI request timeout";
+    }
+    return error.code;
+  }
+
+  // 透传 Python 统一错误码结构
+  const pythonBody = error?.response?.data;
+  if (pythonBody && typeof pythonBody === "object") {
+    const bodyDetail = pythonBody.detail || pythonBody;
+    const codeFromBody = bodyDetail.error_code || bodyDetail.code;
+    const msgFromBody = bodyDetail.error_message || bodyDetail.message;
+    if (codeFromBody) {
+      error.code = codeFromBody;
+    }
+    if (msgFromBody && !error.message) {
+      error.message = msgFromBody;
+    }
+  }
+
+  return error.code || fallbackCode;
+}
+
 function resolveCapabilities() {
   const profile = (process.env.AI_ANALYSIS_PROFILE || "").toLowerCase();
 
@@ -398,7 +431,7 @@ async function _runCaptionAnalysis({ imageId, userId, imageData, analysisVersion
     });
     stepResults.caption = {
       status: "failed",
-      errorCode: error.code || "CAPTION_ANALYSIS_FAILED",
+      errorCode: normalizePythonError(error, "CAPTION_ANALYSIS_FAILED"),
       data: {},
     };
     throw error;
@@ -482,7 +515,7 @@ async function _runObjectAnalysis({ imageId, userId, imageData, analysisVersion,
     });
     stepResults.object = {
       status: "failed",
-      errorCode: error.code || "OBJECT_ANALYSIS_FAILED",
+      errorCode: normalizePythonError(error, "OBJECT_ANALYSIS_FAILED"),
       data: {},
     };
     throw error;
@@ -566,7 +599,7 @@ async function _runOcrAnalysis({ imageId, userId, imageData, analysisVersion, st
     });
     stepResults.ocr = {
       status: "failed",
-      errorCode: error.code || "OCR_ANALYSIS_FAILED",
+      errorCode: normalizePythonError(error, "OCR_ANALYSIS_FAILED"),
       data: {},
     };
     throw error;
@@ -658,7 +691,7 @@ async function _runSceneAnalysis({ imageId, userId, imageData, analysisVersion, 
     });
     stepResults.scene = {
       status: "failed",
-      errorCode: error.code || "SCENE_ANALYSIS_FAILED",
+      errorCode: normalizePythonError(error, "SCENE_ANALYSIS_FAILED"),
       data: {},
     };
     throw error;

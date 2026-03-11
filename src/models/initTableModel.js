@@ -1212,6 +1212,22 @@ function createTableMediaFts() {
   db.prepare(sql).run();
 }
 
+function createTableTagStatistics() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS tag_statistics (
+      tag_type TEXT NOT NULL,         -- 'object' | 'scene' | 'keyword'
+      tag_name TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      last_updated INTEGER NOT NULL,
+      PRIMARY KEY (tag_type, tag_name)
+    );
+  `;
+  db.prepare(sql).run();
+  db.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_tag_statistics_type_count ON tag_statistics(tag_type, count DESC, last_updated DESC);",
+  ).run();
+}
+
 function createTableAlbumsMediaVersion() {
   const sql = `
     CREATE TABLE IF NOT EXISTS albums (
@@ -1327,6 +1343,7 @@ module.exports = {
   createTableVideoTranscripts,
   createTableMediaSearch,
   createTableMediaFts,
+  createTableTagStatistics,
   createTableAlbumMedia,
   createTableAlbumsMediaVersion,
   createTableFaceClustersMediaVersion,

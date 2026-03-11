@@ -224,16 +224,6 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
 }
 
 async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType, fileName, imageHash }) {
-  const enableAutoEnqueue = process.env.ENABLE_AUTO_AI_ENQUEUE !== "false"; // 默认启用
-
-  if (!enableAutoEnqueue) {
-    logger.info({
-      message: "自动AI分析入队已禁用，请使用 scripts/development/enqueue-ai-analysis.js 手动触发",
-      details: { imageHash, userId, imageId },
-    });
-    return;
-  }
-
   if (!imageId) {
     logger.warn({
       message: "Cannot add to queues - imageId is null",

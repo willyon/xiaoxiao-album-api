@@ -38,6 +38,7 @@ const {
   createTableSimilarGroupMembersMediaVersion,
   createTableMediaSearch,
   createTableMediaFts,
+  createTableTagStatistics,
 } = require(path.join(projectRoot, "src", "models", "initTableModel"));
 
 // 按外键依赖顺序：先删被引用表，再删主表
@@ -59,6 +60,7 @@ const TABLES_TO_DROP = [
   "face_clusters",
   "media_face_embeddings",
   "media_embeddings",
+  "tag_statistics",
   "media",
   "users",
 ];
@@ -111,12 +113,13 @@ async function rebuildDatabase() {
       createTableSimilarGroupMembersMediaVersion();
       createTableMediaSearch();
       createTableMediaFts();
+      createTableTagStatistics();
 
       db.prepare("COMMIT").run();
 
       console.log("🎉 数据库重建完成！");
       console.log(
-        "📋 已创建表：users, media, media_analysis, media_captions, media_text_blocks, media_objects, media_face_embeddings, media_embeddings, video_keyframes, video_transcripts, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_fts",
+        "📋 已创建表：users, media, media_analysis, media_captions, media_text_blocks, media_objects, media_face_embeddings, media_embeddings, video_keyframes, video_transcripts, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_fts, tag_statistics",
       );
     } catch (err) {
       db.prepare("ROLLBACK").run();

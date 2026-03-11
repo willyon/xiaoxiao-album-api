@@ -40,6 +40,84 @@ async function getRecentAlbumsList({ userId, limit = 8, excludeAlbumId = null })
 }
 
 /**
+ * 获取自动相册列表（基于固定规则的虚拟相册）
+ * - 不写入 albums 表，只按需聚合当前用户媒体
+ * - 每个自动相册返回：key/label/description/coverImageUrl/imageCount
+ */
+async function getAutoAlbums({ userId, limitPerAlbum = 1 }) {
+  const definitions = albumModel.AUTO_ALBUM_DEFINITIONS || [];
+  const result = [];
+
+  for (const def of definitions) {
+    const rows = _selectAutoAlbumImages({ userId, whereClause: def.where, limit: limitPerAlbum });
+    const imageCount = rows.totalCount;
+    if (imageCount === 0) {
+      continue;
+    }
+
+    let coverImageUrl = null;
+    if (rows.list.length > 0) {
+      const cover = rows.list[0];
+      if (cover.thumbnail_storage_key) {
+        coverImageUrl = await storageService.getFileUrl(cover.thumbnail_storage_key, cover.storage_type);
+      }
+    }
+
+    result.push({
+      key: def.key,
+      label: def.label,
+      description: def.description || null,
+      coverImageUrl,
+      imageCount,
+    });
+  }
+
+  return result;
+}
+
+/**
+ * 内部：按照规则查询自动相册的图片
+ * 统一使用 media / media_analysis / media_search 现有结构
+ */
+function _selectAutoAlbumImages({ userId, whereClause, limit = 1 }) {
+  const baseSql = `
+    FROM media m
+    LEFT JOIN media_analysis ma ON ma.media_id = m.id
+    WHERE m.user_id = ?
+      AND m.deleted_at IS NULL
+      AND (${whereClause})
+  `;
+
+  const listSql = `
+    SELECT
+      m.id,
+      m.thumbnail_storage_key,
+      m.high_res_storage_key,
+      m.original_storage_key,
+      m.storage_type,
+      m.media_type,
+      m.duration_sec,
+      m.captured_at
+    ${baseSql}
+    ORDER BY COALESCE(m.captured_at, 0) DESC, m.id DESC
+    LIMIT ?
+  `;
+
+  const countSql = `
+    SELECT COUNT(*) AS total
+    ${baseSql}
+  `;
+
+  const list = db.prepare(listSql).all(userId, limit);
+  const { total } = db.prepare(countSql).get(userId);
+
+  return {
+    list,
+    totalCount: total || 0,
+  };
+}
+
+/**
  * 获取用户的自定义相册列表（包含封面图片URL）
  * excludeAlbumId 可选，排除该相册（如当前相册）
  */

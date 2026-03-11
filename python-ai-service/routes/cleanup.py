@@ -2,14 +2,19 @@
 # -*- coding: utf-8 -*-
 """
 智能清理指标接口
+- 统一 decode_image + ModelManager + pipeline
+- 保持原有请求参数兼容（skip_embedding / existing_embedding / embedding_model）
 """
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 import json
+import time
+from typing import List, Optional
 
 from logger import logger
-from services.cleanup_analysis_service import analyze_image_from_bytes
-import time
+from pipelines.cleanup_pipeline import analyze_cleanup as analyze_cleanup_pipeline
+from services.model_manager import get_model_manager
+from utils.image_decode import decode_image
 
 router = APIRouter()
 
@@ -23,7 +28,7 @@ async def analyze_cleanup(
 ):
     """
     生成智能清理所需的图片指标
-    
+
     参数:
     - image: 图片文件（必需）
     - skip_embedding: 是否跳过 SigLIP embedding 计算（"true" 表示跳过）
@@ -37,7 +42,7 @@ async def analyze_cleanup(
             raise HTTPException(status_code=400, detail="图片数据为空")
 
         # 解析已有的 embedding（如果提供）
-        existing_embedding_vector = None
+        existing_embedding_vector: Optional[List[float]] = None
         if skip_embedding == "true" and existing_embedding:
             try:
                 existing_embedding_vector = json.loads(existing_embedding)
@@ -50,6 +55,10 @@ async def analyze_cleanup(
                 )
                 existing_embedding_vector = None
 
+        img, decode_err = decode_image(image_bytes)
+        if decode_err or img is None:
+            raise HTTPException(status_code=400, detail=decode_err or "图片解码失败")
+
         logger.info(
             "cleanup.request.start",
             details={
@@ -59,7 +68,17 @@ async def analyze_cleanup(
                 "has_existing_embedding": existing_embedding_vector is not None,
             },
         )
-        result = analyze_image_from_bytes(image_bytes, existing_embedding_vector, embedding_model or "siglip2")
+
+        manager = get_model_manager()
+        result = analyze_cleanup_pipeline(
+            img,
+            profile="standard",
+            device="cpu",
+            manager=manager,
+            existing_embedding=existing_embedding_vector,
+            embedding_model=embedding_model or "siglip2",
+        )
+
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
         logger.info(
             "cleanup.request.done",

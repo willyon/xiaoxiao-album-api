@@ -17,25 +17,20 @@ ocr_loaded = False
 def load_ocr_model():
     """加载 OCR 模型"""
     global paddle_ocr, ocr_loaded
-    
+
     try:
         if not settings.OCR_ENABLED:
             logger.info("OCR 功能已禁用")
             ocr_loaded = False
             return
-            
-        # 暂时禁用 PaddleOCR，避免 macOS 兼容性问题
-        logger.warning("⚠️ PaddleOCR 暂时禁用，仅支持人脸识别功能")
-        paddle_ocr = None
-        ocr_loaded = False
-        
-        # 以下是启用时的代码
-        # from paddleocr import PaddleOCR
-        # logger.info("正在加载 PaddleOCR 模型...")
-        # paddle_ocr = PaddleOCR(use_angle_cls=True, lang='ch')
-        # ocr_loaded = True
-        # logger.info("✅ PaddleOCR 模型加载完成")
-        
+
+        from paddleocr import PaddleOCR
+
+        logger.info("正在加载 PaddleOCR 模型...")
+        paddle_ocr = PaddleOCR(use_angle_cls=True, lang="ch")
+        ocr_loaded = True
+        logger.info("✅ PaddleOCR 模型加载完成")
+
     except Exception as e:
         logger.error("❌ PaddleOCR 模型加载失败: %s", str(e))
         paddle_ocr = None

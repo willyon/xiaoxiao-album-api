@@ -8,17 +8,22 @@ AI图片分析服务（严格模式）
 严格模式：所有模型必须加载成功，否则服务无法启动，确保数据完整性
 """
 
-import uvicorn                                    # ASGI 服务器，用于运行 FastAPI 应用
-from fastapi import FastAPI                       # FastAPI 框架，用于构建 Web API
-from config import settings                        # 应用配置，包含所有环境变量设置
-from logger import logger                          # 日志记录器，用于记录应用日志
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import HTTPException as FastAPIHTTPException
+
+from config import settings
+from logger import logger
 
 # 导入路由模块
-from routes import cleanup, face_cluster, health, ocr, person, search_embedding     # 导入各个 API 路由：健康检查、人物分析、OCR、人脸聚类、清理指标、搜索向量化
+from routes import caption, cleanup, face_cluster, health, objects, ocr, person, scene, search_embedding
 
-# 导入模型加载器
+# 导入模型加载器与 ModelManager
 from loaders.model_loader import load_all_models    # 统一加载所有AI模型
 from services.vector_search_service import init_hnsw_index  # 向量搜索索引初始化
+from services.model_manager import get_model_manager  # 按能力+profile+device 管理模型，供路由与 health 使用
 
 
 def create_app():
@@ -28,11 +33,13 @@ def create_app():
         description="使用 InsightFace + FairFace + EmotiEffLib + YOLOv11x 进行高精度图片分析。所有模型必须加载成功，确保数据完整性。",
         version="2.1.0"
     )
-    
-    # 增加文件上传大小限制 (50MB)
-    from fastapi import Request
-    from fastapi.middleware import Middleware
-    from fastapi.middleware.cors import CORSMiddleware
+
+    # 统一错误体：4xx/5xx 返回 { "error_code", "error_message }，便于 Node 写入 last_error
+    @app.exception_handler(FastAPIHTTPException)
+    async def http_exception_handler(request: Request, exc: FastAPIHTTPException):
+        if isinstance(exc.detail, dict) and "error_code" in exc.detail:
+            return JSONResponse(status_code=exc.status_code, content=exc.detail)
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
     
     app.add_middleware(
         CORSMiddleware,
@@ -62,9 +69,16 @@ def create_app():
         init_hnsw_index()
     except Exception as e:
         logger.error(f"⚠️ 向量索引初始化失败，向量搜索将退化为 FTS: {str(e)}")
-    
+
+    # 初始化全局 ModelManager（委托现有 loader，供路由与 /health 使用）
+    get_model_manager()
+    logger.info("✅ ModelManager 已初始化")
+
     # 注册路由
     app.include_router(health.router, tags=["健康检查"])
+    app.include_router(caption.router, tags=["Caption"])
+    app.include_router(objects.router, tags=["物体检测"])
+    app.include_router(scene.router, tags=["场景分类"])
     app.include_router(person.router, tags=["人物分析"])
     app.include_router(ocr.router, tags=["OCR识别"])
     app.include_router(face_cluster.router, tags=["人脸聚类"])
@@ -85,9 +99,12 @@ def main():
         logger.info(f"📡 服务地址: http://{settings.HOST}:{settings.PORT}")
         logger.info("🔍 可用接口:")
         logger.info("  - GET  /health - 健康检查")
+        logger.info("  - POST /analyze_caption - Caption 分析")
+        logger.info("  - POST /analyze_objects - 物体检测")
+        logger.info("  - POST /analyze_scene - 场景分类")
         logger.info("  - POST /analyze_person - 人物分析（人脸+人体检测）")
         logger.info("  - POST /analyze_cleanup - 图片清理指标")
-        # logger.info("  - POST /ocr - OCR文字识别")
+        logger.info("  - POST /ocr - OCR 文字识别")
         logger.info("  - POST /cluster_faces - 人脸聚类")
         logger.info("  - POST /encode_text - 文本向量化")
         logger.info("  - POST /ann_search_by_vector - 向量相似度搜索（hnsw ANN）")

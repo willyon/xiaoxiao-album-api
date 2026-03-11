@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-OCR 文字识别路由：POST /ocr
-Form: image, profile?, device?；统一 decode_image + normalize_device + ocr_pipeline
-basic 且 OCR 关闭时返回 { "blocks": [] }
+场景分类路由：POST /analyze_scene
+Form: image, profile, device；统一 decode_image + normalize_device + pipeline
 """
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from constants.error_codes import AI_DEVICE_NOT_SUPPORTED, AI_TIMEOUT, IMAGE_DECODE_FAILED
 from logger import logger
-from pipelines.ocr_pipeline import analyze_ocr
+from pipelines.scene_pipeline import analyze_scene
 from schemas.error_schema import ErrorBody
-from schemas.ocr_schema import OcrBlock, OcrResponse
+from schemas.scene_schema import SceneResponse
 from services.model_manager import get_model_manager
 from utils.device import normalize_device
 from utils.image_decode import decode_image
@@ -22,19 +21,19 @@ router = APIRouter()
 
 
 @router.post(
-    "/ocr",
-    response_model=OcrResponse,
+    "/analyze_scene",
+    response_model=SceneResponse,
     responses={
         400: {"description": "Bad request", "model": ErrorBody},
         500: {"description": "Internal error", "model": ErrorBody},
     },
 )
-async def ocr_recognize(
+async def analyze_scene_route(
     image: UploadFile = File(..., max_size=50 * 1024 * 1024),
     profile: str = Form("standard"),
     device: str = Form("auto"),
 ):
-    """OCR 文字识别，返回 blocks（text, bbox 原图坐标, confidence）。无引擎时返回空 blocks。"""
+    """场景分类，返回 primary_scene + scene_tags。无模型时返回空结构。"""
     try:
         resolved, err = normalize_device(device)
         if err:
@@ -55,9 +54,12 @@ async def ocr_recognize(
                 detail=ErrorBody(error_code=IMAGE_DECODE_FAILED, error_message=decode_err or "图片解码失败").dict(),
             )
         manager = get_model_manager()
-        result = analyze_ocr(img, profile, resolved, manager)
-        blocks = [OcrBlock(text=b["text"], bbox=b["bbox"], confidence=b["confidence"]) for b in result.get("blocks", [])]
-        return OcrResponse(blocks=blocks)
+        result = analyze_scene(img, profile, resolved, manager)
+        return SceneResponse(
+            primary_scene=result.get("primary_scene"),
+            scene_tags=result.get("scene_tags", []),
+            confidence=result.get("confidence", 0.0),
+        )
     except HTTPException:
         raise
     except AiTimeoutError as e:
@@ -71,7 +73,7 @@ async def ocr_recognize(
             detail=ErrorBody(error_code=e.error_code, error_message=e.message).dict(),
         )
     except Exception as e:
-        logger.exception("OCR 异常: %s", e)
+        logger.exception("analyze_scene 异常: %s", e)
         raise HTTPException(
             status_code=500,
             detail=ErrorBody(error_code="AI_SERVICE_ERROR", error_message=str(e)).dict(),

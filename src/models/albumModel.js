@@ -4,6 +4,67 @@
  * @Description: 相册数据模型
  */
 const { db } = require("../services/database");
+
+/**
+ * 自动相册类型（固定规则）
+ * - key: 唯一标识
+ * - label: 前端展示文案
+ * - description: 可选描述
+ * - where: 结构化过滤条件（SQL 片段）
+ */
+const AUTO_ALBUM_DEFINITIONS = [
+  {
+    key: "pets",
+    label: "宠物",
+    description: "包含宠物（狗、猫等动物）的照片",
+    where: `
+      EXISTS (
+        SELECT 1 FROM media_objects mo
+        WHERE mo.media_id = m.id
+          AND mo.label IN (
+            'dog','puppy','cat','kitten','bird','pigeon','sparrow','fish','goldfish','horse','cow','sheep','rabbit'
+          )
+      )
+    `,
+  },
+  {
+    key: "beach",
+    label: "海边旅行",
+    description: "在海边/海滩拍摄的照片",
+    where: `
+      EXISTS (
+        SELECT 1 FROM media_analysis ma2
+        WHERE ma2.media_id = m.id
+          AND ma2.scene_primary IN ('beach','sea','seaside')
+      )
+    `,
+  },
+  {
+    key: "family",
+    label: "家庭日常",
+    description: "家中或公园等日常场景，且有人物",
+    where: `
+      COALESCE(ma.person_count, 0) > 0
+      AND EXISTS (
+        SELECT 1 FROM media_analysis ma2
+        WHERE ma2.media_id = m.id
+          AND ma2.scene_primary IN ('home','living_room','bedroom','kitchen','park')
+      )
+    `,
+  },
+  {
+    key: "party",
+    label: "聚会与生日",
+    description: "派对、生日、婚礼等聚会场景",
+    where: `
+      EXISTS (
+        SELECT 1 FROM media_analysis ma2
+        WHERE ma2.media_id = m.id
+          AND ma2.scene_primary IN ('party','birthday_party','wedding','restaurant','bar')
+      )
+    `,
+  },
+];
 const { mapFields } = require("../utils/fieldMapper");
 const logger = require("../utils/logger");
 
@@ -568,6 +629,7 @@ function updateAlbumsStatsForImages(imageIds) {
 }
 
 module.exports = {
+  AUTO_ALBUM_DEFINITIONS,
   createAlbum,
   getAlbumsByUserId,
   getRecentAlbumsByUserId,

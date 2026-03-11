@@ -28,9 +28,6 @@ function verifyConfiguration() {
   console.log("\n🔧 步骤0: 验证配置...");
 
   const queueName = process.env.CLEANUP_QUEUE_NAME;
-  const enableAutoEnqueue = process.env.ENABLE_AUTO_AI_ENQUEUE !== "false";
-
-  console.log(`   Auto Enqueue（ENABLE_AUTO_AI_ENQUEUE）: ${enableAutoEnqueue ? "✅ 启用" : "⚠️ 已禁用"}`);
   console.log(`   Cleanup Queue 名称                    : ${queueName || "❌ 未配置"}`);
 
   if (!queueName) {

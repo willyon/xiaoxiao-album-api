@@ -7,6 +7,8 @@
  */
 const { db } = require("../services/database");
 const { mapFields } = require("../utils/fieldMapper");
+const { mapObjectLabel } = require("../constants/objectTaxonomy");
+const { mapSceneLabel } = require("../constants/sceneTaxonomy");
 
 function parseCommaTags(input) {
   if (!input || typeof input !== "string") return [];
@@ -38,19 +40,44 @@ function rebuildMediaSearchDoc(mediaId) {
 
   const captionTextRow = db.prepare("SELECT GROUP_CONCAT(caption, ' ') AS value FROM media_captions WHERE media_id = ?").get(mediaId);
   const ocrTextRow = db.prepare("SELECT GROUP_CONCAT(text, ' ') AS value FROM media_text_blocks WHERE media_id = ?").get(mediaId);
-  const objectTextRow = db
+
+  // 对 object / scene 应用 taxonomy：Raw → Canonical (+中文别名) 文本聚合
+  const objectRows = db
     .prepare(
       `
-      SELECT GROUP_CONCAT(label, ' ') AS value
-      FROM (
-        SELECT DISTINCT label
-        FROM media_objects
-        WHERE media_id = ?
-      )
+      SELECT DISTINCT label
+      FROM media_objects
+      WHERE media_id = ?
     `,
     )
-    .get(mediaId);
-  const sceneTextRow = db.prepare("SELECT scene_primary AS value FROM media_analysis WHERE media_id = ?").get(mediaId);
+    .all(mediaId);
+  const objectTokens = new Set();
+  for (const row of objectRows) {
+    const raw = row.label;
+    if (!raw) continue;
+    const { canonical, category, zh } = mapObjectLabel(String(raw));
+    if (canonical) {
+      objectTokens.add(String(canonical));
+    }
+    if (category) {
+      objectTokens.add(String(category));
+    }
+    if (zh) {
+      objectTokens.add(String(zh));
+    }
+  }
+  const objectText = objectTokens.size > 0 ? Array.from(objectTokens).join(" ") : null;
+
+  const sceneRow = db.prepare("SELECT scene_primary AS value FROM media_analysis WHERE media_id = ?").get(mediaId);
+  let sceneText = null;
+  if (sceneRow && sceneRow.value) {
+    const { canonical, zh } = mapSceneLabel(String(sceneRow.value));
+    const parts = [];
+    if (canonical) parts.push(String(canonical));
+    if (zh) parts.push(String(zh));
+    sceneText = parts.length > 0 ? parts.join(" ") : null;
+  }
+
   const transcriptTextRow = db
     .prepare("SELECT GROUP_CONCAT(transcript_text, ' ') AS value FROM video_transcripts WHERE media_id = ?")
     .get(mediaId);
@@ -77,8 +104,8 @@ function rebuildMediaSearchDoc(mediaId) {
     media.user_id,
     captionTextRow?.value || null,
     ocrTextRow?.value || null,
-    objectTextRow?.value || null,
-    sceneTextRow?.value || null,
+    objectText,
+    sceneText,
     transcriptTextRow?.value || null,
     locationText,
     Date.now(),

@@ -1,2 +1,2 @@
 # Routes package
-from . import cleanup, face_cluster, health, ocr, person, search_embedding
+from . import caption, cleanup, face_cluster, health, objects, ocr, person, scene, search_embedding
