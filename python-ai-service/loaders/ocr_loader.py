@@ -7,6 +7,8 @@ OCR 模型加载器
 
 from logger import logger
 from config import settings
+from services.model_registry import get_model_config, resolve_local_path
+import os
 
 
 # 全局变量存储模型
@@ -25,6 +27,13 @@ def load_ocr_model():
             return
 
         from paddleocr import PaddleOCR
+
+        # 允许通过模型注册表指定 PaddleOCR 缓存目录（阶段 4：可选增强）
+        cfg = get_model_config("ocr.shared.paddleocr.ppocrv5")
+        if cfg and cfg.local_path:
+            resolved_home = resolve_local_path(cfg.local_path)
+            # PaddleOCR 识别会在 PADDLEOCR_HOME 下缓存下载的模型文件
+            os.environ["PADDLEOCR_HOME"] = os.path.expanduser(resolved_home)
 
         logger.info("正在加载 PaddleOCR 模型...")
         paddle_ocr = PaddleOCR(use_angle_cls=True, lang="ch")

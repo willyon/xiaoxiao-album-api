@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-AI图片分析服务（严格模式）
-使用 InsightFace + FairFace + EmotiEffLib + YOLOv11x 进行高精度图片分析
+AI图片分析服务
+使用 InsightFace + FairFace + EmotiEffLib + YOLOv11x 等进行高精度图片分析
 功能：人物分析（人脸+人体检测）、人脸聚类、图片内容理解
 
-严格模式：所有模型必须加载成功，否则服务无法启动，确保数据完整性
+说明：
+- 早期版本采用「严格模式」：启动时一次性加载所有关键模型，任一失败即阻止启动
+- 当前版本改为：启动阶段不强制全量加载，由各能力按需懒加载并通过 ModelManager 与模型注册表管理
 """
 
 import uvicorn
@@ -20,18 +22,18 @@ from logger import logger
 # 导入路由模块
 from routes import caption, cleanup, face_cluster, health, objects, ocr, person, scene, search_embedding
 
-# 导入模型加载器与 ModelManager
-from loaders.model_loader import load_all_models    # 统一加载所有AI模型
+# 导入向量索引与 ModelManager
 from services.vector_search_service import init_hnsw_index  # 向量搜索索引初始化
 from services.model_manager import get_model_manager  # 按能力+profile+device 管理模型，供路由与 health 使用
+from services.model_registry import MODEL_CONFIGS, resolve_local_path
 
 
 def create_app():
     """创建 FastAPI 应用"""
     app = FastAPI(
-        title="AI图片分析服务（严格模式）",
-        description="使用 InsightFace + FairFace + EmotiEffLib + YOLOv11x 进行高精度图片分析。所有模型必须加载成功，确保数据完整性。",
-        version="2.1.0"
+        title="AI图片分析服务",
+        description="使用 InsightFace + FairFace + EmotiEffLib + YOLOv11x 等模型进行高精度图片分析。",
+        version="2.2.0",
     )
 
     # 统一错误体：4xx/5xx 返回 { "error_code", "error_message }，便于 Node 写入 last_error
@@ -48,21 +50,8 @@ def create_app():
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
-    
-    # 启动时加载所有AI模型（人脸检测、年龄性别、人体检测）
-    # 严格模式：关键模型必须加载成功，否则阻止服务启动
-    try:
-        load_all_models()
-        logger.info("✅ 所有关键模型加载成功，服务可以启动")
-    except Exception as e:
-        logger.error(f"❌ 模型加载失败，服务无法启动: {str(e)}")
-        logger.error(f"💡 请检查模型文件是否完整：")
-        logger.error(f"   - InsightFace 模型文件（~/.insightface/）")
-        logger.error(f"   - models/fairface.onnx")
-        logger.error(f"   - models/yolo11x.onnx")
-        logger.error(f"   - EmotiEffLib 模型文件")
-        raise RuntimeError(f"AI模型加载失败，服务无法启动: {str(e)}") from e
+    # 启动阶段不再强制全量加载所有 AI 模型
+    # 各能力相关模型由 ModelManager / loaders 按需懒加载，并基于模型注册表进行路由
 
     # 加载向量搜索索引（非严格依赖：失败时仅禁用 ANN，仍可使用 FTS 等功能）
     try:
@@ -71,8 +60,70 @@ def create_app():
         logger.error(f"⚠️ 向量索引初始化失败，向量搜索将退化为 FTS: {str(e)}")
 
     # 初始化全局 ModelManager（委托现有 loader，供路由与 /health 使用）
-    get_model_manager()
+    manager = get_model_manager()
     logger.info("✅ ModelManager 已初始化")
+
+    # 启动预热：仅加载注册表中标记为 preload 的模型
+    @app.on_event("startup")
+    async def preload_models():
+        logger.info("🚀 启动预热：开始加载 preload 模型（注册表驱动）")
+
+        strict = bool(getattr(settings, "STRICT_PRELOAD", False))
+        required_raw = getattr(settings, "STRICT_PRELOAD_REQUIRED_MODEL_IDS", "") or ""
+        required_ids = {x.strip() for x in required_raw.split(",") if x.strip()}
+
+        # 若未指定 required_ids 且开启 strict，则默认所有 preload 都必须成功
+        def _is_required(model_id: str) -> bool:
+            if not strict:
+                return False
+            if required_ids:
+                return model_id in required_ids
+            return True
+
+        failures: list[dict] = []
+
+        def _record_fail(mid: str, exc: Exception):
+            failures.append({"model_id": mid, "error": str(exc)})
+            logger.error("preload 失败: %s | %s", mid, exc)
+
+        for model_id, cfg in MODEL_CONFIGS.items():
+            if (cfg.load_strategy or "").lower() != "preload":
+                continue
+            try:
+                task = (cfg.task_type or "").lower()
+                scope_profile = (cfg.profile_scope or "standard").lower()
+
+                if task == "face":
+                    from loaders.model_loader import get_insightface_model
+
+                    get_insightface_model()
+                elif task == "ocr":
+                    from loaders.ocr_loader import get_ocr_model
+
+                    get_ocr_model()
+                elif task == "object":
+                    # object preload 只对 standard（或 shared）有意义；enhanced 默认为 lazy
+                    manager.get_object_model(scope_profile if scope_profile != "shared" else "standard", settings.DEFAULT_DEVICE)
+                elif task == "image_embedding":
+                    from loaders.model_loader import get_siglip2_components_for_path
+
+                    get_siglip2_components_for_path(resolve_local_path(cfg.local_path))
+                elif task == "cleanup":
+                    from loaders.model_loader import get_aesthetic_head_session
+
+                    get_aesthetic_head_session()
+                else:
+                    # 未映射的 task_type：暂不自动 preload
+                    logger.info("preload.skip: 未支持的 task_type=%s", task, extra={"model_id": model_id})
+            except Exception as e:  # pragma: no cover
+                _record_fail(model_id, e)
+                if _is_required(model_id):
+                    raise RuntimeError(f"preload required model failed: {model_id}: {e}") from e
+
+        logger.info(
+            "✅ 启动预热：preload 模型加载完成",
+            extra={"failures": failures, "strict": strict, "required_ids": list(required_ids)},
+        )
 
     # 注册路由
     app.include_router(health.router, tags=["健康检查"])

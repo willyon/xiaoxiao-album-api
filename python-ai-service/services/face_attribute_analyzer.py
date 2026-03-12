@@ -124,8 +124,11 @@ class FaceAttributeAnalyzer:
         # ========== 第1步：前置检查 ==========
         # 检查1：模型是否已加载？
         # 检查2：是否有人脸需要分析？
-        if not self.session or not faces:
-            return []  # 返回空列表
+        if not faces:
+            return []
+        if not self.session:
+            # FairFace 缺失/加载失败时：仍返回与 faces 等长的默认结构，保持索引对应
+            return [{"age": None, "gender": None} for _ in faces]
         
         # ========== 第2步：初始化结果列表 ==========
         results = []

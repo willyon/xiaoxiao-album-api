@@ -27,11 +27,17 @@ from PIL import Image
 from logger import logger
 import time
 from utils.images import convert_to_opencv
-from loaders.model_loader import get_siglip2_components, get_aesthetic_head_session
+from loaders.model_loader import get_aesthetic_head_session, get_siglip2_components_for_path
 from config import settings
+from services.model_registry import get_fallback_model_id, get_model_config, resolve_local_path, resolve_model_id
 
 
-def analyze_image_from_bytes(image_bytes: bytes, existing_embedding: Optional[list] = None, embedding_model: str = "siglip2") -> Dict[str, object]:
+def analyze_image_from_bytes(
+    image_bytes: bytes,
+    existing_embedding: Optional[list] = None,
+    embedding_model: str = "siglip2",
+    profile: str = "standard",
+) -> Dict[str, object]:
     """
     路由层入口：从上传的原始字节解析图片并生成清理指标。
     - 输入：原始图片字节（任意常见格式）
@@ -47,7 +53,7 @@ def analyze_image_from_bytes(image_bytes: bytes, existing_embedding: Optional[li
     if error:
         raise ValueError(error)
     try:
-        result = analyze_image(image_bgr, existing_embedding, embedding_model)
+        result = analyze_image(image_bgr, existing_embedding, embedding_model, profile=profile)
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
         logger.info("cleanup.decode_and_analyze.ok", details={"elapsed_ms": elapsed_ms, "skipped_embedding": existing_embedding is not None})
         return result
@@ -57,7 +63,12 @@ def analyze_image_from_bytes(image_bytes: bytes, existing_embedding: Optional[li
         raise
 
 
-def analyze_image(image_bgr: np.ndarray, existing_embedding: Optional[list] = None, embedding_model: str = "siglip2") -> Dict[str, object]:
+def analyze_image(
+    image_bgr: np.ndarray,
+    existing_embedding: Optional[list] = None,
+    embedding_model: str = "siglip2",
+    profile: str = "standard",
+) -> Dict[str, object]:
     """
     针对 OpenCV BGR 图片生成清理指标。
     返回字段：
@@ -96,7 +107,7 @@ def analyze_image(image_bgr: np.ndarray, existing_embedding: Optional[list] = No
     else:
         # 计算新的 embedding
         t2 = time.perf_counter()
-        embedding_payload = _compute_siglip_embedding(rgb_image)
+        embedding_payload = _compute_siglip_embedding(rgb_image, profile=profile)
         t_embed = int((time.perf_counter() - t2) * 1000)
         logger.info(
             "cleanup.stage.embedding",
@@ -353,28 +364,74 @@ def _compute_aesthetic_score(embedding_vector: np.ndarray) -> float:
 # ===========================
 
 
-def _compute_siglip_embedding(rgb_image: np.ndarray) -> Optional[Dict[str, object]]:
-    """计算 SigLIP 图像向量，返回向量及维度/模型信息等元数据。"""
-    image_session, _, _, metadata = get_siglip2_components()
-    if image_session is None or metadata is None:
-        return None
+def _compute_siglip_embedding(rgb_image: np.ndarray, profile: str = "standard") -> Optional[Dict[str, object]]:
+    """
+    计算 SigLIP 图像向量，返回向量及维度/模型信息等元数据。
 
-    pixel_values = _prepare_siglip_pixel_values(rgb_image, metadata)
-    if pixel_values is None:
-        return None
+    逻辑：
+    - 通过模型注册表按 (profile, task_type='image_embedding') 解析出首选 model_id；
+    - 若对应目录加载失败且存在 fallback_model_id，则自动回退；
+    - SigLIP2 目录结构：{local_path}/siglip2_image_encoder.onnx 等。
+    """
+    profile = profile or "standard"
 
-    input_name = image_session.get_inputs()[0].name
-    outputs = image_session.run(None, {input_name: pixel_values})
-    if not outputs:
-        return None
+    # 1. 解析主模型与 fallback
+    primary_id = resolve_model_id(profile, "image_embedding")
+    candidate_ids = []
+    if primary_id:
+        candidate_ids.append(primary_id)
+        fb = get_fallback_model_id(primary_id)
+        if fb and fb not in candidate_ids:
+            candidate_ids.append(fb)
 
-    vector = outputs[0].astype(np.float32).flatten()
-    norm = np.linalg.norm(vector)
-    if norm > 0:
-        vector = vector / norm
+    # 兜底：若注册表未配置 profile 对应模型，退回 standard
+    if not candidate_ids:
+        candidate_ids = ["embedding.standard.siglip2.base"]
 
-    # 入库建议：仅存 vector 及 model_id/analysis_version；dimension 恒定可不存
-    return {"vector": vector.tolist(), "model": metadata.get("model_id", "siglip2")}
+    providers = settings.get_onnx_providers()
+
+    last_error: Optional[Exception] = None
+    for model_id in candidate_ids:
+        cfg = get_model_config(model_id)
+        if not cfg:
+            continue
+        try:
+            image_session, _, _, metadata = get_siglip2_components_for_path(
+                resolve_local_path(cfg.local_path),
+                providers=providers,
+                raise_on_failure=False,
+            )
+            if image_session is None or metadata is None:
+                continue
+
+            pixel_values = _prepare_siglip_pixel_values(rgb_image, metadata)
+            if pixel_values is None:
+                continue
+
+            input_name = image_session.get_inputs()[0].name
+            outputs = image_session.run(None, {input_name: pixel_values})
+            if not outputs:
+                continue
+
+            vector = outputs[0].astype(np.float32).flatten()
+            norm = np.linalg.norm(vector)
+            if norm > 0:
+                vector = vector / norm
+
+            return {"vector": vector.tolist(), "model": metadata.get("model_id", model_id)}
+        except Exception as exc:  # pragma: no cover
+            last_error = exc
+            logger.warning(
+                "SigLIP2 向量计算失败，将尝试 fallback（若有）",
+                details={"error": str(exc), "model_id": model_id, "profile": profile},
+            )
+
+    if last_error:
+        logger.error(
+            "SigLIP2 向量计算所有候选模型均失败",
+            details={"error": str(last_error), "profile": profile, "candidates": candidate_ids},
+        )
+    return None
 
 
 def _prepare_siglip_pixel_values(rgb_image: np.ndarray, metadata: Dict[str, object]) -> Optional[np.ndarray]:

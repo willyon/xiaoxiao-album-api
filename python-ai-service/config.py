@@ -162,6 +162,28 @@ class Settings:
     
     # OCR 功能开关配置（默认启用，可通过 OCR_ENABLED 环境变量关闭）
     OCR_ENABLED = os.getenv("OCR_ENABLED", "true").lower() in ("true", "1", "yes")
+
+    # ========== 模型目录 ==========
+    # 模型权重的基准目录（用于 model_registry 中 local_path 拼接）。
+    # 约定：local_path 以 "models/..." 表示相对项目根目录下的模型路径；
+    # MODELS_BASE_DIR 默认指向该 "models" 目录本身。
+    MODELS_BASE_DIR = os.getenv("MODELS_BASE_DIR", "models").strip() or "models"
+
+    # 可选：外置模型注册表 JSON 路径（阶段 4：配置外置）
+    MODEL_REGISTRY_PATH = os.getenv("MODEL_REGISTRY_PATH", "").strip()
+
+    # Caption standard 档是否启用 VLM（默认结构化优先，仅在必要时才开）
+    CAPTION_STANDARD_USE_VLM = os.getenv("CAPTION_STANDARD_USE_VLM", "false").lower() in ("true", "1", "yes")
+    CAPTION_STRUCTURED_MAX_OBJECTS = int(os.getenv("CAPTION_STRUCTURED_MAX_OBJECTS", "5"))
+
+    # 启动预热严格模式：为 true 时，关键 preload 模型加载失败将阻止服务启动
+    STRICT_PRELOAD = os.getenv("STRICT_PRELOAD", "false").lower() in ("true", "1", "yes")
+    # 可选：指定哪些 model_id 属于“必须成功”的 preload（逗号分隔）。为空则默认“所有 preload 均必须成功”
+    STRICT_PRELOAD_REQUIRED_MODEL_IDS = os.getenv("STRICT_PRELOAD_REQUIRED_MODEL_IDS", "").strip()
+
+    # basic 档能力裁剪：逗号分隔（caption,scene,cleanup,embedding,object,ocr,face）
+    # 默认 basic 关闭 caption/scene/cleanup/embedding，保留 face/object/ocr
+    BASIC_DISABLED_CAPABILITIES = os.getenv("BASIC_DISABLED_CAPABILITIES", "caption,scene,cleanup,embedding").strip()
     
     # ========== 重构：Profile / 设备 / 能力开关 ==========
     
