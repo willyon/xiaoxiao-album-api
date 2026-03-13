@@ -30,6 +30,9 @@ venv/
 env/
 python-ai-service/models/
 
+# PyTorch 权重文件（体积大且可再生，仅限 python-ai-service）
+python-ai-service/**/*.pt
+
 # 构建和分发
 dist/
 *.egg-info/
