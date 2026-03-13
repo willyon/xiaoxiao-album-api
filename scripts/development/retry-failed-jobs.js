@@ -20,20 +20,20 @@ async function retryFailedJobs(queueName = "all") {
 
   if (queueName === "all" || queueName === "upload") {
     queuesToRetry.push({
-      name: "imageUploadQueue",
-      queue: new Queue(process.env.IMAGE_UPLOAD_QUEUE_NAME || "imageUploadQueue", { connection }),
+      name: "mediaUploadQueue",
+      queue: new Queue(process.env.MEDIA_UPLOAD_QUEUE_NAME || "media-upload", { connection }),
     });
   }
   if (queueName === "all" || queueName === "meta") {
     queuesToRetry.push({
-      name: "imageMetaQueue",
-      queue: new Queue(process.env.IMAGE_META_QUEUE_NAME || "imageMetaQueue", { connection }),
+      name: "mediaMetaQueue",
+      queue: new Queue(process.env.MEDIA_META_QUEUE_NAME || "media-meta", { connection }),
     });
   }
   if (queueName === "all" || queueName === "search") {
     queuesToRetry.push({
       name: "searchIndexQueue",
-      queue: new Queue(process.env.SEARCH_INDEX_QUEUE_NAME || "searchIndexQueue", { connection }),
+      queue: new Queue(process.env.SEARCH_INDEX_QUEUE_NAME || "media-search-index", { connection }),
     });
   }
   if (queueName === "all" || queueName === "cleanup") {

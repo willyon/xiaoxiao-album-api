@@ -7,14 +7,14 @@
  */
 const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
-const { imageUploadQueue } = require("../queues/imageUploadQueue");
+const { mediaUploadQueue } = require("../queues/mediaUploadQueue");
 const { computeFileHash } = require("../utils/hash");
 const { getMediaTypeFromFile } = require("../utils/fileUtils");
 const storageService = require("../services/storageService");
-const { updateProgress } = require("../services/imageProcessingProgressService");
+const { updateProgress } = require("../services/mediaProcessingProgressService");
 const logger = require("../utils/logger");
 
-async function handlePostImages(req, res, next) {
+async function handlePostMedias(req, res, next) {
   try {
     const file = req.file; //这里的file是multer中间件生成的上传文件对象
     if (!file) {
@@ -37,7 +37,7 @@ async function handlePostImages(req, res, next) {
 
     // 第二步：检查队列中是否已存在相同的任务（提前去重）
     const jobId = `${userId}:${imageHash}`;
-    const existingJob = await imageUploadQueue.getJob(jobId);
+    const existingJob = await mediaUploadQueue.getJob(jobId);
 
     if (existingJob) {
       // 发现重复任务，直接返回成功（不进行存储操作）
@@ -90,8 +90,8 @@ async function handlePostImages(req, res, next) {
     }
 
     // 第四步：添加到队列处理
-    await imageUploadQueue.add(
-      process.env.IMAGE_UPLOAD_QUEUE_NAME,
+    await mediaUploadQueue.add(
+      process.env.MEDIA_UPLOAD_QUEUE_NAME || "media-upload",
       {
         fileName,
         fileSize,
@@ -99,7 +99,7 @@ async function handlePostImages(req, res, next) {
         userId,
         imageHash,
         mediaType, // 'image' | 'video'，供 Worker 分支判断
-        extension: process.env.IMAGE_THUMBNAIL_EXTENSION || "webp",
+        extension: process.env.MEDIA_THUMBNAIL_EXTENSION || "webp",
         sessionId: req.body.sessionId, // 传递会话ID
       },
       {
@@ -114,10 +114,10 @@ async function handlePostImages(req, res, next) {
     });
 
     // 加入队列任务前，打印队列状态
-    // const jobCounts = await imageUploadQueue.getJobCounts();
+    // const jobCounts = await mediaUploadQueue.getJobCounts();
     // console.log("当前队列状态：", jobCounts);
 
-    // const waitingJobs = await imageUploadQueue.getWaiting();
+    // const waitingJobs = await mediaUploadQueue.getWaiting();
     // console.log("当前队列等待状态：", waitingJobs);
     // waitingJobs.forEach((job, index) => {
     //   console.log(`等待任务 ${index + 1}:`);
@@ -141,5 +141,5 @@ async function handlePostImages(req, res, next) {
 }
 
 module.exports = {
-  handlePostImages,
+  handlePostMedias,
 };

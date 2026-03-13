@@ -16,7 +16,7 @@ const { mapFields } = require("../utils/fieldMapper");
  * @param {string} [params.mediaType] - 媒体类型：'all' | 'image' | 'video'
  * @returns {Object} { data: Array, total: number }
  */
-function selectDeletedImagesByPage({ userId, pageNo, pageSize, mediaType }) {
+function selectDeletedMediasByPage({ userId, pageNo, pageSize, mediaType }) {
   const offset = (pageNo - 1) * pageSize;
 
   const mediaCondition =
@@ -76,7 +76,7 @@ function selectDeletedImagesByPage({ userId, pageNo, pageSize, mediaType }) {
  * @param {Array<number>} imageIds - 图片ID数组
  * @returns {Array} 图片信息数组
  */
-function selectDeletedImagesByIds(userId, imageIds) {
+function selectDeletedMediasByIds(userId, imageIds) {
   if (!imageIds || imageIds.length === 0) return [];
   const placeholders = imageIds.map(() => "?").join(", ");
   const stmt = db.prepare(`
@@ -101,7 +101,7 @@ function selectDeletedImagesByIds(userId, imageIds) {
  * @param {Array<number>} imageIds - 图片ID数组
  * @returns {Object} { changes: number }
  */
-function restoreImages(imageIds) {
+function restoreMedias(imageIds) {
   if (!imageIds || imageIds.length === 0) return { changes: 0 };
   const placeholders = imageIds.map(() => "?").join(", ");
   const stmt = db.prepare(`
@@ -118,7 +118,7 @@ function restoreImages(imageIds) {
  * @param {Array<number>} imageIds - 图片ID数组（必须已在回收站）
  * @returns {Object} { changes: number }
  */
-function permanentlyDeleteImages(imageIds) {
+function permanentlyDeleteMedias(imageIds) {
   if (!imageIds || imageIds.length === 0) return { changes: 0 };
   const placeholders = imageIds.map(() => "?").join(", ");
   const stmt = db.prepare(`
@@ -155,7 +155,7 @@ function clearTrash(userId) {
  * @param {Array<number>} imageIds - 图片ID数组
  * @returns {Array} 图片信息数组
  */
-function selectImagesForFileDeletion(userId, imageIds) {
+function selectMediasForFileDeletion(userId, imageIds) {
   if (!imageIds || imageIds.length === 0) return [];
   const placeholders = imageIds.map(() => "?").join(", ");
   const stmt = db.prepare(`
@@ -179,7 +179,7 @@ function selectImagesForFileDeletion(userId, imageIds) {
  * @param {number} userId - 用户ID
  * @returns {Array} 图片信息数组
  */
-function selectTrashImagesForFileDeletion(userId) {
+function selectTrashMediasForFileDeletion(userId) {
   const stmt = db.prepare(`
     SELECT 
       id,
@@ -196,11 +196,11 @@ function selectTrashImagesForFileDeletion(userId) {
 }
 
 module.exports = {
-  selectDeletedImagesByPage,
-  selectDeletedImagesByIds,
-  restoreImages,
-  permanentlyDeleteImages,
+  selectDeletedMediasByPage,
+  selectDeletedMediasByIds,
+  restoreMedias,
+  permanentlyDeleteMedias,
   clearTrash,
-  selectImagesForFileDeletion,
-  selectTrashImagesForFileDeletion,
+  selectMediasForFileDeletion,
+  selectTrashMediasForFileDeletion,
 };

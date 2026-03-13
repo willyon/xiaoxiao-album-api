@@ -1222,7 +1222,7 @@ function getFaceEmbeddingsByIds(faceEmbeddingIds) {
  * @param {Array<number>} imageIds - image ID数组
  * @returns {Map<number, Object>} 图片信息映射表（imageId -> {sharpness_score}）
  */
-function getImagesSharpnessByIds(imageIds) {
+function getMediasSharpnessByIds(imageIds) {
   if (!imageIds || imageIds.length === 0) {
     return new Map();
   }
@@ -1566,7 +1566,7 @@ function getFaceEmbeddingIdsByClusterId(userId, clusterId) {
  * @param {Array<number>} imageIds - 图片ID列表
  * @returns {Map<number, number>} imageId -> faceEmbeddingId
  */
-function getFaceEmbeddingIdByImageIdInCluster(userId, clusterId, imageIds) {
+function getFaceEmbeddingIdByMediaIdInCluster(userId, clusterId, imageIds) {
   const map = new Map();
   if (!imageIds || imageIds.length === 0) return map;
 
@@ -1674,7 +1674,7 @@ module.exports = {
   removeFacesFromCluster,
   moveFacesToCluster,
   getFaceEmbeddingsByIds,
-  getImagesSharpnessByIds,
+  getMediasSharpnessByIds,
   updateFaceEmbeddingThumbnail,
   updateFaceClusterRepresentative,
   getOldClusterNameMapping,
@@ -1688,7 +1688,7 @@ module.exports = {
   setClusterCover,
   restoreClusterDefaultCover,
   getFaceEmbeddingIdsByClusterId,
-  getFaceEmbeddingIdByImageIdInCluster,
+  getFaceEmbeddingIdByMediaIdInCluster,
   getFaceEmbeddingRepresentativeValue,
   getRepresentativeStatusByThumbnailKeys,
   getDefaultCoverFaceEmbeddingId,

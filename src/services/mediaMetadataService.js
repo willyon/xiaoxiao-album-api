@@ -15,7 +15,7 @@ const { randomUUID } = require("crypto");
 const { stringToTimestamp } = require("../utils/formatTime");
 const { getMimeTypeByMagicBytes } = require("../utils/fileUtils");
 const { getLocationFromCoordinates } = require("./geocodingService");
-const imageModel = require("../models/imageModel");
+const mediaModel = require("../models/mediaModel");
 
 // EXIF Orientation 字符串 → 数值映射（exiftool 常见输出）
 const ORIENTATION_MAP = {
@@ -33,18 +33,18 @@ const ORIENTATION_MAP = {
  * 图片元数据分析服务
  * 统一处理所有图片元数据提取、分析和处理逻辑
  */
-class ImageMetadataService {
+class MediaMetadataService {
   /**
-   * 综合分析图片元数据
-   * @param {Buffer|string} fileData - 图片文件数据（Buffer 或文件路径字符串）
+   * 综合分析媒体元数据
+   * @param {Buffer|string} fileData - 媒体文件数据（Buffer 或文件路径字符串）
    * @param {Object} options - 分析选项
    * @param {boolean} options.includeLocation - 是否包含位置描述（默认 false，避免网络请求）
    * @returns {Promise<Object>} 完整的元数据分析结果
    */
-  async analyzeImageMetadata(fileData, options = {}) {
+  async analyzeMediaMetadata(fileData, options = {}) {
     try {
       // 1. 基础元数据分析（EXIF、尺寸、方向等）
-      const basicMetadata = await this.extractImageMetadata(fileData);
+      const basicMetadata = await this.extractMediaMetadata(fileData);
 
       // 2. 方向和尺寸计算
       const orientationInfo = this.calculateOrientationInfo(basicMetadata.width, basicMetadata.height, basicMetadata.orientation);
@@ -79,7 +79,7 @@ class ImageMetadataService {
    *   - orientation: EXIF方向值 (1-8) 或 null
    *   - mime: MIME类型 (如 'image/jpeg')
    */
-  async extractImageMetadata(input) {
+  async extractMediaMetadata(input) {
     try {
       let tempFilePath = null;
       // 统一处理输入，都转为 Buffer 给 exifr 使用
@@ -375,7 +375,7 @@ class ImageMetadataService {
    */
   async updateLocationInfo(imageId, locationInfo) {
     try {
-      await imageModel.updateLocationInfo(imageId, locationInfo);
+      await mediaModel.updateLocationInfo(imageId, locationInfo);
     } catch (error) {
       logger.error({
         message: "更新位置信息失败",
@@ -390,4 +390,4 @@ class ImageMetadataService {
   }
 }
 
-module.exports = new ImageMetadataService();
+module.exports = new MediaMetadataService();

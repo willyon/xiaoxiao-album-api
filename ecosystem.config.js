@@ -23,8 +23,8 @@ module.exports = {
       },
     },
     {
-      name: "image-upload-worker",
-      script: "src/workers/imageUploadWorker.js",
+      name: "media-upload-worker",
+      script: "src/workers/mediaUploadWorker.js",
       // cwd: "/var/www/photos.bingbingcloud.com/backend", // 绝对路径
       cwd: ".", // 相对路径
       watch: false,
@@ -34,8 +34,8 @@ module.exports = {
       },
     },
     {
-      name: "image-meta-worker",
-      script: "src/workers/imageMetaWorker.js",
+      name: "media-meta-worker",
+      script: "src/workers/mediaMetaWorker.js",
       // cwd: "/var/www/photos.bingbingcloud.com/backend", // 绝对路径
       cwd: ".", // 相对路径
       watch: false,
@@ -126,7 +126,7 @@ pm2 start ecosystem.config.js
 📋 单独管理服务:
 - 重启 API 服务: pm2 restart app-service
 - 重启 Python AI 服务: pm2 restart python-ai-service
-- 重启所有 Workers: pm2 restart image-upload-worker image-meta-worker search-index-worker
+- 重启所有 Workers: pm2 restart media-upload-worker media-meta-worker search-index-worker
 
 📋 定时任务管理:
 - 查看定时任务状态: pm2 list

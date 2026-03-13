@@ -1,6 +1,6 @@
 const { CLEANUP_TYPES } = require("../constants/cleanupTypes");
 const cleanupModel = require("../models/cleanupModel");
-const imageModel = require("../models/imageModel");
+const mediaModel = require("../models/mediaModel");
 const logger = require("../utils/logger");
 
 const DEFAULT_SIMILAR_HAMMING_THRESHOLD = Number(process.env.CLEANUP_SIMILAR_HAMMING_THRESHOLD || 8);
@@ -14,7 +14,7 @@ function rebuildCleanupGroups({ userId }) {
   const images = cleanupModel.selectCleanupCandidatesByUser(userId);
   if (!images || images.length === 0) {
     cleanupModel.deleteGroupsByType(userId, CLEANUP_TYPES.SIMILAR);
-    imageModel.updateBlurryForUser(userId, []);
+    mediaModel.updateBlurryForUser(userId, []);
     return {
       similarGroupCount: 0,
     };
@@ -29,7 +29,7 @@ function rebuildCleanupGroups({ userId }) {
 
   // 模糊图：只更新 images.is_blurry，不再写入 similar_groups
   const blurryImageIds = images.filter((img) => img.sharpness_score != null && img.sharpness_score < BLURRY_SHARPNESS_THRESHOLD).map((img) => img.id);
-  imageModel.updateBlurryForUser(userId, blurryImageIds);
+  mediaModel.updateBlurryForUser(userId, blurryImageIds);
 
   return {
     similarGroupCount: similarSummary.groupCount,

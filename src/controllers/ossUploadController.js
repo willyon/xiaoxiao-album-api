@@ -8,10 +8,10 @@
 const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
 const storageService = require("../services/storageService");
-const { imageUploadQueue } = require("../queues/imageUploadQueue");
+const { mediaUploadQueue } = require("../queues/mediaUploadQueue");
 const logger = require("../utils/logger");
 const { verifyOSSCallbackSignature, parseCallbackData } = require("../utils/ossCallbackUtils");
-const { updateProgress } = require("../services/imageProcessingProgressService");
+const { updateProgress } = require("../services/mediaProcessingProgressService");
 const { SUPPORTED_IMAGE_MIME_TYPES, getExtensionFromMimeType } = require("../utils/fileUtils");
 
 /**
@@ -79,7 +79,7 @@ async function checkAndAddToQueue(callbackData) {
   const { userId, hash, fileName, fileSize, storageKey, sessionId } = callbackData;
   // 统一使用冒号格式，与 uploadController 保持一致
   const jobId = `${userId}:${hash}`;
-  const existingJob = await imageUploadQueue.getJob(jobId);
+  const existingJob = await mediaUploadQueue.getJob(jobId);
 
   if (existingJob) {
     // 发现重复任务，记录日志
@@ -106,15 +106,15 @@ async function checkAndAddToQueue(callbackData) {
   }
 
   // 没有重复，添加到队列进行后续处理（生成缩略图、EXIF提取等）
-  await imageUploadQueue.add(
-    process.env.IMAGE_UPLOAD_QUEUE_NAME,
+  await mediaUploadQueue.add(
+    process.env.MEDIA_UPLOAD_QUEUE_NAME || "media-upload",
     {
       fileName,
       fileSize,
       storageKey,
       userId,
       imageHash: hash,
-      extension: process.env.IMAGE_THUMBNAIL_EXTENSION || "webp",
+      extension: process.env.MEDIA_THUMBNAIL_EXTENSION || "webp",
       sessionId: sessionId, // 传递会话ID
     },
     {
@@ -131,7 +131,7 @@ async function checkAndAddToQueue(callbackData) {
 
 /**
  * 阿里云OSS图片上传完成回调
- * POST /aliyunOss/imageUploadCallback
+ * POST /aliyunOss/mediaUploadCallback
  * Body: OSS回调数据
  */
 async function handleUploadCallback(req, res, next) {

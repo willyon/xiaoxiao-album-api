@@ -22,7 +22,7 @@ async function addToFavorites(req, res, next) {
       });
     }
 
-    const result = await favoriteService.addImagesToFavorites({
+    const result = await favoriteService.addMediasToFavorites({
       userId,
       imageIds: mediaIds.map((id) => parseInt(id)),
     });
@@ -49,7 +49,7 @@ async function removeFromFavorites(req, res, next) {
       });
     }
 
-    const result = await favoriteService.removeImagesFromFavorites({
+    const result = await favoriteService.removeMediasFromFavorites({
       userId,
       imageIds: mediaIds.map((id) => parseInt(id)),
     });

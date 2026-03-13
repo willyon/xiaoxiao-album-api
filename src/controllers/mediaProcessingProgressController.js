@@ -8,7 +8,7 @@
 const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
 const { getRedisClient } = require("../services/redisClient");
-const { setupProgressStream } = require("../services/imageProcessingProgressService");
+const { setupProgressStream } = require("../services/mediaProcessingProgressService");
 const logger = require("../utils/logger");
 
 // 获取Redis客户端实例

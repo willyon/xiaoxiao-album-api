@@ -1,6 +1,6 @@
 const { db } = require("../services/database");
 
-function selectImageForCleanup(imageId) {
+function selectMediaForCleanup(imageId) {
   const stmt = db.prepare(`
     SELECT
       m.id,
@@ -49,7 +49,7 @@ function selectCleanupCandidatesByUser(userId) {
  * 查询用户未分析的图片（用于清理分析入队）
  * 只返回未分析的图片：image_phash、aesthetic_score、sharpness_score 任一为 NULL
  */
-function selectUnanalyzedImagesByUser(userId) {
+function selectUnanalyzedMediasByUser(userId) {
   const stmt = db.prepare(`
     SELECT
       m.id,
@@ -76,7 +76,7 @@ function selectUnanalyzedImagesByUser(userId) {
   return stmt.all(userId);
 }
 
-function updateImageCleanupMetrics(imageId, { imagePhash, imageDhash, aestheticScore, sharpnessScore }) {
+function updateMediaCleanupMetrics(imageId, { imagePhash, imageDhash, aestheticScore, sharpnessScore }) {
   const tx = db.transaction(() => {
     db.prepare(
       `
@@ -398,7 +398,7 @@ function selectGroupById(groupId) {
 /**
  * 查询图片的存储信息
  */
-function selectImagesByIds(imageIds) {
+function selectMediasByIds(imageIds) {
   if (!imageIds || imageIds.length === 0) return [];
   const placeholders = imageIds.map(() => "?").join(", ");
   const stmt = db.prepare(`
@@ -421,7 +421,7 @@ function selectImagesByIds(imageIds) {
 /**
  * 从 images 表删除指定图片
  */
-function deleteImagesByIds(imageIds) {
+function deleteMediasByIds(imageIds) {
   if (!imageIds || imageIds.length === 0) return { changes: 0 };
   const placeholders = imageIds.map(() => "?").join(", ");
   const stmt = db.prepare(`
@@ -431,7 +431,7 @@ function deleteImagesByIds(imageIds) {
   return stmt.run(...imageIds);
 }
 
-function markImagesDeleted(imageIds = [], deletedAt) {
+function markMediasDeleted(imageIds = [], deletedAt) {
   if (!imageIds || imageIds.length === 0) return { changes: 0 };
   const placeholders = imageIds.map(() => "?").join(", ");
   const stmt = db.prepare(`
@@ -455,7 +455,7 @@ function deleteGroupMembersByImageIds(mediaIds = []) {
 /**
  * 获取包含指定图片的所有分组ID
  */
-function getGroupsContainingImages(mediaIds) {
+function getGroupsContainingMedias(mediaIds) {
   if (!mediaIds || mediaIds.length === 0) return [];
 
   const placeholders = mediaIds.map(() => "?").join(", ");
@@ -473,11 +473,11 @@ function getGroupsContainingImages(mediaIds) {
 /**
  * 批量更新包含指定图片的所有分组统计
  */
-function refreshGroupsStatsForImages(imageIds) {
+function refreshGroupsStatsForMedias(imageIds) {
   if (!imageIds || imageIds.length === 0) return;
 
   // 获取包含这些图片的所有分组ID
-  const groupIds = getGroupsContainingImages(imageIds);
+  const groupIds = getGroupsContainingMedias(imageIds);
   if (groupIds.length === 0) return;
 
   const now = Date.now();
@@ -501,19 +501,19 @@ module.exports = {
   deleteGroupMembers,
   deleteGroup,
   refreshGroupStats,
-  selectImagesByIds,
-  deleteImagesByIds,
-  markImagesDeleted,
+  selectMediasByIds,
+  deleteMediasByIds,
+  markMediasDeleted,
   deleteGroupMembersByImageIds,
-  getGroupsContainingImages,
-  refreshGroupsStatsForImages,
+  getGroupsContainingMedias,
+  refreshGroupsStatsForMedias,
   countGroupsByType,
   countDisplayableSimilarGroups,
   selectDisplayableSimilarGroups,
-  selectImageForCleanup,
+  selectMediaForCleanup,
   selectCleanupCandidatesByUser,
-  selectUnanalyzedImagesByUser,
-  updateImageCleanupMetrics,
+  selectUnanalyzedMediasByUser,
+  updateMediaCleanupMetrics,
   deleteGroupsByType,
   insertSimilarGroup,
   insertSimilarGroupMember,

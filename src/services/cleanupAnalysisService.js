@@ -1,6 +1,6 @@
 const axios = require("axios");
 const cleanupModel = require("../models/cleanupModel");
-const { upsertImageEmbedding, getImageEmbedding } = require("../models/imageEmbeddingModel");
+const { upsertMediaEmbedding, getMediaEmbedding } = require("../models/mediaEmbeddingModel");
 const { scheduleUserRebuild } = require("../services/cleanupGroupingScheduler");
 const { withAiSlot } = require("./aiConcurrencyLimiter");
 
@@ -10,7 +10,7 @@ const PYTHON_SERVICE_URL =
 const { FormData, Blob } = globalThis;
 
 async function runCleanupAnalysisCore({ imageId, userId, buffer }) {
-  const existingEmbedding = getImageEmbedding(imageId);
+  const existingEmbedding = getMediaEmbedding(imageId);
 
   if (!buffer) {
     return {
@@ -48,7 +48,7 @@ async function runCleanupAnalysisCore({ imageId, userId, buffer }) {
 
   const round2 = (v) => (typeof v === "number" ? Number(v.toFixed(2)) : null);
 
-  cleanupModel.updateImageCleanupMetrics(imageId, {
+  cleanupModel.updateMediaCleanupMetrics(imageId, {
     imagePhash: analysis?.hashes?.phash ?? null,
     imageDhash: analysis?.hashes?.dhash ?? null,
     aestheticScore: round2(analysis.aesthetic_score ?? null),
@@ -60,7 +60,7 @@ async function runCleanupAnalysisCore({ imageId, userId, buffer }) {
   let embeddingFailed = false;
   if (embeddingVec && embeddingVec.length) {
     try {
-      upsertImageEmbedding({ imageId, vector: embeddingVec, modelId: embeddingModel });
+      upsertMediaEmbedding({ imageId, vector: embeddingVec, modelId: embeddingModel });
     } catch (e) {
       embeddingFailed = true;
     }

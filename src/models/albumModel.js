@@ -274,7 +274,7 @@ function updateAlbumLastUsedAt(albumId) {
 /**
  * 添加图片到相册
  */
-function addImagesToAlbum({ albumId, imageIds, userId }) {
+function addMediasToAlbum({ albumId, imageIds, userId }) {
   const insertSql = `
     INSERT OR IGNORE INTO album_media (album_id, media_id, added_at)
     VALUES (?, ?, ?)
@@ -292,7 +292,7 @@ function addImagesToAlbum({ albumId, imageIds, userId }) {
   }
 
   if (addedCount > 0) {
-    updateAlbumImageCount(albumId);
+    updateAlbumMediaCount(albumId);
     updateAlbumCover(albumId);
     updateAlbumLastUsedAt(albumId);
   }
@@ -306,7 +306,7 @@ function addImagesToAlbum({ albumId, imageIds, userId }) {
 /**
  * 从相册中移除图片
  */
-function removeImagesFromAlbum({ albumId, imageIds, userId }) {
+function removeMediasFromAlbum({ albumId, imageIds, userId }) {
   const deleteSql = `
     DELETE FROM album_media
     WHERE album_id = ? AND media_id IN (${imageIds.map(() => "?").join(",")})
@@ -316,7 +316,7 @@ function removeImagesFromAlbum({ albumId, imageIds, userId }) {
   const result = stmt.run(albumId, ...imageIds);
 
   if (result.changes > 0) {
-    updateAlbumImageCount(albumId);
+    updateAlbumMediaCount(albumId);
     updateAlbumCover(albumId);
     updateAlbumLastUsedAt(albumId);
   }
@@ -327,7 +327,7 @@ function removeImagesFromAlbum({ albumId, imageIds, userId }) {
 /**
  * 获取相册中的图片列表（分页）
  */
-function getAlbumImages({ albumId, pageNo, pageSize }) {
+function getAlbumMedias({ albumId, pageNo, pageSize }) {
   const offset = (pageNo - 1) * pageSize;
 
   const dataQuery = db.prepare(`
@@ -403,7 +403,7 @@ function getAlbumTimeRange(albumId) {
 /**
  * 检查图片是否在相册中
  */
-function isImageInAlbum({ albumId, imageId }) {
+function isMediaInAlbum({ albumId, imageId }) {
   const sql = `
     SELECT 1
     FROM album_media
@@ -421,7 +421,7 @@ function isImageInAlbum({ albumId, imageId }) {
  * 更新相册的图片数量（物化字段）
  * 注意：只统计未删除的图片（i.deleted_at IS NULL）
  */
-function updateAlbumImageCount(albumId) {
+function updateAlbumMediaCount(albumId) {
   const sql = `
     UPDATE albums
     SET image_count = (
@@ -465,7 +465,7 @@ function updateAlbumCover(albumId) {
  */
 function setAlbumCover({ albumId, imageId }) {
   // 先检查图片是否在相册中
-  const exists = isImageInAlbum({ albumId, imageId });
+  const exists = isMediaInAlbum({ albumId, imageId });
   if (!exists) {
     return { affectedRows: 0 };
   }
@@ -486,7 +486,7 @@ function setAlbumCover({ albumId, imageId }) {
 /**
  * 获取相册的封面媒体ID
  */
-function getAlbumCoverImageId(albumId) {
+function getAlbumCoverMediaId(albumId) {
   const sql = `
     SELECT cover_media_id
     FROM albums
@@ -500,7 +500,7 @@ function getAlbumCoverImageId(albumId) {
 /**
  * 切换媒体的喜欢状态（仅更新 media.is_favorite）
  */
-function toggleFavoriteImage({ userId, imageId, isFavorite }) {
+function toggleFavoriteMedia({ userId, imageId, isFavorite }) {
   const updateImageSql = `
     UPDATE media 
     SET is_favorite = ? 
@@ -518,7 +518,7 @@ function toggleFavoriteImage({ userId, imageId, isFavorite }) {
 /**
  * 批量将媒体设为收藏（仅更新 media.is_favorite = 1，不操作 album_media）
  */
-function addImagesToFavorite({ userId, imageIds }) {
+function addMediasToFavorite({ userId, imageIds }) {
   if (!imageIds || imageIds.length === 0) {
     return { addedCount: 0, skippedCount: 0 };
   }
@@ -539,7 +539,7 @@ function addImagesToFavorite({ userId, imageIds }) {
 /**
  * 批量取消媒体收藏（仅更新 media.is_favorite = 0，不操作 album_media）
  */
-function removeImagesFromFavorite({ userId, imageIds }) {
+function removeMediasFromFavorite({ userId, imageIds }) {
   if (!imageIds || imageIds.length === 0) {
     return { affectedRows: 0 };
   }
@@ -556,7 +556,7 @@ function removeImagesFromFavorite({ userId, imageIds }) {
 /**
  * 检查媒体是否为收藏（仅查 media.is_favorite，不再查 album_media）
  */
-function isImageFavorite({ userId, imageId }) {
+function isMediaFavorite({ userId, imageId }) {
   const row = db.prepare("SELECT is_favorite FROM media WHERE id = ? AND user_id = ? AND deleted_at IS NULL").get(imageId, userId);
   return row ? row.is_favorite === 1 : false;
 }
@@ -564,7 +564,7 @@ function isImageFavorite({ userId, imageId }) {
 /**
  * 获取包含指定图片的所有相册ID（仅未删除的相册）
  */
-function getAlbumsContainingImages(imageIds) {
+function getAlbumsContainingMedias(imageIds) {
   if (!imageIds || imageIds.length === 0) return [];
 
   const placeholders = imageIds.map(() => "?").join(", ");
@@ -584,11 +584,11 @@ function getAlbumsContainingImages(imageIds) {
 /**
  * 批量更新相册的图片数量和封面（仅统计未删除的图片）
  */
-function updateAlbumsStatsForImages(imageIds) {
+function updateAlbumsStatsForMedias(imageIds) {
   if (!imageIds || imageIds.length === 0) return;
 
   // 获取包含这些图片的所有相册ID
-  const albumIds = getAlbumsContainingImages(imageIds);
+  const albumIds = getAlbumsContainingMedias(imageIds);
   if (albumIds.length === 0) return;
 
   const now = Date.now();
@@ -628,29 +628,69 @@ function updateAlbumsStatsForImages(imageIds) {
   });
 }
 
+/**
+ * 按条件查询自动相册所用媒体列表（用于 getAutoAlbums）
+ * @param {{ userId: number, whereClause: string, limit: number }} - whereClause 为 SQL 片段，仅来自 AUTO_ALBUM_DEFINITIONS
+ * @returns {{ list: Array<Object>, totalCount: number }}
+ */
+function getAutoAlbumMediaList({ userId, whereClause, limit = 1 }) {
+  const baseSql = `
+    FROM media m
+    LEFT JOIN media_analysis ma ON ma.media_id = m.id
+    WHERE m.user_id = ?
+      AND m.deleted_at IS NULL
+      AND (${whereClause})
+  `;
+  const listSql = `
+    SELECT
+      m.id,
+      m.thumbnail_storage_key,
+      m.high_res_storage_key,
+      m.original_storage_key,
+      m.storage_type,
+      m.media_type,
+      m.duration_sec,
+      m.captured_at
+    ${baseSql}
+    ORDER BY COALESCE(m.captured_at, 0) DESC, m.id DESC
+    LIMIT ?
+  `;
+  const countSql = `
+    SELECT COUNT(*) AS total
+    ${baseSql}
+  `;
+  const list = db.prepare(listSql).all(userId, limit);
+  const { total } = db.prepare(countSql).get(userId);
+  return {
+    list,
+    totalCount: total || 0,
+  };
+}
+
 module.exports = {
   AUTO_ALBUM_DEFINITIONS,
+  getAutoAlbumMediaList,
   createAlbum,
   getAlbumsByUserId,
   getRecentAlbumsByUserId,
   getAlbumById,
   updateAlbum,
   deleteAlbum,
-  addImagesToAlbum,
-  removeImagesFromAlbum,
+  addMediasToAlbum,
+  removeMediasFromAlbum,
   getAlbumTimeRange,
-  addImagesToFavorite,
-  removeImagesFromFavorite,
-  getAlbumImages,
-  isImageInAlbum,
-  toggleFavoriteImage,
-  isImageFavorite,
+  addMediasToFavorite,
+  removeMediasFromFavorite,
+  getAlbumMedias,
+  isMediaInAlbum,
+  toggleFavoriteMedia,
+  isMediaFavorite,
   setAlbumCover,
-  updateAlbumImageCount,
+  updateAlbumMediaCount,
   updateAlbumCover,
   updateAlbumLastUsedAt,
-  getAlbumsContainingImages,
-  updateAlbumsStatsForImages,
-  getAlbumCoverImageId,
+  getAlbumsContainingMedias,
+  updateAlbumsStatsForMedias,
+  getAlbumCoverMediaId,
   getAlbumsCountByUserId,
 };

@@ -319,7 +319,7 @@ async function verifyOSSCallbackSignature(req) {
  * 注意：严格按照阿里云OSS官方文档的签名规范实现
  */
 function _buildStringToSign(req) {
-  // 返回url的路径部分 如 /aliyunOss/imageUploadCallback
+  // 返回url的路径部分 如 /aliyunOss/mediaUploadCallback
   const path = req.originalUrl;
 
   //返回url的查询参数部分 为空时返回一个空对象{} req.query = { userId: '123', storageKey: '123.jpg' } 需要通过new URLSearchParams(req.query).toString() 转换为字符串
@@ -355,17 +355,17 @@ function _buildStringToSign(req) {
 function buildOSSCallbackUrl(req = null) {
   // 根据环境自动选择
   if (process.env.NODE_ENV === "development") {
-    return `${process.env.NGROK_URL}/aliyunOss/imageUploadCallback`;
+    return `${process.env.NGROK_URL}/aliyunOss/mediaUploadCallback`;
   }
 
   // 生产环境使用 API_BASE_URL_ALIYUN_ECS
   if (process.env.API_BASE_URL_ALIYUN_ECS) {
-    return `${process.env.API_BASE_URL_ALIYUN_ECS}/aliyunOss/imageUploadCallback`;
+    return `${process.env.API_BASE_URL_ALIYUN_ECS}/aliyunOss/mediaUploadCallback`;
   }
 
   // 兜底方案：使用请求的完整URL（仅在提供req参数时）
   if (req) {
-    return `${req.protocol}://${req.get("host")}/aliyunOss/imageUploadCallback`;
+    return `${req.protocol}://${req.get("host")}/aliyunOss/mediaUploadCallback`;
   }
 
   // 如果都没有配置，抛出错误

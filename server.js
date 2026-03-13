@@ -16,8 +16,8 @@ const cors = require("cors");
 const { getRedisClient } = require("./src/services/redisClient");
 const initGracefulShutdown = require("./src/utils/gracefulShutdown");
 
-const { closeImageUploadQueue } = require("./src/queues/imageUploadQueue");
-const { closeImageMetaQueue } = require("./src/queues/imageMetaQueue");
+const { closeMediaUploadQueue } = require("./src/queues/mediaUploadQueue");
+const { closeMediaMetaQueue } = require("./src/queues/mediaMetaQueue");
 const { closeSearchIndexQueue } = require("./src/queues/searchIndexQueue");
 const { closeCleanupQueue } = require("./src/queues/cleanupQueue");
 const { closeMediaAnalysisQueue } = require("./src/queues/mediaAnalysisQueue");
@@ -35,7 +35,7 @@ const authMiddleware = require("./src/middlewares/authMiddleware");
 
 // 导入业务路由
 const authRoutes = require("./src/routes/authRoutes");
-const imagesRoutes = require("./src/routes/imagesRoutes");
+const mediaRoutes = require("./src/routes/mediaRoutes");
 const albumRoutes = require("./src/routes/albumRoutes");
 const searchRoutes = require("./src/routes/searchRoutes");
 const trashRoutes = require("./src/routes/trashRoutes");
@@ -125,7 +125,7 @@ app.use("/api/auth", authRoutes);
 app.use("/aliyunOss", aliyunOssCallbackRoutes);
 
 // 注册媒体业务路由+鉴权中间件(authMiddleware)
-app.use("/api/media", [authMiddleware], imagesRoutes);
+app.use("/api/media", [authMiddleware], mediaRoutes);
 
 // 注册相册路由+鉴权中间件(authMiddleware)
 app.use("/api/albums", [authMiddleware], albumRoutes);
@@ -174,8 +174,8 @@ initGracefulShutdown({
   getRedisClient,
   extraClosers: [
     // 关闭 BullMQ 的 Queue 及其底层连接（API 进程只负责入队）
-    async () => closeImageUploadQueue(),
-    async () => closeImageMetaQueue(),
+    async () => closeMediaUploadQueue(),
+    async () => closeMediaMetaQueue(),
     async () => closeSearchIndexQueue(),
     async () => closeCleanupQueue(),
     async () => closeMediaAnalysisQueue(),

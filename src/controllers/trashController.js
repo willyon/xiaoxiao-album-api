@@ -13,7 +13,7 @@ const logger = require("../utils/logger");
  * 分页获取已删除图片列表
  * GET /api/trash?pageNo=1&pageSize=20
  */
-async function handleGetDeletedImages(req, res, next) {
+async function handleGetDeletedMedias(req, res, next) {
   try {
     const { userId } = req?.user;
     if (!userId) {
@@ -36,7 +36,7 @@ async function handleGetDeletedImages(req, res, next) {
       });
     }
 
-    const result = await trashService.getDeletedImages({
+    const result = await trashService.getDeletedMedias({
       userId,
       pageNo,
       pageSize,
@@ -59,7 +59,7 @@ async function handleGetDeletedImages(req, res, next) {
  * POST /images/trash/restore
  * Body: { imageIds: [1, 2, 3] }
  */
-async function handleRestoreImages(req, res, next) {
+async function handleRestoreMedias(req, res, next) {
   try {
     const { userId } = req?.user;
     if (!userId) {
@@ -79,7 +79,7 @@ async function handleRestoreImages(req, res, next) {
       });
     }
 
-    const result = await trashService.restoreImages({ userId, imageIds: mediaIds });
+    const result = await trashService.restoreMedias({ userId, imageIds: mediaIds });
     res.sendResponse({
       data: result,
       messageCode: "trash.restore.success",
@@ -94,7 +94,7 @@ async function handleRestoreImages(req, res, next) {
  * POST /images/trash/permanently-delete
  * Body: { imageIds: [1, 2, 3] }
  */
-async function handlePermanentlyDeleteImages(req, res, next) {
+async function handlePermanentlyDeleteMedias(req, res, next) {
   try {
     const { userId } = req?.user;
     if (!userId) {
@@ -114,7 +114,7 @@ async function handlePermanentlyDeleteImages(req, res, next) {
       });
     }
 
-    const result = await trashService.permanentlyDeleteImages({ userId, imageIds: mediaIds });
+    const result = await trashService.permanentlyDeleteMedias({ userId, imageIds: mediaIds });
     res.sendResponse({
       data: result,
       messageCode: "trash.permanentlyDelete.success",
@@ -150,8 +150,8 @@ async function handleClearTrash(req, res, next) {
 }
 
 module.exports = {
-  handleGetDeletedImages,
-  handleRestoreImages,
-  handlePermanentlyDeleteImages,
+  handleGetDeletedMedias,
+  handleRestoreMedias,
+  handlePermanentlyDeleteMedias,
   handleClearTrash,
 };

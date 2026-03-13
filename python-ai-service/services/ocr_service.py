@@ -64,5 +64,5 @@ def recognize_text(image):
         }
         
     except Exception as e:
-        logger.error(f"OCR识别失败: {str(e)}")
+        logger.error("OCR识别失败", details={"error": str(e)})
         raise

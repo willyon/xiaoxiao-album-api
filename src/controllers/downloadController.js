@@ -4,7 +4,7 @@
  * @Description: 图片下载控制器 - 包含数据库查询、业务逻辑和HTTP处理
  */
 const storageService = require("../services/storageService");
-const imageService = require("../services/imageService");
+const mediaService = require("../services/mediaService");
 const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
 const logger = require("../utils/logger");
@@ -54,7 +54,7 @@ function _getContentTypeFromFileName(fileName) {
 async function _getSingleImageDownload(imageId, userId) {
   try {
     // 通过 service 查询图片信息
-    const image = await imageService.getImageDownloadInfo({ userId, imageId });
+    const image = await mediaService.getMediaDownloadInfo({ userId, imageId });
     if (!image) {
       throw new Error("图片不存在");
     }
@@ -103,7 +103,7 @@ async function _getBatchImagesDownload(imageIds, userId) {
     }
 
     // 通过 service 查询图片信息
-    const images = await imageService.getImagesDownloadInfo({ userId, imageIds });
+    const images = await mediaService.getMediasDownloadInfo({ userId, imageIds });
     if (!images || images.length === 0) {
       throw new Error("未找到任何图片");
     }
@@ -180,7 +180,7 @@ async function _getBatchImagesDownload(imageIds, userId) {
  * 单张图片下载
  * GET /images/download/:imageId
  */
-async function handleDownloadSingleImage(req, res, next) {
+async function handleDownloadSingleMedia(req, res, next) {
   try {
     const { userId } = req?.user;
     const { mediaId } = req.params;
@@ -220,7 +220,7 @@ async function handleDownloadSingleImage(req, res, next) {
  * 批量图片下载（ZIP）
  * POST /images/download/batch
  */
-async function handleDownloadBatchImages(req, res, next) {
+async function handleDownloadBatchMedias(req, res, next) {
   try {
     const { userId } = req?.user;
     const { mediaIds } = req.body;
@@ -293,6 +293,6 @@ async function handleDownloadBatchImages(req, res, next) {
 }
 
 module.exports = {
-  handleDownloadSingleImage,
-  handleDownloadBatchImages,
+  handleDownloadSingleMedia,
+  handleDownloadBatchMedias,
 };

@@ -96,7 +96,7 @@ class FaceDetector:
             }
             
         except Exception as e:
-            logger.error(f'人脸检测失败: {e}', exc_info=True)
+            logger.error("人脸检测失败", details={"error": str(e)})
             return {
                 'all_faces': [],
                 'all_faces_count': 0

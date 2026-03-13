@@ -12,22 +12,22 @@ const connection = new IORedis({
   maxRetriesPerRequest: null,
 });
 
-const imageMetaQueue = new Queue(process.env.IMAGE_META_QUEUE_NAME, {
+const mediaMetaQueue = new Queue(process.env.MEDIA_META_QUEUE_NAME || "media-meta", {
   connection,
   defaultJobOptions: {
-    attempts: Number(process.env.IMAGE_META_JOB_ATTEMPTS || 5), //最多尝试次数（包括第一次执行）
+    attempts: Number(process.env.MEDIA_META_JOB_ATTEMPTS || 5), //最多尝试次数（包括第一次执行）
     backoff: {
       type: "exponential", //每次重试的间隔时间按指数增长 第一次延迟delay毫秒 第二次延迟delay*2毫秒 第三次延迟delay*3毫秒 以此类推
-      delay: Number(process.env.IMAGE_META_JOB_BACKOFF_DELAY || 1000),
+      delay: Number(process.env.MEDIA_META_JOB_BACKOFF_DELAY || 1000),
     },
     removeOnComplete: true,
     removeOnFail: 200,
   },
 });
 
-async function closeImageMetaQueue() {
-  await imageMetaQueue.close();
+async function closeMediaMetaQueue() {
+  await mediaMetaQueue.close();
   await connection.quit();
 }
 
-module.exports = { imageMetaQueue, closeImageMetaQueue };
+module.exports = { mediaMetaQueue, closeMediaMetaQueue };

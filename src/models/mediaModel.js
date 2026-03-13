@@ -116,7 +116,7 @@ function rebuildMediaSearchDoc(mediaId) {
 }
 
 //保存用户上传的图片元数据到数据库（初始上传时的必要字段）
-function insertImage({ userId, imageHash, thumbnailStorageKey, storageType, fileSizeBytes, mediaType }) {
+function insertMedia({ userId, imageHash, thumbnailStorageKey, storageType, fileSizeBytes, mediaType }) {
   const now = Date.now();
   const normalizedType = mediaType === "video" ? "video" : "image";
   const stmt = db.prepare(`
@@ -163,7 +163,7 @@ function selectHashesByUserId(userId) {
 // 分页获取用户具体某年份的图片数据 —— 基于物化的 yearKey
 // albumId: 对于时间相册，实际上是 year_key (如 "2024")
 // 支持可选的 clusterId 参数，用于查询特定人物的某年份照片
-function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = null }) {
+function selectMediasByYear({ pageNo, pageSize, albumId, userId, clusterId = null }) {
   const offset = (pageNo - 1) * pageSize;
 
   // 如果指定了 clusterId，需要通过 face_clusters 表关联查询
@@ -282,7 +282,7 @@ function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
 // 分页获取用户具体某月份的图片数据 —— 基于物化的 monthKey
 // albumId: 对于时间相册，实际上是 month_key (如 "2024-01")
 // 支持可选的 clusterId 参数，用于查询特定人物的某月份照片
-function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = null }) {
+function selectMediasByMonth({ pageNo, pageSize, albumId, userId, clusterId = null }) {
   const offset = (pageNo - 1) * pageSize;
 
   // 如果指定了 clusterId，需要通过 face_clusters 表关联查询
@@ -400,7 +400,7 @@ function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
 
 // 分页获取用户具体某个日期的图片数据 —— 基于物化的 dateKey
 // albumId: 对于时间相册，实际上是 date_key (如 "2024-01-15")
-function selectImagesByDate({ pageNo, pageSize, albumId, userId }) {
+function selectMediasByDate({ pageNo, pageSize, albumId, userId }) {
   const offset = (pageNo - 1) * pageSize;
 
   // 分页数据查询（与总数统计保持相同过滤条件）
@@ -457,7 +457,7 @@ function selectImagesByDate({ pageNo, pageSize, albumId, userId }) {
 /**
  * 分页获取用户模糊图列表（is_blurry = 1）
  */
-function getImagesByBlurry({ userId, pageNo, pageSize }) {
+function getMediasByBlurry({ userId, pageNo, pageSize }) {
   const offset = (pageNo - 1) * pageSize;
 
   const dataQuery = db.prepare(`
@@ -1189,7 +1189,7 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
 
 // 分页获取用户具体某个地点的图片数据
 // albumId: 城市名称或 'unknown'
-function selectImagesByCity({ pageNo, pageSize, albumId, userId }) {
+function selectMediasByCity({ pageNo, pageSize, albumId, userId }) {
   const offset = (pageNo - 1) * pageSize;
   const isUnknown = albumId === "unknown";
 
@@ -1239,7 +1239,7 @@ function selectImagesByCity({ pageNo, pageSize, albumId, userId }) {
 }
 
 // 更新图片元数据（EXIF、GPS、尺寸、存储键等）
-function updateImageMetadata({
+function updateMediaMetadata({
   userId,
   imageHash,
   creationDate,
@@ -1354,7 +1354,7 @@ function checkFileExists({ imageHash, userId }) {
  * • 存储人脸识别分析结果的汇总信息
  * • 支持增量更新：null值不更新，保持原有值
  *
- * @function updateImageSearchMetadata
+ * @function updateMediaSearchMetadata
  * @param {Object} params - 更新参数对象
  * @param {number} params.imageId - 图片ID（必须）
  * @param {string} [params.altText] - AI图片描述（待启用）
@@ -1383,7 +1383,7 @@ function checkFileExists({ imageHash, userId }) {
  * • 传入undefined会被转为null
  * • analysisVersion默认为'1.0'，可传入其他版本如'2.0'
  */
-function updateImageSearchMetadata({
+function updateMediaSearchMetadata({
   imageId,
   altText,
   ocrText,
@@ -1615,7 +1615,7 @@ async function insertFaceEmbeddings(imageId, faceData, analysisVersion) {
 /**
  * 根据ID获取图片存储信息（用于获取封面等场景）
  */
-function getImageStorageInfo(imageId) {
+function getMediaStorageInfo(imageId) {
   const sql = `
     SELECT 
       id,
@@ -1649,7 +1649,7 @@ function getImageStorageInfo(imageId) {
 /**
  * 根据ID获取图片下载信息（包含 original_storage_key，用于下载）
  */
-function getImageDownloadInfo({ userId, imageId }) {
+function getMediaDownloadInfo({ userId, imageId }) {
   const sql = `
     SELECT 
       id,
@@ -1683,7 +1683,7 @@ function getImageDownloadInfo({ userId, imageId }) {
 /**
  * 批量根据 imageIds 获取图片下载信息（用于批量下载）
  */
-function getImagesDownloadInfo({ userId, imageIds }) {
+function getMediasDownloadInfo({ userId, imageIds }) {
   if (!imageIds || imageIds.length === 0) {
     return [];
   }
@@ -1741,7 +1741,7 @@ function _mediaSelectColumns(alias = "m") {
   `;
 }
 
-function getImagesByBlurry({ userId, pageNo, pageSize }) {
+function getMediasByBlurry({ userId, pageNo, pageSize }) {
   const offset = (pageNo - 1) * pageSize;
   const dataQuery = db.prepare(`
     SELECT
@@ -1787,7 +1787,7 @@ function getImagesByBlurry({ userId, pageNo, pageSize }) {
   return { data: mapFields("media", data), total };
 }
 
-function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = null }) {
+function selectMediasByYear({ pageNo, pageSize, albumId, userId, clusterId = null }) {
   const offset = (pageNo - 1) * pageSize;
   if (clusterId !== null && clusterId !== undefined) {
     const dataQuery = db.prepare(`
@@ -1842,7 +1842,7 @@ function selectImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
   return { data: mapFields("media", data), total };
 }
 
-function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = null }) {
+function selectMediasByMonth({ pageNo, pageSize, albumId, userId, clusterId = null }) {
   const offset = (pageNo - 1) * pageSize;
   if (clusterId !== null && clusterId !== undefined) {
     const dataQuery = db.prepare(`
@@ -1897,7 +1897,7 @@ function selectImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
   return { data: mapFields("media", data), total };
 }
 
-function selectImagesByDate({ pageNo, pageSize, albumId, userId }) {
+function selectMediasByDate({ pageNo, pageSize, albumId, userId }) {
   const offset = (pageNo - 1) * pageSize;
   const dataQuery = db.prepare(`
     SELECT ${_mediaSelectColumns("m")}
@@ -1921,7 +1921,7 @@ function selectImagesByDate({ pageNo, pageSize, albumId, userId }) {
   return { data: mapFields("media", data), total };
 }
 
-function selectImagesByCity({ pageNo, pageSize, albumId, userId }) {
+function selectMediasByCity({ pageNo, pageSize, albumId, userId }) {
   const offset = (pageNo - 1) * pageSize;
   const isUnknown = albumId === "unknown";
   const cityCondition = isUnknown ? "AND (m.city IS NULL OR TRIM(COALESCE(m.city, '')) = '' OR m.city = 'unknown')" : "AND m.city = ?";
@@ -2340,30 +2340,99 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
   return { data: mapFields("media", data), total };
 }
 
+/**
+ * 媒体分析链路：按 media_id 覆盖写入 media_captions（source_type='image'），事务内 DELETE + INSERT
+ */
+function upsertMediaCaptionsForAnalysis(imageId, caption, keywords, analysisVersion) {
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM media_captions WHERE media_id = ? AND source_type = 'image'").run(imageId);
+    db.prepare(
+      `INSERT INTO media_captions (media_id, source_type, caption, keywords_json, analysis_version, created_at)
+       VALUES (?, 'image', ?, ?, ?, ?)`,
+    ).run(imageId, caption || "", JSON.stringify(Array.isArray(keywords) ? keywords : []), analysisVersion, Date.now());
+  });
+  tx();
+}
+
+/**
+ * 媒体分析链路：按 media_id 覆盖写入 media_objects（source_type='image'），事务内 DELETE + INSERT
+ * @param {Array<{ label: string, confidence?: number, bbox?: Array<number> }>} objects
+ */
+function upsertMediaObjectsForAnalysis(imageId, objects, analysisVersion) {
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM media_objects WHERE media_id = ? AND source_type = 'image'").run(imageId);
+    const insertStmt = db.prepare(
+      `INSERT INTO media_objects (media_id, source_type, label, confidence, bbox, analysis_version, created_at)
+       VALUES (?, 'image', ?, ?, ?, ?, ?)`,
+    );
+    const now = Date.now();
+    for (const obj of objects || []) {
+      insertStmt.run(
+        imageId,
+        obj.label || "",
+        typeof obj.confidence === "number" ? obj.confidence : null,
+        JSON.stringify(obj.bbox ?? null),
+        analysisVersion,
+        now,
+      );
+    }
+  });
+  tx();
+}
+
+/**
+ * 媒体分析链路：按 media_id 覆盖写入 media_text_blocks（source_type='ocr'），事务内 DELETE + INSERT
+ * @param {Array<{ text: string, bbox?: Array<number>, confidence?: number }>} blocks
+ */
+function upsertMediaTextBlocksOcrForAnalysis(imageId, blocks, analysisVersion) {
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM media_text_blocks WHERE media_id = ? AND source_type = 'ocr'").run(imageId);
+    const insertStmt = db.prepare(
+      `INSERT INTO media_text_blocks (media_id, source_type, text, bbox, confidence, analysis_version, created_at)
+       VALUES (?, 'ocr', ?, ?, ?, ?, ?)`,
+    );
+    const now = Date.now();
+    for (const block of blocks || []) {
+      insertStmt.run(
+        imageId,
+        block.text || "",
+        JSON.stringify(block.bbox ?? null),
+        block.confidence ?? null,
+        analysisVersion,
+        now,
+      );
+    }
+  });
+  tx();
+}
+
 module.exports = {
   checkFileExists,
-  insertImage,
-  updateImageMetadata,
-  updateImageSearchMetadata,
+  insertMedia,
+  updateMediaMetadata,
+  updateMediaSearchMetadata,
   updateLocationInfo,
   insertFaceEmbeddings,
-  selectImagesByYear,
-  selectImagesByMonth,
-  selectImagesByDate,
-  getImagesByBlurry,
+  selectMediasByYear,
+  selectMediasByMonth,
+  selectMediasByDate,
+  getMediasByBlurry,
   updateBlurryForUser,
   selectGroupsByYear,
   selectGroupsByMonth,
   selectGroupsByDate,
   selectUnknownGroup,
   selectGroupsByCity,
-  selectImagesByCity,
+  selectMediasByCity,
   selectGroupsByYearForCluster,
   selectGroupsByMonthForCluster,
   selectHashesByUserId,
-  getImageStorageInfo,
-  getImageDownloadInfo,
-  getImagesDownloadInfo,
+  getMediaStorageInfo,
+  getMediaDownloadInfo,
+  getMediasDownloadInfo,
   rebuildMediaSearchDoc,
   updateIngestStatusByHash,
+  upsertMediaCaptionsForAnalysis,
+  upsertMediaObjectsForAnalysis,
+  upsertMediaTextBlocksOcrForAnalysis,
 };

@@ -49,8 +49,8 @@ try:
         print(f"   大小: {file_size:.2f} MB")
         print()
         
-        # 移动到 models 目录
-        target_dir = "models"
+        # 移动到 models/managed/object 目录
+        target_dir = os.path.join("models", "managed", "object")
         target_path = os.path.join(target_dir, "yolov10s.onnx")
         
         os.makedirs(target_dir, exist_ok=True)

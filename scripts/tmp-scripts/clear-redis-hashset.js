@@ -13,7 +13,7 @@ process.chdir(projectRoot);
 require("dotenv").config();
 
 const { getRedisClient } = require(path.join(projectRoot, "src", "services", "redisClient"));
-const { userSetKey, readyKeyOf, lockKeyOf } = require(path.join(projectRoot, "src", "workers", "userImageHashset"));
+const { userSetKey, readyKeyOf, lockKeyOf } = require(path.join(projectRoot, "src", "workers", "userMediaHashset"));
 
 async function main() {
   const userId = parseInt(process.argv[2] || "1", 10);

@@ -9,31 +9,37 @@ const express = require("express");
 const router = express.Router();
 const upload = require("../middlewares/upload"); // 引入 upload 中间件
 const {
-  handleGetBlurryImages,
+  handleGetBlurryMedias,
   handleGetSimilarGroups,
   handleCheckFileExists,
-  handlePatchImage,
-  handleDeleteImages,
-} = require("../controllers/imageController");
-const { handleDownloadSingleImage, handleDownloadBatchImages } = require("../controllers/downloadController");
-const { handlePostImages } = require("../controllers/uploadController");
+  handlePatchMedia,
+  handleDeleteMedias,
+  handleReanalyzeMedia,
+  handleRebuildSearchMedia,
+} = require("../controllers/mediaController");
+const { handleDownloadSingleMedia, handleDownloadBatchMedias } = require("../controllers/downloadController");
+const { handlePostMedias } = require("../controllers/uploadController");
 const { handleGetUploadSignature } = require("../controllers/ossUploadController");
 
 // ========== 图片 CRUD 接口 ========== //
 // 批量上传图片
-router.post("/", upload, handlePostImages);
+router.post("/", upload, handlePostMedias);
 
 // 分页获取模糊图列表（清理页模糊图 tab）
-router.get("/blurry", handleGetBlurryImages);
+router.get("/blurry", handleGetBlurryMedias);
 
 // 分页获取相似图分组列表（清理页相似图 tab）
 router.get("/similar", handleGetSimilarGroups);
 
 // 部分更新媒体信息（仅用于 favorite 字段）
-router.patch("/:mediaId", handlePatchImage);
+router.patch("/:mediaId", handlePatchMedia);
+
+// Phase 4 管理能力：单图重新分析、重建搜索文档
+router.post("/:mediaId/reanalyze", handleReanalyzeMedia);
+router.post("/:mediaId/rebuild-search", handleRebuildSearchMedia);
 
 // 批量删除图片（软删除，移至回收站）
-router.delete("/", handleDeleteImages);
+router.delete("/", handleDeleteMedias);
 
 // ========== 图片上传相关接口 ========== //
 // 检查文件是否已存在
@@ -44,9 +50,9 @@ router.post("/upload/signature", handleGetUploadSignature);
 
 // ========== 图片下载相关接口 ========== //
 // 单条媒体下载
-router.get("/:mediaId/download", handleDownloadSingleImage);
+router.get("/:mediaId/download", handleDownloadSingleMedia);
 
 // 批量图片下载（ZIP）
-router.post("/download", handleDownloadBatchImages);
+router.post("/download", handleDownloadBatchMedias);
 
 module.exports = router;

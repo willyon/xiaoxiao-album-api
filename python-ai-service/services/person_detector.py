@@ -83,7 +83,7 @@ class PersonDetector:
                 "persons": final_persons,
             }
         except Exception as e:
-            logger.error("人体检测失败（不影响基础服务）: %s", e, exc_info=True)
+            logger.error("人体检测失败（不影响基础服务）", details={"error": str(e)})
             return {"person_count": 0, "persons": []}
 
     def _filter_by_size(self, persons, min_box_size):

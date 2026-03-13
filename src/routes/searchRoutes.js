@@ -8,9 +8,9 @@ const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../middlewares/authMiddleware");
 const {
-  handleSearchImages,
+  handleSearchMedias,
   handleGetSearchSuggestions,
-  handleIndexImage,
+  handleIndexMedia,
   handleGetQueueStatus,
   handleGetFilterOptionsPaginated,
   handleGetSceneFilterOptionsPaginated,
@@ -21,7 +21,7 @@ const {
 router.use(authMiddleware);
 
 // 搜索/列表媒体（统一接口：可选 scope + 可选 query + filters）
-router.post("/media", handleSearchImages);
+router.post("/media", handleSearchMedias);
 
 // 搜索建议
 router.get("/suggestions", handleGetSearchSuggestions);
@@ -32,7 +32,7 @@ router.get("/filters/scenes", handleGetSceneFilterOptionsPaginated);
 router.get("/filters/objects", handleGetObjectFilterOptionsPaginated);
 
 // 手动索引单个图片
-router.post("/index-image", handleIndexImage);
+router.post("/index-image", handleIndexMedia);
 
 // 获取队列状态
 router.get("/queue-status", handleGetQueueStatus);

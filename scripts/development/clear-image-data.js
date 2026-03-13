@@ -108,10 +108,10 @@ function clearLocalStorageFiles() {
   console.log("🗂️  开始清空本地磁盘存储文件...");
   const clearFolders = {
     uploadFolder: path.join(__dirname, "..", process.env.UPLOADS_DIR), //上传成功待处理图片存放文件夹
-    failedFolder: path.join(__dirname, "..", process.env.FAILED_IMAGE_DIR), //处理失败图片存放文件夹
-    originalFolder: path.join(__dirname, "..", process.env.PROCESSED_ORIGINAL_IMAGE_DIR), //上传原图存放文件夹
-    highResFolder: path.join(__dirname, "..", process.env.PROCESSED_HIGH_RES_IMAGE_DIR),
-    thumbnailFolder: path.join(__dirname, "..", process.env.PROCESSED_THUMBNAIL_IMAGE_DIR),
+    failedFolder: path.join(__dirname, "..", process.env.FAILED_MEDIA_DIR), //处理失败媒体存放文件夹
+    originalFolder: path.join(__dirname, "..", process.env.PROCESSED_ORIGINAL_MEDIA_DIR), //上传原图存放文件夹
+    highResFolder: path.join(__dirname, "..", process.env.PROCESSED_HIGH_RES_MEDIA_DIR),
+    thumbnailFolder: path.join(__dirname, "..", process.env.PROCESSED_THUMBNAIL_MEDIA_DIR),
   };
 
   for (let key in clearFolders) {
@@ -171,9 +171,9 @@ async function clearAllQueueJobs() {
     // BullMQ 队列键格式：bull:{queueName}:*
     // 需要清理的队列名称（从环境变量获取，如果没有则使用默认值）
     const queueNames = [
-      process.env.IMAGE_UPLOAD_QUEUE_NAME || "imageUploadQueue",
-      process.env.IMAGE_META_QUEUE_NAME || "imageMetaQueue",
-      process.env.SEARCH_INDEX_QUEUE_NAME || "searchIndexQueue",
+      process.env.MEDIA_UPLOAD_QUEUE_NAME || "media-upload",
+      process.env.MEDIA_META_QUEUE_NAME || "media-meta",
+      process.env.SEARCH_INDEX_QUEUE_NAME || "media-search-index",
       process.env.CLEANUP_QUEUE_NAME || "cleanupQueue",
     ];
 
@@ -211,7 +211,7 @@ async function clearAllQueueJobs() {
 // ============清空 BullMQ 队列中所有任务（等待、活跃、失败、完成、延迟）==========//
 
 // ============清空 Redis 中 readyKeyOf、lockKeyOf、userSetKey 和进度 session 相关键，用于开发测试环境快速重置==========//
-const { readyKeyOf, lockKeyOf, userSetKey } = require("../../src/workers/userImageHashset");
+const { readyKeyOf, lockKeyOf, userSetKey } = require("../../src/workers/userMediaHashset");
 const { getRedisClient } = require("../../src/services/redisClient");
 const redisClient = getRedisClient();
 
@@ -228,7 +228,7 @@ async function clearRedisKeys() {
     "session:*:progress", // 进度推送频道
   ];
   const lockAndCooldownPatterns = [
-    `${process.env.IMAGES_HASH_LOCK_KEY_PREFIX || "lock:image:hash:"}*`, // 图片哈希分布式锁
+    `${process.env.MEDIA_HASH_LOCK_KEY_PREFIX || "img:lock:"}*`, // 媒体哈希分布式锁
     "*_cooldown_*", // 冷却键（如邮件验证码）
   ];
 

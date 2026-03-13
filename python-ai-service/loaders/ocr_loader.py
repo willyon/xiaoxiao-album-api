@@ -41,7 +41,7 @@ def load_ocr_model():
         logger.info("✅ PaddleOCR 模型加载完成")
 
     except Exception as e:
-        logger.error("❌ PaddleOCR 模型加载失败: %s", str(e))
+        logger.error("PaddleOCR 模型加载失败", details={"error": str(e)})
         paddle_ocr = None
         ocr_loaded = False
 

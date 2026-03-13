@@ -7,7 +7,7 @@
  */
 const express = require("express");
 const router = express.Router();
-const { progressStream } = require("../controllers/imageProcessingProgressController");
+const { progressStream } = require("../controllers/mediaProcessingProgressController");
 
 // 进度推送流（SSE）- 不需要认证
 router.get("/stream", progressStream);

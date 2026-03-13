@@ -5,16 +5,16 @@
  */
 
 const logger = require("../utils/logger");
-const { saveProcessedImageMetadata, setImageIngestStatus } = require("../services/imageService");
+const { saveProcessedMediaMetadata, setMediaIngestStatus } = require("../services/mediaService");
 const { timestampToYearMonth, timestampToYear, timestampToDate, timestampToDayOfWeek } = require("../utils/formatTime");
 const timeIt = require("../utils/timeIt");
 const storageService = require("../services/storageService");
 const videoProcessingService = require("../services/videoProcessingService");
-const { updateProgress, updateProgressOnce } = require("../services/imageProcessingProgressService");
+const { updateProgress, updateProgressOnce } = require("../services/mediaProcessingProgressService");
 const { searchIndexQueue } = require("../queues/searchIndexQueue");
 const { cleanupQueue } = require("../queues/cleanupQueue");
 const { mediaAnalysisQueue } = require("../queues/mediaAnalysisQueue");
-const imageMetadataService = require("../services/imageMetadataService");
+const mediaMetadataService = require("../services/mediaMetadataService");
 const { addMediaToSession } = require("../services/uploadSessionService");
 
 /**
@@ -28,7 +28,7 @@ const { addMediaToSession } = require("../services/uploadSessionService");
  * @param {string} [params.highResStorageKey] - 高清图存储键（可选）
  */
 async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userId, highResStorageKey }) {
-  const maxAttempts = job?.opts?.attempts || Number(process.env.IMAGE_META_JOB_ATTEMPTS || 5);
+  const maxAttempts = job?.opts?.attempts || Number(process.env.MEDIA_META_JOB_ATTEMPTS || 5);
   const attemptsMade = job?.attemptsMade || 0;
   // 修复：判断失败后 BullMQ 是否还会重试
   // BullMQ 会在失败后将 attemptsMade 递增，然后判断是否 < maxAttempts
@@ -74,7 +74,7 @@ async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userI
       });
     }
 
-    await setImageIngestStatus({
+    await setMediaIngestStatus({
       userId,
       imageHash,
       ingestStatus: "failed",
@@ -144,7 +144,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
   let city = null;
   if (meta.gpsLatitude != null && meta.gpsLongitude != null) {
     try {
-      const locInfo = await imageMetadataService.analyzeLocationInfo(meta.gpsLatitude, meta.gpsLongitude);
+      const locInfo = await mediaMetadataService.analyzeLocationInfo(meta.gpsLatitude, meta.gpsLongitude);
       gpsLocation = locInfo?.gpsLocation || null;
       country = locInfo?.country || null;
       city = locInfo?.city || null;
@@ -158,7 +158,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
 
   let imageId = null;
   try {
-    const result = await saveProcessedImageMetadata({
+    const result = await saveProcessedMediaMetadata({
       userId,
       imageHash,
       creationDate: captureTime,
@@ -342,16 +342,16 @@ async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, origin
  *
  * @param {Object} job - BullMQ job对象
  */
-async function processImageMeta(job) {
+async function processMediaMeta(job) {
   const { userId, imageHash, fileName, storageKey, extension, fileSize, sessionId, mediaType = "image" } = job.data;
 
-  await setImageIngestStatus({
+  await setMediaIngestStatus({
     userId,
     imageHash,
     ingestStatus: "processing",
   });
 
-  const originalType = process.env.IMAGE_STORAGE_KEY_ORIGINAL || "original";
+  const originalType = process.env.MEDIA_STORAGE_KEY_ORIGINAL || "original";
   const originalStorageKey = storageService.storage.generateStorageKey(originalType, fileName);
 
   // ========== 视频分支：ffprobe 元数据，不生成 highres，不入队 AI ==========
@@ -367,7 +367,7 @@ async function processImageMeta(job) {
   }
 
   // ========== 图片分支：沿用现有逻辑 ==========
-  const highResType = process.env.IMAGE_STORAGE_KEY_HIGHRES || "highres";
+  const highResType = process.env.MEDIA_STORAGE_KEY_HIGHRES || "highres";
   let highResStorageKeyResult = null;
   let hdWidthPx = null;
   let hdHeightPx = null;
@@ -382,7 +382,7 @@ async function processImageMeta(job) {
 
   let metadata = null;
   try {
-    metadata = await imageMetadataService.analyzeImageMetadata(fileData, {
+    metadata = await mediaMetadataService.analyzeMediaMetadata(fileData, {
       includeLocation: true,
     });
   } catch (err) {
@@ -452,7 +452,7 @@ async function processImageMeta(job) {
 
   let imageId = null;
   try {
-    const result = await saveProcessedImageMetadata({
+    const result = await saveProcessedMediaMetadata({
       userId,
       imageHash,
       creationDate: captureTime,
@@ -546,5 +546,5 @@ async function processImageMeta(job) {
 }
 
 module.exports = {
-  processImageMeta,
+  processMediaMeta,
 };

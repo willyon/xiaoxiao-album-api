@@ -10,8 +10,8 @@ const { Worker } = require("bullmq");
 const Redis = require("ioredis");
 const logger = require("../utils/logger");
 const initGracefulShutdown = require("../utils/gracefulShutdown");
-const { ensureUserSetReady } = require("./userImageHashset");
-const { processAndSaveSingleImage } = require("./imageUploadIngestor");
+const { ensureUserSetReady } = require("./userMediaHashset");
+const { processAndSaveSingleMedia } = require("./mediaUploadIngestor");
 // const PROFILE = process.env.PROFILE_UPLOAD === "1";
 
 const connection = new Redis({
@@ -19,8 +19,8 @@ const connection = new Redis({
   maxRetriesPerRequest: null,
 });
 
-const QUEUE_NAME = process.env.IMAGE_UPLOAD_QUEUE_NAME;
-const CONCURRENCY = Number(process.env.IMAGE_UPLOAD_WORKER_CONCURRENCY || 1);
+const QUEUE_NAME = process.env.MEDIA_UPLOAD_QUEUE_NAME || "media-upload";
+const CONCURRENCY = Number(process.env.MEDIA_UPLOAD_WORKER_CONCURRENCY || 1);
 
 const worker = new Worker(
   QUEUE_NAME,
@@ -29,11 +29,11 @@ const worker = new Worker(
     //获取当前用户已存储在数据表中的全量hash集合 用于后续去重对比
     await ensureUserSetReady(userId);
     //图片处理
-    await processAndSaveSingleImage(job);
+    await processAndSaveSingleMedia(job);
   },
   { connection, concurrency: CONCURRENCY }, //一次最多同时并发4个任务
 );
-logger.info({ message: `imageUploadWorker 已启动，队列名=${QUEUE_NAME}，并发数=${CONCURRENCY}` });
+logger.info({ message: `mediaUploadWorker 已启动，队列名=${QUEUE_NAME}，并发数=${CONCURRENCY}` });
 
 worker.on("active", (job) => {
   // if (PROFILE) {
@@ -71,7 +71,7 @@ worker.on("failed", (job, error) => {
   const level = willRetry && isBusy ? "info" : willRetry ? "warn" : "error";
 
   logger[level]({
-    message: `imageUploadWorker failed: ${job?.id} ${willRetry ? "（将重试）" : "（已达最大重试）"}`,
+    message: `mediaUploadWorker failed: ${job?.id} ${willRetry ? "（将重试）" : "（已达最大重试）"}`,
     stack: level === "error" ? error?.stack : undefined,
     details: {
       queue: QUEUE_NAME,
@@ -84,7 +84,7 @@ worker.on("failed", (job, error) => {
 });
 
 worker.on("stalled", (job) => {
-  logger.warn(`imageUploadWorker stalled: ${job?.id}`);
+  logger.warn(`mediaUploadWorker stalled: ${job?.id}`);
 });
 
 // 注册优雅退出：先停止领取新任务，再关闭底层 Redis 连接

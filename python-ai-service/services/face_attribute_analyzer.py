@@ -69,7 +69,7 @@ class FaceAttributeAnalyzer:
             logger.info('✅ FairFace ONNX人脸属性分析器初始化完成')
             
         except Exception as e:
-            logger.error(f'FairFace ONNX初始化失败: {e}', exc_info=True)
+            logger.error("FairFace ONNX初始化失败", details={"error": str(e)})
             self.session = None
     
     def analyze(self, image, faces):
@@ -167,7 +167,7 @@ class FaceAttributeAnalyzer:
         except Exception as e:
             # 异常处理：如果整个分析过程出错
             # 返回一个全为None的列表（保持长度一致）
-            logger.error(f'属性分析失败: {e}', exc_info=True)
+            logger.error("属性分析失败", details={"error": str(e)})
             return [{'age': None, 'gender': None}] * len(faces)
     
     def _crop_face(self, img, bbox):
@@ -253,7 +253,7 @@ class FaceAttributeAnalyzer:
             
         except Exception as e:
             # 裁剪过程出错（记录日志，返回None）
-            logger.error(f'人脸裁剪失败: {e}')
+            logger.error("人脸裁剪失败", details={"error": str(e)})
             return None
     
     def _predict(self, face_img):
@@ -343,7 +343,7 @@ class FaceAttributeAnalyzer:
             
         except Exception as e:
             # ONNX推理失败（可能原因：输入格式错误、模型错误、内存不足）
-            logger.error(f'ONNX预测失败: {e}', exc_info=True)
+            logger.error("ONNX预测失败", details={"error": str(e)})
             return None, None
     
     def _analyze_age_from_id(self, age_id):
@@ -404,7 +404,7 @@ class FaceAttributeAnalyzer:
             
         except Exception as e:
             # 分析失败（记录日志，返回None）
-            logger.error(f'年龄ID分析失败: {e}')
+            logger.error("年龄ID分析失败", details={"error": str(e)})
             return None
     
     def _analyze_gender_from_id(self, gender_id):
@@ -452,5 +452,5 @@ class FaceAttributeAnalyzer:
             
         except Exception as e:
             # 分析失败（记录日志，返回None）
-            logger.error(f'性别ID分析失败: {e}')
+            logger.error("性别ID分析失败", details={"error": str(e)})
             return None

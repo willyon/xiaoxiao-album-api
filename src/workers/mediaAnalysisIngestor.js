@@ -6,17 +6,24 @@
 
 const logger = require("../utils/logger");
 const storageService = require("../services/storageService");
-const imageUnderstandingService = require("../services/imageUnderstandingService");
-const { updateImageSearchMetadata, insertFaceEmbeddings, rebuildMediaSearchDoc } = require("../models/imageModel");
+const mediaUnderstandingService = require("../services/mediaUnderstandingService");
+const {
+  updateMediaSearchMetadata,
+  insertFaceEmbeddings,
+  rebuildMediaSearchDoc,
+  upsertMediaCaptionsForAnalysis,
+  upsertMediaObjectsForAnalysis,
+  upsertMediaTextBlocksOcrForAnalysis,
+} = require("../models/mediaModel");
 const { runCleanupAnalysisCore } = require("../services/cleanupAnalysisService");
-const { updateProgressOnce } = require("../services/imageProcessingProgressService");
+const { updateProgressOnce } = require("../services/mediaProcessingProgressService");
 const axios = require("axios");
 const { withAiSlot } = require("../services/aiConcurrencyLimiter");
-const { db } = require("../services/database");
 const {
   markMediaAnalysisRunning,
   markMediaAnalysisFailed,
   finalizeMediaAnalysis: finalizeMediaAnalysisInModel,
+  upsertSceneForMedia,
 } = require("../models/mediaAnalysisModel");
 
 const PYTHON_SERVICE_URL =
@@ -138,7 +145,7 @@ async function processMediaAnalysis(job) {
       return;
     }
 
-    const { imageData, storageKey } = await _loadImageBuffer({ highResStorageKey, originalStorageKey, imageId, userId, fileName });
+    const { imageData, storageKey } = await _loadMediaBuffer({ highResStorageKey, originalStorageKey, imageId, userId, fileName });
     if (!imageData) {
       const err = new Error("MEDIA_FILE_NOT_FOUND");
       await _markMediaAnalysisFailed(imageId, analysisVersion, err);
@@ -197,7 +204,7 @@ async function processMediaAnalysis(job) {
   }
 }
 
-async function _loadImageBuffer({ highResStorageKey, originalStorageKey, imageId, userId, fileName }) {
+async function _loadMediaBuffer({ highResStorageKey, originalStorageKey, imageId, userId, fileName }) {
   let imageData = null;
   let storageKey = null;
 
@@ -222,7 +229,7 @@ async function _loadImageBuffer({ highResStorageKey, originalStorageKey, imageId
 }
 
 async function _markVideoAnalysisDone(imageId, sessionId, analysisVersion) {
-  await updateImageSearchMetadata({ imageId, analysisVersion });
+  await updateMediaSearchMetadata({ imageId, analysisVersion });
   if (sessionId) {
     await updateProgressOnce({ sessionId, status: "aiDoneCount", dedupeKey: imageId });
   }
@@ -254,7 +261,7 @@ async function _runFaceAnalysis({ imageId, userId, imageData, storageKey, analys
     return;
   }
   try {
-    const faceResult = await imageUnderstandingService.processImageFaceOnly({
+    const faceResult = await mediaUnderstandingService.processImageFaceOnly({
       imageData,
       imageId,
       storageKey,
@@ -263,7 +270,7 @@ async function _runFaceAnalysis({ imageId, userId, imageData, storageKey, analys
     const { faceCount, personCount, expressionTags, ageTags, genderTags, primaryExpressionConfidence, primaryFaceQuality, faces } =
       faceResult || {};
 
-    await updateImageSearchMetadata({
+    await updateMediaSearchMetadata({
       imageId,
       faceCount,
       personCount,
@@ -405,16 +412,7 @@ async function _runCaptionAnalysis({ imageId, userId, imageData, analysisVersion
 
     const { caption, keywords } = response.data || {};
 
-    const tx = db.transaction(() => {
-      db.prepare("DELETE FROM media_captions WHERE media_id = ? AND source_type = 'image'").run(imageId);
-      db.prepare(
-        `
-        INSERT INTO media_captions (media_id, source_type, caption, keywords_json, analysis_version, created_at)
-        VALUES (?, 'image', ?, ?, ?, ?)
-      `,
-      ).run(imageId, caption || "", JSON.stringify(keywords || []), analysisVersion, Date.now());
-    });
-    tx();
+    upsertMediaCaptionsForAnalysis(imageId, caption, keywords, analysisVersion);
 
     stepResults.caption = {
       status: "completed",
@@ -480,26 +478,7 @@ async function _runObjectAnalysis({ imageId, userId, imageData, analysisVersion,
 
     const objects = Array.isArray(response.data?.objects) ? response.data.objects : [];
 
-    const tx = db.transaction(() => {
-      db.prepare("DELETE FROM media_objects WHERE media_id = ? AND source_type = 'image'").run(imageId);
-      const insertStmt = db.prepare(
-        `
-        INSERT INTO media_objects (media_id, source_type, label, confidence, bbox, analysis_version, created_at)
-        VALUES (?, 'image', ?, ?, ?, ?, ?)
-      `,
-      );
-      for (const obj of objects) {
-        insertStmt.run(
-          imageId,
-          obj.label || "",
-          typeof obj.confidence === "number" ? obj.confidence : null,
-          JSON.stringify(obj.bbox ?? null),
-          analysisVersion,
-          Date.now(),
-        );
-      }
-    });
-    tx();
+    upsertMediaObjectsForAnalysis(imageId, objects, analysisVersion);
 
     stepResults.object = {
       status: "completed",
@@ -564,26 +543,7 @@ async function _runOcrAnalysis({ imageId, userId, imageData, analysisVersion, st
 
     const blocks = Array.isArray(response.data) ? response.data : Array.isArray(response.data?.blocks) ? response.data.blocks : [];
 
-    const tx = db.transaction(() => {
-      db.prepare("DELETE FROM media_text_blocks WHERE media_id = ? AND source_type = 'ocr'").run(imageId);
-      const insertStmt = db.prepare(
-        `
-        INSERT INTO media_text_blocks (media_id, source_type, text, bbox, confidence, analysis_version, created_at)
-        VALUES (?, 'ocr', ?, ?, ?, ?, ?)
-      `,
-      );
-      for (const block of blocks) {
-        insertStmt.run(
-          imageId,
-          block.text || "",
-          JSON.stringify(block.bbox ?? null),
-          block.confidence ?? null,
-          analysisVersion,
-          Date.now(),
-        );
-      }
-    });
-    tx();
+    upsertMediaTextBlocksOcrForAnalysis(imageId, blocks, analysisVersion);
 
     stepResults.ocr = {
       status: "completed",
@@ -664,15 +624,7 @@ async function _runSceneAnalysis({ imageId, userId, imageData, analysisVersion, 
       }
     }
 
-    db.prepare(
-      `
-      INSERT INTO media_analysis (media_id, analysis_status, analysis_version, scene_primary, environment)
-      VALUES (?, 'pending', ?, ?, ?)
-      ON CONFLICT(media_id) DO UPDATE SET
-        scene_primary = COALESCE(?, media_analysis.scene_primary),
-        environment = COALESCE(?, media_analysis.environment)
-    `,
-    ).run(imageId, analysisVersion, primaryScene, environment, primaryScene, environment);
+    upsertSceneForMedia(imageId, analysisVersion, primaryScene, environment);
 
     stepResults.scene = {
       status: "completed",

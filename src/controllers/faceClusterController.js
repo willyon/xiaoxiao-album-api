@@ -16,7 +16,7 @@ const {
   verifyFaceEmbeddingInCluster,
   getFaceEmbeddingIdsByClusterId,
 } = require("../models/faceClusterModel");
-const { addFullUrlToImage, getGroupsByYearForCluster, getGroupsByMonthForCluster } = require("../services/imageService");
+const { addFullUrlToMedia, getGroupsByYearForCluster, getGroupsByMonthForCluster } = require("../services/mediaService");
 const logger = require("../utils/logger");
 const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
@@ -104,13 +104,13 @@ async function getClusters(req, res, next) {
 
     const urlsMap = new Map();
     if (coverImages.length > 0) {
-      // 先保存 thumbnailStorageKey 的映射关系（因为 addFullUrlToImage 会删除这个字段）
+      // 先保存 thumbnailStorageKey 的映射关系（因为 addFullUrlToMedia 会删除这个字段）
       const keyToIndexMap = new Map();
       coverImages.forEach((img, index) => {
         keyToIndexMap.set(index, img.thumbnailStorageKey);
       });
 
-      const urls = await addFullUrlToImage(coverImages);
+      const urls = await addFullUrlToMedia(coverImages);
 
       // 使用保存的 key 来建立映射关系
       urls.forEach((urlItem, index) => {
@@ -171,7 +171,7 @@ async function getRecentClusters(req, res, next) {
     if (coverImages.length > 0) {
       const keyToIndexMap = new Map();
       coverImages.forEach((img, index) => keyToIndexMap.set(index, img.thumbnailStorageKey));
-      const urls = await addFullUrlToImage(coverImages);
+      const urls = await addFullUrlToMedia(coverImages);
       urls.forEach((urlItem, index) => {
         const originalKey = keyToIndexMap.get(index);
         if (originalKey && urlItem?.thumbnailUrl) urlsMap.set(originalKey, urlItem.thumbnailUrl);
@@ -452,12 +452,12 @@ async function restoreClusterCoverImage(req, res, next) {
       try {
         // 从 images 表获取 storage_type
         const { getFaceEmbeddingsByIds } = require("../models/faceClusterModel");
-        const { getImageStorageInfo } = require("../models/imageModel");
+        const { getMediaStorageInfo } = require("../models/mediaModel");
         const storageService = require("../services/storageService");
 
         const faceEmbeddings = getFaceEmbeddingsByIds([result.faceEmbeddingId]);
         if (faceEmbeddings.length > 0) {
-          const imageInfo = getImageStorageInfo(faceEmbeddings[0].image_id);
+          const imageInfo = getMediaStorageInfo(faceEmbeddings[0].image_id);
           const storageType = imageInfo?.storageType || "aliyun-oss";
           coverImageUrl = await storageService.getFileUrl(result.thumbnailStorageKey, storageType);
         }
@@ -567,12 +567,12 @@ async function setClusterCoverImage(req, res, next) {
       try {
         // 从 images 表获取 storage_type
         const { getFaceEmbeddingsByIds } = require("../models/faceClusterModel");
-        const { getImageStorageInfo } = require("../models/imageModel");
+        const { getMediaStorageInfo } = require("../models/mediaModel");
         const storageService = require("../services/storageService");
 
         const faceEmbeddings = getFaceEmbeddingsByIds([faceEmbeddingIdNum]);
         if (faceEmbeddings.length > 0) {
-          const imageInfo = getImageStorageInfo(faceEmbeddings[0].image_id);
+          const imageInfo = getMediaStorageInfo(faceEmbeddings[0].image_id);
           const storageType = imageInfo?.storageType || "aliyun-oss";
           coverImageUrl = await storageService.getFileUrl(thumbnailStorageKey, storageType);
         }

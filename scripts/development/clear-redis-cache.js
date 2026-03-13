@@ -27,8 +27,8 @@ process.chdir(projectRoot);
 
 require("dotenv").config();
 const { getRedisClient } = require(path.join(projectRoot, "src", "services", "redisClient"));
-const { imageUploadQueue, closeImageUploadQueue } = require(path.join(projectRoot, "src", "queues", "imageUploadQueue"));
-const { imageMetaQueue, closeImageMetaQueue } = require(path.join(projectRoot, "src", "queues", "imageMetaQueue"));
+const { mediaUploadQueue, closeMediaUploadQueue } = require(path.join(projectRoot, "src", "queues", "mediaUploadQueue"));
+const { mediaMetaQueue, closeMediaMetaQueue } = require(path.join(projectRoot, "src", "queues", "mediaMetaQueue"));
 const { searchIndexQueue, closeSearchIndexQueue } = require(path.join(projectRoot, "src", "queues", "searchIndexQueue"));
 
 /**
@@ -41,13 +41,13 @@ async function clearBullMQQueues() {
     // 清空上传队列
     console.log("  📤 清空图片上传队列...");
     const uploadStats = {
-      waiting: await imageUploadQueue.clean(0, 10000, "waiting"),
-      active: await imageUploadQueue.clean(0, 10000, "active"),
-      completed: await imageUploadQueue.clean(0, 10000, "completed"),
-      failed: await imageUploadQueue.clean(0, 10000, "failed"),
-      delayed: await imageUploadQueue.clean(0, 10000, "delayed"),
+      waiting: await mediaUploadQueue.clean(0, 10000, "waiting"),
+      active: await mediaUploadQueue.clean(0, 10000, "active"),
+      completed: await mediaUploadQueue.clean(0, 10000, "completed"),
+      failed: await mediaUploadQueue.clean(0, 10000, "failed"),
+      delayed: await mediaUploadQueue.clean(0, 10000, "delayed"),
     };
-    await imageUploadQueue.drain(true);
+    await mediaUploadQueue.drain(true);
     console.log(
       `     ✅ 清理: 等待${uploadStats.waiting} | 活跃${uploadStats.active} | 完成${uploadStats.completed} | 失败${uploadStats.failed} | 延迟${uploadStats.delayed}`,
     );
@@ -55,13 +55,13 @@ async function clearBullMQQueues() {
     // 清空元数据队列
     console.log("  📊 清空图片元数据队列...");
     const metaStats = {
-      waiting: await imageMetaQueue.clean(0, 10000, "waiting"),
-      active: await imageMetaQueue.clean(0, 10000, "active"),
-      completed: await imageMetaQueue.clean(0, 10000, "completed"),
-      failed: await imageMetaQueue.clean(0, 10000, "failed"),
-      delayed: await imageMetaQueue.clean(0, 10000, "delayed"),
+      waiting: await mediaMetaQueue.clean(0, 10000, "waiting"),
+      active: await mediaMetaQueue.clean(0, 10000, "active"),
+      completed: await mediaMetaQueue.clean(0, 10000, "completed"),
+      failed: await mediaMetaQueue.clean(0, 10000, "failed"),
+      delayed: await mediaMetaQueue.clean(0, 10000, "delayed"),
     };
-    await imageMetaQueue.drain(true);
+    await mediaMetaQueue.drain(true);
     console.log(
       `     ✅ 清理: 等待${metaStats.waiting} | 活跃${metaStats.active} | 完成${metaStats.completed} | 失败${metaStats.failed} | 延迟${metaStats.delayed}`,
     );
@@ -121,7 +121,7 @@ async function clearUserRelatedCache(redisClient) {
     console.log(`     ✅ 删除 ${hashLockKeys.length} 个哈希集合锁`);
 
     // 4. 清空图片处理锁 (使用环境变量中的前缀)
-    const lockPrefix = process.env.IMAGES_HASH_LOCK_KEY_PREFIX || "images:lock:";
+    const lockPrefix = process.env.MEDIA_HASH_LOCK_KEY_PREFIX || "img:lock:";
     console.log(`  🔐 清空图片处理锁 (${lockPrefix}*)...`);
     const imageLockKeys = await redisClient.keys(`${lockPrefix}*`);
     if (imageLockKeys.length > 0) {
@@ -269,8 +269,8 @@ async function main() {
     throw error;
   } finally {
     // 关闭所有连接
-    await closeImageUploadQueue().catch(() => {});
-    await closeImageMetaQueue().catch(() => {});
+    await closeMediaUploadQueue().catch(() => {});
+    await closeMediaMetaQueue().catch(() => {});
     await closeSearchIndexQueue().catch(() => {});
 
     if (redisClient) {

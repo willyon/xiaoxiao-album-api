@@ -7,7 +7,7 @@ const express = require("express");
 const router = express.Router();
 const { handleUploadCallback } = require("../controllers/ossUploadController");
 
-// 阿里云OSS图片上传完成回调 - 不需要鉴权
-router.post("/imageUploadCallback", handleUploadCallback);
+// 阿里云OSS媒体上传完成回调 - 不需要鉴权
+router.post("/mediaUploadCallback", handleUploadCallback);
 
 module.exports = router;

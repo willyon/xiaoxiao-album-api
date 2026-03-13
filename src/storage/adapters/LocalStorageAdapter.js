@@ -44,20 +44,20 @@ class LocalStorageAdapter extends BaseStorageAdapter {
     // 如果没有传extension，直接使用fileName本身
     if (!extension) {
       switch (type) {
-        case process.env.IMAGE_STORAGE_KEY_THUMBNAIL || "thumbnail":
-          const thumbnailDir = process.env.PROCESSED_THUMBNAIL_IMAGE_DIR || "localStorage/processed/thumbnails";
+        case process.env.MEDIA_STORAGE_KEY_THUMBNAIL || "thumbnail":
+          const thumbnailDir = process.env.PROCESSED_THUMBNAIL_MEDIA_DIR || "localStorage/processed/thumbnails";
           return `${thumbnailDir}/${fileName}`;
-        case process.env.IMAGE_STORAGE_KEY_HIGHRES || "highres":
-          const highResDir = process.env.PROCESSED_HIGH_RES_IMAGE_DIR || "localStorage/processed/highres";
+        case process.env.MEDIA_STORAGE_KEY_HIGHRES || "highres":
+          const highResDir = process.env.PROCESSED_HIGH_RES_MEDIA_DIR || "localStorage/processed/highres";
           return `${highResDir}/${fileName}`;
-        case process.env.IMAGE_STORAGE_KEY_ORIGINAL || "original":
-          const originalDir = process.env.PROCESSED_ORIGINAL_IMAGE_DIR || "localStorage/processed/original";
+        case process.env.MEDIA_STORAGE_KEY_ORIGINAL || "original":
+          const originalDir = process.env.PROCESSED_ORIGINAL_MEDIA_DIR || "localStorage/processed/original";
           return `${originalDir}/${fileName}`;
-        case process.env.IMAGE_STORAGE_KEY_FAILED || "failed":
-          const failedDir = process.env.FAILED_IMAGE_DIR || "localStorage/processing/failed";
+        case process.env.MEDIA_STORAGE_KEY_FAILED || "failed":
+          const failedDir = process.env.FAILED_MEDIA_DIR || "localStorage/processing/failed";
           return `${failedDir}/${fileName}`;
         default:
-          throw new Error(`Unknown image type: ${type}`);
+          throw new Error(`Unknown media type: ${type}`);
       }
     }
 
@@ -65,20 +65,20 @@ class LocalStorageAdapter extends BaseStorageAdapter {
     const baseName = path.basename(fileName, path.extname(fileName));
 
     switch (type) {
-      case process.env.IMAGE_STORAGE_KEY_THUMBNAIL || "thumbnail":
-        const thumbnailDir = process.env.PROCESSED_THUMBNAIL_IMAGE_DIR || "localStorage/processed/thumbnails";
+      case process.env.MEDIA_STORAGE_KEY_THUMBNAIL || "thumbnail":
+        const thumbnailDir = process.env.PROCESSED_THUMBNAIL_MEDIA_DIR || "localStorage/processed/thumbnails";
         return `${thumbnailDir}/${baseName}.${extension}`;
-      case process.env.IMAGE_STORAGE_KEY_HIGHRES || "highres":
-        const highResDir = process.env.PROCESSED_HIGH_RES_IMAGE_DIR || "localStorage/processed/highres";
+      case process.env.MEDIA_STORAGE_KEY_HIGHRES || "highres":
+        const highResDir = process.env.PROCESSED_HIGH_RES_MEDIA_DIR || "localStorage/processed/highres";
         return `${highResDir}/${baseName}.${extension}`;
-      case process.env.IMAGE_STORAGE_KEY_ORIGINAL || "original":
-        const originalDir = process.env.PROCESSED_ORIGINAL_IMAGE_DIR || "localStorage/processed/original";
+      case process.env.MEDIA_STORAGE_KEY_ORIGINAL || "original":
+        const originalDir = process.env.PROCESSED_ORIGINAL_MEDIA_DIR || "localStorage/processed/original";
         return `${originalDir}/${baseName}.${extension}`;
-      case process.env.IMAGE_STORAGE_KEY_FAILED || "failed":
-        const failedDir = process.env.FAILED_IMAGE_DIR || "localStorage/processing/failed";
+      case process.env.MEDIA_STORAGE_KEY_FAILED || "failed":
+        const failedDir = process.env.FAILED_MEDIA_DIR || "localStorage/processing/failed";
         return `${failedDir}/${baseName}.${extension}`;
       default:
-        throw new Error(`Unknown image type: ${type}`);
+        throw new Error(`Unknown media type: ${type}`);
     }
   }
 

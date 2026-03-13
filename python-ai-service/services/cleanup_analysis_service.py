@@ -10,7 +10,7 @@
 - 通用视觉向量：用于相似度检索
 
 设计要点：
-- 复用现有的 decode 工具（convert_to_opencv）
+- 统一使用 decode_image（含 EXIF 校正）
 - 模型懒加载，避免重复初始化
 - 输出统一转换为 Python 原生类型，便于 JSON 序列化
 - 留出模型替换空间，后续可升级算法
@@ -26,7 +26,7 @@ from PIL import Image
 
 from logger import logger
 import time
-from utils.images import convert_to_opencv
+from utils.image_decode import decode_image
 from loaders.model_loader import get_aesthetic_head_session, get_siglip2_components_for_path
 from config import settings
 from services.model_registry import get_fallback_model_id, get_model_config, resolve_local_path, resolve_model_id
@@ -49,9 +49,9 @@ def analyze_image_from_bytes(
         embedding_model: embedding 模型 ID（默认 "siglip2"）
     """
     t0 = time.perf_counter()
-    image_bgr, error = convert_to_opencv(image_bytes)
-    if error:
-        raise ValueError(error)
+    image_bgr, error = decode_image(image_bytes)
+    if error or image_bgr is None:
+        raise ValueError(error or "图片解码失败")
     try:
         result = analyze_image(image_bgr, existing_embedding, embedding_model, profile=profile)
         elapsed_ms = int((time.perf_counter() - t0) * 1000)

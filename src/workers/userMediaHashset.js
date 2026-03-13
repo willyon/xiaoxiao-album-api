@@ -6,7 +6,7 @@
  * @Description: File description
  */
 const { getRedisClient } = require("../services/redisClient");
-const { getUserImageHashes } = require("../services/imageService");
+const { getUserMediaHashes } = require("../services/mediaService");
 const logger = require("../utils/logger");
 
 const readyKeyOf = (uid) => `images:hashset:ready:${uid}`;
@@ -66,7 +66,7 @@ async function ensureUserSetReady(userId) {
   // 获得了锁，执行初始化
   try {
     // 真正初始化：从 DB 拉该用户全部 hash 批量写入
-    const hashes = await getUserImageHashes(userId);
+    const hashes = await getUserMediaHashes(userId);
 
     // 开启 Redis 管道（pipeline）模式，允许一次性把多个命令打包发送给 Redis，减少网络往返次数，提高性能
     const pipeline = redis.pipeline();

@@ -16,8 +16,8 @@ const searchModel = require("../models/searchModel");
  * @param {number} params.offset - 偏移量
  * @returns {Array} 搜索结果
  */
-async function searchImagesByText(params) {
-  return searchModel.searchImagesByText(params);
+async function searchMediasByText(params) {
+  return searchModel.searchMediasByText(params);
 }
 
 /**
@@ -68,14 +68,14 @@ async function getFilterOptionsPaginated(params) {
  * @param {Array<number>} params.imageIds - 图片ID列表
  * @returns {Array} 图片信息列表
  */
-async function getImagesByIds(params) {
-  return searchModel.getImagesByIds(params);
+async function getMediasByIds(params) {
+  return searchModel.getMediasByIds(params);
 }
 
 module.exports = {
-  searchImagesByText,
+  searchMediasByText,
   getSearchResultsCount,
   getSearchSuggestions,
   getFilterOptionsPaginated,
-  getImagesByIds,
+  getMediasByIds,
 };

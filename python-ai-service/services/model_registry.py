@@ -41,12 +41,12 @@ class ModelConfig:
 # 说明：local_path 默认按《Python-AI服务完整修改方案》和《准备手册》约定；
 # 后续如需项目级可配置路径，可在 config 中增加 MODELS_BASE_DIR 拼接。
 MODEL_CONFIGS: Dict[str, ModelConfig] = {
-    # 人脸主干（InsightFace，由 insightface 自行管理缓存路径）
+    # 人脸主干（InsightFace，缓存重定向到项目内 models/cache/insightface）
     "face.shared.insightface.buffalo_l": ModelConfig(
         model_id="face.shared.insightface.buffalo_l",
         task_type="face",
         profile_scope="shared",
-        local_path="~/.insightface",  # 实际由 insightface 管理，此处仅做标记
+        local_path="models/cache/insightface",
         runtime="insightface",
         device_support="mixed",
         load_strategy="preload",
@@ -61,7 +61,7 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         model_id="face.standard.fairface.age_gender",
         task_type="face_attribute",
         profile_scope="standard",
-        local_path="models/face/fairface.onnx",
+        local_path="models/managed/face/fairface.onnx",
         runtime="onnxruntime",
         device_support="cpu",
         load_strategy="lazy_load",
@@ -76,7 +76,7 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         model_id="ocr.shared.paddleocr.ppocrv5",
         task_type="ocr",
         profile_scope="shared",
-        local_path="~/.paddleocr",  # 默认缓存目录
+        local_path="models/cache/paddleocr",
         runtime="paddleocr",
         device_support="cpu",
         load_strategy="preload",
@@ -91,7 +91,7 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         model_id="object.standard.yolo.11x",
         task_type="object",
         profile_scope="standard",
-        local_path="models/object/yolo11x.onnx",
+        local_path="models/managed/object/yolo11x.onnx",
         runtime="onnxruntime",
         device_support="cpu",
         load_strategy="preload",
@@ -104,7 +104,7 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         model_id="object.enhanced.yolo.11x",
         task_type="object",
         profile_scope="enhanced",
-        local_path="models/object/yolo11x.onnx",
+        local_path="models/managed/object/yolo11x.onnx",
         runtime="onnxruntime",
         device_support="cpu",
         load_strategy="lazy_load",
@@ -117,7 +117,7 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         model_id="embedding.standard.siglip2.base",
         task_type="image_embedding",
         profile_scope="standard",
-        local_path="models/siglip2/standard",
+        local_path="models/managed/siglip2/standard",
         runtime="onnxruntime",
         device_support="cpu",
         load_strategy="preload",
@@ -129,7 +129,7 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         model_id="embedding.enhanced.siglip2.so400m",
         task_type="image_embedding",
         profile_scope="enhanced",
-        local_path="models/siglip2/enhanced",
+        local_path="models/managed/siglip2/enhanced",
         runtime="onnxruntime",
         device_support="cpu",
         load_strategy="lazy_load",
@@ -179,7 +179,7 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         model_id="cleanup.shared.aesthetic_head.musiq",
         task_type="cleanup",
         profile_scope="shared",
-        local_path="models/aesthetic_head_musiq/siglip_aesthetic_head.onnx",
+        local_path="models/managed/aesthetic_head_musiq/siglip_aesthetic_head.onnx",
         runtime="onnxruntime",
         device_support="cpu",
         load_strategy="preload",
@@ -283,7 +283,7 @@ def _apply_external_registry_overrides() -> None:
       "object.standard.yolo.11x": {
         "task_type": "object",
         "profile_scope": "standard",
-        "local_path": "models/object/yolo11x.onnx",
+        "local_path": "models/managed/object/yolo11x.onnx",
         "runtime": "onnxruntime",
         "device_support": "cpu",
         "load_strategy": "preload",

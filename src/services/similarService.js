@@ -2,7 +2,7 @@ const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
 const { CLEANUP_TYPES } = require("../constants/cleanupTypes");
 const cleanupModel = require("../models/cleanupModel");
-const imageService = require("./imageService");
+const mediaService = require("./mediaService");
 const storageService = require("./storageService");
 const logger = require("../utils/logger");
 
@@ -136,7 +136,7 @@ async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
 
 // 删除图片（软删除，移至回收站）
 // 仅相似图删除时调用，需传入 groupId，用于刷新该分组统计；模糊图/首页等删除直接走 imageService，不经过本方法
-async function deleteImages({ userId, groupId, imageIds }) {
+async function deleteMedias({ userId, groupId, imageIds }) {
   const normalizedIds = _normalizeIdList(imageIds);
 
   if (normalizedIds.length === 0) {
@@ -165,10 +165,10 @@ async function deleteImages({ userId, groupId, imageIds }) {
     });
   }
 
-  await imageService.deleteImages({ userId, imageIds: normalizedIds });
+  await mediaService.deleteMedias({ userId, imageIds: normalizedIds });
 
   cleanupModel.deleteGroupMembersByImageIds(normalizedIds);
-  cleanupModel.refreshGroupsStatsForImages(normalizedIds);
+  cleanupModel.refreshGroupsStatsForMedias(normalizedIds);
 
   logger.info({
     message: "cleanup.delete.completed",
@@ -214,5 +214,5 @@ function _mapMemberRow(row) {
 
 module.exports = {
   getSimilarGroups,
-  deleteImages,
+  deleteMedias,
 };

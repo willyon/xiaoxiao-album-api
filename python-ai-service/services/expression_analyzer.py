@@ -31,7 +31,7 @@ class ExpressionAnalyzer:
             logger.info('✅ EmotiEffLib ONNX表情分析器初始化完成')
             
         except Exception as e:
-            logger.error(f'EmotiEffLib初始化失败: {e}', exc_info=True)
+            logger.error("EmotiEffLib初始化失败", details={"error": str(e)})
             self.model = None
     
     def analyze(self, image, faces):
@@ -65,7 +65,7 @@ class ExpressionAnalyzer:
                         'confidence': 0.0
                     })
             except Exception as e:
-                logger.error(f'单个人脸表情分析失败: {e}')
+                logger.error("单个人脸表情分析失败", details={"error": str(e)})
                 # 异常时也要添加默认值，保持列表长度一致
                 results.append({
                     'value': 'neutral',
@@ -156,5 +156,5 @@ class ExpressionAnalyzer:
             }
             
         except Exception as e:
-            logger.error(f'单个人脸表情分析失败: {e}')
+            logger.error("单个人脸表情分析失败", details={"error": str(e)})
             return None

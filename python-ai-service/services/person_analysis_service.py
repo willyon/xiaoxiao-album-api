@@ -15,7 +15,7 @@ from services.face_detector import FaceDetector
 from services.face_attribute_analyzer import FaceAttributeAnalyzer
 from services.expression_analyzer import ExpressionAnalyzer
 from services.person_detector import PersonDetector
-from utils.images import convert_to_opencv
+from utils.image_decode import decode_image
 from config import settings
 
 
@@ -60,18 +60,17 @@ def process_image_from_bytes(image_bytes):
         Exception: 人脸分析失败
     """
     try:
-        # 1. 图片格式转换
-        image_data, error = convert_to_opencv(image_bytes)
-        if error:
-            raise ValueError(error)
-        
-        # 2. 人脸分析
+        image_data, error = decode_image(image_bytes)
+        if error or image_data is None:
+            raise ValueError(error or "图片解码失败")
+
+        # 人脸分析
         result = _analyze_image(image_data)
         
         return result
         
     except Exception as e:
-        logger.error(f"图片处理和人脸分析失败: {str(e)}")
+        logger.error("图片处理和人脸分析失败", details={"error": str(e)})
         raise
 
 
@@ -156,7 +155,14 @@ def _analyze_image(image):
         
         # 确保三个列表长度一致
         if len(valid_faces) != len(attributes) or len(valid_faces) != len(expressions):
-            logger.error(f'列表长度不一致！valid_faces={len(valid_faces)}, attributes={len(attributes)}, expressions={len(expressions)}')
+            logger.error(
+                "列表长度不一致",
+                details={
+                    "valid_faces": len(valid_faces),
+                    "attributes": len(attributes),
+                    "expressions": len(expressions),
+                },
+            )
             raise ValueError(f'人脸分析结果长度不一致：valid_faces={len(valid_faces)}, attributes={len(attributes)}, expressions={len(expressions)}')
         
         # 6. 合并结果（处理有效人脸）
@@ -235,7 +241,7 @@ def _analyze_image(image):
         return result
         
     except Exception as e:
-        logger.error(f"人脸分析失败: {str(e)}", exc_info=True)
+        logger.error("人脸分析失败", details={"error": str(e)})
         raise
 
 

@@ -13,8 +13,8 @@ const {
   queryAlbumPhotos,
   getCustomAlbums,
   getRecentAlbums,
-  addImagesToAlbum,
-  removeImagesFromAlbum,
+  addMediasToAlbum,
+  removeMediasFromAlbum,
   setAlbumCover,
   getAutoAlbums,
 } = require("../controllers/albumController");
@@ -47,10 +47,10 @@ router.delete("/:albumId", deleteAlbum);
 router.get("/:albumId/media", queryAlbumPhotos);
 
 // 添加媒体到相册
-router.post("/:albumId/media", addImagesToAlbum);
+router.post("/:albumId/media", addMediasToAlbum);
 
 // 从相册中移除媒体
-router.delete("/:albumId/media", removeImagesFromAlbum);
+router.delete("/:albumId/media", removeMediasFromAlbum);
 
 // 设置相册封面图片
 router.put("/:albumId/cover", setAlbumCover);

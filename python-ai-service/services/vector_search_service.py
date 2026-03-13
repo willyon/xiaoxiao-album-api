@@ -122,7 +122,7 @@ def init_hnsw_index(ef_construction: int = 200, m: int = 16) -> None:
       },
     )
   except Exception as exc:
-    logger.error("❌ 向量索引初始化失败", details={"error": str(exc)})
+    logger.error("向量索引初始化失败", details={"error": str(exc)})
     _index = None
     _initialized = False
 

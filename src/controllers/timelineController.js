@@ -1,7 +1,7 @@
 /*
  * @Description: 时间轴（按年/月分组）接口控制器
  */
-const imageService = require("../services/imageService");
+const mediaService = require("../services/mediaService");
 const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
 
@@ -17,7 +17,7 @@ async function getTimelineAlbums(req, res, next) {
     const { by, unknown, pageNo = 1, pageSize = 20 } = req.query;
 
     if (unknown === "1" || unknown === "true" || unknown === true) {
-      const queryResult = await imageService.getUnknownGroup({ userId });
+      const queryResult = await mediaService.getUnknownGroup({ userId });
       res.sendResponse({ data: { list: queryResult.data, total: queryResult.total } });
       return;
     }
@@ -33,13 +33,13 @@ async function getTimelineAlbums(req, res, next) {
 
     let queryResult;
     if (by === "year") {
-      queryResult = await imageService.getGroupsByYear({
+      queryResult = await mediaService.getGroupsByYear({
         userId,
         pageNo: parseInt(pageNo, 10) || 1,
         pageSize: parseInt(pageSize, 10) || 20,
       });
     } else {
-      queryResult = await imageService.getGroupsByMonth({
+      queryResult = await mediaService.getGroupsByMonth({
         userId,
         pageNo: parseInt(pageNo, 10) || 1,
         pageSize: parseInt(pageSize, 10) || 20,

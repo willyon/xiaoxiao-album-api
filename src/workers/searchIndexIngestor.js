@@ -14,7 +14,7 @@
  *
  * 🔄 处理流程:
  * 1. 从存储服务获取图片数据（优先原图，其次高清图）
- * 2. 调用imageUnderstandingService.processImageFaceOnly进行人脸识别
+ * 2. 调用mediaUnderstandingService.processImageFaceOnly进行人脸识别
  * 3. 将汇总结果更新到images表
  * 4. 将每个人脸的embedding存储到face_embeddings表
  *
@@ -30,15 +30,15 @@
  * 🔧 依赖服务:
  * • imageUnderstandingService - 图片内容理解服务（调用Python人脸识别服务）
  * • storageService - 存储服务（获取图片数据）
- * • imageModel - 数据库操作（updateImageSearchMetadata, insertFaceEmbeddings）
+ * • imageModel - 数据库操作（updateMediaSearchMetadata, insertFaceEmbeddings）
  */
 
-const imageUnderstandingService = require("../services/imageUnderstandingService");
-const { updateImageSearchMetadata, insertFaceEmbeddings } = require("../models/imageModel");
+const mediaUnderstandingService = require("../services/mediaUnderstandingService");
+const { updateMediaSearchMetadata, insertFaceEmbeddings } = require("../models/mediaModel");
 const storageService = require("../services/storageService");
 const faceClusterScheduler = require("../services/faceClusterScheduler");
 const logger = require("../utils/logger");
-const { updateProgressOnce } = require("../services/imageProcessingProgressService");
+const { updateProgressOnce } = require("../services/mediaProcessingProgressService");
 
 /**
  * 处理搜索索引任务
@@ -55,12 +55,12 @@ const { updateProgressOnce } = require("../services/imageProcessingProgressServi
 
 //     if (originalStorageKey) {
 //       storageKey = originalStorageKey;
-//       imageData = await _getImageData(storageKey);
+//       imageData = await _getMediaData(storageKey);
 //     }
 
 //     if (!imageData && highResStorageKey) {
 //       storageKey = highResStorageKey;
-//       imageData = await _getImageData(storageKey);
+//       imageData = await _getMediaData(storageKey);
 //     }
 
 //     if (!imageData) {
@@ -68,21 +68,21 @@ const { updateProgressOnce } = require("../services/imageProcessingProgressServi
 //     }
 
 //     // 2. 图片内容理解
-//     const understandingResult = await imageUnderstandingService.processImage({
+//     const understandingResult = await mediaUnderstandingService.processImage({
 //       imageData, // 图片buffer
 //       imageId,
 //     });
 
 //     // 3. 生成向量（使用原始图片数据）
 //     const [imageEmbedding, textEmbedding] = await Promise.all([
-//       imageUnderstandingService.generateImageEmbedding(imageData), // 这里可能是Buffer或文件路径
-//       imageUnderstandingService.generateTextEmbedding(
+//       mediaUnderstandingService.generateImageEmbedding(imageData), // 这里可能是Buffer或文件路径
+//       mediaUnderstandingService.generateTextEmbedding(
 //         `${understandingResult.altText} ${understandingResult.ocrText} ${understandingResult.keywords}`,
 //       ),
 //     ]);
 
 //     // 4. 更新数据库
-//     await updateImageSearchMetadata({
+//     await updateMediaSearchMetadata({
 //       imageId,
 //       altText: understandingResult.altText,
 //       ocrText: understandingResult.ocrText,
@@ -131,7 +131,7 @@ async function processFaceRecognition(job) {
 
   try {
     if (mediaType === "video") {
-      await updateImageSearchMetadata({
+      await updateMediaSearchMetadata({
         imageId,
         analysisVersion: "1.0",
       });
@@ -161,14 +161,14 @@ async function processFaceRecognition(job) {
     // 优先使用高清图（如果存在）
     if (highResStorageKey) {
       storageKey = highResStorageKey;
-      imageData = await _getImageData(storageKey);
+      imageData = await _getMediaData(storageKey);
       logger.info({ message: `使用高清图进行人脸识别: ${imageId}` });
     }
 
     // 降级：如果高清图不存在，使用原图
     if (!imageData && originalStorageKey) {
       storageKey = originalStorageKey;
-      imageData = await _getImageData(storageKey);
+      imageData = await _getMediaData(storageKey);
       logger.info({ message: `使用原图进行人脸识别: ${imageId}` });
     }
 
@@ -177,7 +177,7 @@ async function processFaceRecognition(job) {
     }
 
     // 2. 人脸识别处理
-    const faceResult = await imageUnderstandingService.processImageFaceOnly({
+    const faceResult = await mediaUnderstandingService.processImageFaceOnly({
       imageData, // 图片buffer
       imageId,
       storageKey, // 传递storageKey用于格式检测
@@ -196,7 +196,7 @@ async function processFaceRecognition(job) {
     } = faceResult;
 
     // 3. 更新数据库 - 更新images表的人脸识别相关字段
-    await updateImageSearchMetadata({
+    await updateMediaSearchMetadata({
       imageId,
       faceCount,
       personCount, // 2025-10-27 新增：人体检测数量（包括背面、远景）
@@ -293,7 +293,7 @@ async function processFaceRecognition(job) {
  * @param {string} storageKey - 存储键
  * @returns {Promise<Buffer|null>} 图片Buffer数据，失败返回null
  */
-async function _getImageData(storageKey) {
+async function _getMediaData(storageKey) {
   try {
     // 直接调用适配器的getFileBuffer方法，统一返回Buffer
     return await storageService.storage.getFileBuffer(storageKey);
@@ -309,5 +309,5 @@ async function _getImageData(storageKey) {
 module.exports = {
   // processSearchIndex,
   processFaceRecognition,
-  _getImageData, // 导出用于测试
+  _getMediaData, // 导出用于测试
 };

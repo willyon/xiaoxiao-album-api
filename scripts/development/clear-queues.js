@@ -5,8 +5,8 @@
  * @Usage: node scripts/development/clear-queues.js [选项]
  *
  * 选项（可多选，不传则清空全部）：
- *   --upload    仅清空图片上传队列 (imageUploadQueue)
- *   --meta      仅清空元数据队列 (imageMetaQueue)
+ *   --upload    仅清空媒体上传队列 (mediaUploadQueue)
+ *   --meta      仅清空元数据队列 (mediaMetaQueue)
  *   --search    仅清空搜索索引/人脸识别队列 (searchIndexQueue)
  *   --cleanup   仅清空清理分析队列 (cleanupQueue)
  *   --all       清空以上全部（默认）
@@ -65,20 +65,20 @@ async function clearQueue(queue, name) {
 }
 
 async function main() {
-  const { imageUploadQueue } = require(path.join(projectRoot, "src", "queues", "imageUploadQueue"));
-  const { imageMetaQueue } = require(path.join(projectRoot, "src", "queues", "imageMetaQueue"));
+  const { mediaUploadQueue } = require(path.join(projectRoot, "src", "queues", "mediaUploadQueue"));
+  const { mediaMetaQueue } = require(path.join(projectRoot, "src", "queues", "mediaMetaQueue"));
   const { searchIndexQueue } = require(path.join(projectRoot, "src", "queues", "searchIndexQueue"));
   const { cleanupQueue } = require(path.join(projectRoot, "src", "queues", "cleanupQueue"));
 
   console.log("🚀 开始清空 BullMQ 队列...");
   if (doUpload) {
     console.log("📤 清空图片上传队列...");
-    const s = await clearQueue(imageUploadQueue, "upload");
+    const s = await clearQueue(mediaUploadQueue, "upload");
     console.log(`   ✅ 上传队列: 等待${s.waiting} | 活跃${s.active} | 完成${s.completed} | 失败${s.failed} | 延迟${s.delayed}`);
   }
   if (doMeta) {
     console.log("📊 清空元数据队列...");
-    const s = await clearQueue(imageMetaQueue, "meta");
+    const s = await clearQueue(mediaMetaQueue, "meta");
     console.log(`   ✅ 元数据队列: 等待${s.waiting} | 活跃${s.active} | 完成${s.completed} | 失败${s.failed} | 延迟${s.delayed}`);
   }
   if (doSearch) {

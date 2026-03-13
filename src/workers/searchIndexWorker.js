@@ -12,14 +12,14 @@ const logger = require("../utils/logger");
 const initGracefulShutdown = require("../utils/gracefulShutdown");
 // const { processSearchIndex } = require("./searchIndexIngestor");
 const { processFaceRecognition } = require("./searchIndexIngestor");
-const { updateProgressOnce } = require("../services/imageProcessingProgressService");
+const { updateProgressOnce } = require("../services/mediaProcessingProgressService");
 const { addAiFailureToSession } = require("../services/uploadSessionService");
 
 // 在BullMQ场景下设为null可以避免ioredis在命令阻塞时抛MaxRetriesPerRequesterror,是必要的设置
 const connection = new IORedis({ maxRetriesPerRequest: null });
 
-const QUEUE_NAME = process.env.SEARCH_INDEX_QUEUE_NAME;
-const CONCURRENCY = Number(process.env.IMAGE_SEARCH_INDEX_WORKER_CONCURRENCY || 1);
+const QUEUE_NAME = process.env.SEARCH_INDEX_QUEUE_NAME || "media-search-index";
+const CONCURRENCY = Number(process.env.MEDIA_SEARCH_INDEX_WORKER_CONCURRENCY || 1);
 
 const worker = new Worker(
   QUEUE_NAME,

@@ -8,7 +8,7 @@
 const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
 const storageService = require("./storageService");
-const imageModel = require("../models/imageModel");
+const mediaModel = require("../models/mediaModel");
 const cleanupModel = require("../models/cleanupModel");
 const albumModel = require("../models/albumModel");
 const favoriteService = require("./favoriteService");
@@ -87,7 +87,7 @@ async function _addFullUrls(items, type = "image") {
 
 // 为图片数据添加完整URL的方法
 // 注意：isFavorite 字段现在直接从数据库查询返回，无需额外处理
-async function addFullUrlToImage(data) {
+async function addFullUrlToMedia(data) {
   return await _addFullUrls(data, "image");
 }
 
@@ -99,7 +99,7 @@ async function _addFullUrlToGroupCover(groups) {
 // ========== 图片业务逻辑函数 ==========
 
 // 保存新图片信息到数据库
-async function saveNewImage(imageData) {
+async function saveNewMedia(imageData) {
   // 参数校验
   const { userId, imageHash, thumbnailStorageKey, mediaType } = imageData;
   if (!userId || !imageHash) {
@@ -117,7 +117,7 @@ async function saveNewImage(imageData) {
     });
   }
   try {
-    const result = await imageModel.insertImage(imageData);
+    const result = await mediaModel.insertMedia(imageData);
     if (result.affectedRows === 0) {
       throw new CustomError({
         httpStatus: 500,
@@ -132,9 +132,9 @@ async function saveNewImage(imageData) {
 }
 
 // 保存已处理的图片元数据（包含错误处理和日志记录）
-async function saveProcessedImageMetadata(imageData) {
+async function saveProcessedMediaMetadata(imageData) {
   try {
-    const result = await imageModel.updateImageMetadata(imageData);
+    const result = await mediaModel.updateMediaMetadata(imageData);
     return result;
   } catch (error) {
     logger.error({
@@ -145,9 +145,9 @@ async function saveProcessedImageMetadata(imageData) {
   }
 }
 
-async function setImageIngestStatus({ userId, imageHash, ingestStatus }) {
+async function setMediaIngestStatus({ userId, imageHash, ingestStatus }) {
   try {
-    return imageModel.updateIngestStatusByHash({ userId, imageHash, ingestStatus });
+    return mediaModel.updateIngestStatusByHash({ userId, imageHash, ingestStatus });
   } catch (error) {
     logger.warn({
       message: "更新 ingest_status 失败",
@@ -158,9 +158,9 @@ async function setImageIngestStatus({ userId, imageHash, ingestStatus }) {
 }
 
 // 获取用户图片哈希列表
-async function getUserImageHashes(userId) {
+async function getUserMediaHashes(userId) {
   try {
-    const hashes = await imageModel.selectHashesByUserId(userId);
+    const hashes = await mediaModel.selectHashesByUserId(userId);
     return hashes;
   } catch (error) {
     logger.error({
@@ -177,9 +177,9 @@ async function getUserImageHashes(userId) {
  * 分页获取用户模糊图列表（is_blurry = 1），用于清理页模糊图 tab
  * @returns {{ list: Array<{ mediaId, thumbnailUrl, highResUrl, capturedAt, createdAt, isFavorite }>, total: number }}
  */
-async function getBlurryImages({ userId, pageNo = 1, pageSize = 20 }) {
+async function getBlurryMedias({ userId, pageNo = 1, pageSize = 20 }) {
   const safePageSize = Math.max(Number(pageSize) || 20, 1);
-  const queryResult = imageModel.getImagesByBlurry({
+  const queryResult = mediaModel.getMediasByBlurry({
     userId,
     pageNo,
     pageSize: safePageSize,
@@ -219,9 +219,9 @@ async function getBlurryImages({ userId, pageNo = 1, pageSize = 20 }) {
 // 分页获取用户某年份图片
 // albumId: 对于时间相册，实际上是 year_key (如 "2024")
 // clusterId: 可选，用于查询特定人物的某年份照片
-async function getImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = null }) {
+async function getMediasByYear({ pageNo, pageSize, albumId, userId, clusterId = null }) {
   try {
-    const result = await imageModel.selectImagesByYear({
+    const result = await mediaModel.selectMediasByYear({
       pageNo,
       pageSize,
       albumId,
@@ -230,7 +230,7 @@ async function getImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = 
     });
 
     // 添加完整URL（isFavorite字段已从数据库直接返回）
-    result.data = await addFullUrlToImage(result.data);
+    result.data = await addFullUrlToMedia(result.data);
 
     return result;
   } catch (error) {
@@ -245,9 +245,9 @@ async function getImagesByYear({ pageNo, pageSize, albumId, userId, clusterId = 
 // 分页获取用户某月份图片
 // albumId: 对于时间相册，实际上是 month_key (如 "2024-01")
 // clusterId: 可选，用于查询特定人物的某月份照片
-async function getImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId = null }) {
+async function getMediasByMonth({ pageNo, pageSize, albumId, userId, clusterId = null }) {
   try {
-    const result = await imageModel.selectImagesByMonth({
+    const result = await mediaModel.selectMediasByMonth({
       pageNo,
       pageSize,
       albumId,
@@ -256,7 +256,7 @@ async function getImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId =
     });
 
     // 添加完整URL（isFavorite字段已从数据库直接返回）
-    result.data = await addFullUrlToImage(result.data);
+    result.data = await addFullUrlToMedia(result.data);
 
     return result;
   } catch (error) {
@@ -270,12 +270,12 @@ async function getImagesByMonth({ pageNo, pageSize, albumId, userId, clusterId =
 
 // 分页获取用户某日期图片
 // albumId: 对于时间相册，实际上是 date_key (如 "2024-01-15")
-async function getImagesByDate({ pageNo, pageSize, albumId, userId }) {
+async function getMediasByDate({ pageNo, pageSize, albumId, userId }) {
   try {
-    const result = await imageModel.selectImagesByDate({ pageNo, pageSize, albumId, userId });
+    const result = await mediaModel.selectMediasByDate({ pageNo, pageSize, albumId, userId });
 
     // 添加完整URL（isFavorite字段已从数据库直接返回）
-    result.data = await addFullUrlToImage(result.data);
+    result.data = await addFullUrlToMedia(result.data);
 
     return result;
   } catch (error) {
@@ -289,11 +289,11 @@ async function getImagesByDate({ pageNo, pageSize, albumId, userId }) {
 
 // 分页获取用户某地点图片
 // albumId: 城市名称或 'unknown'
-async function getImagesByCity({ pageNo, pageSize, albumId, userId }) {
+async function getMediasByCity({ pageNo, pageSize, albumId, userId }) {
   try {
-    const result = await imageModel.selectImagesByCity({ pageNo, pageSize, albumId, userId });
+    const result = await mediaModel.selectMediasByCity({ pageNo, pageSize, albumId, userId });
 
-    result.data = await addFullUrlToImage(result.data);
+    result.data = await addFullUrlToMedia(result.data);
 
     return result;
   } catch (error) {
@@ -316,7 +316,7 @@ async function getGroupsByYear({ userId, pageNo = 1, pageSize = 10, withFullUrls
     });
   }
   try {
-    const queryResult = await imageModel.selectGroupsByYear({ pageNo, pageSize, userId });
+    const queryResult = await mediaModel.selectGroupsByYear({ pageNo, pageSize, userId });
 
     // 如果需要完整URL，则转换
     if (withFullUrls && queryResult.data) {
@@ -344,7 +344,7 @@ async function getGroupsByMonth({ userId, pageNo = 1, pageSize = 10, withFullUrl
     });
   }
   try {
-    const queryResult = await imageModel.selectGroupsByMonth({ pageNo, pageSize, userId });
+    const queryResult = await mediaModel.selectGroupsByMonth({ pageNo, pageSize, userId });
 
     // 如果需要完整URL，则转换
     if (withFullUrls && queryResult.data) {
@@ -364,7 +364,7 @@ async function getGroupsByMonth({ userId, pageNo = 1, pageSize = 10, withFullUrl
 // 获取「未知时间」相册（单独查询，不混在年/月列表中）
 async function getUnknownGroup({ userId, withFullUrls = true }) {
   try {
-    const queryResult = await imageModel.selectUnknownGroup({ userId });
+    const queryResult = await mediaModel.selectUnknownGroup({ userId });
     if (withFullUrls && queryResult.data?.length) {
       queryResult.data = await _addFullUrlToGroupCover(queryResult.data);
     }
@@ -388,7 +388,7 @@ async function getGroupsByCity({ userId, pageNo = 1, pageSize = 10, withFullUrls
     });
   }
   try {
-    const queryResult = await imageModel.selectGroupsByCity({ pageNo, pageSize, userId });
+    const queryResult = await mediaModel.selectGroupsByCity({ pageNo, pageSize, userId });
     if (withFullUrls && queryResult.data) {
       queryResult.data = await _addFullUrlToGroupCover(queryResult.data);
     }
@@ -413,7 +413,7 @@ async function getGroupsByDate({ userId, pageNo = 1, pageSize = 10, withFullUrls
     });
   }
   try {
-    const queryResult = await imageModel.selectGroupsByDate({ pageNo, pageSize, userId });
+    const queryResult = await mediaModel.selectGroupsByDate({ pageNo, pageSize, userId });
 
     // 如果需要完整URL，则转换
     if (withFullUrls && queryResult.data) {
@@ -440,7 +440,7 @@ async function getGroupsByYearForCluster({ userId, clusterId, pageNo = 1, pageSi
     });
   }
   try {
-    const queryResult = await imageModel.selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId });
+    const queryResult = await mediaModel.selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId });
 
     if (withFullUrls && queryResult.data) {
       queryResult.data = await _addFullUrlToGroupCover(queryResult.data);
@@ -466,7 +466,7 @@ async function getGroupsByMonthForCluster({ userId, clusterId, pageNo = 1, pageS
     });
   }
   try {
-    const queryResult = await imageModel.selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId });
+    const queryResult = await mediaModel.selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId });
 
     if (withFullUrls && queryResult.data) {
       queryResult.data = await _addFullUrlToGroupCover(queryResult.data);
@@ -483,10 +483,10 @@ async function getGroupsByMonthForCluster({ userId, clusterId, pageNo = 1, pageS
 }
 
 // 部分更新图片信息（仅用于 favorite 字段，更新 images.is_favorite）
-async function patchImage({ userId, imageId, patchData }) {
+async function patchMedia({ userId, imageId, patchData }) {
   if (patchData.favorite !== undefined || patchData.isFavorite !== undefined) {
     const isFavorite = patchData.favorite !== undefined ? patchData.favorite : patchData.isFavorite;
-    return await favoriteService.toggleFavoriteImage({
+    return await favoriteService.toggleFavoriteMedia({
       userId,
       imageId,
       isFavorite,
@@ -503,7 +503,7 @@ async function patchImage({ userId, imageId, patchData }) {
 
 // 删除图片（软删除，移至回收站）
 // 这是核心的删除方法，包含通用的删除逻辑
-async function deleteImages({ userId, imageIds }) {
+async function deleteMedias({ userId, imageIds }) {
   // 规范化 ID 列表
   const normalizedIds = Array.isArray(imageIds) ? imageIds.map((id) => parseInt(id)).filter((id) => !isNaN(id)) : [];
 
@@ -516,7 +516,7 @@ async function deleteImages({ userId, imageIds }) {
   }
 
   // 验证图片权限
-  const images = cleanupModel.selectImagesByIds(normalizedIds);
+  const images = cleanupModel.selectMediasByIds(normalizedIds);
   if (images.length !== normalizedIds.length) {
     logger.warn({
       message: "删除图片时，部分图片未找到",
@@ -547,12 +547,12 @@ async function deleteImages({ userId, imageIds }) {
   const now = Date.now();
 
   // 执行删除操作：软删除，标记 deleted_at
-  cleanupModel.markImagesDeleted(normalizedIds, now);
+  cleanupModel.markMediasDeleted(normalizedIds, now);
 
   // 同步 media_search / media_fts（软删除后移除搜索文档）
   normalizedIds.forEach((id) => {
     try {
-      imageModel.rebuildMediaSearchDoc(id);
+      mediaModel.rebuildMediaSearchDoc(id);
     } catch (error) {
       logger.warn({
         message: "软删除后同步搜索索引失败",
@@ -562,7 +562,7 @@ async function deleteImages({ userId, imageIds }) {
   });
 
   // 更新包含这些图片的相册统计（图片数量、封面）
-  albumModel.updateAlbumsStatsForImages(normalizedIds);
+  albumModel.updateAlbumsStatsForMedias(normalizedIds);
 
   logger.info({
     message: "image.delete.completed",
@@ -581,8 +581,8 @@ async function deleteImages({ userId, imageIds }) {
 /**
  * 获取单张图片的下载信息
  */
-async function getImageDownloadInfo({ userId, imageId }) {
-  const image = imageModel.getImageDownloadInfo({ userId, imageId });
+async function getMediaDownloadInfo({ userId, imageId }) {
+  const image = mediaModel.getMediaDownloadInfo({ userId, imageId });
   if (!image) {
     return null;
   }
@@ -592,24 +592,24 @@ async function getImageDownloadInfo({ userId, imageId }) {
 /**
  * 批量获取图片的下载信息
  */
-async function getImagesDownloadInfo({ userId, imageIds }) {
-  const images = imageModel.getImagesDownloadInfo({ userId, imageIds });
+async function getMediasDownloadInfo({ userId, imageIds }) {
+  const images = mediaModel.getMediasDownloadInfo({ userId, imageIds });
   return images;
 }
 
 module.exports = {
-  // ========== 图片业务逻辑函数 ==========
-  saveNewImage,
-  saveProcessedImageMetadata,
-  setImageIngestStatus,
-  getUserImageHashes,
+  // ========== 媒体业务逻辑函数 ==========
+  saveNewMedia,
+  saveProcessedMediaMetadata,
+  setMediaIngestStatus,
+  getUserMediaHashes,
 
-  // ========== 图片查询服务函数 ==========
-  getBlurryImages,
-  getImagesByYear,
-  getImagesByMonth,
-  getImagesByDate,
-  getImagesByCity,
+  // ========== 媒体查询服务函数 ==========
+  getBlurryMedias,
+  getMediasByYear,
+  getMediasByMonth,
+  getMediasByDate,
+  getMediasByCity,
   getGroupsByYear,
   getGroupsByMonth,
   getGroupsByDate,
@@ -617,12 +617,12 @@ module.exports = {
   getGroupsByCity,
   getGroupsByYearForCluster,
   getGroupsByMonthForCluster,
-  addFullUrlToImage,
+  addFullUrlToMedia,
 
-  // ========== 图片 CRUD 服务函数 ==========
-  patchImage, // 仅用于 favorite 字段更新
-  deleteImages,
-  // ========== 图片下载服务函数 ==========
-  getImageDownloadInfo,
-  getImagesDownloadInfo,
+  // ========== 媒体 CRUD 服务函数 ==========
+  patchMedia, // 仅用于 favorite 字段更新
+  deleteMedias,
+  // ========== 媒体下载服务函数 ==========
+  getMediaDownloadInfo,
+  getMediasDownloadInfo,
 };

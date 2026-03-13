@@ -22,7 +22,7 @@ function normalizeSearchRows(rows) {
  * @param {number} params.offset - 偏移量
  * @returns {Array} 搜索结果
  */
-function searchImagesByText({ userId, ftsQuery, whereConditions = [], whereParams = [], limit = 50, offset = 0 }) {
+function searchMediasByText({ userId, ftsQuery, whereConditions = [], whereParams = [], limit = 50, offset = 0 }) {
   let sql;
   let params;
 
@@ -181,7 +181,7 @@ function getSearchResultsCount({ userId, ftsQuery, whereConditions = [], wherePa
  * @param {Array<number>} imageIds - 图片ID列表
  * @returns {Array} 图片信息列表
  */
-function getImagesByIds({ userId, imageIds }) {
+function getMediasByIds({ userId, imageIds }) {
   if (!imageIds || imageIds.length === 0) {
     return [];
   }
@@ -635,9 +635,9 @@ function getFilterOptionsPaginated({
 }
 
 module.exports = {
-  searchImagesByText,
+  searchMediasByText,
   getSearchResultsCount,
   getSearchSuggestions,
   getFilterOptionsPaginated,
-  getImagesByIds,
+  getMediasByIds,
 };

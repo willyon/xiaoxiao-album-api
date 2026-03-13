@@ -4,7 +4,7 @@
  * @Description: 相册API控制器
  */
 const albumService = require("../services/albumService");
-const imageService = require("../services/imageService");
+const mediaService = require("../services/mediaService");
 const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
 const logger = require("../utils/logger");
@@ -186,7 +186,7 @@ async function queryAlbumPhotos(req, res, next) {
 
     if (type === "custom") {
       // 自定义相册：albumId 是数字，暂不支持 clusterId 过滤
-      result = await albumService.getAlbumImagesList({
+      result = await albumService.getAlbumMediasList({
         userId,
         albumId: parseInt(albumId),
         pageNo,
@@ -200,7 +200,7 @@ async function queryAlbumPhotos(req, res, next) {
       const clusterIdParam = clusterId ? parseInt(clusterId) : null;
 
       if (type === "year") {
-        queryResult = await imageService.getImagesByYear({
+        queryResult = await mediaService.getMediasByYear({
           userId,
           pageNo,
           pageSize,
@@ -208,7 +208,7 @@ async function queryAlbumPhotos(req, res, next) {
           clusterId: clusterIdParam,
         });
       } else if (type === "month") {
-        queryResult = await imageService.getImagesByMonth({
+        queryResult = await mediaService.getMediasByMonth({
           userId,
           pageNo,
           pageSize,
@@ -216,11 +216,11 @@ async function queryAlbumPhotos(req, res, next) {
           clusterId: clusterIdParam,
         });
       } else if (type === "date") {
-        queryResult = await imageService.getImagesByDate({ userId, pageNo, pageSize, albumId });
+        queryResult = await mediaService.getMediasByDate({ userId, pageNo, pageSize, albumId });
       } else if (type === "location") {
-        queryResult = await imageService.getImagesByCity({ userId, pageNo, pageSize, albumId });
+        queryResult = await mediaService.getMediasByCity({ userId, pageNo, pageSize, albumId });
       } else if (type === "unknown") {
-        queryResult = await imageService.getImagesByYear({
+        queryResult = await mediaService.getMediasByYear({
           userId,
           pageNo,
           pageSize,
@@ -244,7 +244,7 @@ async function queryAlbumPhotos(req, res, next) {
 /**
  * 添加图片到相册（albumId 为数字相册 ID）
  */
-async function addImagesToAlbum(req, res, next) {
+async function addMediasToAlbum(req, res, next) {
   try {
     const userId = req.user.userId;
     const { albumId } = req.params;
@@ -267,7 +267,7 @@ async function addImagesToAlbum(req, res, next) {
       });
     }
 
-    const result = await albumService.addImagesToAlbum({
+    const result = await albumService.addMediasToAlbum({
       userId,
       albumId: albumIdNum,
       imageIds: imageIds.map((id) => parseInt(id)),
@@ -282,7 +282,7 @@ async function addImagesToAlbum(req, res, next) {
 /**
  * 从相册中移除图片（albumId 为数字相册 ID）
  */
-async function removeImagesFromAlbum(req, res, next) {
+async function removeMediasFromAlbum(req, res, next) {
   try {
     const userId = req.user.userId;
     const { albumId } = req.params;
@@ -305,7 +305,7 @@ async function removeImagesFromAlbum(req, res, next) {
       });
     }
 
-    const result = await albumService.removeImagesFromAlbum({
+    const result = await albumService.removeMediasFromAlbum({
       userId,
       albumId: albumIdNum,
       imageIds: imageIds.map((id) => parseInt(id)),
@@ -355,7 +355,7 @@ module.exports = {
   getRecentAlbums,
   getAutoAlbums,
   queryAlbumPhotos,
-  addImagesToAlbum,
-  removeImagesFromAlbum,
+  addMediasToAlbum,
+  removeMediasFromAlbum,
   setAlbumCover,
 };

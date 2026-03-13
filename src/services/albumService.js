@@ -4,7 +4,7 @@
  * @Description: 相册业务逻辑服务
  */
 const albumModel = require("../models/albumModel");
-const imageModel = require("../models/imageModel");
+const mediaModel = require("../models/mediaModel");
 const storageService = require("../services/storageService");
 const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
@@ -22,7 +22,7 @@ async function getRecentAlbumsList({ userId, limit = 8, excludeAlbumId = null })
     albums.map(async (album) => {
       let coverImageUrl = null;
       if (album.coverImageId) {
-        const coverImage = await _getImageById(album.coverImageId);
+        const coverImage = await _getMediaById(album.coverImageId);
         if (coverImage && coverImage.thumbnailStorageKey) {
           coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
         }
@@ -49,7 +49,7 @@ async function getAutoAlbums({ userId, limitPerAlbum = 1 }) {
   const result = [];
 
   for (const def of definitions) {
-    const rows = _selectAutoAlbumImages({ userId, whereClause: def.where, limit: limitPerAlbum });
+    const rows = albumModel.getAutoAlbumMediaList({ userId, whereClause: def.where, limit: limitPerAlbum });
     const imageCount = rows.totalCount;
     if (imageCount === 0) {
       continue;
@@ -76,48 +76,6 @@ async function getAutoAlbums({ userId, limitPerAlbum = 1 }) {
 }
 
 /**
- * 内部：按照规则查询自动相册的图片
- * 统一使用 media / media_analysis / media_search 现有结构
- */
-function _selectAutoAlbumImages({ userId, whereClause, limit = 1 }) {
-  const baseSql = `
-    FROM media m
-    LEFT JOIN media_analysis ma ON ma.media_id = m.id
-    WHERE m.user_id = ?
-      AND m.deleted_at IS NULL
-      AND (${whereClause})
-  `;
-
-  const listSql = `
-    SELECT
-      m.id,
-      m.thumbnail_storage_key,
-      m.high_res_storage_key,
-      m.original_storage_key,
-      m.storage_type,
-      m.media_type,
-      m.duration_sec,
-      m.captured_at
-    ${baseSql}
-    ORDER BY COALESCE(m.captured_at, 0) DESC, m.id DESC
-    LIMIT ?
-  `;
-
-  const countSql = `
-    SELECT COUNT(*) AS total
-    ${baseSql}
-  `;
-
-  const list = db.prepare(listSql).all(userId, limit);
-  const { total } = db.prepare(countSql).get(userId);
-
-  return {
-    list,
-    totalCount: total || 0,
-  };
-}
-
-/**
  * 获取用户的自定义相册列表（包含封面图片URL）
  * excludeAlbumId 可选，排除该相册（如当前相册）
  */
@@ -135,7 +93,7 @@ async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null,
       // 封面为空但相册有图片，更新封面为最新添加的图片
       albumModel.updateAlbumCover(album.albumId);
       // 获取更新后的封面ID
-      album.coverImageId = albumModel.getAlbumCoverImageId(album.albumId);
+      album.coverImageId = albumModel.getAlbumCoverMediaId(album.albumId);
     }
   });
 
@@ -146,7 +104,7 @@ async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null,
 
       if (album.coverImageId) {
         // 查询封面图片的存储信息
-        const coverImage = await _getImageById(album.coverImageId);
+        const coverImage = await _getMediaById(album.coverImageId);
         if (coverImage && coverImage.thumbnailStorageKey) {
           coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
         }
@@ -266,7 +224,7 @@ async function updateAlbum({ userId, albumId, name, description, coverImageId })
 
   // 如果设置封面，验证图片是否在相册中
   if (coverImageId !== undefined) {
-    const isInAlbum = albumModel.isImageInAlbum({ albumId, imageId: coverImageId });
+    const isInAlbum = albumModel.isMediaInAlbum({ albumId, imageId: coverImageId });
     if (!isInAlbum) {
       throw new CustomError({
         httpStatus: 400,
@@ -297,7 +255,7 @@ async function updateAlbum({ userId, albumId, name, description, coverImageId })
   const updatedAlbum = albumModel.getAlbumById({ albumId, userId });
   let coverImageUrl = null;
   if (updatedAlbum.coverImageId) {
-    const coverImage = _getImageById(updatedAlbum.coverImageId);
+    const coverImage = _getMediaById(updatedAlbum.coverImageId);
     if (coverImage) {
       coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
     }
@@ -340,7 +298,7 @@ async function deleteAlbum({ userId, albumId }) {
 /**
  * 添加图片到相册
  */
-async function addImagesToAlbum({ userId, albumId, imageIds }) {
+async function addMediasToAlbum({ userId, albumId, imageIds }) {
   // 验证相册存在且属于当前用户
   const album = albumModel.getAlbumById({ albumId, userId });
   if (!album) {
@@ -353,9 +311,9 @@ async function addImagesToAlbum({ userId, albumId, imageIds }) {
   }
 
   // 验证图片存在且属于当前用户
-  // TODO: 添加图片验证逻辑（可以调用imageModel检查）
+  // TODO: 添加图片验证逻辑（可以调用 mediaModel 检查）
 
-  const result = albumModel.addImagesToAlbum({ albumId, imageIds, userId });
+  const result = albumModel.addMediasToAlbum({ albumId, imageIds, userId });
 
   return result;
 }
@@ -363,7 +321,7 @@ async function addImagesToAlbum({ userId, albumId, imageIds }) {
 /**
  * 从相册中移除图片
  */
-async function removeImagesFromAlbum({ userId, albumId, imageIds }) {
+async function removeMediasFromAlbum({ userId, albumId, imageIds }) {
   // 验证相册存在且属于当前用户
   const album = albumModel.getAlbumById({ albumId, userId });
   if (!album) {
@@ -375,7 +333,7 @@ async function removeImagesFromAlbum({ userId, albumId, imageIds }) {
     });
   }
 
-  const result = albumModel.removeImagesFromAlbum({ albumId, imageIds, userId });
+  const result = albumModel.removeMediasFromAlbum({ albumId, imageIds, userId });
 
   return result;
 }
@@ -396,7 +354,7 @@ async function setAlbumCover({ userId, albumId, imageId }) {
   }
 
   // 验证图片是否在相册中
-  const isInAlbum = albumModel.isImageInAlbum({ albumId, imageId });
+  const isInAlbum = albumModel.isMediaInAlbum({ albumId, imageId });
   if (!isInAlbum) {
     throw new CustomError({
       httpStatus: 400,
@@ -421,7 +379,7 @@ async function setAlbumCover({ userId, albumId, imageId }) {
   let coverImageUrl = null;
 
   if (updatedAlbum.coverImageId) {
-    const coverImage = await _getImageById(updatedAlbum.coverImageId);
+    const coverImage = await _getMediaById(updatedAlbum.coverImageId);
     if (coverImage && coverImage.thumbnailStorageKey) {
       coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
     }
@@ -446,7 +404,7 @@ async function getAlbumById({ userId, albumId }) {
   // 添加封面图片URL与整本相册时间范围
   let coverImageUrl = null;
   if (album.coverImageId) {
-    const coverImage = _getImageById(album.coverImageId);
+    const coverImage = _getMediaById(album.coverImageId);
     if (coverImage && coverImage.thumbnailStorageKey) {
       coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
     }
@@ -464,7 +422,7 @@ async function getAlbumById({ userId, albumId }) {
 /**
  * 获取相册中的图片列表（包含完整URL）
  */
-async function getAlbumImagesList({ userId, albumId, pageNo, pageSize }) {
+async function getAlbumMediasList({ userId, albumId, pageNo, pageSize }) {
   // 验证相册存在且属于当前用户
   const album = albumModel.getAlbumById({ albumId, userId });
   if (!album) {
@@ -476,7 +434,7 @@ async function getAlbumImagesList({ userId, albumId, pageNo, pageSize }) {
     });
   }
 
-  const queryResult = albumModel.getAlbumImages({
+  const queryResult = albumModel.getAlbumMedias({
     albumId,
     pageNo,
     pageSize,
@@ -519,8 +477,8 @@ async function getAlbumImagesList({ userId, albumId, pageNo, pageSize }) {
 /**
  * 内部方法：根据ID获取图片存储信息
  */
-function _getImageById(imageId) {
-  const image = imageModel.getImageStorageInfo(imageId);
+function _getMediaById(imageId) {
+  const image = mediaModel.getMediaStorageInfo(imageId);
   return image
     ? {
         thumbnailStorageKey: image.thumbnailStorageKey,
@@ -537,8 +495,8 @@ module.exports = {
   getAlbumById,
   updateAlbum,
   deleteAlbum,
-  addImagesToAlbum,
-  removeImagesFromAlbum,
-  getAlbumImagesList,
+  addMediasToAlbum,
+  removeMediasFromAlbum,
+  getAlbumMediasList,
   setAlbumCover,
 };

@@ -9,7 +9,7 @@ const { ERROR_CODES } = require("../constants/messageCodes");
 const trashModel = require("../models/trashModel");
 const albumModel = require("../models/albumModel");
 const cleanupModel = require("../models/cleanupModel");
-const imageModel = require("../models/imageModel");
+const mediaModel = require("../models/mediaModel");
 const storageService = require("./storageService");
 const StorageAdapterFactory = require("../storage/factory/StorageAdapterFactory");
 const { STORAGE_TYPES } = require("../storage/constants/StorageTypes");
@@ -82,7 +82,7 @@ function _getAdapterByStorageType(storageType) {
  * @param {string} [image.original_storage_key] - 原图存储键
  * @returns {Promise<Array>} 删除结果数组
  */
-async function _deleteImageFiles(image) {
+async function _deleteMediaFiles(image) {
   const { storage_type, thumbnail_storage_key, high_res_storage_key, original_storage_key } = image;
 
   // 收集所有需要删除的存储键
@@ -149,7 +149,7 @@ async function _deleteImageFiles(image) {
  * @param {Array<Object>} images - 图片信息数组
  * @returns {Promise<Object>} 删除统计结果
  */
-async function _deleteImagesFiles(images) {
+async function _deleteMediasFiles(images) {
   if (!images || images.length === 0) {
     return { total: 0, success: 0, failed: 0, details: [] };
   }
@@ -274,9 +274,9 @@ async function _deleteImagesFiles(images) {
  * @param {string} [params.mediaType] - 媒体类型：'all' | 'image' | 'video'
  * @returns {Promise<{ list: Array, total: number }>} 图片列表与总数
  */
-async function getDeletedImages({ userId, pageNo, pageSize, mediaType }) {
+async function getDeletedMedias({ userId, pageNo, pageSize, mediaType }) {
   try {
-    const result = trashModel.selectDeletedImagesByPage({
+    const result = trashModel.selectDeletedMediasByPage({
       userId,
       pageNo,
       pageSize,
@@ -383,7 +383,7 @@ async function getDeletedImages({ userId, pageNo, pageSize, mediaType }) {
  * @param {Array<number>} params.imageIds - 图片ID数组
  * @returns {Promise<Object>} 恢复结果
  */
-async function restoreImages({ userId, imageIds }) {
+async function restoreMedias({ userId, imageIds }) {
   const normalizedIds = _normalizeIdList(imageIds);
 
   if (normalizedIds.length === 0) {
@@ -395,7 +395,7 @@ async function restoreImages({ userId, imageIds }) {
   }
 
   // 验证图片权限和状态
-  const images = trashModel.selectDeletedImagesByIds(userId, normalizedIds);
+  const images = trashModel.selectDeletedMediasByIds(userId, normalizedIds);
   if (images.length !== normalizedIds.length) {
     throw new CustomError({
       httpStatus: 404,
@@ -414,12 +414,12 @@ async function restoreImages({ userId, imageIds }) {
   }
 
   // 执行恢复操作
-  const result = trashModel.restoreImages(normalizedIds);
+  const result = trashModel.restoreMedias(normalizedIds);
 
   // 恢复后重建 media_search 文档
   normalizedIds.forEach((id) => {
     try {
-      imageModel.rebuildMediaSearchDoc(id);
+      mediaModel.rebuildMediaSearchDoc(id);
     } catch (error) {
       logger.warn({
         message: "恢复回收站媒体后同步搜索索引失败",
@@ -429,7 +429,7 @@ async function restoreImages({ userId, imageIds }) {
   });
 
   // 更新包含这些图片的相册统计（图片数量、封面）
-  albumModel.updateAlbumsStatsForImages(normalizedIds);
+  albumModel.updateAlbumsStatsForMedias(normalizedIds);
 
   logger.info({
     message: "trash.restore.completed",
@@ -452,7 +452,7 @@ async function restoreImages({ userId, imageIds }) {
  * @param {Array<number>} params.imageIds - 图片ID数组
  * @returns {Promise<Object>} 删除结果
  */
-async function permanentlyDeleteImages({ userId, imageIds }) {
+async function permanentlyDeleteMedias({ userId, imageIds }) {
   const normalizedIds = _normalizeIdList(imageIds);
 
   if (normalizedIds.length === 0) {
@@ -464,7 +464,7 @@ async function permanentlyDeleteImages({ userId, imageIds }) {
   }
 
   // 获取图片信息（用于删除文件）
-  const images = trashModel.selectImagesForFileDeletion(userId, normalizedIds);
+  const images = trashModel.selectMediasForFileDeletion(userId, normalizedIds);
   if (images.length !== normalizedIds.length) {
     throw new CustomError({
       httpStatus: 404,
@@ -484,21 +484,21 @@ async function permanentlyDeleteImages({ userId, imageIds }) {
 
   // 在物理删除之前，获取包含这些图片的相册和分组ID
   // 注意：需要在 CASCADE 删除之前获取ID
-  const albumIds = albumModel.getAlbumsContainingImages(normalizedIds);
-  const groupIds = cleanupModel.getGroupsContainingImages(normalizedIds);
+  const albumIds = albumModel.getAlbumsContainingMedias(normalizedIds);
+  const groupIds = cleanupModel.getGroupsContainingMedias(normalizedIds);
 
   // 删除存储文件（根据存储类型使用对应适配器）
-  const fileDeleteResult = await _deleteImagesFiles(images);
+  const fileDeleteResult = await _deleteMediasFiles(images);
 
   // 物理删除数据库记录（会触发 CASCADE 删除 album_media 和 similar_group_members）
-  const dbResult = trashModel.permanentlyDeleteImages(normalizedIds);
+  const dbResult = trashModel.permanentlyDeleteMedias(normalizedIds);
 
   // 更新相册统计（图片数量、封面）
   // 注意：album_media 已被 CASCADE 删除，所以需要更新相册统计
   if (albumIds.length > 0) {
     const now = Date.now();
     albumIds.forEach((albumId) => {
-      albumModel.updateAlbumImageCount(albumId);
+      albumModel.updateAlbumMediaCount(albumId);
       albumModel.updateAlbumCover(albumId);
     });
   }
@@ -552,10 +552,10 @@ async function permanentlyDeleteImages({ userId, imageIds }) {
  */
 async function clearTrash({ userId }) {
   // 获取所有需要删除文件的图片信息
-  const images = trashModel.selectTrashImagesForFileDeletion(userId);
+  const images = trashModel.selectTrashMediasForFileDeletion(userId);
 
   // 删除存储文件（根据存储类型使用对应适配器）
-  const fileDeleteResult = await _deleteImagesFiles(images);
+  const fileDeleteResult = await _deleteMediasFiles(images);
 
   // 物理删除数据库记录
   const dbResult = trashModel.clearTrash(userId);
@@ -584,8 +584,8 @@ async function clearTrash({ userId }) {
 }
 
 module.exports = {
-  getDeletedImages,
-  restoreImages,
-  permanentlyDeleteImages,
+  getDeletedMedias,
+  restoreMedias,
+  permanentlyDeleteMedias,
   clearTrash,
 };

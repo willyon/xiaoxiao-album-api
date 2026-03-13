@@ -77,7 +77,7 @@ try:
         print("   1. 重启 Python AI 服务")
         print("   2. 测试检测效果")
         print("   3. 如果效果不理想，可以恢复备份:")
-        print("      mv models/yolov10s.onnx.backup models/yolov10s.onnx")
+        print("      mv models/managed/object/yolov10s.onnx.backup models/managed/object/yolov10s.onnx")
         print()
         print("💡 提示:")
         print("   - 当前使用: yolo11s (small)")

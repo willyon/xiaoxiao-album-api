@@ -5,14 +5,22 @@
 专注于HTTP请求/响应处理，将业务逻辑委托给服务层
 """
 
-from fastapi import APIRouter, HTTPException, Body, File, UploadFile, Form  # FastAPI路由器和HTTP异常处理，Body用于请求体参数
-from typing import List, Optional             # 类型提示：列表和可选类型
-from services.cluster_service import ensure_model_loaded,  perform_clustering  # 聚类服务：聚类算法和模型管理
-from services.person_analysis_service import _crop_face_thumbnail  # 人脸缩略图生成函数
-from utils.images import convert_to_opencv  # 图片格式转换工具
-from logger import logger                     # 自定义日志记录器
-from config import settings                   # 配置文件，用于获取默认阈值
+from fastapi import APIRouter, HTTPException, Body, File, UploadFile, Form
+from typing import List, Optional
 import json
+
+from config import settings
+from constants.error_codes import (
+    AI_SERVICE_ERROR,
+    FACE_MODEL_MISSING,
+    IMAGE_DECODE_FAILED,
+    INVALID_REQUEST,
+)
+from logger import logger
+from schemas.error_schema import ErrorBody
+from services.cluster_service import ensure_model_loaded, perform_clustering
+from services.person_analysis_service import _crop_face_thumbnail
+from utils.image_decode import decode_image
 
 
 # 创建路由器
@@ -74,12 +82,16 @@ async def cluster_faces(
         # 1. 确保模型已加载（模型检查在service层自动处理）
         # ensure_model_loaded(): 检查人脸识别模型是否已加载，如果未加载则自动加载
         if not ensure_model_loaded():
-            raise HTTPException(status_code=500, detail='人脸识别模型加载失败')
-        
-        # 2. 验证请求数据
-        # 检查是否提供了特征向量数据
+            raise HTTPException(
+                status_code=500,
+                detail=ErrorBody(error_code=FACE_MODEL_MISSING, error_message="人脸识别模型加载失败").dict(),
+            )
+
         if not embeddings:
-            raise HTTPException(status_code=400, detail='缺少特征向量')
+            raise HTTPException(
+                status_code=400,
+                detail=ErrorBody(error_code=INVALID_REQUEST, error_message="缺少特征向量").dict(),
+            )
         
         # 如果未提供阈值，使用配置文件中的默认值
         # perform_clustering 函数会自动处理 None 值，使用配置文件中的默认阈值
@@ -98,13 +110,13 @@ async def cluster_faces(
         return {'clusters': clusters}
         
     except HTTPException:
-        # 重新抛出HTTP异常（如400、500等），让FastAPI处理
         raise
     except Exception as e:
-        # 捕获其他未预期的业务异常
-        # 记录错误日志，然后转换为500错误返回给客户端
-        logger.error(f"人脸聚类失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("人脸聚类失败", details={"error": str(e)})
+        raise HTTPException(
+            status_code=500,
+            detail=ErrorBody(error_code=AI_SERVICE_ERROR, error_message=str(e)).dict(),
+        )
 
 
 @router.post("/generate_face_thumbnail")
@@ -130,38 +142,47 @@ async def generate_face_thumbnail(
             - 500: 图片处理失败或缩略图生成失败
     """
     try:
-        # 1. 读取图片数据
         image_bytes = await image.read()
         if not image_bytes:
-            raise HTTPException(status_code=400, detail="图片数据为空")
+            raise HTTPException(
+                status_code=400,
+                detail=ErrorBody(error_code=IMAGE_DECODE_FAILED, error_message="图片数据为空").dict(),
+            )
 
-        # 2. 解析bbox
         try:
             bbox_list = json.loads(bbox)
             if not isinstance(bbox_list, list) or len(bbox_list) != 4:
                 raise ValueError("bbox必须是包含4个元素的数组")
         except (json.JSONDecodeError, ValueError) as e:
-            raise HTTPException(status_code=400, detail=f"bbox格式错误: {str(e)}")
+            raise HTTPException(
+                status_code=400,
+                detail=ErrorBody(error_code=INVALID_REQUEST, error_message=f"bbox格式错误: {str(e)}").dict(),
+            )
 
-        # 3. 转换为OpenCV格式
-        image_data, error = convert_to_opencv(image_bytes)
-        if error:
-            raise HTTPException(status_code=400, detail=f"图片格式转换失败: {error}")
+        image_data, decode_err = decode_image(image_bytes)
+        if decode_err or image_data is None:
+            raise HTTPException(
+                status_code=400,
+                detail=ErrorBody(error_code=IMAGE_DECODE_FAILED, error_message=decode_err or "图片解码失败").dict(),
+            )
 
-        # 4. 生成缩略图
         thumbnail_base64 = _crop_face_thumbnail(image_data, bbox_list)
 
         if thumbnail_base64 is None:
-            raise HTTPException(status_code=500, detail="生成缩略图失败")
+            raise HTTPException(
+                status_code=500,
+                detail=ErrorBody(error_code=AI_SERVICE_ERROR, error_message="生成缩略图失败").dict(),
+            )
 
         return {
             "success": True,
             "face_thumbnail_base64": thumbnail_base64
         }
     except HTTPException:
-        # 重新抛出HTTP异常
         raise
     except Exception as e:
-        # 捕获其他未预期的异常
-        logger.error(f"生成人脸缩略图失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"生成缩略图失败: {str(e)}")
+        logger.error("生成人脸缩略图失败", details={"error": str(e)})
+        raise HTTPException(
+            status_code=500,
+            detail=ErrorBody(error_code=AI_SERVICE_ERROR, error_message="生成缩略图失败").dict(),
+        )

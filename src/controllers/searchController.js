@@ -8,7 +8,7 @@ const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
 const { AGE_GROUP_FRONTEND_TO_BACKEND } = require("../constants/filterMappings");
 const searchService = require("../services/searchService");
-const { addFullUrlToImage } = require("../services/imageService");
+const { addFullUrlToMedia } = require("../services/mediaService");
 const faceClusterModel = require("../models/faceClusterModel");
 const pythonSearchClient = require("../services/pythonSearchClient");
 const { parseQueryIntent, mergeFilters } = require("../utils/queryIntentParser");
@@ -472,7 +472,7 @@ function mergeAndRank(ftsResults, vectorResults, k = 60) {
  * body: query?, filters?, pageNo, pageSize, clusterId?
  *       可选 scope：source?, type?, albumId?（传了 source 且不为 search 时在范围内列表/搜索，不做向量；未传或 source=search 为全局搜索，有 query 时做向量）
  */
-async function handleSearchImages(req, res, next) {
+async function handleSearchMedias(req, res, next) {
   try {
     const { userId } = req.user;
     const {
@@ -529,7 +529,7 @@ async function handleSearchImages(req, res, next) {
       whereParams = [...scopeParams, ...filterBuilt.whereParams];
 
       const [list, total] = await Promise.all([
-        searchService.searchImagesByText({
+        searchService.searchMediasByText({
           userId,
           ftsQuery,
           whereConditions,
@@ -544,10 +544,10 @@ async function handleSearchImages(req, res, next) {
           whereParams,
         }),
       ]);
-      let resultsWithUrls = await addFullUrlToImage(list);
+      let resultsWithUrls = await addFullUrlToMedia(list);
       if (source === "people" && validClusterId != null && resultsWithUrls.length > 0) {
         const mediaIds = resultsWithUrls.map((item) => item.mediaId).filter((id) => id != null);
-        const faceEmbeddingIdMap = faceClusterModel.getFaceEmbeddingIdByImageIdInCluster(userId, validClusterId, mediaIds);
+        const faceEmbeddingIdMap = faceClusterModel.getFaceEmbeddingIdByMediaIdInCluster(userId, validClusterId, mediaIds);
         resultsWithUrls = resultsWithUrls.map((item) => ({
           ...item,
           faceEmbeddingId: faceEmbeddingIdMap.get(item.mediaId) ?? null,
@@ -577,7 +577,7 @@ async function handleSearchImages(req, res, next) {
 
     const searchPromises = [
       // FTS 搜索：获取更多结果用于合并（取 pageSize * 2，确保有足够的结果用于 RRF）
-      searchService.searchImagesByText({
+      searchService.searchMediasByText({
         userId,
         ftsQuery,
         whereConditions,
@@ -636,7 +636,7 @@ async function handleSearchImages(req, res, next) {
       if (ftsResults.length === 0) {
         const uniqueVectorIds = Array.from(new Set(vectorResults.map((r) => r.media_id)));
         try {
-          const vectorImages = await searchService.getImagesByIds({
+          const vectorImages = await searchService.getMediasByIds({
             userId,
             imageIds: uniqueVectorIds,
           });
@@ -678,7 +678,7 @@ async function handleSearchImages(req, res, next) {
         let vectorOnlyImages = [];
         if (missingImageIds.length > 0) {
           try {
-            vectorOnlyImages = await searchService.getImagesByIds({
+            vectorOnlyImages = await searchService.getMediasByIds({
               userId,
               imageIds: missingImageIds,
             });
@@ -721,7 +721,7 @@ async function handleSearchImages(req, res, next) {
     }
 
     // 添加完整URL（thumbnailUrl 和 highResUrl）
-    const resultsWithUrls = await addFullUrlToImage(finalResults);
+    const resultsWithUrls = await addFullUrlToMedia(finalResults);
 
     logger.info({
       message: `搜索完成: ${userId}`,
@@ -925,9 +925,9 @@ async function handleGetObjectFilterOptionsPaginated(req, res, next) {
 }
 
 module.exports = {
-  handleSearchImages,
+  handleSearchMedias,
   handleGetSearchSuggestions,
-  handleIndexImage,
+  handleIndexMedia,
   handleGetQueueStatus,
   handleGetFilterOptionsPaginated,
   handleGetSceneFilterOptionsPaginated,

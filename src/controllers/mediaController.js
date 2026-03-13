@@ -5,22 +5,24 @@
  * @LastEditTime: 2025-08-17 14:45:00
  * @Description: File description
  */
-const imageService = require("../services/imageService");
+const mediaService = require("../services/mediaService");
 const similarService = require("../services/similarService");
 const CustomError = require("../errors/customError");
 const { ERROR_CODES, SUCCESS_CODES } = require("../constants/messageCodes");
 const { getRedisClient } = require("../services/redisClient");
-const { ensureUserSetReady, userSetKey } = require("../workers/userImageHashset");
-const { updateProgress } = require("../services/imageProcessingProgressService");
+const { ensureUserSetReady, userSetKey } = require("../workers/userMediaHashset");
+const { updateProgress } = require("../services/mediaProcessingProgressService");
 const logger = require("../utils/logger");
+const { getMediaDownloadInfo, rebuildMediaSearchDoc } = require("../models/mediaModel");
+const { mediaAnalysisQueue } = require("../queues/mediaAnalysisQueue");
 
 // 分页获取模糊图列表（is_blurry = 1），用于清理页模糊图 tab
 // GET /api/media/blurry?pageNo=1&pageSize=20
-async function handleGetBlurryImages(req, res, next) {
+async function handleGetBlurryMedias(req, res, next) {
   try {
     const { userId } = req?.user;
     const { pageNo, pageSize } = req.query;
-    const result = await imageService.getBlurryImages({
+    const result = await mediaService.getBlurryMedias({
       userId,
       pageNo,
       pageSize,
@@ -108,7 +110,7 @@ async function handleCheckFileExists(req, res, next) {
 }
 
 // 部分更新图片信息（仅用于 favorite 字段）
-async function handlePatchImage(req, res, next) {
+async function handlePatchMedia(req, res, next) {
   try {
     const { userId } = req?.user;
     const { mediaId } = req.params;
@@ -122,7 +124,7 @@ async function handlePatchImage(req, res, next) {
       });
     }
 
-    const result = await imageService.patchImage({ userId, imageId: parseInt(mediaId), patchData });
+    const result = await mediaService.patchMedia({ userId, imageId: parseInt(mediaId), patchData });
 
     res.sendResponse({ data: result });
   } catch (error) {
@@ -131,7 +133,7 @@ async function handlePatchImage(req, res, next) {
 }
 
 // 批量删除图片（软删除，移至回收站）
-async function handleDeleteImages(req, res, next) {
+async function handleDeleteMedias(req, res, next) {
   try {
     const { userId } = req?.user;
     const { mediaIds, groupId } = req.body || {};
@@ -147,13 +149,13 @@ async function handleDeleteImages(req, res, next) {
     // 相似图删除：提供 groupId 时走 similarService（需刷新分组统计）；其余（含模糊图、首页等）走 imageService 通用删除
     let result;
     if (groupId) {
-      result = await similarService.deleteImages({
+      result = await similarService.deleteMedias({
         userId,
         groupId,
         imageIds: mediaIds,
       });
     } else {
-      result = await imageService.deleteImages({
+      result = await mediaService.deleteMedias({
         userId,
         imageIds: mediaIds,
       });
@@ -165,10 +167,112 @@ async function handleDeleteImages(req, res, next) {
   }
 }
 
+/**
+ * 单图重新分析：将指定媒体重新入队 mediaAnalysisQueue（手动强制重算，使用新 jobId 绕过去重）
+ * POST /api/media/:mediaId/reanalyze
+ * Body 可选: { analysisVersion: "2.0" }
+ */
+async function handleReanalyzeMedia(req, res, next) {
+  try {
+    const userId = req?.user?.userId;
+    const mediaId = parseInt(req.params.mediaId, 10);
+    const { analysisVersion } = req.body || {};
+
+    if (!mediaId || Number.isNaN(mediaId)) {
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
+      });
+    }
+
+    const media = getMediaDownloadInfo({ userId, imageId: mediaId });
+    if (!media) {
+      throw new CustomError({
+        httpStatus: 404,
+        messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
+        messageType: "warning",
+      });
+    }
+
+    const jobId = `analysis:${userId}:${mediaId}:manual:${Date.now()}`;
+    await mediaAnalysisQueue.add(
+      "media-analysis",
+      {
+        imageId: mediaId,
+        userId,
+        highResStorageKey: media.highResStorageKey ?? null,
+        originalStorageKey: media.originalStorageKey ?? null,
+        mediaType: media.mediaType || "image",
+        fileName: "",
+        forceReanalyze: true,
+        ...(analysisVersion ? { analysisVersion } : {}),
+      },
+      { jobId },
+    );
+
+    logger.info({
+      message: "media reanalyze enqueued",
+      details: { userId, mediaId, jobId },
+    });
+
+    res.sendResponse({
+      data: { mediaId, jobId, enqueued: true },
+      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * 指定 mediaId 重建搜索文档：仅刷新 media_search，不重新跑 AI 分析
+ * POST /api/media/:mediaId/rebuild-search
+ */
+async function handleRebuildSearchMedia(req, res, next) {
+  try {
+    const userId = req?.user?.userId;
+    const mediaId = parseInt(req.params.mediaId, 10);
+
+    if (!mediaId || Number.isNaN(mediaId)) {
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
+      });
+    }
+
+    const media = getMediaDownloadInfo({ userId, imageId: mediaId });
+    if (!media) {
+      throw new CustomError({
+        httpStatus: 404,
+        messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
+        messageType: "warning",
+      });
+    }
+
+    rebuildMediaSearchDoc(mediaId);
+
+    logger.info({
+      message: "media search doc rebuilt",
+      details: { userId, mediaId },
+    });
+
+    res.sendResponse({
+      data: { mediaId, rebuilt: true },
+      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
-  handleGetBlurryImages,
+  handleGetBlurryMedias,
   handleGetSimilarGroups,
   handleCheckFileExists,
-  handlePatchImage,
-  handleDeleteImages,
+  handlePatchMedia,
+  handleDeleteMedias,
+  handleReanalyzeMedia,
+  handleRebuildSearchMedia,
 };

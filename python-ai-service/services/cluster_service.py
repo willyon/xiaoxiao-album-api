@@ -17,7 +17,7 @@ def ensure_model_loaded():
         get_insightface_model()  # 会自动加载所有模型，如果失败会抛出异常
         return True
     except Exception as e:
-        logger.error(f"模型加载失败: {str(e)}")
+        logger.error("模型加载失败", details={"error": str(e)})
         return False
 
 
@@ -98,5 +98,5 @@ def perform_clustering(embeddings, threshold=None):
         return cluster_list
         
     except Exception as e:
-        logger.error(f"聚类失败: {str(e)}")
+        logger.error("聚类失败", details={"error": str(e)})
         raise

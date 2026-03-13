@@ -33,7 +33,7 @@ async def health_check():
         "profiles_capabilities": profiles_capabilities,
     }
 
-    # 兼容旧字段：根据新 capabilities 填充 face/ocr 状态
+    # 按当前 capabilities 计算 face/ocr 相关聚合字段，便于前端/监控直接使用
     response.update(
         {
             "models_loaded": capabilities.get("face", False) or capabilities.get("ocr", False),

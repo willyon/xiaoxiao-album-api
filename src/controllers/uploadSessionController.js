@@ -17,8 +17,8 @@ const {
 const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
 const { searchIndexQueue } = require("../queues/searchIndexQueue");
-const { getImageDownloadInfo } = require("../services/imageService");
-const { publishProgressSnapshot } = require("../services/imageProcessingProgressService");
+const { getMediaDownloadInfo } = require("../services/mediaService");
+const { publishProgressSnapshot } = require("../services/mediaProcessingProgressService");
 
 /**
  * 处理创建上传会话请求
@@ -185,7 +185,7 @@ const handleRetrySessionFailures = async (req, res, next) => {
       const mediaId = Number(failure.mediaId);
       if (!mediaId) continue;
 
-      const mediaInfo = await getImageDownloadInfo({ userId, imageId: mediaId });
+      const mediaInfo = await getMediaDownloadInfo({ userId, imageId: mediaId });
       if (!mediaInfo) {
         continue;
       }

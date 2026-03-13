@@ -23,8 +23,8 @@ module.exports = {
       },
     },
     {
-      name: "image-upload-worker-dev",
-      script: "src/workers/imageUploadWorker.js",
+      name: "media-upload-worker-dev",
+      script: "src/workers/mediaUploadWorker.js",
       // cwd: 未设置，使用 PM2 启动目录
       cwd: ".", // 相对路径
       watch: false,
@@ -34,8 +34,8 @@ module.exports = {
       },
     },
     {
-      name: "image-meta-worker-dev",
-      script: "src/workers/imageMetaWorker.js",
+      name: "media-meta-worker-dev",
+      script: "src/workers/mediaMetaWorker.js",
       // cwd: 未设置，使用 PM2 启动目录
       cwd: ".", // 相对路径
       watch: false,
@@ -118,12 +118,12 @@ pm2 start ecosystem.dev.config.js
 📋 单独管理开发服务:
 - 重启 API 服务: pm2 restart app-service-dev
 - 重启 Python AI 服务: pm2 restart python-ai-service-dev
-- 重启所有 Workers: pm2 restart image-upload-worker-dev image-meta-worker-dev search-index-worker-dev
+- 重启所有 Workers: pm2 restart media-upload-worker-dev media-meta-worker-dev search-index-worker-dev
 
 📋 开发调试:
 - 查看 API 日志: pm2 logs app-service-dev
 - 查看 Python AI 日志: pm2 logs python-ai-service-dev
-- 查看 Worker 日志: pm2 logs image-upload-worker-dev
+- 查看 Worker 日志: pm2 logs media-upload-worker-dev
 - 实时监控: pm2 monit
 
 📋 定时任务管理 (开发版):

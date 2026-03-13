@@ -99,9 +99,25 @@ function finalizeMediaAnalysis({
   );
 }
 
+/**
+ * 媒体分析链路：更新 media_analysis 的 scene_primary、environment（INSERT or ON CONFLICT UPDATE）
+ */
+function upsertSceneForMedia(mediaId, analysisVersion, primaryScene, environment) {
+  db.prepare(
+    `
+    INSERT INTO media_analysis (media_id, analysis_status, analysis_version, scene_primary, environment)
+    VALUES (?, 'pending', ?, ?, ?)
+    ON CONFLICT(media_id) DO UPDATE SET
+      scene_primary = COALESCE(?, media_analysis.scene_primary),
+      environment = COALESCE(?, media_analysis.environment)
+  `,
+  ).run(mediaId, analysisVersion, primaryScene, environment, primaryScene, environment);
+}
+
 module.exports = {
   markMediaAnalysisRunning,
   markMediaAnalysisFailed,
   finalizeMediaAnalysis,
+  upsertSceneForMedia,
 };
 

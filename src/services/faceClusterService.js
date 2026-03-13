@@ -26,7 +26,7 @@ const {
   insertFaceClusters,
   getClusterStatsByUserId,
   getFaceEmbeddingsByIds,
-  getImagesSharpnessByIds,
+  getMediasSharpnessByIds,
   updateFaceEmbeddingThumbnail,
   updateFaceClusterRepresentative,
   getOldClusterNameMapping,
@@ -44,7 +44,7 @@ const {
   getUnassignedFaceEmbeddingsByUserId,
   getAllClusterRepresentativesByUserId,
 } = require("../models/faceClusterModel");
-const { getImageStorageInfo } = require("../models/imageModel");
+const { getMediaStorageInfo } = require("../models/mediaModel");
 const storageService = require("../services/storageService");
 
 // Python 服务 URL（从环境变量读取）
@@ -576,7 +576,7 @@ async function _generateThumbnailsForClusters(userId, clusters, faceEmbeddings) 
 
       // 3. 构建图片信息映射表（用于获取清晰度）
       const imageIds = [...new Set(clusterFaces.map((f) => f.image_id))];
-      const imagesMap = getImagesSharpnessByIds(imageIds);
+      const imagesMap = getMediasSharpnessByIds(imageIds);
 
       // 4. 选择最佳人脸（动态计算，多级排序）
       const bestFace = _selectBestFace(clusterFaces, imagesMap);
@@ -590,7 +590,7 @@ async function _generateThumbnailsForClusters(userId, clusters, faceEmbeddings) 
       }
 
       // 5. 获取图片数据
-      const imageInfo = getImageStorageInfo(bestFace.image_id);
+      const imageInfo = getMediaStorageInfo(bestFace.image_id);
       if (!imageInfo) {
         logger.warn({
           message: `图片不存在: imageId=${bestFace.image_id}`,
@@ -995,7 +995,7 @@ async function generateThumbnailForFaceEmbedding(faceEmbeddingId, forceRegenerat
     }
 
     // 3. 获取图片数据
-    const imageInfo = getImageStorageInfo(faceEmbedding.image_id);
+    const imageInfo = getMediaStorageInfo(faceEmbedding.image_id);
     if (!imageInfo) {
       logger.warn({
         message: `图片不存在: imageId=${faceEmbedding.image_id}`,

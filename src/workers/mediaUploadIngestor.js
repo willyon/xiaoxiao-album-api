@@ -6,15 +6,15 @@
  */
 
 const logger = require("../utils/logger");
-const { saveNewImage } = require("../services/imageService");
+const { saveNewMedia } = require("../services/mediaService");
 const { getRedisClient } = require("../services/redisClient");
-const { userSetKey } = require("./userImageHashset");
-const { imageMetaQueue } = require("../queues/imageMetaQueue");
+const { userSetKey } = require("./userMediaHashset");
+const { mediaMetaQueue } = require("../queues/mediaMetaQueue");
 const storageService = require("../services/storageService");
 const videoProcessingService = require("../services/videoProcessingService");
 const timeIt = require("../utils/timeIt");
 const { getDefaultStorageType } = require("../storage/constants/StorageTypes");
-const { updateProgress } = require("../services/imageProcessingProgressService");
+const { updateProgress } = require("../services/mediaProcessingProgressService");
 
 // 原子化：先查集合 → 抢锁 → 失败则再查集合 → 再决定 busy/重复
 async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
@@ -47,8 +47,8 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
   }
 
   // 2) 抢占锁（避免同图并发重复处理）
-  const lockKey = `${process.env.IMAGES_HASH_LOCK_KEY_PREFIX}${imageHash}`;
-  const ttlMs = Number(process.env.IMAGE_HASH_LOCK_TTL_MS) || 10 * 60 * 1000; //10分钟后释放锁 避免因为忘记释放锁导致死锁
+  const lockKey = `${process.env.MEDIA_HASH_LOCK_KEY_PREFIX}${imageHash}`;
+  const ttlMs = Number(process.env.MEDIA_HASH_LOCK_TTL_MS) || 10 * 60 * 1000; //10分钟后释放锁 避免因为忘记释放锁导致死锁
   //NX：仅当 key 不存在 时才设置（Not eXists） PX <ms>：给这个 key 设置 过期时间（毫秒）（eXPIRE in ms）
   const lockOk = await redisClient.set(lockKey, "1", "NX", "PX", ttlMs);
   if (!lockOk) {
@@ -98,7 +98,7 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
  * @param {string} [params.thumbnailStorageKey] - 缩略图存储键（可选）
  */
 async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHash, userId, thumbnailStorageKey }) {
-  const maxAttempts = job?.opts?.attempts || Number(process.env.IMAGE_UPLOAD_JOB_ATTEMPTS || 5);
+  const maxAttempts = job?.opts?.attempts || Number(process.env.MEDIA_UPLOAD_JOB_ATTEMPTS || 5);
   const attemptsMade = job?.attemptsMade || 0;
   // 修复：判断失败后 BullMQ 是否还会重试
   // BullMQ 会在失败后将 attemptsMade 递增，然后判断是否 < maxAttempts
@@ -113,7 +113,7 @@ async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHas
       }
 
       // 2. 移动源文件到失败目录
-      const failedType = process.env.IMAGE_STORAGE_KEY_FAILED || "failed";
+      const failedType = process.env.MEDIA_STORAGE_KEY_FAILED || "failed";
       const failedStorageKey = storageService.storage.generateStorageKey(failedType, fileName);
       await storageService.storage.moveFile(storageKey, failedStorageKey);
 
@@ -195,7 +195,7 @@ async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHas
  * 独立的单张图片处理与入库方法
  * @param {Object} job - BullMQ job对象
  */
-async function processAndSaveSingleImage(job) {
+async function processAndSaveSingleMedia(job) {
   let fileInfo = job.data;
   const { fileName, storageKey, userId, imageHash, fileSize, extension, mediaType = "image" } = fileInfo;
   logger.info({ message: "处理文件", details: { fileName, mediaType } });
@@ -212,7 +212,7 @@ async function processAndSaveSingleImage(job) {
 
     // ======== 快路径：仅产出 preview 缩略图 ========
     // 使用适配器生成存储键名，避免硬编码路径
-    const thumbnailType = process.env.IMAGE_STORAGE_KEY_THUMBNAIL || "thumbnail";
+    const thumbnailType = process.env.MEDIA_STORAGE_KEY_THUMBNAIL || "thumbnail";
     thumbnailStorageKey = storageService.storage.generateStorageKey(thumbnailType, fileName, extension);
 
     try {
@@ -284,7 +284,7 @@ async function processAndSaveSingleImage(job) {
     };
 
     try {
-      await saveNewImage(imageData);
+      await saveNewMedia(imageData);
       await redisClient.sadd(userSetKey(userId), imageHash);
 
       // 更新处理进度（成功）
@@ -322,15 +322,15 @@ async function processAndSaveSingleImage(job) {
     }
 
     // ======== 入 Meta 队列做"慢活"（EXIF + 高清 AVIF + DB 更新）========
-    await imageMetaQueue.add(
-      process.env.IMAGE_META_QUEUE_NAME,
+    await mediaMetaQueue.add(
+      process.env.MEDIA_META_QUEUE_NAME || "media-meta",
       {
         userId,
         imageHash,
         fileName,
         storageKey,
         mediaType, // 透传，供 imageMetaIngestor 分支判断
-        extension: process.env.IMAGE_HIGHRES_EXTENSION || "avif",
+        extension: process.env.MEDIA_HIGHRES_EXTENSION || "avif",
         fileSize,
         sessionId: fileInfo.sessionId,
       },
@@ -371,5 +371,5 @@ async function processAndSaveSingleImage(job) {
 }
 
 module.exports = {
-  processAndSaveSingleImage,
+  processAndSaveSingleMedia,
 };

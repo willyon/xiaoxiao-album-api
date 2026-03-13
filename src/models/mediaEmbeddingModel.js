@@ -16,7 +16,7 @@ function _blobToVector(blob) {
   return Array.from(floatArray);
 }
 
-function upsertImageEmbedding({ imageId, vector, modelId, createdAt }) {
+function upsertMediaEmbedding({ imageId, vector, modelId, createdAt }) {
   const blob = _vectorToBlob(vector);
   const now = createdAt || Date.now();
   const sourceType = "image";
@@ -34,7 +34,7 @@ function upsertImageEmbedding({ imageId, vector, modelId, createdAt }) {
   return stmt.run(imageId, sourceType, blob, modelId || "siglip2", now);
 }
 
-function getImageEmbedding(imageId) {
+function getMediaEmbedding(imageId) {
   const stmt = db.prepare(`
     SELECT vector, model_id
     FROM media_embeddings
@@ -58,7 +58,7 @@ function getImageEmbedding(imageId) {
  * @param {number} limit - 最大返回数量（避免单次请求过大，默认 5000）
  * @returns {Array<{imageId: number, vector: number[]}>} 图片 embedding 列表
  */
-function getImageEmbeddingsByUserId(userId, limit = 5000) {
+function getMediaEmbeddingsByUserId(userId, limit = 5000) {
   const sql = `
     SELECT e.media_id as imageId, e.vector, e.model_id
     FROM media_embeddings e
@@ -82,7 +82,7 @@ function getImageEmbeddingsByUserId(userId, limit = 5000) {
 }
 
 module.exports = {
-  upsertImageEmbedding,
-  getImageEmbedding,
-  getImageEmbeddingsByUserId,
+  upsertMediaEmbedding,
+  getMediaEmbedding,
+  getMediaEmbeddingsByUserId,
 };

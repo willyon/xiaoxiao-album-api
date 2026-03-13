@@ -1,13 +1,11 @@
-/*
- * @Author: zhangshouchang
- * @Date: 2025-01-07
- * @Description: 数据库重建脚本 - 删除所有业务表并按 initTableModel 标准 schema 重建
- * @Usage: node scripts/deployment/rebuild-database.js
+/**
+ * 数据库重建脚本：删除所有业务表，并按 initTableModel 中的 createTable* 按外键依赖顺序重建。
+ * 使用方式：node scripts/deployment/rebuild-database.js
  *
  * 覆盖表：users, media, media_analysis, media_captions, media_text_blocks, media_objects,
  *        media_face_embeddings, media_embeddings, video_keyframes, video_transcripts,
  *        albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta,
- *        similar_groups, similar_group_members, media_search, media_fts
+ *        similar_groups, similar_group_members, media_search, media_fts, tag_statistics
  */
 
 const path = require("path");
@@ -41,7 +39,7 @@ const {
   createTableTagStatistics,
 } = require(path.join(projectRoot, "src", "models", "initTableModel"));
 
-// 按外键依赖顺序：先删被引用表，再删主表
+/** 按外键依赖顺序：先删被引用表，再删主表 */
 const TABLES_TO_DROP = [
   "album_media",
   "albums",
