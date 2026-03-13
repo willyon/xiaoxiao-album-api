@@ -33,7 +33,7 @@ from services.model_registry import MODEL_CONFIGS, resolve_local_path
 def _setup_model_cache_env() -> None:
     """
     在导入可能触发模型下载的库之前，统一将第三方缓存目录重定向到项目内 models/cache/*。
-    - HuggingFace 生态：HF_HOME / TRANSFORMERS_CACHE / HUGGINGFACE_HUB_CACHE → models/cache/hf
+    - HuggingFace 生态：HF_HOME / TRANSFORMERS_CACHE / HUGGINGFACE_HUB_CACHE → models/cache/huggingface
     - PaddleOCR：PADDLEOCR_HOME → models/cache/paddleocr
     - InsightFace：INSIGHTFACE_HOME → models/cache/insightface
     """
@@ -41,7 +41,7 @@ def _setup_model_cache_env() -> None:
         base_dir = os.path.dirname(os.path.abspath(__file__))  # python-ai-service 根目录
         models_dir = os.path.join(base_dir, "models")
 
-        hf_cache = os.path.join(models_dir, "cache", "hf")
+        hf_cache = os.path.join(models_dir, "cache", "huggingface")
         paddle_cache = os.path.join(models_dir, "cache", "paddleocr")
         insight_cache = os.path.join(models_dir, "cache", "insightface")
 
