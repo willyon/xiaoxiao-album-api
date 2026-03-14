@@ -8,11 +8,11 @@ const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
 const { AGE_GROUP_FRONTEND_TO_BACKEND } = require("../constants/filterMappings");
 const searchService = require("../services/searchService");
-const { addFullUrlToMedia } = require("../services/mediaService");
+const { addFullUrlToMedia, getMediaDownloadInfo } = require("../services/mediaService");
 const faceClusterModel = require("../models/faceClusterModel");
 const pythonSearchClient = require("../services/pythonSearchClient");
 const { parseQueryIntent, mergeFilters } = require("../utils/queryIntentParser");
-// 移除队列引用，简化控制器
+const { searchIndexQueue } = require("../queues/searchIndexQueue");
 const logger = require("../utils/logger");
 
 const ALLOWED_EXPRESSION_FILTERS = new Set(["happy", "sad", "anger", "surprise", "neutral"]);
@@ -922,6 +922,57 @@ async function handleGetSceneFilterOptionsPaginated(req, res, next) {
 async function handleGetObjectFilterOptionsPaginated(req, res, next) {
   req.query.type = "object";
   return handleGetFilterOptionsPaginated(req, res, next);
+}
+
+/**
+ * 手动索引单个图片
+ * POST /search/index-image
+ * body: { mediaId } 或 { imageId }
+ */
+async function handleIndexMedia(req, res, next) {
+  try {
+    const { userId } = req.user;
+    const mediaId = req.body.mediaId ?? req.body.imageId;
+    if (!mediaId) {
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
+        message: "请提供 mediaId 或 imageId",
+      });
+    }
+
+    const mediaInfo = await getMediaDownloadInfo({ userId, imageId: Number(mediaId) });
+    if (!mediaInfo) {
+      throw new CustomError({
+        httpStatus: 404,
+        messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
+        messageType: "error",
+        message: "媒体不存在或无权访问",
+      });
+    }
+
+    await searchIndexQueue.add(
+      process.env.SEARCH_INDEX_QUEUE_NAME || "media-search-index",
+      {
+        imageId: mediaInfo.id,
+        userId,
+        highResStorageKey: mediaInfo.highResStorageKey || null,
+        originalStorageKey: mediaInfo.originalStorageKey || null,
+        sessionId: null,
+        mediaType: mediaInfo.mediaType || "image",
+        fileName: mediaInfo.fileName || "",
+      },
+      { jobId: `manual:${userId}:${mediaInfo.id}:${Date.now()}` },
+    );
+
+    res.sendResponse({
+      data: { mediaId: mediaInfo.id, queued: true },
+      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
+    });
+  } catch (error) {
+    next(error);
+  }
 }
 
 module.exports = {

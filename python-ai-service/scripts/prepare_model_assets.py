@@ -47,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="允许覆盖已存在的输出文件",
+        help="全量更新（重导/覆盖）；不传则仅补全缺失文件",
     )
     parser.add_argument(
         "--skip-verify",

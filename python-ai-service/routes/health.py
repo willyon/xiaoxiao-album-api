@@ -66,14 +66,14 @@ async def capabilities_view():
 
     model_versions = {
         "caption_standard": _ver("caption.standard.qwen2_5_vl.3b_lazy"),
-        "caption_enhanced": _ver("caption.enhanced.qwen2_5_vl.3b"),
+        "caption_enhanced": _ver("caption.enhanced.qwen2_5_vl.7b"),
         "object_standard": _ver("object.standard.yolo.11x"),
-        "object_enhanced": _ver("object.enhanced.yolo.11x"),
+        "object_enhanced": _ver("object.enhanced.yolo.26l"),
         "embedding_standard": _ver("embedding.standard.siglip2.base"),
         "embedding_enhanced": _ver("embedding.enhanced.siglip2.so400m"),
         "cleanup_head": _ver("cleanup.shared.aesthetic_head.musiq"),
         "ocr": _ver("ocr.shared.paddleocr.ppocrv5"),
-        "face_attribute": _ver("face.standard.fairface.age_gender"),
+        "face_attribute": _ver("face.shared.fairface.age_gender"),
         "expression": _ver("face.shared.emotiefflib.default"),
     }
 
@@ -83,7 +83,7 @@ async def capabilities_view():
         "face.shared.insightface.buffalo_l",
         "ocr.shared.paddleocr.ppocrv5",
         "face.shared.emotiefflib.default",
-        "face.standard.fairface.age_gender",
+        "face.shared.fairface.age_gender",
         "cleanup.shared.aesthetic_head.musiq",
     ]:
         cfg = MODEL_CONFIGS.get(mid)

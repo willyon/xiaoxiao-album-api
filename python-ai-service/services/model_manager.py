@@ -319,17 +319,23 @@ class ModelManager:
                     return None
             return self._embedding_models.get(key)
 
+    def _safe_capability(self, getter, *args, **kwargs) -> bool:
+        """健康检查用：单能力检测失败不抛异常，仅返回 False。"""
+        try:
+            return getter(*args, **kwargs) is not None
+        except Exception:
+            return False
+
     def capabilities_loaded_for_profile(self, profile: str) -> dict[str, bool]:
         """按指定 profile 计算能力是否可用（供 /health 展示 profile 可用性与降级）。"""
         resolved_profile = profile or "standard"
-        face = self.get_face_model(resolved_profile, "cpu") is not None
-        cleanup = self.get_cleanup_model(resolved_profile, "cpu") is not None
-        ocr = self.get_ocr_engine(resolved_profile, "cpu") is not None
-        # caption 对 enhanced 可能触发 VLM 加载，避免在健康检查里强制加载
+        face = self._safe_capability(self.get_face_model, resolved_profile, "cpu")
+        cleanup = self._safe_capability(self.get_cleanup_model, resolved_profile, "cpu")
+        ocr = self._safe_capability(self.get_ocr_engine, resolved_profile, "cpu")
         caption = getattr(settings, "ENABLE_CAPTION", False)
-        object_ = self.get_object_model(resolved_profile, "cpu") is not None
-        scene = self.get_scene_model(resolved_profile, "cpu") is not None
-        embedding = self.get_embedding_model(resolved_profile, "cpu") is not None
+        object_ = self._safe_capability(self.get_object_model, resolved_profile, "cpu")
+        scene = self._safe_capability(self.get_scene_model, resolved_profile, "cpu")
+        embedding = self._safe_capability(self.get_embedding_model, resolved_profile, "cpu")
         return {
             "caption": bool(caption),
             "object": object_,
@@ -341,15 +347,14 @@ class ModelManager:
         }
 
     def capabilities_loaded(self) -> dict[str, bool]:
-        """各能力是否已有可用模型（供 /health）。"""
-        face = self.get_face_model("standard", "cpu") is not None
-        cleanup = self.get_cleanup_model("standard", "cpu") is not None
-        ocr = self.get_ocr_engine("standard", "cpu") is not None
-        # caption 可能触发大模型下载/加载，不在健康检查中强制初始化
+        """各能力是否已有可用模型（供 /health）。单能力加载失败仅记为未加载，不抛异常。"""
+        face = self._safe_capability(self.get_face_model, "standard", "cpu")
+        cleanup = self._safe_capability(self.get_cleanup_model, "standard", "cpu")
+        ocr = self._safe_capability(self.get_ocr_engine, "standard", "cpu")
         caption = bool(getattr(settings, "ENABLE_CAPTION", False))
-        object_ = self.get_object_model("standard", "cpu") is not None
-        scene = self.get_scene_model("standard", "cpu") is not None
-        embedding = self.get_embedding_model("standard", "cpu") is not None
+        object_ = self._safe_capability(self.get_object_model, "standard", "cpu")
+        scene = self._safe_capability(self.get_scene_model, "standard", "cpu")
+        embedding = self._safe_capability(self.get_embedding_model, "standard", "cpu")
         return {
             "caption": caption,
             "object": object_,

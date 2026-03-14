@@ -56,17 +56,17 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         provider="insightface",
         is_optional=False,
     ),
-    # 人脸属性（FairFace，可选）
-    "face.standard.fairface.age_gender": ModelConfig(
-        model_id="face.standard.fairface.age_gender",
+    # 人脸属性（FairFace，可选，standard/enhanced 共用，仅 age/gender）
+    "face.shared.fairface.age_gender": ModelConfig(
+        model_id="face.shared.fairface.age_gender",
         task_type="face_attribute",
-        profile_scope="standard",
+        profile_scope="shared",
         local_path="models/managed/face/fairface.onnx",
         runtime="onnxruntime",
         device_support="cpu",
         load_strategy="lazy_load",
         is_primary=True,
-        notes="年龄/性别属性，可选分支，失败不影响主链路",
+        notes="年龄/性别属性，可选，lazy；失败不影响主链路",
         source_type="local_managed",
         provider="onnxruntime",
         is_optional=True,
@@ -91,26 +91,26 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         model_id="object.standard.yolo.11x",
         task_type="object",
         profile_scope="standard",
-        local_path="models/managed/object/yolo11x.onnx",
+        local_path="models/managed/object/standard/yolo11x.onnx",
         runtime="onnxruntime",
         device_support="cpu",
         load_strategy="preload",
         is_primary=True,
         fallback_model_id=None,
-        notes="物体检测 standard 档，基于导出的 YOLOv11x ONNX",
+        notes="物体检测 standard 档，YOLO11x；更在意速度可改用 YOLO11m",
     ),
-    # 物体检测 enhanced（仍使用 YOLOv11x ONNX，策略层做档位差异）
-    "object.enhanced.yolo.11x": ModelConfig(
-        model_id="object.enhanced.yolo.11x",
+    # 物体检测 enhanced（YOLO26l，失败回退 11x；benchmark 无明显胜出时可继续用 11x）
+    "object.enhanced.yolo.26l": ModelConfig(
+        model_id="object.enhanced.yolo.26l",
         task_type="object",
         profile_scope="enhanced",
-        local_path="models/managed/object/yolo11x.onnx",
+        local_path="models/managed/object/enhanced/yolo26l.onnx",
         runtime="onnxruntime",
         device_support="cpu",
         load_strategy="lazy_load",
         is_primary=True,
         fallback_model_id="object.standard.yolo.11x",
-        notes="物体检测 enhanced 档，当前与 standard 共用 YOLOv11x ONNX，失败时回退到 standard",
+        notes="物体检测 enhanced 档，YOLO26l；失败回退 standard 11x",
     ),
     # 跨模态 embedding standard（SigLIP2 standard）
     "embedding.standard.siglip2.base": ModelConfig(
@@ -161,18 +161,18 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         is_primary=True,
         notes="standard 档按需使用 Qwen2.5-VL-3B 生成 caption",
     ),
-    # Caption 增强模型（enhanced 核心）
-    "caption.enhanced.qwen2_5_vl.3b": ModelConfig(
-        model_id="caption.enhanced.qwen2_5_vl.3b",
+    # Caption 增强模型（enhanced 核心：7B 主力，失败回退 3B）
+    "caption.enhanced.qwen2_5_vl.7b": ModelConfig(
+        model_id="caption.enhanced.qwen2_5_vl.7b",
         task_type="caption",
         profile_scope="enhanced",
-        local_path="huggingface://Qwen/Qwen2.5-VL-3B-Instruct",
+        local_path="huggingface://Qwen/Qwen2.5-VL-7B-Instruct",
         runtime="transformers",
         device_support="cpu",
         load_strategy="lazy_load",
         is_primary=True,
         fallback_model_id="caption.standard.qwen2_5_vl.3b_lazy",
-        notes="enhanced 档以 Qwen2.5-VL-3B 为主，失败回退 standard 懒加载模型",
+        notes="enhanced 档以 Qwen2.5-VL-7B 为主，失败回退 standard 3B 懒加载模型；本地资源不足时可依赖 fallback",
     ),
     # 清理美学评分头
     "cleanup.shared.aesthetic_head.musiq": ModelConfig(

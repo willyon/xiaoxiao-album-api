@@ -185,9 +185,16 @@ def create_app():
                     from loaders.model_loader import get_aesthetic_head_session
 
                     get_aesthetic_head_session()
+                elif task == "expression":
+                    from loaders.model_loader import get_expression_model
+
+                    get_expression_model()
                 else:
-                    # 未映射的 task_type：暂不自动 preload
-                    logger.info("preload.skip: 未支持的 task_type=%s", task, extra={"model_id": model_id})
+                    # 未映射的 task_type：暂不自动 preload（CustomLogger.info 仅接受 message + **kwargs，勿传第二位置参数）
+                    logger.info(
+                        "preload.skip: 未支持的 task_type=%s" % (task,),
+                        details={"model_id": model_id},
+                    )
             except Exception as e:  # pragma: no cover
                 _record_fail(model_id, e)
                 if _is_required(model_id):
