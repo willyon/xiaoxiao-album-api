@@ -11,8 +11,54 @@ AI图片分析服务
 """
 
 import os
+
+# 必须在任何可能触发模型下载的 import 之前执行（routes → model_loader → insightface/huggingface 等会读环境变量）
+def _setup_model_cache_env() -> None:
+    """
+    在导入可能触发模型下载的库之前，统一将第三方缓存目录重定向到项目内 models/cache/*。
+    使用强制覆盖（而非 setdefault），避免本机已配置的 ~/.cache 等生效，确保缓存落在项目目录。
+    - HuggingFace 生态：HF_HOME / TRANSFORMERS_CACHE / HUGGINGFACE_HUB_CACHE → models/cache/huggingface
+    - PaddleOCR / PaddleX：PADDLE_PDX_CACHE_HOME 等 → models/cache/paddleocr
+    - InsightFace：INSIGHTFACE_HOME → models/cache/insightface
+    - EmotiEffLib：若从 HuggingFace 下载则用 HF 缓存；另建 models/cache/emotiefflib 以备库支持自定义路径
+    """
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))  # python-ai-service 根目录
+        models_dir = os.path.join(base_dir, "models")
+
+        hf_cache = os.path.join(models_dir, "cache", "huggingface")
+        paddle_cache = os.path.join(models_dir, "cache", "paddleocr")
+        insight_cache = os.path.join(models_dir, "cache", "insightface")
+        emotiefflib_cache = os.path.join(models_dir, "cache", "emotiefflib")
+
+        for path in (hf_cache, paddle_cache, insight_cache, emotiefflib_cache):
+            try:
+                os.makedirs(path, exist_ok=True)
+            except Exception:
+                pass
+
+        # 强制覆盖（不用 setdefault），确保即使用户本机有 HF_HOME/INSIGHTFACE_HOME 也使用项目目录
+        os.environ["HF_HOME"] = hf_cache
+        os.environ["TRANSFORMERS_CACHE"] = hf_cache
+        os.environ["HUGGINGFACE_HUB_CACHE"] = hf_cache
+        os.environ["INSIGHTFACE_HOME"] = insight_cache
+
+        os.environ["PADDLE_PDX_CACHE_HOME"] = paddle_cache
+        os.environ["PADDLEOCR_HOME"] = paddle_cache
+        os.environ["PADDLEX"] = paddle_cache
+
+        # EmotiEffLib 若从 HuggingFace 下载会走 HF_*；部分版本支持自定义路径时可设 EFFLIB_HOME
+        if not os.environ.get("EFFLIB_HOME"):
+            os.environ["EFFLIB_HOME"] = emotiefflib_cache
+    except Exception:
+        pass
+
+
+_setup_model_cache_env()
+
 import time
 import uvicorn
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -22,49 +68,82 @@ from config import settings
 from logger import logger
 
 # 导入路由模块
-from routes import caption, cleanup, face_cluster, health, objects, ocr, person, scene, search_embedding
+from routes import analyze_full, caption, quality, face_cluster, health, objects, ocr, person, scene, search_embedding
 
 # 导入向量索引与 ModelManager
-from services.vector_search_service import init_hnsw_index  # 向量搜索索引初始化
-from services.model_manager import get_model_manager  # 按能力+profile+device 管理模型，供路由与 health 使用
+from services.vector_search_service import init_hnsw_index
+from services.model_manager import get_model_manager
 from services.model_registry import MODEL_CONFIGS, resolve_local_path
 
 
-def _setup_model_cache_env() -> None:
-    """
-    在导入可能触发模型下载的库之前，统一将第三方缓存目录重定向到项目内 models/cache/*。
-    - HuggingFace 生态：HF_HOME / TRANSFORMERS_CACHE / HUGGINGFACE_HUB_CACHE → models/cache/huggingface
-    - PaddleOCR：PADDLEOCR_HOME → models/cache/paddleocr
-    - InsightFace：INSIGHTFACE_HOME → models/cache/insightface
-    """
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """生命周期：启动时初始化向量索引、ModelManager 并预热 preload 模型；关闭时暂无逻辑。"""
+    # --- startup ---
     try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))  # python-ai-service 根目录
-        models_dir = os.path.join(base_dir, "models")
+        init_hnsw_index()
+    except Exception as e:
+        logger.error("向量索引初始化失败，向量搜索将退化为 FTS", details={"error": str(e)})
 
-        hf_cache = os.path.join(models_dir, "cache", "huggingface")
-        paddle_cache = os.path.join(models_dir, "cache", "paddleocr")
-        insight_cache = os.path.join(models_dir, "cache", "insightface")
+    manager = get_model_manager()
+    logger.info("✅ ModelManager 已初始化")
 
-        for path in (hf_cache, paddle_cache, insight_cache):
-            try:
-                os.makedirs(path, exist_ok=True)
-            except Exception:
-                # 目录创建失败不阻塞启动，后续加载会自行报错
-                pass
+    logger.info("🚀 启动预热：开始加载 preload 模型（注册表驱动）")
+    strict = bool(getattr(settings, "STRICT_PRELOAD", False))
+    required_raw = getattr(settings, "STRICT_PRELOAD_REQUIRED_MODEL_IDS", "") or ""
+    required_ids = {x.strip() for x in required_raw.split(",") if x.strip()}
 
-        os.environ.setdefault("HF_HOME", hf_cache)
-        os.environ.setdefault("TRANSFORMERS_CACHE", hf_cache)
-        os.environ.setdefault("HUGGINGFACE_HUB_CACHE", hf_cache)
+    def _is_required(model_id: str) -> bool:
+        if not strict:
+            return False
+        if required_ids:
+            return model_id in required_ids
+        return True
 
-        os.environ.setdefault("PADDLEOCR_HOME", paddle_cache)
-        os.environ.setdefault("INSIGHTFACE_HOME", insight_cache)
-    except Exception:
-        # 环境变量设置失败不阻塞服务启动，具体模型加载时会再暴露问题
-        pass
+    failures: list[dict] = []
 
+    def _record_fail(mid: str, exc: Exception):
+        failures.append({"model_id": mid, "error": str(exc)})
+        logger.error("preload 失败", details={"model_id": mid, "error": str(exc)})
 
-# 在创建应用前尽早设置缓存目录环境变量
-_setup_model_cache_env()
+    for model_id, cfg in MODEL_CONFIGS.items():
+        if (cfg.load_strategy or "").lower() != "preload":
+            continue
+        try:
+            task = (cfg.task_type or "").lower()
+            scope_profile = (cfg.profile_scope or "standard").lower()
+
+            if task == "face":
+                from loaders.model_loader import get_insightface_model
+                get_insightface_model()
+            elif task == "ocr":
+                from loaders.ocr_loader import get_ocr_model
+                get_ocr_model()
+            elif task == "object":
+                manager.get_object_model(scope_profile if scope_profile != "shared" else "standard", settings.DEFAULT_DEVICE)
+            elif task == "image_embedding":
+                from loaders.model_loader import get_siglip2_components_for_path
+                get_siglip2_components_for_path(resolve_local_path(cfg.local_path))
+            elif task == "quality":
+                from loaders.model_loader import get_aesthetic_head_session
+                get_aesthetic_head_session()
+            elif task == "expression":
+                from loaders.model_loader import get_expression_model
+                get_expression_model()
+            else:
+                logger.info("preload.skip: 未支持的 task_type=%s" % (task,), details={"model_id": model_id})
+        except Exception as e:
+            _record_fail(model_id, e)
+            if _is_required(model_id):
+                raise RuntimeError(f"preload required model failed: {model_id}: {e}") from e
+
+    logger.info(
+        "✅ 启动预热：preload 模型加载完成",
+        extra={"failures": failures, "strict": strict, "required_ids": list(required_ids)},
+    )
+
+    yield
+    # --- shutdown (暂无) ---
 
 
 def create_app():
@@ -73,6 +152,7 @@ def create_app():
         title="AI图片分析服务",
         description="使用 InsightFace + FairFace + EmotiEffLib + YOLOv11x 等模型进行高精度图片分析。",
         version="2.2.0",
+        lifespan=_lifespan,
     )
 
     # 统一错误体：4xx/5xx 返回 { "error_code", "error_message }，便于 Node 写入 last_error
@@ -92,12 +172,14 @@ def create_app():
 
     # 统一结构化接口日志：对核心推理接口在响应后打一行 endpoint/profile/device/latency/result_count/error_code
     ANALYSIS_LOG_PATHS = {
+        "/analyze_full",
         "/analyze_caption",
         "/analyze_objects",
         "/analyze_scene",
         "/ocr",
-        "/analyze_cleanup",
+        "/analyze_quality",
         "/analyze_person",
+        "/encode_image",
     }
 
     @app.middleware("http")
@@ -123,97 +205,16 @@ def create_app():
             log_payload["image_size"] = state._log_image_size
         logger.info("request_end", details=log_payload)
         return response
-    # 启动阶段不再强制全量加载所有 AI 模型
-    # 各能力相关模型由 ModelManager / loaders 按需懒加载，并基于模型注册表进行路由
-
-    # 加载向量搜索索引（非严格依赖：失败时仅禁用 ANN，仍可使用 FTS 等功能）
-    try:
-        init_hnsw_index()
-    except Exception as e:
-        logger.error("向量索引初始化失败，向量搜索将退化为 FTS", details={"error": str(e)})
-
-    # 初始化全局 ModelManager（委托现有 loader，供路由与 /health 使用）
-    manager = get_model_manager()
-    logger.info("✅ ModelManager 已初始化")
-
-    # 启动预热：仅加载注册表中标记为 preload 的模型
-    @app.on_event("startup")
-    async def preload_models():
-        logger.info("🚀 启动预热：开始加载 preload 模型（注册表驱动）")
-
-        strict = bool(getattr(settings, "STRICT_PRELOAD", False))
-        required_raw = getattr(settings, "STRICT_PRELOAD_REQUIRED_MODEL_IDS", "") or ""
-        required_ids = {x.strip() for x in required_raw.split(",") if x.strip()}
-
-        # 若未指定 required_ids 且开启 strict，则默认所有 preload 都必须成功
-        def _is_required(model_id: str) -> bool:
-            if not strict:
-                return False
-            if required_ids:
-                return model_id in required_ids
-            return True
-
-        failures: list[dict] = []
-
-        def _record_fail(mid: str, exc: Exception):
-            failures.append({"model_id": mid, "error": str(exc)})
-            logger.error("preload 失败", details={"model_id": mid, "error": str(exc)})
-
-        for model_id, cfg in MODEL_CONFIGS.items():
-            if (cfg.load_strategy or "").lower() != "preload":
-                continue
-            try:
-                task = (cfg.task_type or "").lower()
-                scope_profile = (cfg.profile_scope or "standard").lower()
-
-                if task == "face":
-                    from loaders.model_loader import get_insightface_model
-
-                    get_insightface_model()
-                elif task == "ocr":
-                    from loaders.ocr_loader import get_ocr_model
-
-                    get_ocr_model()
-                elif task == "object":
-                    # object preload 只对 standard（或 shared）有意义；enhanced 默认为 lazy
-                    manager.get_object_model(scope_profile if scope_profile != "shared" else "standard", settings.DEFAULT_DEVICE)
-                elif task == "image_embedding":
-                    from loaders.model_loader import get_siglip2_components_for_path
-
-                    get_siglip2_components_for_path(resolve_local_path(cfg.local_path))
-                elif task == "cleanup":
-                    from loaders.model_loader import get_aesthetic_head_session
-
-                    get_aesthetic_head_session()
-                elif task == "expression":
-                    from loaders.model_loader import get_expression_model
-
-                    get_expression_model()
-                else:
-                    # 未映射的 task_type：暂不自动 preload（CustomLogger.info 仅接受 message + **kwargs，勿传第二位置参数）
-                    logger.info(
-                        "preload.skip: 未支持的 task_type=%s" % (task,),
-                        details={"model_id": model_id},
-                    )
-            except Exception as e:  # pragma: no cover
-                _record_fail(model_id, e)
-                if _is_required(model_id):
-                    raise RuntimeError(f"preload required model failed: {model_id}: {e}") from e
-
-        logger.info(
-            "✅ 启动预热：preload 模型加载完成",
-            extra={"failures": failures, "strict": strict, "required_ids": list(required_ids)},
-        )
-
     # 注册路由
     app.include_router(health.router, tags=["健康检查"])
+    app.include_router(analyze_full.router, tags=["全量分析"])
     app.include_router(caption.router, tags=["Caption"])
     app.include_router(objects.router, tags=["物体检测"])
     app.include_router(scene.router, tags=["场景分类"])
     app.include_router(person.router, tags=["人物分析"])
     app.include_router(ocr.router, tags=["OCR识别"])
     app.include_router(face_cluster.router, tags=["人脸聚类"])
-    app.include_router(cleanup.router, tags=["智能清理"])
+    app.include_router(quality.router, tags=["图片质量"])
     app.include_router(search_embedding.router, tags=["搜索向量化"])
     
     return app
@@ -234,8 +235,10 @@ def main():
         logger.info("  - POST /analyze_objects - 物体检测")
         logger.info("  - POST /analyze_scene - 场景分类")
         logger.info("  - POST /analyze_person - 人物分析（人脸+人体检测）")
-        logger.info("  - POST /analyze_cleanup - 图片清理指标")
+        logger.info("  - POST /analyze_quality - 图片质量指标")
         logger.info("  - POST /ocr - OCR 文字识别")
+        logger.info("  - POST /analyze_full - 全量图片分析（统一入口）")
+        logger.info("  - POST /encode_image - 图像向量化")
         logger.info("  - POST /cluster_faces - 人脸聚类")
         logger.info("  - POST /encode_text - 文本向量化")
         logger.info("  - POST /ann_search_by_vector - 向量相似度搜索（hnsw ANN）")

@@ -181,17 +181,13 @@ class Settings:
     # 可选：指定哪些 model_id 属于“必须成功”的 preload（逗号分隔）。为空则默认“所有 preload 均必须成功”
     STRICT_PRELOAD_REQUIRED_MODEL_IDS = os.getenv("STRICT_PRELOAD_REQUIRED_MODEL_IDS", "").strip()
 
-    # basic 档能力裁剪：逗号分隔（caption,scene,cleanup,embedding,object,ocr,face）
-    # 默认 basic 关闭 caption/scene/cleanup/embedding，保留 face/object/ocr
-    BASIC_DISABLED_CAPABILITIES = os.getenv("BASIC_DISABLED_CAPABILITIES", "caption,scene,cleanup,embedding").strip()
-    
     # ========== 重构：Profile / 设备 / 能力开关 ==========
     
     # 默认设备：cpu | cuda | auto（与 utils.device 约定一致）
     DEFAULT_DEVICE = os.getenv("DEFAULT_DEVICE", "auto").strip().lower() or "auto"
     
-    # 分析档位：basic / standard / enhanced
-    SUPPORTED_PROFILES = ("basic", "standard", "enhanced")
+    # 分析档位：standard / enhanced（已移除 basic）
+    SUPPORTED_PROFILES = ("standard", "enhanced")
     
     # 各能力开关（环境变量优先，用于 ModelManager 判断是否加载）
     # 默认视为「standard 全家桶实例」：全部启用；如需关闭某能力，在环境变量中设为 false
@@ -263,3 +259,11 @@ class Settings:
 # 创建Settings类的实例，供其他文件导入使用
 # 其他文件可以通过 "from config import settings" 来使用这个配置对象
 settings = Settings()
+
+
+def normalize_profile(profile: str) -> str:
+    """将 basic 或非法 profile 规范为 standard，保证下游只收到 standard/enhanced。"""
+    p = (profile or "standard").strip().lower()
+    if p == "basic" or p not in settings.SUPPORTED_PROFILES:
+        return "standard"
+    return p

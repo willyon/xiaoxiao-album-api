@@ -17,7 +17,7 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_FACE_SERVICE_URL || "http://localh
  */
 async function encodeText(text) {
   try {
-    const profile = process.env.AI_ANALYSIS_PROFILE || "basic";
+    const profile = process.env.AI_ANALYSIS_PROFILE || "standard";
     const device = process.env.AI_DEVICE || "auto";
     const response = await withAiSlot(() =>
       axios.post(
@@ -59,7 +59,7 @@ async function encodeText(text) {
  */
 async function annSearchByVector(userId, queryVector, topK = 50) {
   try {
-    const profile = process.env.AI_ANALYSIS_PROFILE || "basic";
+    const profile = process.env.AI_ANALYSIS_PROFILE || "standard";
     const device = process.env.AI_DEVICE || "auto";
     const response = await withAiSlot(() =>
       axios.post(

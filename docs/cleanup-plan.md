@@ -15,10 +15,10 @@
 ---
 
 ## 新增与调整（已确认）
-1. **Python AI 服务新增接口**：`POST /analyze_cleanup`
+1. **Python AI 服务新增接口**：`POST /analyze_quality`
    - 输出 `perceptual_hash`、`sharpness_score`、`aesthetic_score`、`image_embedding` 等指标。
 2. **Node 新增队列**：`cleanupQueue`
-   - 独立 Worker 负责调用 `/analyze_cleanup`、写库、更新清理分组。
+   - 独立 Worker 负责调用 `/analyze_quality`、写库、更新清理分组。
 3. **前端放大预览**：统一继续使用 `PhotoPreview.vue`。
 
 ---
@@ -37,7 +37,7 @@
 
 ---
 
-## Python `/analyze_cleanup` 设计
+## Python `/analyze_quality` 设计
 - 输入：图片二进制（复用现有解码流程）。
 - 输出：
   - `perceptual_hash`（pHash / wavelet hash）
@@ -55,7 +55,7 @@
 
 ### `cleanupIngestor`
 1. 获取图片（高清图优先）。
-2. 调用 `/analyze_cleanup`。
+2. 调用 `/analyze_quality`。
 3. 更新 `images` 新字段。
 4. 调用 `cleanupGroupingService`，生成/更新分组。
 
@@ -88,7 +88,7 @@
 ## 实施步骤
 1. 确认 UI/阈值/回收站策略。
 2. 落库迁移脚本，扩展 `initTableModel.js`。
-3. Python 实现 `/analyze_cleanup` 并部署。
+3. Python 实现 `/analyze_quality` 并部署。
 4. Node 新增 `cleanupQueue`、`cleanupWorker`、`cleanupIngestor`、`cleanupGroupingService`、API。
 5. 编写历史数据回填脚本。
 6. 开发前端页面和 store。

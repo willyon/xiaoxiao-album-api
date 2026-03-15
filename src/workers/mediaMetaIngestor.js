@@ -11,8 +11,6 @@ const timeIt = require("../utils/timeIt");
 const storageService = require("../services/storageService");
 const videoProcessingService = require("../services/videoProcessingService");
 const { updateProgress, updateProgressOnce } = require("../services/mediaProcessingProgressService");
-const { searchIndexQueue } = require("../queues/searchIndexQueue");
-const { cleanupQueue } = require("../queues/cleanupQueue");
 const { mediaAnalysisQueue } = require("../queues/mediaAnalysisQueue");
 const mediaMetadataService = require("../services/mediaMetadataService");
 const { addMediaToSession } = require("../services/uploadSessionService");
@@ -232,47 +230,9 @@ async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, origin
     return;
   }
 
-  const useMediaAnalysisQueue = process.env.USE_MEDIA_ANALYSIS_QUEUE === "true";
-
-  if (useMediaAnalysisQueue) {
-    try {
-      await mediaAnalysisQueue.add(
-        "media-analysis",
-        {
-          imageId,
-          userId,
-          highResStorageKey,
-          originalStorageKey,
-          sessionId,
-          mediaType: mediaType || "image",
-          fileName: fileName || "",
-        },
-        { jobId: `analysis:${userId}:${imageId}` },
-      );
-      if (sessionId) {
-        await updateProgressOnce({
-          sessionId,
-          status: "aiEligibleCount",
-          dedupeKey: imageId,
-        });
-        await updateProgressOnce({
-          sessionId,
-          status: "aiQueuedCount",
-          dedupeKey: imageId,
-        });
-      }
-    } catch (err) {
-      logger.warn({
-        message: "Failed to add media to mediaAnalysisQueue",
-        details: { imageHash, userId, error: err.message },
-      });
-    }
-    return;
-  }
-
   try {
-    await searchIndexQueue.add(
-      process.env.SEARCH_INDEX_QUEUE_NAME,
+    await mediaAnalysisQueue.add(
+      "media-analysis",
       {
         imageId,
         userId,
@@ -282,11 +242,8 @@ async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, origin
         mediaType: mediaType || "image",
         fileName: fileName || "",
       },
-      {
-        jobId: `${userId}:${imageId}`,
-      },
+      { jobId: `analysis:${userId}:${imageId}` },
     );
-
     if (sessionId) {
       await updateProgressOnce({
         sessionId,
@@ -299,36 +256,10 @@ async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, origin
         dedupeKey: imageId,
       });
     }
-  } catch (searchQueueError) {
+  } catch (err) {
     logger.warn({
-      message: "Failed to add image to search index queue",
-      details: {
-        imageHash,
-        userId,
-        error: searchQueueError.message,
-      },
-    });
-  }
-
-  try {
-    await cleanupQueue.add(
-      process.env.CLEANUP_QUEUE_NAME,
-      {
-        userId,
-        imageId,
-        highResStorageKey,
-        originalStorageKey,
-      },
-      { jobId: `cleanup:${userId}:${imageId}` },
-    );
-  } catch (cleanupQueueError) {
-    logger.warn({
-      message: "Failed to add image to cleanup queue",
-      details: {
-        imageHash,
-        userId,
-        error: cleanupQueueError.message,
-      },
+      message: "Failed to add media to mediaAnalysisQueue",
+      details: { imageHash, userId, error: err.message },
     });
   }
 }

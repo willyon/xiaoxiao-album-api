@@ -8,11 +8,11 @@ const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
 const { AGE_GROUP_FRONTEND_TO_BACKEND } = require("../constants/filterMappings");
 const searchService = require("../services/searchService");
-const { addFullUrlToMedia, getMediaDownloadInfo } = require("../services/mediaService");
+const { addFullUrlToMedia } = require("../services/mediaService");
 const faceClusterModel = require("../models/faceClusterModel");
 const pythonSearchClient = require("../services/pythonSearchClient");
 const { parseQueryIntent, mergeFilters } = require("../utils/queryIntentParser");
-const { searchIndexQueue } = require("../queues/searchIndexQueue");
+const { getLocalizedFilterLabel } = require("../utils/filterLabelI18n");
 const logger = require("../utils/logger");
 
 const ALLOWED_EXPRESSION_FILTERS = new Set(["happy", "sad", "anger", "surprise", "neutral"]);
@@ -776,42 +776,6 @@ async function handleGetSearchSuggestions(req, res, next) {
 }
 
 /**
- * 手动触发图片搜索索引
- * POST /search/index-image
- * 注意：这个方法将在 metaIngestor 中集成，这里只是提供接口占位
- */
-async function handleIndexImage(req, res, next) {
-  try {
-    const { userId } = req.user;
-    const { mediaId } = req.body;
-
-    if (!mediaId) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: "error",
-        message: "缺少媒体ID",
-      });
-    }
-
-    logger.info({ message: `手动重新索引媒体请求: mediaId=${mediaId}, userId=${userId}` });
-
-    // 这里应该在 metaIngestor 中处理，直接返回成功
-    // 实际的索引生成会在图片处理流程中自动触发
-    res.sendResponse({
-      data: {
-        message: "重新索引请求已记录，将在图片处理流程中自动执行",
-        mediaId,
-        userId,
-      },
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
  * 获取搜索队列状态
  * GET /search/queue-status
  * 注意：这个方法将在队列服务中实现
@@ -892,6 +856,15 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
       scopeParams: scopeParams.length ? scopeParams : null,
     });
 
+    // 场景/物体按请求语言返回 { value, label }，便于前端直接展示
+    const lang = req.userLanguage || "zh";
+    if (type === "scene" || type === "object") {
+      result.list = (result.list || []).map((v) => ({
+        value: v,
+        label: getLocalizedFilterLabel(type, v, lang),
+      }));
+    }
+
     res.sendResponse({
       data: result,
       messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
@@ -924,61 +897,9 @@ async function handleGetObjectFilterOptionsPaginated(req, res, next) {
   return handleGetFilterOptionsPaginated(req, res, next);
 }
 
-/**
- * 手动索引单个图片
- * POST /search/index-image
- * body: { mediaId } 或 { imageId }
- */
-async function handleIndexMedia(req, res, next) {
-  try {
-    const { userId } = req.user;
-    const mediaId = req.body.mediaId ?? req.body.imageId;
-    if (!mediaId) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: "error",
-        message: "请提供 mediaId 或 imageId",
-      });
-    }
-
-    const mediaInfo = await getMediaDownloadInfo({ userId, imageId: Number(mediaId) });
-    if (!mediaInfo) {
-      throw new CustomError({
-        httpStatus: 404,
-        messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
-        messageType: "error",
-        message: "媒体不存在或无权访问",
-      });
-    }
-
-    await searchIndexQueue.add(
-      process.env.SEARCH_INDEX_QUEUE_NAME || "media-search-index",
-      {
-        imageId: mediaInfo.id,
-        userId,
-        highResStorageKey: mediaInfo.highResStorageKey || null,
-        originalStorageKey: mediaInfo.originalStorageKey || null,
-        sessionId: null,
-        mediaType: mediaInfo.mediaType || "image",
-        fileName: mediaInfo.fileName || "",
-      },
-      { jobId: `manual:${userId}:${mediaInfo.id}:${Date.now()}` },
-    );
-
-    res.sendResponse({
-      data: { mediaId: mediaInfo.id, queued: true },
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
 module.exports = {
   handleSearchMedias,
   handleGetSearchSuggestions,
-  handleIndexMedia,
   handleGetQueueStatus,
   handleGetFilterOptionsPaginated,
   handleGetSceneFilterOptionsPaginated,

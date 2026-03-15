@@ -7,8 +7,7 @@
  * 选项（可多选，不传则清空全部）：
  *   --upload    仅清空媒体上传队列 (mediaUploadQueue)
  *   --meta      仅清空元数据队列 (mediaMetaQueue)
- *   --search    仅清空搜索索引/人脸识别队列 (searchIndexQueue)
- *   --cleanup   仅清空清理分析队列 (cleanupQueue)
+ *   --analysis  仅清空媒体分析队列 (mediaAnalysisQueue)
  *   --all       清空以上全部（默认）
  *   -h, --help  显示帮助
  */
@@ -23,8 +22,7 @@ require("dotenv").config();
 const args = process.argv.slice(2);
 const CLEAR_UPLOAD = args.includes("--upload");
 const CLEAR_META = args.includes("--meta");
-const CLEAR_SEARCH = args.includes("--search");
-const CLEAR_CLEANUP = args.includes("--cleanup");
+const CLEAR_ANALYSIS = args.includes("--analysis");
 const CLEAR_ALL = args.includes("--all");
 const HELP = args.includes("--help") || args.includes("-h");
 
@@ -34,23 +32,21 @@ if (HELP) {
   console.log("选项（可多选，不传则清空全部）：");
   console.log("  --upload    仅清空图片上传队列");
   console.log("  --meta      仅清空元数据队列");
-  console.log("  --search    仅清空搜索索引/人脸识别队列");
-  console.log("  --cleanup   仅清空清理分析队列");
+  console.log("  --analysis  仅清空媒体分析队列");
   console.log("  --all       清空以上全部");
   console.log("  -h, --help  显示帮助");
   console.log("");
   console.log("示例:");
-  console.log("  node scripts/development/clear-queues.js           # 清空全部");
-  console.log("  node scripts/development/clear-queues.js --search  # 仅清空 search 队列");
+  console.log("  node scripts/development/clear-queues.js             # 清空全部");
+  console.log("  node scripts/development/clear-queues.js --analysis # 仅清空 analysis 队列");
   console.log("  node scripts/development/clear-queues.js --upload --meta");
   process.exit(0);
 }
 
-const clearAll = !CLEAR_UPLOAD && !CLEAR_META && !CLEAR_SEARCH && !CLEAR_CLEANUP;
+const clearAll = !CLEAR_UPLOAD && !CLEAR_META && !CLEAR_ANALYSIS;
 const doUpload = clearAll || CLEAR_UPLOAD || CLEAR_ALL;
 const doMeta = clearAll || CLEAR_META || CLEAR_ALL;
-const doSearch = clearAll || CLEAR_SEARCH || CLEAR_ALL;
-const doCleanup = clearAll || CLEAR_CLEANUP || CLEAR_ALL;
+const doAnalysis = clearAll || CLEAR_ANALYSIS || CLEAR_ALL;
 
 async function clearQueue(queue, name) {
   const stats = {
@@ -67,8 +63,7 @@ async function clearQueue(queue, name) {
 async function main() {
   const { mediaUploadQueue } = require(path.join(projectRoot, "src", "queues", "mediaUploadQueue"));
   const { mediaMetaQueue } = require(path.join(projectRoot, "src", "queues", "mediaMetaQueue"));
-  const { searchIndexQueue } = require(path.join(projectRoot, "src", "queues", "searchIndexQueue"));
-  const { cleanupQueue } = require(path.join(projectRoot, "src", "queues", "cleanupQueue"));
+  const { mediaAnalysisQueue } = require(path.join(projectRoot, "src", "queues", "mediaAnalysisQueue"));
 
   console.log("🚀 开始清空 BullMQ 队列...");
   if (doUpload) {
@@ -81,15 +76,10 @@ async function main() {
     const s = await clearQueue(mediaMetaQueue, "meta");
     console.log(`   ✅ 元数据队列: 等待${s.waiting} | 活跃${s.active} | 完成${s.completed} | 失败${s.failed} | 延迟${s.delayed}`);
   }
-  if (doSearch) {
-    console.log("👤 清空搜索索引/人脸识别队列...");
-    const s = await clearQueue(searchIndexQueue, "search");
-    console.log(`   ✅ 搜索索引队列: 等待${s.waiting} | 活跃${s.active} | 完成${s.completed} | 失败${s.failed} | 延迟${s.delayed}`);
-  }
-  if (doCleanup) {
-    console.log("🧹 清空清理分析队列...");
-    const s = await clearQueue(cleanupQueue, "cleanup");
-    console.log(`   ✅ 清理队列: 等待${s.waiting} | 活跃${s.active} | 完成${s.completed} | 失败${s.failed} | 延迟${s.delayed}`);
+  if (doAnalysis) {
+    console.log("🔬 清空媒体分析队列...");
+    const s = await clearQueue(mediaAnalysisQueue, "analysis");
+    console.log(`   ✅ 媒体分析队列: 等待${s.waiting} | 活跃${s.active} | 完成${s.completed} | 失败${s.failed} | 延迟${s.delayed}`);
   }
   console.log("🎉 队列清理完成");
 }

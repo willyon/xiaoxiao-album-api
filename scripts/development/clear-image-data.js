@@ -173,8 +173,7 @@ async function clearAllQueueJobs() {
     const queueNames = [
       process.env.MEDIA_UPLOAD_QUEUE_NAME || "media-upload",
       process.env.MEDIA_META_QUEUE_NAME || "media-meta",
-      process.env.SEARCH_INDEX_QUEUE_NAME || "media-search-index",
-      process.env.CLEANUP_QUEUE_NAME || "cleanupQueue",
+      process.env.MEDIA_ANALYSIS_QUEUE_NAME || "mediaAnalysisQueue",
     ];
 
     let totalDeletedKeys = 0;

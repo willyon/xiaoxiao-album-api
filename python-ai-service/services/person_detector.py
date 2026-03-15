@@ -30,10 +30,7 @@ class PersonDetector:
         self._manager = model_manager  # 若为 None，detect() 内通过 get_model_manager() 获取
         self._profile = profile or "standard"
         self._device = device or "cpu"
-        logger.info(
-            "✅ PersonDetector 初始化完成（与 object 共用 YOLO，profile=%s）",
-            self._profile,
-        )
+        logger.info("✅ PersonDetector 初始化完成（与 object 共用 YOLO，profile=%s）" % (self._profile,))
 
     def _get_object_detector(self):
         """获取与物体检测共用的 YOLO 检测器实例。"""

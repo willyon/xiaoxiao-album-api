@@ -22,7 +22,7 @@ from config import settings
 class ModelConfig:
     model_id: str
     task_type: str
-    profile_scope: str  # basic | standard | enhanced | shared
+    profile_scope: str  # standard | enhanced | shared
     local_path: str     # 相对 python-ai-service 根目录的路径
     runtime: str        # onnxruntime | insightface | paddleocr | transformers | other
     device_support: str  # cpu|mps|cuda|mixed
@@ -79,7 +79,7 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         local_path="models/cache/paddleocr",
         runtime="paddleocr",
         device_support="cpu",
-        load_strategy="preload",
+        load_strategy="lazy_load",
         is_primary=True,
         notes="PaddleOCR PP-OCRv5，standard/enhanced 共用",
         source_type="external_managed",
@@ -112,7 +112,7 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         fallback_model_id="object.standard.yolo.11x",
         notes="物体检测 enhanced 档，YOLO26l；失败回退 standard 11x",
     ),
-    # 跨模态 embedding standard（SigLIP2 standard）
+    # 跨模态 embedding standard（SigLIP2 so400m 384，输出 1152 维，与 aesthetic_head 一致）
     "embedding.standard.siglip2.base": ModelConfig(
         model_id="embedding.standard.siglip2.base",
         task_type="image_embedding",
@@ -122,7 +122,7 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         device_support="cpu",
         load_strategy="preload",
         is_primary=True,
-        notes="SigLIP2 standard 导出物（image/text encoder + metadata/tokenizer）",
+        notes="SigLIP2 standard（so400m 384，1152 维），与 aesthetic_head 一致",
     ),
     # 跨模态 embedding enhanced（SigLIP2 enhanced）
     "embedding.enhanced.siglip2.so400m": ModelConfig(
@@ -174,10 +174,10 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         fallback_model_id="caption.standard.qwen2_5_vl.3b_lazy",
         notes="enhanced 档以 Qwen2.5-VL-7B 为主，失败回退 standard 3B 懒加载模型；本地资源不足时可依赖 fallback",
     ),
-    # 清理美学评分头
-    "cleanup.shared.aesthetic_head.musiq": ModelConfig(
-        model_id="cleanup.shared.aesthetic_head.musiq",
-        task_type="cleanup",
+    # 质量/美学评分头（原 cleanup 能力）；两 key 同源，便于 health/前端用 quality 命名
+    "quality.shared.aesthetic_head.musiq": ModelConfig(
+        model_id="quality.shared.aesthetic_head.musiq",
+        task_type="quality",
         profile_scope="shared",
         local_path="models/managed/aesthetic_head_musiq/siglip_aesthetic_head.onnx",
         runtime="onnxruntime",
@@ -185,6 +185,20 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         load_strategy="preload",
         is_primary=True,
         notes="SigLIP embedding → 审美分的 ONNX 小头",
+        source_type="local_managed",
+        provider="onnxruntime",
+        is_optional=False,
+    ),
+    "cleanup.shared.aesthetic_head.musiq": ModelConfig(
+        model_id="quality.shared.aesthetic_head.musiq",
+        task_type="quality",
+        profile_scope="shared",
+        local_path="models/managed/aesthetic_head_musiq/siglip_aesthetic_head.onnx",
+        runtime="onnxruntime",
+        device_support="cpu",
+        load_strategy="preload",
+        is_primary=True,
+        notes="SigLIP embedding → 审美分的 ONNX 小头（兼容旧 key）",
         source_type="local_managed",
         provider="onnxruntime",
         is_optional=False,
@@ -340,9 +354,9 @@ def resolve_model_id(profile: str, task_type: str) -> Optional[str]:
     """
     根据 profile 与 task_type 解析首选 model_id。
 
-    规则（首版简单实现）：
-    - 先优先匹配 profile_scope == profile 的主模型
-    - 若找不到，退化到 profile_scope == 'shared'
+    规则：
+    - 先优先匹配 profile_scope == profile 的主模型（standard / enhanced）
+    - 若仍无，退化到 profile_scope == 'shared'
     """
     profile = (profile or "standard").lower()
     # 1) 精确 profile 匹配

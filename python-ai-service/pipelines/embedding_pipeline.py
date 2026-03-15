@@ -32,7 +32,7 @@ def encode_image_for_search(
         payload = bundle.image_model.encode_image(image_bgr)
         return payload or {}
     except Exception as exc:
-        logger.warning("encode_image_for_search 失败: %s", exc)
+        logger.warning("encode_image_for_search 失败: %s" % exc)
         return {}
 
 
@@ -56,6 +56,6 @@ def encode_text_for_search(
         payload = bundle.text_model.encode_text(text)  # type: ignore[union-attr]
         return payload or {}
     except Exception as exc:
-        logger.warning("encode_text_for_search 失败: %s", exc)
+        logger.warning("encode_text_for_search 失败: %s" % exc)
         return {}
 

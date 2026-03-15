@@ -70,7 +70,7 @@ def _detect_image_format(image_bytes):
         
         # 未知的 ftyp 容器格式（可能是其他变种）
         # 返回 unknown，让降级机制处理
-        logger.debug(f"检测到未知的 ftyp brand: {brand}")
+        logger.info("检测到未知的 ftyp brand: %s" % brand)
     
     return 'unknown'
 
@@ -177,7 +177,7 @@ def convert_to_opencv(image_bytes):
                     logger.info(f"✅ Pillow 解码未知格式成功: {bgr_array.shape}")
                     return bgr_array, None
                 except Exception as pillow_error:
-                    logger.debug(f"Pillow 解码失败: {pillow_error}")
+                    logger.info("Pillow 解码失败: %s" % pillow_error)
             
             # 3. 尝试 pillow-heif（可能是未识别的 HEIC 变种）
             if HEIF_AVAILABLE:
@@ -188,7 +188,7 @@ def convert_to_opencv(image_bytes):
                     logger.info(f"✅ pillow-heif 解码未知格式成功: {bgr_array.shape}")
                     return bgr_array, None
                 except Exception as heif_error:
-                    logger.debug(f"pillow-heif 解码失败: {heif_error}")
+                    logger.info("pillow-heif 解码失败: %s" % heif_error)
             
             # 所有解码器都失败
             error_msg = "图片格式不支持：所有解码器均无法识别"

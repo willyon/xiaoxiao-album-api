@@ -63,10 +63,10 @@ def decode_image(image_bytes: bytes) -> Tuple[Optional[np.ndarray], Optional[str
             pil = ImageOps.exif_transpose(pil)
             rgb = np.array(pil)
             bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-            logger.debug("decode_image: PIL+EXIF 解码成功, shape=%s", bgr.shape)
+            logger.info("decode_image: PIL+EXIF 解码成功, shape=%s" % (bgr.shape,))
             return bgr, None
         except Exception as e:
-            logger.debug("decode_image: PIL 路径失败，回退 convert_to_opencv: %s", e)
+            logger.info("decode_image: PIL 路径失败，回退 convert_to_opencv: %s" % (e,))
 
     # 回退到现有逻辑（无 EXIF 校正）
     image, error = convert_to_opencv(image_bytes)

@@ -50,6 +50,7 @@ function finalizeMediaAnalysis({
   const personCount = faceData.personCount ?? null;
   const primaryFaceQuality = faceData.primaryFaceQuality ?? null;
   const primaryExpression = faceData.primaryExpression ?? null;
+  const primaryExpressionConfidence = faceData.primaryExpressionConfidence ?? null;
   const aestheticScore = cleanupData.aestheticScore ?? null;
   const sharpnessScore = cleanupData.sharpnessScore ?? null;
   const hasCaption = typeof captionData.caption === "string" ? 1 : null;
@@ -61,10 +62,10 @@ function finalizeMediaAnalysis({
     `
     INSERT INTO media_analysis (
       media_id, analysis_status, analysis_version, analyzed_at,
-      face_count, person_count, primary_face_quality, primary_expression,
+      face_count, person_count, primary_face_quality, primary_expression, primary_expression_confidence,
       aesthetic_score, sharpness_score, has_caption, has_ocr, scene_primary, environment, last_error, last_error_at
     )
-    VALUES (?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+    VALUES (?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
     ON CONFLICT(media_id) DO UPDATE SET
       analysis_status = 'done',
       analysis_version = excluded.analysis_version,
@@ -73,6 +74,7 @@ function finalizeMediaAnalysis({
       person_count = COALESCE(excluded.person_count, media_analysis.person_count),
       primary_face_quality = COALESCE(excluded.primary_face_quality, media_analysis.primary_face_quality),
       primary_expression = COALESCE(excluded.primary_expression, media_analysis.primary_expression),
+      primary_expression_confidence = COALESCE(excluded.primary_expression_confidence, media_analysis.primary_expression_confidence),
       aesthetic_score = COALESCE(excluded.aesthetic_score, media_analysis.aesthetic_score),
       sharpness_score = COALESCE(excluded.sharpness_score, media_analysis.sharpness_score),
       has_caption = COALESCE(excluded.has_caption, media_analysis.has_caption),
@@ -90,6 +92,7 @@ function finalizeMediaAnalysis({
     personCount,
     primaryFaceQuality,
     primaryExpression,
+    primaryExpressionConfidence,
     aestheticScore,
     sharpnessScore,
     hasCaption,

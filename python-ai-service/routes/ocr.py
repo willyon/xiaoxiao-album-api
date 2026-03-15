@@ -3,7 +3,7 @@
 """
 OCR 文字识别路由：POST /ocr
 Form: image, profile?, device?；统一 decode_image + normalize_device + ocr_pipeline
-basic 且 OCR 关闭时返回 { "blocks": [] }
+OCR 关闭时返回 { "blocks": [] }
 """
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
@@ -13,6 +13,7 @@ from logger import logger
 from pipelines.ocr_pipeline import analyze_ocr
 from schemas.error_schema import ErrorBody
 from schemas.ocr_schema import OcrBlock, OcrResponse
+from config import normalize_profile
 from services.model_manager import get_model_manager
 from utils.device import normalize_device
 from utils.image_decode import decode_image
@@ -38,6 +39,7 @@ async def ocr_recognize(
 ):
     """OCR 文字识别，返回 blocks（text, bbox 原图坐标, confidence）。无引擎时返回空 blocks。"""
     try:
+        profile = normalize_profile(profile)
         resolved, err = normalize_device(device)
         set_request_log_context(request, profile=profile, requested_device=device, resolved_device=resolved)
         if err:

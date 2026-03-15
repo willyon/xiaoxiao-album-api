@@ -33,5 +33,5 @@ def analyze_ocr(
         blocks = run_with_timeout(engine.recognize, timeout, image)
         return {"blocks": blocks}
     except Exception as e:
-        logger.warning("ocr_pipeline 推理失败: %s", e)
+        logger.warning("ocr_pipeline 推理失败: %s" % e)
         return {"blocks": []}

@@ -18,8 +18,6 @@ const initGracefulShutdown = require("./src/utils/gracefulShutdown");
 
 const { closeMediaUploadQueue } = require("./src/queues/mediaUploadQueue");
 const { closeMediaMetaQueue } = require("./src/queues/mediaMetaQueue");
-const { closeSearchIndexQueue } = require("./src/queues/searchIndexQueue");
-const { closeCleanupQueue } = require("./src/queues/cleanupQueue");
 const { closeMediaAnalysisQueue } = require("./src/queues/mediaAnalysisQueue");
 
 // 应用服务安全中间件
@@ -176,8 +174,6 @@ initGracefulShutdown({
     // 关闭 BullMQ 的 Queue 及其底层连接（API 进程只负责入队）
     async () => closeMediaUploadQueue(),
     async () => closeMediaMetaQueue(),
-    async () => closeSearchIndexQueue(),
-    async () => closeCleanupQueue(),
     async () => closeMediaAnalysisQueue(),
   ],
 });

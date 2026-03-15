@@ -107,7 +107,18 @@ def _analyze_image(image):
     try:
         # 获取分析器
         face_detector, attribute_analyzer, expression_analyzer, person_detector = _get_face_analyzers()
-        
+        if face_detector is None or person_detector is None:
+            logger.error(
+                "人脸/人体分析器未就绪（face_detector 或 person_detector 为 None），返回空结果",
+                details={"face_detector": face_detector is not None, "person_detector": person_detector is not None},
+            )
+            return {
+                "face_count": 0,
+                "person_count": 0,
+                "faces": [],
+                "summary": {"expressions": [], "ages": [], "genders": []},
+            }
+
         # 1. 人脸检测（InsightFace SCRFD）- 返回所有检测到的人脸
         detection_result = face_detector.detect(image)
         all_faces = detection_result['all_faces']

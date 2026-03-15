@@ -36,5 +36,5 @@ def analyze_scene(
             "confidence": float(result.get("confidence", 0.0)),
         }
     except Exception as e:
-        logger.warning("scene_pipeline 推理失败: %s", e)
+        logger.warning("scene_pipeline 推理失败: %s" % e)
         return {"primary_scene": None, "scene_tags": [], "confidence": 0.0}

@@ -12,6 +12,7 @@ from logger import logger
 from pipelines.scene_pipeline import analyze_scene
 from schemas.error_schema import ErrorBody
 from schemas.scene_schema import SceneResponse
+from config import normalize_profile
 from services.model_manager import get_model_manager
 from utils.device import normalize_device
 from utils.image_decode import decode_image
@@ -37,6 +38,7 @@ async def analyze_scene_route(
 ):
     """场景分类，返回 primary_scene + scene_tags。无模型时返回空结构。"""
     try:
+        profile = normalize_profile(profile)
         resolved, err = normalize_device(device)
         set_request_log_context(request, profile=profile, requested_device=device, resolved_device=resolved)
         if err:

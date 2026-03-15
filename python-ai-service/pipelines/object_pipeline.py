@@ -48,5 +48,5 @@ def analyze_objects(
             })
         return {"objects": out}
     except Exception as e:
-        logger.warning("object_pipeline 推理失败: %s", e)
+        logger.warning("object_pipeline 推理失败: %s" % e)
         return {"objects": []}

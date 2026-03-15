@@ -12,6 +12,7 @@ from logger import logger
 from pipelines.caption_pipeline import analyze_caption
 from schemas.caption_schema import CaptionResponse
 from schemas.error_schema import ErrorBody
+from config import normalize_profile
 from services.model_manager import get_model_manager
 from utils.device import normalize_device
 from utils.image_decode import decode_image
@@ -37,6 +38,7 @@ async def analyze_caption_route(
 ):
     """分析图片生成 caption 与 keywords。无模型时返回空 caption/keywords。"""
     try:
+        profile = normalize_profile(profile)
         resolved, err = normalize_device(device)
         set_request_log_context(request, profile=profile, requested_device=device, resolved_device=resolved)
         if err:

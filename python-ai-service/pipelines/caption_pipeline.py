@@ -43,7 +43,7 @@ def analyze_caption(
         keywords = model.extract_keywords(caption) if hasattr(model, "extract_keywords") else []
         return {"caption": caption or "", "keywords": keywords or []}
     except Exception as e:
-        logger.warning("caption_pipeline 推理失败: %s", e)
+        logger.warning("caption_pipeline 推理失败: %s" % e)
         if (profile or "standard").lower() == "standard":
             return _structured_caption(image, profile, device, model_manager)
         return {"caption": "", "keywords": []}

@@ -10,7 +10,6 @@ const authMiddleware = require("../middlewares/authMiddleware");
 const {
   handleSearchMedias,
   handleGetSearchSuggestions,
-  handleIndexMedia,
   handleGetQueueStatus,
   handleGetFilterOptionsPaginated,
   handleGetSceneFilterOptionsPaginated,
@@ -30,9 +29,6 @@ router.get("/suggestions", handleGetSearchSuggestions);
 router.get("/filters", handleGetFilterOptionsPaginated);
 router.get("/filters/scenes", handleGetSceneFilterOptionsPaginated);
 router.get("/filters/objects", handleGetObjectFilterOptionsPaginated);
-
-// 手动索引单个图片
-router.post("/index-image", handleIndexMedia);
 
 // 获取队列状态
 router.get("/queue-status", handleGetQueueStatus);

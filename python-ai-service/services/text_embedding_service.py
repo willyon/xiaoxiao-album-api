@@ -58,19 +58,32 @@ def encode_text(text: str) -> Optional[Dict[str, object]]:
         
         # 运行 ONNX 模型
         outputs = text_session.run(None, inputs)
-        
+
         if not outputs or len(outputs) == 0:
             logger.error("文本编码器无输出")
             return None
-        
-        # 提取向量（第一个输出）
-        vector = outputs[0].astype(np.float32)
-        
-        # 如果输出是 [batch_size, 1152]，取第一个（batch_size=1）
-        if len(vector.shape) > 1:
-            vector = vector[0]
-        
-        vector = vector.flatten()
+
+        # 与图像向量一致使用 1152 维；文本编码器可能有多路输出（如 text_embeds [1,4,1152] + pooled [1,1152]）
+        EXPECTED_DIM = 1152
+        vector = None
+        for out in outputs:
+            arr = np.asarray(out).astype(np.float32)
+            if arr.size == EXPECTED_DIM:
+                vector = arr.flatten()
+                break
+            if arr.shape == (1, EXPECTED_DIM):
+                vector = arr[0]
+                break
+        if vector is None and len(outputs) > 0:
+            # 兼容：若首输出为 (1, seq, 1152)，取首 token 作为句子向量
+            first = np.asarray(outputs[0]).astype(np.float32)
+            if first.ndim == 3 and first.shape[2] == EXPECTED_DIM:
+                vector = first[0, 0, :]
+            else:
+                vector = first.flatten()[:EXPECTED_DIM] if first.size >= EXPECTED_DIM else None
+        if vector is None:
+            logger.error("文本编码器未得到 1152 维向量")
+            return None
         
         # L2 归一化（与图像向量保持一致）
         norm = np.linalg.norm(vector)

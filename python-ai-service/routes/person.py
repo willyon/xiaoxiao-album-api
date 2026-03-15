@@ -12,6 +12,7 @@ from constants.error_codes import AI_DEVICE_NOT_SUPPORTED, AI_SERVICE_ERROR, AI_
 from logger import logger
 from pipelines.person_pipeline import analyze_person as analyze_person_pipeline
 from schemas.error_schema import ErrorBody
+from config import normalize_profile
 from services.model_manager import get_model_manager
 from utils.device import normalize_device
 from utils.errors import AiTimeoutError, AiServiceError
@@ -35,6 +36,7 @@ async def analyze_person_route(
     - 输出：与原 person_analysis_service 一致的结果结构
     """
     try:
+        profile = normalize_profile(profile)
         resolved, err = normalize_device(device)
         set_request_log_context(request, profile=profile, requested_device=device, resolved_device=resolved)
         if err:

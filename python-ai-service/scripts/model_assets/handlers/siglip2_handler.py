@@ -60,8 +60,10 @@ class Siglip2Handler(BaseModelAssetHandler):
     family_name = "siglip2"
 
     # 第一版先把默认 model_id 写死在常量里，后续可以抽到配置
+    # standard 与 enhanced 现均使用 so400m 384（1152 维，与 aesthetic_head 一致）
     DEFAULT_MODELS: Dict[str, str] = {
-        "standard": "google/siglip2-base-patch16-224",
+        # "standard": "google/siglip2-base-patch16-224",  # 原 base 224，已不用
+        "standard": "google/siglip2-so400m-patch14-384",
         "enhanced": "google/siglip2-so400m-patch14-384",
     }
 

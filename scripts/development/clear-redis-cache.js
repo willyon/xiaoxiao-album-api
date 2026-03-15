@@ -29,7 +29,7 @@ require("dotenv").config();
 const { getRedisClient } = require(path.join(projectRoot, "src", "services", "redisClient"));
 const { mediaUploadQueue, closeMediaUploadQueue } = require(path.join(projectRoot, "src", "queues", "mediaUploadQueue"));
 const { mediaMetaQueue, closeMediaMetaQueue } = require(path.join(projectRoot, "src", "queues", "mediaMetaQueue"));
-const { searchIndexQueue, closeSearchIndexQueue } = require(path.join(projectRoot, "src", "queues", "searchIndexQueue"));
+const { mediaAnalysisQueue, closeMediaAnalysisQueue } = require(path.join(projectRoot, "src", "queues", "mediaAnalysisQueue"));
 
 /**
  * 清空 BullMQ 队列数据
@@ -66,18 +66,18 @@ async function clearBullMQQueues() {
       `     ✅ 清理: 等待${metaStats.waiting} | 活跃${metaStats.active} | 完成${metaStats.completed} | 失败${metaStats.failed} | 延迟${metaStats.delayed}`,
     );
 
-    // 清空搜索索引队列
-    console.log("  👤 清空搜索索引队列...");
-    const searchStats = {
-      waiting: await searchIndexQueue.clean(0, 10000, "waiting"),
-      active: await searchIndexQueue.clean(0, 10000, "active"),
-      completed: await searchIndexQueue.clean(0, 10000, "completed"),
-      failed: await searchIndexQueue.clean(0, 10000, "failed"),
-      delayed: await searchIndexQueue.clean(0, 10000, "delayed"),
+    // 清空媒体分析队列
+    console.log("  🔬 清空媒体分析队列...");
+    const analysisStats = {
+      waiting: await mediaAnalysisQueue.clean(0, 10000, "waiting"),
+      active: await mediaAnalysisQueue.clean(0, 10000, "active"),
+      completed: await mediaAnalysisQueue.clean(0, 10000, "completed"),
+      failed: await mediaAnalysisQueue.clean(0, 10000, "failed"),
+      delayed: await mediaAnalysisQueue.clean(0, 10000, "delayed"),
     };
-    await searchIndexQueue.drain(true);
+    await mediaAnalysisQueue.drain(true);
     console.log(
-      `     ✅ 清理: 等待${searchStats.waiting} | 活跃${searchStats.active} | 完成${searchStats.completed} | 失败${searchStats.failed} | 延迟${searchStats.delayed}`,
+      `     ✅ 清理: 等待${analysisStats.waiting} | 活跃${analysisStats.active} | 完成${analysisStats.completed} | 失败${analysisStats.failed} | 延迟${analysisStats.delayed}`,
     );
 
     console.log("  ✅ BullMQ 队列数据清理完成");
@@ -271,7 +271,7 @@ async function main() {
     // 关闭所有连接
     await closeMediaUploadQueue().catch(() => {});
     await closeMediaMetaQueue().catch(() => {});
-    await closeSearchIndexQueue().catch(() => {});
+    await closeMediaAnalysisQueue().catch(() => {});
 
     if (redisClient) {
       await redisClient.quit().catch(() => {});

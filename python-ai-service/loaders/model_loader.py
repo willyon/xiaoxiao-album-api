@@ -12,9 +12,25 @@ AI 模型统一加载器
 5. SigLIP2 - 图像与文本多模态向量化
 """
 
+import os
 import time
 import json
+import urllib.request
 from pathlib import Path
+
+# 在导入 emotiefflib 前打补丁：使其使用 EFFLIB_HOME（项目 models/cache/emotiefflib）而非 ~/.emotiefflib
+import emotiefflib.utils as _eff_utils
+
+def _emotiefflib_download_model(model_file: str, path_in_repo: str) -> str:
+    cache_dir = os.environ.get("EFFLIB_HOME") or os.path.join(os.path.expanduser("~"), ".emotiefflib")
+    os.makedirs(cache_dir, exist_ok=True)
+    fpath = os.path.join(cache_dir, model_file)
+    if not os.path.isfile(fpath):
+        url = "https://github.com/sb-ai-lab/EmotiEffLib/blob/main/" + path_in_repo + model_file + "?raw=true"
+        urllib.request.urlretrieve(url, fpath)
+    return fpath
+
+_eff_utils.download_model = _emotiefflib_download_model
 
 import insightface
 import onnxruntime as ort
@@ -363,17 +379,27 @@ def _load_required_onnx(model_path: Path, providers, model_name: str):
     return _create_onnx_session(model_path, providers)
 
 
+def _get_insightface_root():
+    """InsightFace 模型根目录：优先环境变量，否则用项目内 models/cache/insightface（与 app._setup_model_cache_env 一致）。"""
+    root = os.environ.get("INSIGHTFACE_HOME")
+    if root:
+        return root
+    base = Path(__file__).resolve().parent.parent  # python-ai-service 根目录
+    return str(base / "models" / "cache" / "insightface")
+
+
 def _create_insightface_app(providers):
-    """创建 InsightFace 会话，GPU 失败自动回退 CPU。"""
+    """创建 InsightFace 会话，GPU 失败自动回退 CPU。显式传 root= 确保用项目缓存而非 ~/.insightface。"""
     ctx_id = 0 if settings.USE_GPU else -1
+    root = _get_insightface_root()
     try:
-        app = insightface.app.FaceAnalysis(providers=providers)
+        app = insightface.app.FaceAnalysis(providers=providers, root=root)
         app.prepare(ctx_id=ctx_id, det_size=settings.FACE_DET_SIZE)
         return app
     except Exception as e:
         if ctx_id != -1:
             logger.warning("InsightFace GPU 加载失败，回退 CPU", details={"error": str(e)})
-            app = insightface.app.FaceAnalysis(providers=['CPUExecutionProvider'])
+            app = insightface.app.FaceAnalysis(providers=['CPUExecutionProvider'], root=root)
             app.prepare(ctx_id=-1, det_size=settings.FACE_DET_SIZE)
             return app
         raise

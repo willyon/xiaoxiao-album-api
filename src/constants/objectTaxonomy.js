@@ -114,6 +114,7 @@ const OBJECT_TAXONOMY = {
   backpack: { canonical: "backpack", category: "object", zh: "背包" },
   suitcase: { canonical: "suitcase", category: "object", zh: "行李箱" },
   umbrella: { canonical: "umbrella", category: "object", zh: "雨伞" },
+  sink: { canonical: "sink", category: "object", zh: "水槽" },
 };
 
 /**

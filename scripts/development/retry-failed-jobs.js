@@ -1,9 +1,9 @@
 /*
  * 重试失败任务的脚本
- * 用于手动重试各 BullMQ 队列中失败的任务（upload / meta / search / cleanup）
+ * 用于手动重试各 BullMQ 队列中失败的任务（upload / meta / analysis）
  *
  * 用法: node scripts/development/retry-failed-jobs.js [queueName]
- * 队列: all | upload | meta | search | cleanup（默认 all）
+ * 队列: all | upload | meta | analysis（默认 all）
  */
 
 const { Queue } = require("bullmq");
@@ -30,16 +30,10 @@ async function retryFailedJobs(queueName = "all") {
       queue: new Queue(process.env.MEDIA_META_QUEUE_NAME || "media-meta", { connection }),
     });
   }
-  if (queueName === "all" || queueName === "search") {
+  if (queueName === "all" || queueName === "analysis") {
     queuesToRetry.push({
-      name: "searchIndexQueue",
-      queue: new Queue(process.env.SEARCH_INDEX_QUEUE_NAME || "media-search-index", { connection }),
-    });
-  }
-  if (queueName === "all" || queueName === "cleanup") {
-    queuesToRetry.push({
-      name: "cleanupQueue",
-      queue: new Queue(process.env.CLEANUP_QUEUE_NAME || "cleanupQueue", { connection }),
+      name: "mediaAnalysisQueue",
+      queue: new Queue(process.env.MEDIA_ANALYSIS_QUEUE_NAME || "mediaAnalysisQueue", { connection }),
     });
   }
 
@@ -95,11 +89,11 @@ async function retryFailedJobs(queueName = "all") {
 }
 
 const queueName = process.argv[2] || "all";
-const validQueues = ["all", "upload", "meta", "search", "cleanup"];
+const validQueues = ["all", "upload", "meta", "analysis"];
 
 if (!validQueues.includes(queueName)) {
   console.log("用法: node scripts/development/retry-failed-jobs.js [queueName]");
-  console.log("\n队列: all | upload | meta | search | cleanup（默认 all）");
+  console.log("\n队列: all | upload | meta | analysis（默认 all）");
   process.exit(1);
 }
 

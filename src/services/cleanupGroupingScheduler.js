@@ -63,7 +63,10 @@ function _executeRebuild(userId) {
       const summary = cleanupGroupingService.rebuildCleanupGroups({ userId });
       logger.info({ message: "分组去抖重建完成", details: { userId, summary } });
     } catch (e) {
-      logger.warn({ message: "分组去抖重建失败", details: { userId, error: e.message } });
+      const hint = /no such table:.*\.images/i.test(e.message)
+        ? " 当前代码使用 media 表；若报 main.images 请确认数据库已迁移或已用 initTableModel 初始化，无旧 trigger/view 引用 images。"
+        : "";
+      logger.warn({ message: "分组去抖重建失败", details: { userId, error: e.message + hint } });
     }
 }
 

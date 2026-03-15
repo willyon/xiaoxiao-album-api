@@ -175,7 +175,7 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
     // 3. 检查 Python 服务是否可用
     try {
       const healthCheck = await axios.get(`${PYTHON_SERVICE_URL}/health`, {
-        timeout: 5000, // 5秒超时
+        timeout: 30000, // 30秒（enhanced 档启动/加载大模型时可能较慢）
       });
       if (!healthCheck.data?.status || healthCheck.data.status !== "healthy") {
         throw new Error(`Python 服务健康检查失败: ${JSON.stringify(healthCheck.data)}`);

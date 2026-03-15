@@ -16,7 +16,7 @@ const {
 } = require("../services/uploadSessionService");
 const CustomError = require("../errors/customError");
 const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
-const { searchIndexQueue } = require("../queues/searchIndexQueue");
+const { mediaAnalysisQueue } = require("../queues/mediaAnalysisQueue");
 const { getMediaDownloadInfo } = require("../services/mediaService");
 const { publishProgressSnapshot } = require("../services/mediaProcessingProgressService");
 
@@ -190,8 +190,8 @@ const handleRetrySessionFailures = async (req, res, next) => {
         continue;
       }
 
-      await searchIndexQueue.add(
-        process.env.SEARCH_INDEX_QUEUE_NAME,
+      await mediaAnalysisQueue.add(
+        "media-analysis",
         {
           imageId: mediaInfo.id,
           userId,
@@ -201,9 +201,7 @@ const handleRetrySessionFailures = async (req, res, next) => {
           mediaType: mediaInfo.mediaType || "image",
           fileName: failure.fileName || "",
         },
-        {
-          jobId: `retry:${userId}:${mediaInfo.id}:${Date.now()}`,
-        },
+        { jobId: `retry:${userId}:${mediaInfo.id}:${Date.now()}` },
       );
 
       retriedMediaIds.push(String(mediaInfo.id));

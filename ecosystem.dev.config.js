@@ -118,7 +118,7 @@ pm2 start ecosystem.dev.config.js
 📋 单独管理开发服务:
 - 重启 API 服务: pm2 restart app-service-dev
 - 重启 Python AI 服务: pm2 restart python-ai-service-dev
-- 重启所有 Workers: pm2 restart media-upload-worker-dev media-meta-worker-dev search-index-worker-dev
+- 重启所有 Workers: pm2 restart media-upload-worker-dev media-meta-worker-dev media-analysis-worker-dev
 
 📋 开发调试:
 - 查看 API 日志: pm2 logs app-service-dev

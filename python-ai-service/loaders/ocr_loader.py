@@ -26,14 +26,20 @@ def load_ocr_model():
             ocr_loaded = False
             return
 
-        from paddleocr import PaddleOCR
-
-        # 允许通过模型注册表指定 PaddleOCR 缓存目录（阶段 4：可选增强）
+        # 在 import 前强制指定缓存目录。PaddleX 在 import 时从 paddlex.utils.cache 读 PADDLE_PDX_CACHE_HOME
         cfg = get_model_config("ocr.shared.paddleocr.ppocrv5")
         if cfg and cfg.local_path:
-            resolved_home = resolve_local_path(cfg.local_path)
-            # PaddleOCR 识别会在 PADDLEOCR_HOME 下缓存下载的模型文件
-            os.environ["PADDLEOCR_HOME"] = os.path.expanduser(resolved_home)
+            resolved_home = os.path.abspath(os.path.expanduser(resolve_local_path(cfg.local_path)))
+            os.environ["PADDLE_PDX_CACHE_HOME"] = resolved_home
+            os.environ["PADDLEOCR_HOME"] = resolved_home
+            os.environ["PADDLEX"] = resolved_home
+            try:
+                import paddlex as pdx
+                pdx.pretrain_dir = resolved_home
+            except Exception:
+                pass
+
+        from paddleocr import PaddleOCR
 
         logger.info("正在加载 PaddleOCR 模型...")
         paddle_ocr = PaddleOCR(use_angle_cls=True, lang="ch")

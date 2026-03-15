@@ -2,18 +2,23 @@
 # -*- coding: utf-8 -*-
 """
 搜索向量化接口
-提供文本编码和向量相似度搜索功能
+提供文本编码、图像编码和向量相似度搜索功能
 """
 
-from fastapi import APIRouter, HTTPException
+import cv2
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from typing import List, Optional
 
-from constants.error_codes import AI_SERVICE_ERROR, INVALID_REQUEST
+from config import normalize_profile
+from constants.error_codes import AI_DEVICE_NOT_SUPPORTED, AI_SERVICE_ERROR, IMAGE_DECODE_FAILED, INVALID_REQUEST
 from logger import logger
 from schemas.error_schema import ErrorBody
 from services.text_embedding_service import encode_text
 from services.vector_search_service import ann_search
+from services.siglip_embedding_service import compute_siglip_embedding
+from utils.device import normalize_device
+from utils.image_decode import decode_image
 
 router = APIRouter()
 
@@ -81,6 +86,46 @@ async def encode_text_endpoint(request: EncodeTextRequest):
             status_code=500,
             detail=ErrorBody(error_code=AI_SERVICE_ERROR, error_message=f"文本编码失败: {str(exc)}").dict(),
         ) from exc
+
+
+@router.post("/encode_image", response_model=EncodeTextResponse)
+async def encode_image_endpoint(
+    image: UploadFile = File(..., max_size=50 * 1024 * 1024),
+    profile: str = Form("standard"),
+    device: str = Form("auto"),
+):
+    """
+    将图片编码为向量（与 /encode_text 对称，仅负责图像 → 向量）。
+    入参: multipart/form-data 的 image（必填）、profile、device。
+    返回: { "vector": number[], "model": "siglip2" }
+    """
+    profile = normalize_profile(profile)
+    resolved, err = normalize_device(device)
+    if err:
+        raise HTTPException(
+            status_code=400,
+            detail=ErrorBody(error_code=err or AI_DEVICE_NOT_SUPPORTED, error_message="设备参数无效或不可用").dict(),
+        )
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=ErrorBody(error_code=IMAGE_DECODE_FAILED, error_message="图片数据为空").dict(),
+        )
+    img_bgr, decode_err = decode_image(image_bytes)
+    if decode_err or img_bgr is None:
+        raise HTTPException(
+            status_code=400,
+            detail=ErrorBody(error_code=IMAGE_DECODE_FAILED, error_message=decode_err or "图片解码失败").dict(),
+        )
+    rgb_image = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    result = compute_siglip_embedding(rgb_image, profile=profile)
+    if result is None or not result.get("vector"):
+        raise HTTPException(
+            status_code=500,
+            detail=ErrorBody(error_code=AI_SERVICE_ERROR, error_message="图像编码失败").dict(),
+        )
+    return EncodeTextResponse(vector=result["vector"], model=result.get("model", "siglip2"))
 
 
 @router.post("/ann_search_by_vector", response_model=VectorSearchResponse)

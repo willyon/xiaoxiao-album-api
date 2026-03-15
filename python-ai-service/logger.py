@@ -48,7 +48,7 @@ class CustomLogger:
     # 日志级别到 logging 方法的映射
     _level_methods = {
         "error": "error",
-        "warning": "warning", 
+        "warning": "warning",
         "info": "info"
     }
     
@@ -102,7 +102,8 @@ class CustomLogger:
         # logging.getLogger(name) 是单例的，相同 name 返回同一对象
         self.logger = logging.getLogger(name)
         self.logger.setLevel(logging.INFO)  # 设置日志级别为 INFO，显示 INFO、WARN、ERROR 级别的日志
-        
+        self.logger.propagate = False  # 不向根 logger 传播，避免与 uvicorn 等根 handler 重复打印
+
         # 避免重复添加处理器
         # 检查 logger 是否已经有处理器，如果没有才添加
         # 这防止了多次创建 CustomLogger 时重复添加处理器
@@ -265,8 +266,7 @@ class CustomLogger:
             **kwargs: 其他参数（同 error 方法）
         """
         self._log("info", message, **kwargs)
-    
-    
+
     def close(self):
         """
         关闭日志处理器

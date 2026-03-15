@@ -90,7 +90,7 @@ python3 scripts/prepare_model_assets.py --family yolo --variant yolo11x
 |------|------|------|
 | GET | `/health` | 健康检查 |
 | POST | `/analyze_person` | 人物分析（人脸+人体检测） |
-| POST | `/analyze_cleanup` | 图片清理指标 |
+| POST | `/analyze_quality` | 图片质量指标 |
 | POST | `/cluster_faces` | 人脸聚类 |
 | POST | `/encode_text` | 文本向量化（搜索用） |
 | POST | `/search_by_vector` | 向量相似度搜索 |

@@ -44,29 +44,6 @@ module.exports = {
         NODE_ENV: "production",
       },
     },
-    {
-      name: "search-index-worker",
-      script: "src/workers/searchIndexWorker.js",
-      // cwd: "/var/www/photos.bingbingcloud.com/backend", // 绝对路径
-      cwd: ".", // 相对路径
-      watch: false,
-      max_restarts: 5,
-      env: {
-        NODE_ENV: "production",
-      },
-    },
-    {
-      name: "cleanup-worker",
-      script: "src/workers/cleanupWorker.js",
-      // cwd: "/var/www/photos.bingbingcloud.com/backend", // 绝对路径
-      cwd: ".", // 相对路径
-      watch: false,
-      max_restarts: 5,
-      env: {
-        NODE_ENV: "production",
-      },
-    },
-
     // ========== 定时任务 ==========
     {
       name: "cleanup-rebuild-all",
@@ -126,7 +103,7 @@ pm2 start ecosystem.config.js
 📋 单独管理服务:
 - 重启 API 服务: pm2 restart app-service
 - 重启 Python AI 服务: pm2 restart python-ai-service
-- 重启所有 Workers: pm2 restart media-upload-worker media-meta-worker search-index-worker
+- 重启所有 Workers: pm2 restart media-upload-worker media-meta-worker media-analysis-worker
 
 📋 定时任务管理:
 - 查看定时任务状态: pm2 list

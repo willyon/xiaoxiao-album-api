@@ -5,8 +5,8 @@
  *
  * 🎯 功能：
  * • 查询所有有高清图/原图且未完成AI分析的媒体
- * • 将这些媒体批量加入searchIndexQueue队列
- * • 触发Python AI服务进行人脸识别分析
+ * • 将这些媒体批量加入 mediaAnalysisQueue 队列
+ * • 触发媒体分析全流程（质量 + 人脸 + embedding 等）
  *
  * 📋 判断标准：
  * • 有 high_res_storage_key 或 original_storage_key（媒体处理完成）
@@ -27,7 +27,7 @@ process.chdir(projectRoot);
 
 require("dotenv").config();
 const { db } = require(path.join(projectRoot, "src", "services", "database"));
-const { searchIndexQueue } = require(path.join(projectRoot, "src", "queues", "searchIndexQueue"));
+const { mediaAnalysisQueue } = require(path.join(projectRoot, "src", "queues", "mediaAnalysisQueue"));
 const logger = require(path.join(projectRoot, "src", "utils", "logger"));
 
 /**
@@ -87,7 +87,7 @@ async function handleFailedJobs() {
   console.log("\n🔍 步骤2: 检查失败的任务...");
 
   try {
-    const failedJobs = await searchIndexQueue.getFailed(0, 1000);
+    const failedJobs = await mediaAnalysisQueue.getFailed(0, 1000);
 
     if (failedJobs.length === 0) {
       console.log("   ✅ 没有失败的任务");
@@ -140,17 +140,18 @@ async function enqueueForAIAnalysis(records) {
       const jobId = `${record.user_id}:${record.media_id}`;
 
       // 尝试添加任务
-      const job = await searchIndexQueue.add(
-        process.env.SEARCH_INDEX_QUEUE_NAME,
+      const job = await mediaAnalysisQueue.add(
+        "media-analysis",
         {
           imageId: record.media_id,
           userId: record.user_id,
           highResStorageKey: record.high_res_storage_key,
           originalStorageKey: record.original_storage_key,
+          sessionId: null,
+          mediaType: "image",
+          fileName: "",
         },
-        {
-          jobId: jobId, // 使用 imageId 作为去重标识
-        },
+        { jobId: `batch:${record.user_id}:${record.media_id}` },
       );
 
       if (job) {
@@ -203,7 +204,7 @@ async function checkQueueStatus() {
   console.log("\n📊 步骤4: 检查队列状态...");
 
   try {
-    const jobCounts = await searchIndexQueue.getJobCounts();
+    const jobCounts = await mediaAnalysisQueue.getJobCounts();
 
     console.log(`   📋 当前队列状态:`);
     console.log(`      等待处理: ${jobCounts.waiting}`);
@@ -216,7 +217,7 @@ async function checkQueueStatus() {
 
     if (totalPending > 0) {
       console.log(`\n   ⏱️  预计处理时间: ${Math.ceil(totalPending / 1)} 分钟（假设每张图片1分钟）`);
-      console.log(`   💡 提示: 确保 search-index-worker 和 Python AI 服务正在运行`);
+      console.log(`   💡 提示: 确保 media-analysis-worker 和 Python AI 服务正在运行`);
     }
 
     return jobCounts;
@@ -233,7 +234,7 @@ function verifyConfiguration() {
   console.log("\n🔧 步骤0: 验证配置...");
 
   const enableAI = process.env.ENABLE_AI_ANALYSIS !== "false";
-  const queueName = process.env.SEARCH_INDEX_QUEUE_NAME;
+  const queueName = process.env.MEDIA_ANALYSIS_QUEUE_NAME;
 
   console.log(`   AI分析功能: ${enableAI ? "✅ 已启用" : "❌ 已禁用"}`);
   console.log(`   队列名称: ${queueName || "❌ 未配置"}`);
@@ -250,7 +251,7 @@ function verifyConfiguration() {
 
   if (!queueName) {
     console.log(`\n   ❌ 错误: 队列名称未配置`);
-    console.log(`   💡 提示: 请在 .env 文件中设置 SEARCH_INDEX_QUEUE_NAME`);
+    console.log(`   💡 提示: 请在 .env 文件中设置 MEDIA_ANALYSIS_QUEUE_NAME`);
     return false;
   }
 
@@ -267,7 +268,7 @@ async function main() {
   console.log("╚═══════════════════════════════════════════════════════════════╝");
   console.log("");
   console.log("📝 功能: 将未进行AI分析的图片批量加入队列");
-  console.log("🎯 目标: 触发Python AI服务进行人脸识别分析");
+  console.log("🎯 目标: 触发媒体分析全流程（质量+人脸+embedding）");
   console.log("");
 
   try {
@@ -332,9 +333,9 @@ async function main() {
       console.log("✅ 图片已加入AI分析队列");
       console.log("");
       console.log("📋 后续步骤:");
-      console.log("   1. 确保 search-index-worker 正在运行: pm2 list");
+      console.log("   1. 确保 media-analysis-worker 正在运行: pm2 list");
       console.log("   2. 确保 Python AI 服务正在运行: ps aux | grep python");
-      console.log("   3. 查看处理日志: pm2 logs search-index-worker");
+      console.log("   3. 查看处理日志: pm2 logs media-analysis-worker");
       console.log("   4. 监控队列进度: 可查看数据库 person_count 字段更新情况");
       console.log("");
     }
@@ -345,8 +346,8 @@ async function main() {
   } finally {
     // 关闭队列连接
     try {
-      const { closeSearchIndexQueue } = require(path.join(projectRoot, "src", "queues", "searchIndexQueue"));
-      await closeSearchIndexQueue();
+      const { closeMediaAnalysisQueue } = require(path.join(projectRoot, "src", "queues", "mediaAnalysisQueue"));
+      await closeMediaAnalysisQueue();
     } catch (e) {
       // 忽略关闭错误
     }
