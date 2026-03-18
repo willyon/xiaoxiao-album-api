@@ -5,19 +5,15 @@
 集中管理所有环境变量和默认配置
 """
 
-# 导入Python标准库的os模块，用于读取环境变量
 import os
-# 导入python-dotenv库，用于读取.env文件
-from dotenv import load_dotenv
-
-# 加载.env文件中的环境变量
-load_dotenv()
 
 
 class Settings:
     """应用配置类 - 定义所有配置项的类"""
     
     # ========== 服务配置 ==========
+    NODE_ENV = (os.getenv("NODE_ENV", "development") or "development").strip().lower()
+    LOG_ANALYZE_FULL_RESULT = NODE_ENV == "development"
     
     # 服务端口号配置
     # os.getenv("环境变量名", "默认值") - 从环境变量读取值，如果不存在则使用默认值
@@ -40,7 +36,7 @@ class Settings:
     # 
     # 默认设置：禁用GPU（适合大多数Mac用户）
     # 如果你的电脑有NVIDIA显卡，可以设置为true
-    USE_GPU = os.getenv("USE_GPU", "false").lower() in ("1", "true", "yes")
+    USE_GPU = os.getenv("USE_GPU", "false").lower() == "true"
     
     # ========== 人脸识别配置 ==========
     
@@ -158,11 +154,6 @@ class Settings:
     # 建议：如果聚类结果中同一人被过度分割，可提高到 0.45；如果不同人被误合并，可降低到 0.35
     FACE_CLUSTERING_THRESHOLD = float(os.getenv("FACE_CLUSTERING_THRESHOLD", "0.45"))  # 默认0.45（余弦距离）
      
-    # ========== OCR 配置 ==========
-    
-    # OCR 功能开关配置（默认启用，可通过 OCR_ENABLED 环境变量关闭）
-    OCR_ENABLED = os.getenv("OCR_ENABLED", "true").lower() in ("true", "1", "yes")
-
     # ========== 模型目录 ==========
     # 模型权重的基准目录（用于 model_registry 中 local_path 拼接）。
     # 约定：local_path 以 "models/..." 表示相对项目根目录下的模型路径；
@@ -171,13 +162,9 @@ class Settings:
 
     # 可选：外置模型注册表 JSON 路径（阶段 4：配置外置）
     MODEL_REGISTRY_PATH = os.getenv("MODEL_REGISTRY_PATH", "").strip()
-
-    # Caption standard 档是否启用 VLM（默认结构化优先，仅在必要时才开）
-    CAPTION_STANDARD_USE_VLM = os.getenv("CAPTION_STANDARD_USE_VLM", "false").lower() in ("true", "1", "yes")
-    CAPTION_STRUCTURED_MAX_OBJECTS = int(os.getenv("CAPTION_STRUCTURED_MAX_OBJECTS", "5"))
-
+    
     # 启动预热严格模式：为 true 时，关键 preload 模型加载失败将阻止服务启动
-    STRICT_PRELOAD = os.getenv("STRICT_PRELOAD", "false").lower() in ("true", "1", "yes")
+    STRICT_PRELOAD = os.getenv("STRICT_PRELOAD", "false").lower() == "true"
     # 可选：指定哪些 model_id 属于“必须成功”的 preload（逗号分隔）。为空则默认“所有 preload 均必须成功”
     STRICT_PRELOAD_REQUIRED_MODEL_IDS = os.getenv("STRICT_PRELOAD_REQUIRED_MODEL_IDS", "").strip()
 
@@ -188,36 +175,74 @@ class Settings:
     
     # 分析档位：standard / enhanced（已移除 basic）
     SUPPORTED_PROFILES = ("standard", "enhanced")
-    
-    # 各能力开关（环境变量优先，用于 ModelManager 判断是否加载）
-    # 默认视为「standard 全家桶实例」：全部启用；如需关闭某能力，在环境变量中设为 false
-    ENABLE_CAPTION = os.getenv("ENABLE_CAPTION", "true").lower() in ("true", "1", "yes")
-    ENABLE_OBJECT_DETECTION = os.getenv("ENABLE_OBJECT_DETECTION", "true").lower() in ("true", "1", "yes")
-    ENABLE_SCENE_ANALYSIS = os.getenv("ENABLE_SCENE_ANALYSIS", "true").lower() in ("true", "1", "yes")
-    ENABLE_OCR = OCR_ENABLED  # 与 OCR_ENABLED 一致
-    ENABLE_EMBEDDING = os.getenv("ENABLE_EMBEDDING", "true").lower() in ("true", "1", "yes")
+
+    # Caption provider：local | cloud | off
+    # - local：使用本地 caption 模型
+    # - cloud：使用云 caption provider
+    # - off：关闭 caption 能力
+    # 当前默认使用 cloud，便于云模型联调
+    CAPTION_PROVIDER = os.getenv("CAPTION_PROVIDER", "cloud").strip().lower() or "cloud"
+
+    # OCR provider：local | cloud | off
+    # - local：使用本地 OCR 引擎（PaddleOCR）
+    # - cloud：使用云 OCR provider
+    # - off：关闭 OCR 能力
+    # 当前默认使用 cloud，便于云模型联调
+    OCR_PROVIDER = os.getenv("OCR_PROVIDER", "cloud").strip().lower() or "cloud"
+
+    # OCR 触发模式：always | off | smart
+    # - always：总是执行 OCR
+    # - off：不执行 OCR，模块状态为 skipped
+    # - smart：按启发式信号决定是否执行 OCR
+    OCR_TRIGGER_MODE = os.getenv("OCR_TRIGGER_MODE", "always").strip().lower() or "always"
+
+    # Caption 云厂商：qwen | openai
+    # - qwen：开发阶段默认接入阿里云千问
+    # - openai：为后续切换 OpenAI 预留
+    CAPTION_CLOUD_VENDOR = os.getenv("CAPTION_CLOUD_VENDOR", "qwen").strip().lower() or "qwen"
+
+    # OCR 云厂商：qwen | openai
+    # - qwen：开发阶段默认接入阿里云千问
+    # - openai：为后续切换 OpenAI 预留
+    OCR_CLOUD_VENDOR = os.getenv("OCR_CLOUD_VENDOR", "qwen").strip().lower() or "qwen"
+
+    # 云模型名：不同 vendor 可复用同一配置位，方便未来切换云厂商
+    CAPTION_CLOUD_MODEL = os.getenv("CAPTION_CLOUD_MODEL", "qwen3-vl-plus").strip()
+    OCR_CLOUD_MODEL = os.getenv("OCR_CLOUD_MODEL", "qwen-vl-ocr").strip()
+
+    # 可选：云 API Base URL
+    # - 默认留空，使用各 vendor SDK / 官方默认地址
+    # - 需要代理、网关或兼容层时可按能力单独覆盖
+    CAPTION_CLOUD_BASE_URL = os.getenv("CAPTION_CLOUD_BASE_URL", "").strip()
+    OCR_CLOUD_BASE_URL = os.getenv("OCR_CLOUD_BASE_URL", "").strip()
+
+    # 通用云 API Key
+    # - 当 caption / ocr 共用同一云账号时，只配置这一项即可
+    CLOUD_API_KEY = os.getenv("CLOUD_API_KEY", "sk-31168d332fc24970a9ef71123ef3fc20").strip()
+
+    # 云 provider 的 API Key
+    # - 优先读取能力级 key；若未配置，则回退到通用 CLOUD_API_KEY
+    # - 这样当前开发阶段可以只配一次，后续也保留按能力拆分的空间
+    CAPTION_CLOUD_API_KEY = os.getenv("CAPTION_CLOUD_API_KEY", CLOUD_API_KEY).strip()
+    OCR_CLOUD_API_KEY = os.getenv("OCR_CLOUD_API_KEY", CLOUD_API_KEY).strip()
     
     # 推理与模型缓存（首版可不实现 LRU，仅占位）
-    AI_MAX_CONCURRENCY = int(os.getenv("AI_MAX_CONCURRENCY", "4"))
     MODEL_CACHE_LIMIT = int(os.getenv("MODEL_CACHE_LIMIT", "16"))
     
     # OCR 长边限制（内部 resize 用）
+    # 默认 2048，保证截图中文字可读性；若重新启用 OCR 后仍有资源压力，可通过环境变量下调到 1536/1024。
     OCR_MAX_LONG_EDGE = int(os.getenv("OCR_MAX_LONG_EDGE", "2048"))
     
     # 物体检测置信度阈值（YOLO）
     YOLO_CONF_THRESHOLD = float(os.getenv("YOLO_CONF_THRESHOLD", "0.25"))
     
-    # 场景分类 topk
-    SCENE_TOPK = int(os.getenv("SCENE_TOPK", "5"))
-    
     # Caption 最大 token
     CAPTION_MAX_TOKENS = int(os.getenv("CAPTION_MAX_TOKENS", "128"))
 
     # 各能力单次推理超时时间（秒）
-    CAPTION_TIMEOUT_SECONDS = float(os.getenv("CAPTION_TIMEOUT_SECONDS", "30"))
-    OBJECT_TIMEOUT_SECONDS = float(os.getenv("OBJECT_TIMEOUT_SECONDS", "20"))
-    SCENE_TIMEOUT_SECONDS = float(os.getenv("SCENE_TIMEOUT_SECONDS", "20"))
-    OCR_TIMEOUT_SECONDS = float(os.getenv("OCR_TIMEOUT_SECONDS", "20"))
+    CAPTION_TIMEOUT_SECONDS = float(os.getenv("CAPTION_TIMEOUT_SECONDS", "10"))
+    OBJECT_TIMEOUT_SECONDS = float(os.getenv("OBJECT_TIMEOUT_SECONDS", "10"))
+    OCR_TIMEOUT_SECONDS = float(os.getenv("OCR_TIMEOUT_SECONDS", "15"))
     
     # ========== ONNX Runtime 配置 ==========
     
@@ -267,3 +292,23 @@ def normalize_profile(profile: str) -> str:
     if p == "basic" or p not in settings.SUPPORTED_PROFILES:
         return "standard"
     return p
+
+
+def normalize_provider(provider: str) -> str:
+    """规范 provider 值，仅允许 local/cloud/off。"""
+    p = (provider or "").strip().lower()
+    allowed = {"local", "cloud", "off"}
+    return p if p in allowed else "local"
+
+
+def normalize_cloud_vendor(vendor: str) -> str:
+    """规范 cloud vendor 值，仅允许 qwen/openai。"""
+    v = (vendor or "").strip().lower()
+    allowed = {"qwen", "openai"}
+    return v if v in allowed else "qwen"
+
+
+def normalize_ocr_trigger_mode(trigger_mode: str) -> str:
+    """规范 OCR trigger mode，支持 always/off/smart。"""
+    mode = (trigger_mode or "").strip().lower()
+    return mode if mode in {"always", "off", "smart"} else "always"

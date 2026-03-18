@@ -15,15 +15,16 @@ const {
   createTableMediaAnalysis,
   createTableMediaCaptions,
   createTableMediaTextBlocks,
-  createTableMediaObjects,
   createTableMediaFaceEmbeddings,
   createTableMediaEmbeddings,
   createTableVideoKeyframes,
   createTableVideoTranscripts,
   createTableMediaSearch,
   createTableMediaFts,
+  createTableMediaSearchTerms,
   createTableAlbumMedia,
 } = require(path.join(projectRoot, "src", "models", "initTableModel"));
+const { buildMediaSearchTermRows } = require(path.join(projectRoot, "src", "utils", "searchTermUtils"));
 
 function tableExists(name) {
   return db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(name) != null;
@@ -50,11 +51,6 @@ function parseCommaList(input) {
 function listToJson(input) {
   const arr = parseCommaList(input);
   return arr.length > 0 ? JSON.stringify(arr) : null;
-}
-
-function extractScenePrimary(sceneTags) {
-  const arr = parseCommaList(sceneTags);
-  return arr.length > 0 ? arr[0] : null;
 }
 
 function ensureAlbumsCoverMediaColumn() {
@@ -169,13 +165,13 @@ function createNewSchema() {
   createTableMediaAnalysis();
   createTableMediaCaptions();
   createTableMediaTextBlocks();
-  createTableMediaObjects();
   createTableMediaFaceEmbeddings();
   createTableMediaEmbeddings();
   createTableVideoKeyframes();
   createTableVideoTranscripts();
   createTableMediaSearch();
   createTableMediaFts();
+  createTableMediaSearchTerms();
   createTableAlbumMedia();
 
   // 确保 media_embeddings 具备 UPSERT 所需唯一约束
@@ -262,8 +258,7 @@ function migrateMediaAnalysisBase() {
       face_count = COALESCE((SELECT i.face_count FROM images i WHERE i.id = media_analysis.media_id), 0),
       person_count = COALESCE((SELECT i.person_count FROM images i WHERE i.id = media_analysis.media_id), 0),
       primary_face_quality = (SELECT i.primary_face_quality FROM images i WHERE i.id = media_analysis.media_id),
-      primary_expression_confidence = (SELECT i.primary_expression_confidence FROM images i WHERE i.id = media_analysis.media_id),
-      scene_primary = (SELECT NULLIF(TRIM(SUBSTR(COALESCE(i.scene_tags,''), 1, CASE WHEN INSTR(COALESCE(i.scene_tags,''), ',') = 0 THEN LENGTH(COALESCE(i.scene_tags,'')) ELSE INSTR(COALESCE(i.scene_tags,''), ',') - 1 END)), '') FROM images i WHERE i.id = media_analysis.media_id)
+      primary_expression_confidence = (SELECT i.primary_expression_confidence FROM images i WHERE i.id = media_analysis.media_id)
   `).run();
 }
 
@@ -279,15 +274,9 @@ function migrateAiDetailRows() {
       media_id, source_type, text, analysis_version, created_at
     ) VALUES (?, 'ocr', ?, ?, ?)
   `);
-  const insertObject = db.prepare(`
-    INSERT INTO media_objects (
-      media_id, source_type, source_ref_id, label, confidence, bbox, analysis_version, created_at
-    ) VALUES (?, 'image', NULL, ?, NULL, NULL, ?, ?)
-  `);
 
   db.prepare("DELETE FROM media_captions").run();
   db.prepare("DELETE FROM media_text_blocks").run();
-  db.prepare("DELETE FROM media_objects").run();
 
   for (const row of rows) {
     const version = row.analysis_version || "1.0";
@@ -300,10 +289,6 @@ function migrateAiDetailRows() {
 
     if (row.ocr_text && row.ocr_text.trim()) {
       insertText.run(row.id, row.ocr_text.trim(), version, createdAt);
-    }
-
-    for (const label of parseCommaList(row.object_tags)) {
-      insertObject.run(row.id, label, version, createdAt);
     }
   }
 }
@@ -398,9 +383,10 @@ function migrateAlbumAndGroupRefs() {
 
 function rebuildMediaSearchData() {
   db.prepare("DELETE FROM media_search").run();
+  db.prepare("DELETE FROM media_search_terms").run();
   db.prepare(`
     INSERT INTO media_search (
-      media_id, user_id, caption_text, ocr_text, object_text, scene_text, transcript_text, location_text, updated_at
+      media_id, user_id, caption_text, keywords_text, ocr_text, transcript_text, location_text, updated_at
     )
     SELECT
       m.id AS media_id,
@@ -411,23 +397,15 @@ function rebuildMediaSearchData() {
         WHERE c.media_id = m.id
       ) AS caption_text,
       (
+        SELECT GROUP_CONCAT(j.value, ' ')
+        FROM media_captions c, json_each(c.keywords_json) j
+        WHERE c.media_id = m.id
+      ) AS keywords_text,
+      (
         SELECT GROUP_CONCAT(t.text, ' ')
         FROM media_text_blocks t
         WHERE t.media_id = m.id
       ) AS ocr_text,
-      (
-        SELECT GROUP_CONCAT(o.label, ' ')
-        FROM (
-          SELECT DISTINCT label
-          FROM media_objects
-          WHERE media_id = m.id
-        ) o
-      ) AS object_text,
-      (
-        SELECT ma.scene_primary
-        FROM media_analysis ma
-        WHERE ma.media_id = m.id
-      ) AS scene_text,
       (
         SELECT GROUP_CONCAT(vt.transcript_text, ' ')
         FROM video_transcripts vt
@@ -442,6 +420,41 @@ function rebuildMediaSearchData() {
     FROM media m
     WHERE m.deleted_at IS NULL
   `).run();
+
+  const rows = db.prepare(`
+    SELECT media_id, user_id, caption_text, keywords_text, ocr_text, transcript_text, location_text, updated_at
+    FROM media_search
+  `).all();
+  const insertTermStmt = db.prepare(`
+    INSERT INTO media_search_terms (
+      media_id, user_id, field_type, term, term_len, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const row of rows) {
+    const termRows = buildMediaSearchTermRows({
+      mediaId: row.media_id,
+      userId: row.user_id,
+      fields: {
+        caption: row.caption_text,
+        keywords: row.keywords_text,
+        ocr: row.ocr_text,
+        transcript: row.transcript_text,
+        location: row.location_text,
+      },
+      updatedAt: row.updated_at,
+    });
+    for (const termRow of termRows) {
+      insertTermStmt.run(
+        termRow.mediaId,
+        termRow.userId,
+        termRow.fieldType,
+        termRow.term,
+        termRow.termLen,
+        termRow.updatedAt,
+      );
+    }
+  }
 
   db.prepare("INSERT INTO media_fts(media_fts) VALUES('rebuild')").run();
 }
@@ -461,7 +474,6 @@ function updateAnalysisStatus() {
         WHEN
           EXISTS (SELECT 1 FROM media_captions c WHERE c.media_id = media_analysis.media_id)
           OR EXISTS (SELECT 1 FROM media_text_blocks t WHERE t.media_id = media_analysis.media_id)
-          OR EXISTS (SELECT 1 FROM media_objects o WHERE o.media_id = media_analysis.media_id)
           OR EXISTS (SELECT 1 FROM media_face_embeddings f WHERE f.media_id = media_analysis.media_id)
           OR EXISTS (SELECT 1 FROM video_transcripts vt WHERE vt.media_id = media_analysis.media_id)
           OR EXISTS (SELECT 1 FROM media_embeddings e WHERE e.media_id = media_analysis.media_id)
@@ -472,7 +484,6 @@ function updateAnalysisStatus() {
         WHEN
           EXISTS (SELECT 1 FROM media_captions c WHERE c.media_id = media_analysis.media_id)
           OR EXISTS (SELECT 1 FROM media_text_blocks t WHERE t.media_id = media_analysis.media_id)
-          OR EXISTS (SELECT 1 FROM media_objects o WHERE o.media_id = media_analysis.media_id)
           OR EXISTS (SELECT 1 FROM media_face_embeddings f WHERE f.media_id = media_analysis.media_id)
           OR EXISTS (SELECT 1 FROM video_transcripts vt WHERE vt.media_id = media_analysis.media_id)
           OR EXISTS (SELECT 1 FROM media_embeddings e WHERE e.media_id = media_analysis.media_id)

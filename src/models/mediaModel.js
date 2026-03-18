@@ -7,8 +7,8 @@
  */
 const { db } = require("../services/database");
 const { mapFields } = require("../utils/fieldMapper");
-const { mapObjectLabel } = require("../constants/objectTaxonomy");
-const { mapSceneLabel } = require("../constants/sceneTaxonomy");
+const { createTableMediaSearchTerms } = require("./initTableModel");
+const { buildMediaSearchTermRows } = require("../utils/searchTermUtils");
 
 function parseCommaTags(input) {
   if (!input || typeof input !== "string") return [];
@@ -28,72 +28,96 @@ function pickPrimaryTag(input) {
   return arr.length > 0 ? arr[0] : null;
 }
 
-function rebuildMediaSearchDoc(mediaId) {
+function collectMediaSearchDocument(mediaId) {
   const media = db.prepare("SELECT id, user_id, country, city, gps_location, deleted_at FROM media WHERE id = ?").get(mediaId);
-  if (!media) return { affectedRows: 0 };
-
-  if (media.deleted_at != null) {
-    const deleted = db.prepare("DELETE FROM media_search WHERE media_id = ?").run(mediaId);
-    db.prepare("INSERT INTO media_fts(media_fts) VALUES('rebuild')").run();
-    return { affectedRows: deleted.changes };
-  }
-
-  const captionTextRow = db.prepare("SELECT GROUP_CONCAT(caption, ' ') AS value FROM media_captions WHERE media_id = ?").get(mediaId);
-  const ocrTextRow = db.prepare("SELECT GROUP_CONCAT(text, ' ') AS value FROM media_text_blocks WHERE media_id = ?").get(mediaId);
-
-  // 对 object / scene 应用 taxonomy：Raw → Canonical (+中文别名) 文本聚合
-  const objectRows = db
-    .prepare(
-      `
-      SELECT DISTINCT label
-      FROM media_objects
-      WHERE media_id = ?
-    `,
-    )
+  if (!media) return null;
+  const captionRows = db
+    .prepare("SELECT caption, keywords_json FROM media_captions WHERE media_id = ?")
     .all(mediaId);
-  const objectTokens = new Set();
-  for (const row of objectRows) {
-    const raw = row.label;
-    if (!raw) continue;
-    const { canonical, category, zh } = mapObjectLabel(String(raw));
-    if (canonical) {
-      objectTokens.add(String(canonical));
+  let captionText = null;
+  const keywordTokens = new Set();
+  for (const row of captionRows) {
+    if (row.caption) {
+      captionText = captionText ? `${captionText} ${row.caption}` : String(row.caption);
     }
-    if (category) {
-      objectTokens.add(String(category));
-    }
-    if (zh) {
-      objectTokens.add(String(zh));
+    if (row.keywords_json) {
+      try {
+        const arr = JSON.parse(row.keywords_json);
+        if (Array.isArray(arr)) {
+          for (const kw of arr) {
+            const v = typeof kw === "string" ? kw.trim() : "";
+            if (v) keywordTokens.add(v);
+          }
+        }
+      } catch {
+        // ignore malformed json
+      }
     }
   }
-  const objectText = objectTokens.size > 0 ? Array.from(objectTokens).join(" ") : null;
-
-  const sceneRow = db.prepare("SELECT scene_primary AS value FROM media_analysis WHERE media_id = ?").get(mediaId);
-  let sceneText = null;
-  if (sceneRow && sceneRow.value) {
-    const { canonical, zh } = mapSceneLabel(String(sceneRow.value));
-    const parts = [];
-    if (canonical) parts.push(String(canonical));
-    if (zh) parts.push(String(zh));
-    sceneText = parts.length > 0 ? parts.join(" ") : null;
-  }
+  const keywordsText = keywordTokens.size > 0 ? Array.from(keywordTokens).join(" ") : null;
+  const ocrTextRow = db.prepare("SELECT GROUP_CONCAT(text, ' ') AS value FROM media_text_blocks WHERE media_id = ?").get(mediaId);
 
   const transcriptTextRow = db
     .prepare("SELECT GROUP_CONCAT(transcript_text, ' ') AS value FROM video_transcripts WHERE media_id = ?")
     .get(mediaId);
 
   const locationText = [media.country, media.city, media.gps_location].filter(Boolean).join(" ").trim() || null;
+  return {
+    media,
+    fields: {
+      caption: captionText,
+      keywords: keywordsText,
+      ocr: ocrTextRow?.value || null,
+      transcript: transcriptTextRow?.value || null,
+      location: locationText,
+    },
+  };
+}
+
+function replaceMediaSearchTermsForDocument({ mediaId, userId, fields, updatedAt }) {
+  createTableMediaSearchTerms();
+  db.prepare("DELETE FROM media_search_terms WHERE media_id = ?").run(mediaId);
+  const rows = buildMediaSearchTermRows({ mediaId, userId, fields, updatedAt });
+  if (rows.length === 0) {
+    return 0;
+  }
+  const insertStmt = db.prepare(`
+    INSERT INTO media_search_terms (
+      media_id, user_id, field_type, term, term_len, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `);
+  for (const row of rows) {
+    insertStmt.run(row.mediaId, row.userId, row.fieldType, row.term, row.termLen, row.updatedAt);
+  }
+  return rows.length;
+}
+
+function rebuildMediaSearchDoc(mediaId, options = {}) {
+  const { rebuildFts = true } = options;
+  const doc = collectMediaSearchDocument(mediaId);
+  if (!doc) return { affectedRows: 0, termRows: 0 };
+  const { media, fields } = doc;
+  const updatedAt = Date.now();
+
+  if (media.deleted_at != null) {
+    createTableMediaSearchTerms();
+    const deleted = db.prepare("DELETE FROM media_search WHERE media_id = ?").run(mediaId);
+    db.prepare("DELETE FROM media_search_terms WHERE media_id = ?").run(mediaId);
+    if (rebuildFts) {
+      db.prepare("INSERT INTO media_fts(media_fts) VALUES('rebuild')").run();
+    }
+    return { affectedRows: deleted.changes, termRows: 0 };
+  }
 
   const upsert = db.prepare(`
     INSERT INTO media_search (
-      media_id, user_id, caption_text, ocr_text, object_text, scene_text, transcript_text, location_text, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      media_id, user_id, caption_text, keywords_text, ocr_text, transcript_text, location_text, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(media_id) DO UPDATE SET
       user_id = excluded.user_id,
       caption_text = excluded.caption_text,
+      keywords_text = excluded.keywords_text,
       ocr_text = excluded.ocr_text,
-      object_text = excluded.object_text,
-      scene_text = excluded.scene_text,
       transcript_text = excluded.transcript_text,
       location_text = excluded.location_text,
       updated_at = excluded.updated_at
@@ -102,17 +126,25 @@ function rebuildMediaSearchDoc(mediaId) {
   const result = upsert.run(
     media.id,
     media.user_id,
-    captionTextRow?.value || null,
-    ocrTextRow?.value || null,
-    objectText,
-    sceneText,
-    transcriptTextRow?.value || null,
-    locationText,
-    Date.now(),
+    fields.caption,
+    fields.keywords,
+    fields.ocr,
+    fields.transcript,
+    fields.location,
+    updatedAt,
   );
 
-  db.prepare("INSERT INTO media_fts(media_fts) VALUES('rebuild')").run();
-  return { affectedRows: result.changes };
+  const termRows = replaceMediaSearchTermsForDocument({
+    mediaId: media.id,
+    userId: media.user_id,
+    fields,
+    updatedAt,
+  });
+
+  if (rebuildFts) {
+    db.prepare("INSERT INTO media_fts(media_fts) VALUES('rebuild')").run();
+  }
+  return { affectedRows: result.changes, termRows };
 }
 
 //保存用户上传的图片元数据到数据库（初始上传时的必要字段）
@@ -1360,8 +1392,6 @@ function checkFileExists({ imageHash, userId }) {
  * @param {string} [params.altText] - AI图片描述（待启用）
  * @param {string} [params.ocrText] - OCR识别的文字内容
  * @param {string} [params.keywords] - 关键词（待启用）
- * @param {string} [params.sceneTags] - 场景标签（待启用）
- * @param {string} [params.objectTags] - 物体标签（待启用）
  * @param {number} [params.faceCount] - 人脸数量
  * @param {number} [params.personCount] - 人物总数（包括背面、远景）【2025-10-27 新增】
  * @param {string} [params.expressionTags] - 表情标签（逗号分隔）如："happy,neutral"
@@ -1388,8 +1418,6 @@ function updateMediaSearchMetadata({
   altText,
   ocrText,
   keywords,
-  sceneTags,
-  objectTags,
   faceCount,
   personCount,
   expressionTags,
@@ -1398,6 +1426,7 @@ function updateMediaSearchMetadata({
   primaryExpressionConfidence,
   primaryFaceQuality,
   analysisVersion = "1.0",
+  rebuildSearchArtifacts = true,
 }) {
   const tx = db.transaction(() => {
     db.prepare(`
@@ -1413,7 +1442,6 @@ function updateMediaSearchMetadata({
         primary_face_quality = COALESCE(?, primary_face_quality),
         primary_expression = COALESCE(?, primary_expression),
         primary_expression_confidence = COALESCE(?, primary_expression_confidence),
-        scene_primary = COALESCE(?, scene_primary),
         has_caption = CASE WHEN ? IS NOT NULL THEN 1 ELSE has_caption END,
         has_ocr = CASE WHEN ? IS NOT NULL THEN 1 ELSE has_ocr END,
         analysis_version = COALESCE(?, analysis_version),
@@ -1427,7 +1455,6 @@ function updateMediaSearchMetadata({
       primaryFaceQuality,
       pickPrimaryTag(expressionTags),
       primaryExpressionConfidence,
-      pickPrimaryTag(sceneTags),
       altText,
       ocrText,
       analysisVersion,
@@ -1452,19 +1479,9 @@ function updateMediaSearchMetadata({
       `).run(imageId, ocrText, analysisVersion, Date.now());
     }
 
-    if (objectTags) {
-      db.prepare("DELETE FROM media_objects WHERE media_id = ? AND source_type = 'image'").run(imageId);
-      const insertObject = db.prepare(`
-        INSERT INTO media_objects (
-          media_id, source_type, source_ref_id, label, confidence, bbox, analysis_version, created_at
-        ) VALUES (?, 'image', NULL, ?, NULL, NULL, ?, ?)
-      `);
-      for (const label of parseCommaTags(objectTags)) {
-        insertObject.run(imageId, label, analysisVersion, Date.now());
-      }
+    if (rebuildSearchArtifacts) {
+      rebuildMediaSearchDoc(imageId);
     }
-
-    rebuildMediaSearchDoc(imageId);
     return { affectedRows: result.changes };
   });
 
@@ -2342,40 +2359,21 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
 
 /**
  * 媒体分析链路：按 media_id 覆盖写入 media_captions（source_type='image'），事务内 DELETE + INSERT
+ * 约定：keywords 直接保存 Python 返回的关键词结果。
  */
-function upsertMediaCaptionsForAnalysis(imageId, caption, keywords, analysisVersion) {
+function upsertMediaCaptionsForAnalysis({ mediaId, caption, keywords, analysisVersion }) {
   const tx = db.transaction(() => {
-    db.prepare("DELETE FROM media_captions WHERE media_id = ? AND source_type = 'image'").run(imageId);
+    db.prepare("DELETE FROM media_captions WHERE media_id = ? AND source_type = 'image'").run(mediaId);
     db.prepare(
       `INSERT INTO media_captions (media_id, source_type, caption, keywords_json, analysis_version, created_at)
        VALUES (?, 'image', ?, ?, ?, ?)`,
-    ).run(imageId, caption || "", JSON.stringify(Array.isArray(keywords) ? keywords : []), analysisVersion, Date.now());
-  });
-  tx();
-}
-
-/**
- * 媒体分析链路：按 media_id 覆盖写入 media_objects（source_type='image'），事务内 DELETE + INSERT
- * @param {Array<{ label: string, confidence?: number, bbox?: Array<number> }>} objects
- */
-function upsertMediaObjectsForAnalysis(imageId, objects, analysisVersion) {
-  const tx = db.transaction(() => {
-    db.prepare("DELETE FROM media_objects WHERE media_id = ? AND source_type = 'image'").run(imageId);
-    const insertStmt = db.prepare(
-      `INSERT INTO media_objects (media_id, source_type, label, confidence, bbox, analysis_version, created_at)
-       VALUES (?, 'image', ?, ?, ?, ?, ?)`,
+    ).run(
+      mediaId,
+      caption || "",
+      JSON.stringify(Array.isArray(keywords) ? keywords : []),
+      analysisVersion,
+      Date.now(),
     );
-    const now = Date.now();
-    for (const obj of objects || []) {
-      insertStmt.run(
-        imageId,
-        obj.label || "",
-        typeof obj.confidence === "number" ? obj.confidence : null,
-        JSON.stringify(obj.bbox ?? null),
-        analysisVersion,
-        now,
-      );
-    }
   });
   tx();
 }
@@ -2433,6 +2431,5 @@ module.exports = {
   rebuildMediaSearchDoc,
   updateIngestStatusByHash,
   upsertMediaCaptionsForAnalysis,
-  upsertMediaObjectsForAnalysis,
   upsertMediaTextBlocksOcrForAnalysis,
 };

@@ -257,6 +257,41 @@ def get_siglip2_components():
     return siglip_image_session, siglip_text_session, siglip_tokenizer, siglip_metadata
 
 
+def get_siglip2_text_components_for_profile(profile: str):
+    """
+    按 profile 获取 SigLIP2 文本编码组件（与 image 侧同源，保证图文 embedding 空间一致）。
+
+    职责：根据 profile 解析对应 SigLIP2 模型目录，加载并返回 (text_session, tokenizer, metadata)；
+    支持与 image 侧一致的 resolve_model_id + fallback 逻辑。缓存由 get_siglip2_components_for_path 按 path 承担。
+
+    Returns:
+        tuple: (text_session, tokenizer, metadata)，加载失败时可为 (None, None, None)。
+    """
+    profile = (profile or "standard").lower()
+    primary_id = resolve_model_id(profile, "image_embedding")
+    candidate_ids = []
+    if primary_id:
+        candidate_ids.append(primary_id)
+        fb = get_fallback_model_id(primary_id)
+        if fb and fb not in candidate_ids:
+            candidate_ids.append(fb)
+    if not candidate_ids:
+        candidate_ids = ["embedding.standard.siglip2.base"]
+
+    providers = settings.get_onnx_providers()
+    for model_id in candidate_ids:
+        cfg = get_model_config(model_id)
+        if not cfg:
+            continue
+        base_dir = resolve_local_path(cfg.local_path)
+        image_sess, text_sess, tokenizer, metadata = get_siglip2_components_for_path(
+            base_dir, providers=providers, raise_on_failure=False
+        )
+        if text_sess is not None and tokenizer is not None and metadata is not None:
+            return (text_sess, tokenizer, metadata)
+    return (None, None, None)
+
+
 def get_siglip2_components_for_path(
     model_dir: str,
     *,

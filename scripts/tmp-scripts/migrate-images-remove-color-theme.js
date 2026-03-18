@@ -56,7 +56,6 @@ const CREATE_IMAGES_NEW = `
     alt_text TEXT DEFAULT NULL,
     ocr_text TEXT DEFAULT NULL,
     keywords TEXT DEFAULT NULL,
-    scene_tags TEXT DEFAULT NULL,
     object_tags TEXT DEFAULT NULL,
     face_count INTEGER DEFAULT NULL,
     person_count INTEGER DEFAULT NULL,
@@ -87,7 +86,7 @@ const INSERT_SQL = `
     width_px, height_px, aspect_ratio, raw_orientation, layout_type,
     hd_width_px, hd_height_px, storage_type, media_type, duration_sec, video_codec,
     file_size_bytes, mime, created_at, deleted_at,
-    alt_text, ocr_text, keywords, scene_tags, object_tags,
+    alt_text, ocr_text, keywords, object_tags,
     face_count, person_count, expression_tags, age_tags, gender_tags,
     has_young, has_adult, primary_face_quality, primary_expression_confidence,
     analysis_version, aesthetic_score, sharpness_score, is_favorite, is_blurry
@@ -99,7 +98,7 @@ const INSERT_SQL = `
     width_px, height_px, aspect_ratio, raw_orientation, layout_type,
     hd_width_px, hd_height_px, storage_type, media_type, duration_sec, video_codec,
     file_size_bytes, mime, created_at, deleted_at,
-    alt_text, ocr_text, keywords, scene_tags, object_tags,
+    alt_text, ocr_text, keywords, object_tags,
     face_count, person_count, expression_tags, age_tags, gender_tags,
     has_young, has_adult, primary_face_quality, primary_expression_confidence,
     analysis_version, aesthetic_score, sharpness_score, is_favorite, is_blurry
@@ -180,7 +179,7 @@ function migrate() {
     // 8. 重建 FTS5 虚拟表
     db.prepare(`
       CREATE VIRTUAL TABLE images_fts USING fts5(
-        alt_text, ocr_text, keywords, scene_tags, object_tags,
+        alt_text, ocr_text, keywords, object_tags,
         expression_tags, age_tags, gender_tags, country, city, layout_type,
         content='images', content_rowid='id'
       )
@@ -194,14 +193,14 @@ function migrate() {
     // 10. 重建 FTS 触发器
     db.prepare(`
       CREATE TRIGGER images_fts_update AFTER UPDATE ON images BEGIN
-        INSERT OR REPLACE INTO images_fts(rowid, alt_text, ocr_text, keywords, scene_tags, object_tags, expression_tags, age_tags, gender_tags, country, city, layout_type)
-        VALUES (new.id, new.alt_text, new.ocr_text, new.keywords, new.scene_tags, new.object_tags, new.expression_tags, new.age_tags, new.gender_tags, new.country, new.city, new.layout_type);
+        INSERT OR REPLACE INTO images_fts(rowid, alt_text, ocr_text, keywords, object_tags, expression_tags, age_tags, gender_tags, country, city, layout_type)
+        VALUES (new.id, new.alt_text, new.ocr_text, new.keywords, new.object_tags, new.expression_tags, new.age_tags, new.gender_tags, new.country, new.city, new.layout_type);
       END
     `).run();
     db.prepare(`
       CREATE TRIGGER images_fts_insert AFTER INSERT ON images BEGIN
-        INSERT INTO images_fts(rowid, alt_text, ocr_text, keywords, scene_tags, object_tags, expression_tags, age_tags, gender_tags, country, city, layout_type)
-        VALUES (new.id, new.alt_text, new.ocr_text, new.keywords, new.scene_tags, new.object_tags, new.expression_tags, new.age_tags, new.gender_tags, new.country, new.city, new.layout_type);
+        INSERT INTO images_fts(rowid, alt_text, ocr_text, keywords, object_tags, expression_tags, age_tags, gender_tags, country, city, layout_type)
+        VALUES (new.id, new.alt_text, new.ocr_text, new.keywords, new.object_tags, new.expression_tags, new.age_tags, new.gender_tags, new.country, new.city, new.layout_type);
       END
     `).run();
     db.prepare(`

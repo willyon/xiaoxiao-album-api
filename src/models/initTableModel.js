@@ -138,7 +138,7 @@ function createTableMedia() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_favorite ON media(user_id, is_favorite);").run();
 }
 
-/** 创建 media_analysis：单条媒体分析状态与结果（美学/清晰度/人脸/OCR/场景等） */
+/** 创建 media_analysis：单条媒体分析状态与结果（美学/清晰度/人脸/OCR等） */
 function createTableMediaAnalysis() {
   const sql = `
     CREATE TABLE IF NOT EXISTS media_analysis (
@@ -158,7 +158,6 @@ function createTableMediaAnalysis() {
       primary_expression_confidence REAL,
       has_ocr INTEGER DEFAULT 0,
       has_caption INTEGER DEFAULT 0,
-      scene_primary TEXT,
       environment TEXT,
       FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
     );
@@ -219,27 +218,6 @@ function createTableMediaTextBlocks() {
   db.prepare(sql).run();
   db.prepare("CREATE INDEX IF NOT EXISTS idx_text_media ON media_text_blocks(media_id);").run();
   db.prepare("CREATE INDEX IF NOT EXISTS idx_text_version ON media_text_blocks(analysis_version);").run();
-}
-
-/** 创建 media_objects：媒体内检测到的物体/区域，label、bbox、置信度 */
-function createTableMediaObjects() {
-  const sql = `
-    CREATE TABLE IF NOT EXISTS media_objects (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      media_id INTEGER NOT NULL,
-      source_type TEXT NOT NULL,
-      source_ref_id INTEGER,
-      label TEXT NOT NULL,
-      confidence REAL,
-      bbox TEXT,
-      created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
-      analysis_version TEXT,
-      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
-    );
-  `;
-  db.prepare(sql).run();
-  db.prepare("CREATE INDEX IF NOT EXISTS idx_objects_media ON media_objects(media_id);").run();
-  db.prepare("CREATE INDEX IF NOT EXISTS idx_objects_label ON media_objects(label);").run();
 }
 
 /** 创建 video_keyframes：视频关键帧及存储 key */
@@ -351,16 +329,15 @@ function createTableAlbumMedia() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_album_media_media_id ON album_media(media_id);").run();
 }
 
-/** 创建 media_search：汇总 caption/OCR/物体/场景/位置等，供搜索与 FTS 同步 */
+/** 创建 media_search：汇总 caption/OCR/转写/位置等，供搜索与 FTS 同步 */
 function createTableMediaSearch() {
   const sql = `
     CREATE TABLE IF NOT EXISTS media_search (
       media_id INTEGER PRIMARY KEY,
       user_id INTEGER NOT NULL,
       caption_text TEXT,
+      keywords_text TEXT,
       ocr_text TEXT,
-      object_text TEXT,
-      scene_text TEXT,
       transcript_text TEXT,
       location_text TEXT,
       updated_at INTEGER,
@@ -376,9 +353,8 @@ function createTableMediaFts() {
   const sql = `
     CREATE VIRTUAL TABLE IF NOT EXISTS media_fts USING fts5(
       caption_text,
+      keywords_text,
       ocr_text,
-      object_text,
-      scene_text,
       transcript_text,
       location_text,
       content='media_search',
@@ -388,21 +364,24 @@ function createTableMediaFts() {
   db.prepare(sql).run();
 }
 
-/** 创建 tag_statistics：标签统计（object/scene/keyword）计数与更新时间 */
-function createTableTagStatistics() {
+/** 创建 media_search_terms：中文 term 索引，用于单字/双字稳定召回 */
+function createTableMediaSearchTerms() {
   const sql = `
-    CREATE TABLE IF NOT EXISTS tag_statistics (
-      tag_type TEXT NOT NULL,         -- 'object' | 'scene' | 'keyword'
-      tag_name TEXT NOT NULL,
-      count INTEGER NOT NULL DEFAULT 0,
-      last_updated INTEGER NOT NULL,
-      PRIMARY KEY (tag_type, tag_name)
+    CREATE TABLE IF NOT EXISTS media_search_terms (
+      media_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      field_type TEXT NOT NULL,
+      term TEXT NOT NULL,
+      term_len INTEGER NOT NULL,
+      updated_at INTEGER,
+      PRIMARY KEY (media_id, field_type, term),
+      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
     );
   `;
   db.prepare(sql).run();
-  db.prepare(
-    "CREATE INDEX IF NOT EXISTS idx_tag_statistics_type_count ON tag_statistics(tag_type, count DESC, last_updated DESC);",
-  ).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_search_terms_user_term ON media_search_terms(user_id, term);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_search_terms_media_id ON media_search_terms(media_id);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_search_terms_user_field_term ON media_search_terms(user_id, field_type, term);").run();
 }
 
 /** 创建 albums 表（media 版）：相册名、封面 cover_media_id、软删除、last_used_at */
@@ -508,14 +487,13 @@ module.exports = {
   createTableMediaAnalysis,
   createTableMediaCaptions,
   createTableMediaTextBlocks,
-  createTableMediaObjects,
   createTableMediaFaceEmbeddings,
   createTableMediaEmbeddings,
   createTableVideoKeyframes,
   createTableVideoTranscripts,
   createTableMediaSearch,
   createTableMediaFts,
-  createTableTagStatistics,
+  createTableMediaSearchTerms,
   createTableAlbumMedia,
   createTableAlbumsMediaVersion,
   createTableFaceClustersMediaVersion,

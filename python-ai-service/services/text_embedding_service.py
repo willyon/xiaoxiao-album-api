@@ -11,26 +11,29 @@ import numpy as np
 from typing import Optional, Dict, List
 
 from logger import logger
-from loaders.model_loader import get_siglip2_components
+from loaders.model_loader import get_siglip2_text_components_for_profile
 
 
-def encode_text(text: str) -> Optional[Dict[str, object]]:
+def encode_text(text: str, profile: str = "standard") -> Optional[Dict[str, object]]:
     """
-    使用 SigLIP2 文本编码器将文本转换为 1152 维向量
-    
+    使用 SigLIP2 文本编码器将文本转换为 1152 维向量。
+    按 profile 获取与 image 同源的 text encoder，保证 scene 等 zero-shot 空间一致。
+
     Args:
         text: 输入文本字符串
-        
+        profile: 档位（standard/enhanced），与 image_embedding 同源
+
     Returns:
         包含向量和模型信息的字典，格式：{"vector": [float], "model": "siglip2"}
         如果编码失败则返回 None
     """
     if not text or not text.strip():
         return None
-    
+
+    profile = (profile or "standard").lower()
     try:
-        # 获取 SigLIP2 组件
-        _, text_session, tokenizer, metadata = get_siglip2_components()
+        # 按 profile 获取与 image 同源的文本组件（禁止在本层解析 profile/路径）
+        text_session, tokenizer, metadata = get_siglip2_text_components_for_profile(profile)
         
         if text_session is None or tokenizer is None or metadata is None:
             logger.error("SigLIP2 文本编码器组件未加载")

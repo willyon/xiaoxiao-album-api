@@ -16,7 +16,6 @@ const {
   addMediasToAlbum,
   removeMediasFromAlbum,
   setAlbumCover,
-  getAutoAlbums,
 } = require("../controllers/albumController");
 
 // ========== 相册列表接口 ========== //
@@ -25,9 +24,6 @@ router.get("/", getCustomAlbums);
 
 // 获取最近使用的相册（须在 /:albumId 之前注册）
 router.get("/recent", getRecentAlbums);
-
-// 获取自动相册列表（宠物、海边、家庭日常等）
-router.get("/auto", getAutoAlbums);
 
 // ========== 相册 CRUD 接口 ========== //
 // 创建相册

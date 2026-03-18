@@ -43,7 +43,6 @@ function finalizeMediaAnalysis({
   faceData = {},
   cleanupData = {},
   captionData = {},
-  sceneData = {},
   ocrData = {},
 }) {
   const faceCount = faceData.faceCount ?? null;
@@ -55,17 +54,15 @@ function finalizeMediaAnalysis({
   const sharpnessScore = cleanupData.sharpnessScore ?? null;
   const hasCaption = typeof captionData.caption === "string" ? 1 : null;
   const hasOcr = Array.isArray(ocrData.blocks) && ocrData.blocks.length > 0 ? 1 : null;
-  const scenePrimary = sceneData.primaryScene ?? null;
-  const environment = sceneData.environment ?? null;
 
   db.prepare(
     `
     INSERT INTO media_analysis (
       media_id, analysis_status, analysis_version, analyzed_at,
       face_count, person_count, primary_face_quality, primary_expression, primary_expression_confidence,
-      aesthetic_score, sharpness_score, has_caption, has_ocr, scene_primary, environment, last_error, last_error_at
+      aesthetic_score, sharpness_score, has_caption, has_ocr, last_error, last_error_at
     )
-    VALUES (?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+    VALUES (?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
     ON CONFLICT(media_id) DO UPDATE SET
       analysis_status = 'done',
       analysis_version = excluded.analysis_version,
@@ -79,8 +76,6 @@ function finalizeMediaAnalysis({
       sharpness_score = COALESCE(excluded.sharpness_score, media_analysis.sharpness_score),
       has_caption = COALESCE(excluded.has_caption, media_analysis.has_caption),
       has_ocr = COALESCE(excluded.has_ocr, media_analysis.has_ocr),
-      scene_primary = COALESCE(excluded.scene_primary, media_analysis.scene_primary),
-      environment = COALESCE(excluded.environment, media_analysis.environment),
       last_error = NULL,
       last_error_at = NULL
   `,
@@ -97,30 +92,12 @@ function finalizeMediaAnalysis({
     sharpnessScore,
     hasCaption,
     hasOcr,
-    scenePrimary,
-    environment,
   );
-}
-
-/**
- * 媒体分析链路：更新 media_analysis 的 scene_primary、environment（INSERT or ON CONFLICT UPDATE）
- */
-function upsertSceneForMedia(mediaId, analysisVersion, primaryScene, environment) {
-  db.prepare(
-    `
-    INSERT INTO media_analysis (media_id, analysis_status, analysis_version, scene_primary, environment)
-    VALUES (?, 'pending', ?, ?, ?)
-    ON CONFLICT(media_id) DO UPDATE SET
-      scene_primary = COALESCE(?, media_analysis.scene_primary),
-      environment = COALESCE(?, media_analysis.environment)
-  `,
-  ).run(mediaId, analysisVersion, primaryScene, environment, primaryScene, environment);
 }
 
 module.exports = {
   markMediaAnalysisRunning,
   markMediaAnalysisFailed,
   finalizeMediaAnalysis,
-  upsertSceneForMedia,
 };
 

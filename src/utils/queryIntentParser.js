@@ -78,29 +78,6 @@ function parseQueryIntent(query) {
     }
   }
 
-  // ========== 场景提取 ==========
-  const sceneKeywords = {
-    海边: ["海滩", "海边", "海洋", "沙滩"],
-    海滩: ["海滩", "海边", "海洋", "沙滩"],
-    公园: ["公园", "绿地", "花园"],
-    餐厅: ["餐厅", "美食", "食物"],
-    家里: ["室内", "家"],
-    室内: ["室内", "家"],
-    户外: ["户外", "室外"],
-    室外: ["户外", "室外"],
-    山上: ["山", "山峰", "山顶"],
-    山: ["山", "山峰", "山顶"],
-  };
-
-  for (const [keyword, tags] of Object.entries(sceneKeywords)) {
-    if (normalizedQuery.includes(keyword)) {
-      // 注意：scene_tags 不在 filters 中，需要通过 FTS 查询
-      // 这里可以返回一个标记，让调用方知道需要添加场景筛选
-      filters._sceneKeywords = tags;
-      break;
-    }
-  }
-
   // ========== 情感提取 ==========
   const emotionKeywords = {
     开心: ["开心", "笑", "高兴", "快乐"],
@@ -150,11 +127,6 @@ function mergeFilters(existingFilters, parsedFilters) {
 
   if (!merged.expression?.length && parsedFilters.expression?.length) {
     merged.expression = parsedFilters.expression;
-  }
-
-  // 场景关键词（通过 FTS 查询处理，这里只保留标记）
-  if (parsedFilters._sceneKeywords) {
-    merged._sceneKeywords = parsedFilters._sceneKeywords;
   }
 
   return merged;

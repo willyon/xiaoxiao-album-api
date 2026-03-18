@@ -32,6 +32,15 @@ def set_request_log_context(
     result_count: Optional[int] = None,
     error_code: Optional[str] = None,
     image_size: Optional[str] = None,
+    configured_provider: Optional[str] = None,
+    resolved_provider: Optional[str] = None,
+    configured_vendor: Optional[str] = None,
+    resolved_vendor: Optional[str] = None,
+    ocr_trigger_mode: Optional[str] = None,
+    ocr_triggered: Optional[bool] = None,
+    caption_status: Optional[str] = None,
+    ocr_status: Optional[str] = None,
+    top_status: Optional[str] = None,
 ) -> None:
     """
     在 request.state 上设置本次请求的日志上下文，供中间件在响应后统一输出。
@@ -53,3 +62,21 @@ def set_request_log_context(
         request.state._log_error_code = error_code
     if image_size is not None:
         request.state._log_image_size = image_size
+    if configured_provider is not None:
+        request.state._log_configured_provider = configured_provider
+    if resolved_provider is not None:
+        request.state._log_resolved_provider = resolved_provider
+    if configured_vendor is not None:
+        request.state._log_configured_vendor = configured_vendor
+    if resolved_vendor is not None:
+        request.state._log_resolved_vendor = resolved_vendor
+    if ocr_trigger_mode is not None:
+        request.state._log_ocr_trigger_mode = ocr_trigger_mode
+    if ocr_triggered is not None:
+        request.state._log_ocr_triggered = ocr_triggered
+    if caption_status is not None:
+        request.state._log_caption_status = caption_status
+    if ocr_status is not None:
+        request.state._log_ocr_status = ocr_status
+    if top_status is not None:
+        request.state._log_top_status = top_status

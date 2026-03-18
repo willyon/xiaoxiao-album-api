@@ -10,12 +10,28 @@ const { AGE_GROUP_FRONTEND_TO_BACKEND } = require("../constants/filterMappings")
 const searchService = require("../services/searchService");
 const { addFullUrlToMedia } = require("../services/mediaService");
 const faceClusterModel = require("../models/faceClusterModel");
-const pythonSearchClient = require("../services/pythonSearchClient");
 const { parseQueryIntent, mergeFilters } = require("../utils/queryIntentParser");
-const { getLocalizedFilterLabel } = require("../utils/filterLabelI18n");
 const logger = require("../utils/logger");
 
 const ALLOWED_EXPRESSION_FILTERS = new Set(["happy", "sad", "anger", "surprise", "neutral"]);
+
+function sanitizeFtsToken(token) {
+  const value = String(token || "").trim();
+  if (!value) return "";
+  if (/^[\p{L}\p{N}_\u3400-\u9fff*]+$/u.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+function buildSafeFtsQuery(query) {
+  const raw = String(query || "").trim();
+  if (!raw || raw === "*") {
+    return raw || null;
+  }
+  const tokens = raw.split(/\s+/).map(sanitizeFtsToken).filter(Boolean);
+  return tokens.length > 0 ? tokens.join(" ") : null;
+}
 
 /**
  * 构建 FTS 查询和 WHERE 条件
@@ -94,35 +110,11 @@ function buildSearchConditions(query, filters, options = {}) {
     }
   }
 
-  // 2.1 场景（media_analysis.scene_primary）
-  if (filters.scene && Array.isArray(filters.scene) && filters.scene.length > 0) {
-    const sceneConditions = [];
-    filters.scene.forEach((scene) => {
-      sceneConditions.push("ma.scene_primary = ?");
-      whereParams.push(scene);
-    });
-    if (sceneConditions.length > 0) {
-      whereConditions.push(`(${sceneConditions.join(" OR ")})`);
-    }
-  }
-
-  // 2.2 物体（media_objects.label）
-  if (filters.object && Array.isArray(filters.object) && filters.object.length > 0) {
-    const placeholders = filters.object.map(() => "?").join(",");
-    whereConditions.push(`
-      EXISTS (
-        SELECT 1 FROM media_objects mo
-        WHERE mo.media_id = i.id
-          AND mo.label IN (${placeholders})
-      )
-    `);
-    whereParams.push(...filters.object);
-  }
-
-  // 3. 图片版式（layout_type 字段在 FTS 中）
+  // 3. 图片版式（layout_type 字段使用 WHERE 精确过滤）
   if (filters.imageOrientation && Array.isArray(filters.imageOrientation) && filters.imageOrientation.length > 0) {
-    const layoutConditions = filters.imageOrientation.map((layout) => `layout_type:${layout}`).join(" OR ");
-    ftsConditions.push(`(${layoutConditions})`);
+    const placeholders = filters.imageOrientation.map(() => "?").join(",");
+    whereConditions.push(`i.layout_type IN (${placeholders})`);
+    whereParams.push(...filters.imageOrientation);
   }
 
   // 构建最终的 FTS 查询字符串
@@ -139,9 +131,9 @@ function buildSearchConditions(query, filters, options = {}) {
     }
   } else {
     // 有具体的搜索关键词
-    ftsQuery = query.trim();
+    ftsQuery = buildSafeFtsQuery(query);
     if (ftsConditions.length > 0) {
-      ftsQuery += " AND " + ftsConditions.join(" AND ");
+      ftsQuery = ftsQuery ? `${ftsQuery} AND ${ftsConditions.join(" AND ")}` : ftsConditions.join(" AND ");
     }
   }
 
@@ -422,51 +414,6 @@ function buildScopeConditions(scope, userId) {
 }
 
 /**
- * 合并 FTS 和向量搜索结果，使用倒数排名融合（RRF）排序
- * @param {Array} ftsResults - FTS 搜索结果（包含 id 字段）
- * @param {Array<{media_id: number, score: number}>} vectorResults - 向量搜索结果
- * @param {number} k - RRF 常数（默认 60）
- * @returns {Array<{mediaId: number, rrfScore: number}>} 合并排序后的结果
- */
-function mergeAndRank(ftsResults, vectorResults, k = 60) {
-  // 创建 mediaId -> rank 的映射
-  const ftsRankMap = new Map();
-  ftsResults.forEach((result, index) => {
-    ftsRankMap.set(result.mediaId, index + 1); // rank 从 1 开始
-  });
-
-  const vectorRankMap = new Map();
-  vectorResults.forEach((result, index) => {
-    vectorRankMap.set(result.media_id, index + 1);
-  });
-
-  // 收集所有唯一的 mediaId
-  const allMediaIds = new Set();
-  ftsResults.forEach((result) => allMediaIds.add(result.mediaId));
-  vectorResults.forEach((result) => allMediaIds.add(result.media_id));
-
-  // 计算每个 mediaId 的 RRF 分数
-  const scoredResults = [];
-  allMediaIds.forEach((mediaId) => {
-    const ftsRank = ftsRankMap.get(mediaId) || Infinity;
-    const vectorRank = vectorRankMap.get(mediaId) || Infinity;
-
-    // RRF 公式：score = 1/(k + rank_fts) + 1/(k + rank_vector)
-    const rrfScore = 1 / (k + ftsRank) + 1 / (k + vectorRank);
-
-    scoredResults.push({
-      mediaId,
-      rrfScore,
-    });
-  });
-
-  // 按 RRF 分数降序排序
-  scoredResults.sort((a, b) => b.rrfScore - a.rrfScore);
-
-  return scoredResults;
-}
-
-/**
  * 搜索/列表图片（统一接口）
  * POST /search/media
  * body: query?, filters?, pageNo, pageSize, clusterId?
@@ -480,7 +427,6 @@ async function handleSearchMedias(req, res, next) {
       filters = {},
       pageNo = 1,
       pageSize = 20,
-      searchType = "hybrid",
       clusterId: clusterIdRaw,
       source,
       type,
@@ -514,37 +460,31 @@ async function handleSearchMedias(req, res, next) {
       },
     });
 
-    const offset = (pageNo - 1) * pageSize;
     let whereConditions = [];
     let whereParams = [];
     let ftsQuery = null;
+    let searchResult;
 
     if (hasScope) {
       const scope = { source, type, albumId, clusterId: validClusterId };
       const { scopeConditions, scopeParams } = buildScopeConditions(scope, userId);
       const filterOptions = { userId };
-      const filterBuilt = buildSearchConditions(hasQuery ? searchQuery : "*", enhancedFilters, filterOptions);
+      const normalizedForFts = hasQuery ? searchQuery : "*";
+      const filterBuilt = buildSearchConditions(hasQuery ? normalizedForFts : "*", enhancedFilters, filterOptions);
       ftsQuery = filterBuilt.ftsQuery;
       whereConditions = [...scopeConditions, ...filterBuilt.whereConditions];
       whereParams = [...scopeParams, ...filterBuilt.whereParams];
-
-      const [list, total] = await Promise.all([
-        searchService.searchMediasByText({
-          userId,
-          ftsQuery,
-          whereConditions,
-          whereParams,
-          limit: pageSize,
-          offset,
-        }),
-        searchService.getSearchResultsCount({
-          userId,
-          ftsQuery,
-          whereConditions,
-          whereParams,
-        }),
-      ]);
-      let resultsWithUrls = await addFullUrlToMedia(list);
+      searchResult = await searchService.searchMediasHybrid({
+        userId,
+        query: hasQuery ? searchQuery : "",
+        ftsQuery,
+        whereConditions,
+        whereParams,
+        pageNo: parseInt(pageNo, 10),
+        pageSize: parseInt(pageSize, 10),
+        allowVector: false,
+      });
+      let resultsWithUrls = await addFullUrlToMedia(searchResult.list);
       if (source === "people" && validClusterId != null && resultsWithUrls.length > 0) {
         const mediaIds = resultsWithUrls.map((item) => item.mediaId).filter((id) => id != null);
         const faceEmbeddingIdMap = faceClusterModel.getFaceEmbeddingIdByMediaIdInCluster(userId, validClusterId, mediaIds);
@@ -555,17 +495,18 @@ async function handleSearchMedias(req, res, next) {
       }
       logger.info({
         message: `范围列表/搜索完成: ${userId}`,
-        details: { source, resultCount: resultsWithUrls.length, total },
+        details: { source, resultCount: resultsWithUrls.length, total: searchResult.total },
       });
       return res.sendResponse({
-        data: { list: resultsWithUrls, total },
+        data: { list: resultsWithUrls, total: searchResult.total },
         messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
       });
     }
 
-    // 全局搜索（无 scope 或 source=search）：原有逻辑，含向量
+    // 全局搜索（无 scope 或 source=search）：中文 term + FTS + 向量混合
     const filterOptions = { userId, clusterId: validClusterId };
-    const built = buildSearchConditions(searchQuery, enhancedFilters, filterOptions);
+    const normalizedForFts = hasQuery ? searchQuery : "*";
+    const built = buildSearchConditions(normalizedForFts, enhancedFilters, filterOptions);
     ftsQuery = built.ftsQuery;
     whereConditions = built.whereConditions;
     whereParams = built.whereParams;
@@ -575,162 +516,28 @@ async function handleSearchMedias(req, res, next) {
       details: { ftsQuery, whereConditionsCount: whereConditions.length, whereParamsCount: whereParams.length },
     });
 
-    const searchPromises = [
-      // FTS 搜索：获取更多结果用于合并（取 pageSize * 2，确保有足够的结果用于 RRF）
-      searchService.searchMediasByText({
-        userId,
-        ftsQuery,
-        whereConditions,
-        whereParams,
-        limit: hasQuery ? pageSize * 2 : pageSize, // 有查询词时多取一些用于合并
-        offset: hasQuery ? 0 : offset, // 有查询词时从 0 开始，合并后再分页
-      }),
-      searchService.getSearchResultsCount({
-        userId,
-        ftsQuery,
-        whereConditions,
-        whereParams,
-      }),
-    ];
+    searchResult = await searchService.searchMediasHybrid({
+      userId,
+      query: hasQuery ? searchQuery : "",
+      ftsQuery,
+      whereConditions,
+      whereParams,
+      pageNo: parseInt(pageNo, 10),
+      pageSize: parseInt(pageSize, 10),
+      allowVector: hasQuery,
+    });
 
-    // 如果有查询词，执行向量搜索
-    let vectorResults = [];
-    if (hasQuery) {
-      try {
-        // 1. 文本编码
-        const { vector: queryVector } = await pythonSearchClient.encodeText(searchQuery);
-
-        // 2. 基于 ANN 索引的向量搜索（由 Python 侧 hnswlib 完成，不再传输所有候选向量）
-        vectorResults = await pythonSearchClient.annSearchByVector(userId, queryVector, pageSize * 2);
-
-        logger.info({
-          message: "向量搜索完成（ANN）",
-          details: {
-            query: searchQuery,
-            queryVectorLength: queryVector.length,
-            vectorResultsCount: vectorResults.length,
-            vectorResults: vectorResults.slice(0, 5).map((r) => ({ media_id: r.media_id, score: r.score })),
-          },
-        });
-      } catch (error) {
-        // Python 服务失败时降级为仅 FTS，记录日志但不中断流程
-        logger.warn({
-          message: "向量搜索失败，降级为仅 FTS",
-          details: {
-            error: error.message,
-            query: searchQuery,
-          },
-        });
-      }
-    }
-
-    // 等待 FTS 搜索完成
-    const [ftsResults, ftsTotalCount] = await Promise.all(searchPromises);
-
-    let finalResults = ftsResults;
-    let finalTotal = ftsTotalCount;
-
-    // 如果有向量搜索结果，合并排序
-    if (hasQuery && vectorResults.length > 0) {
-      // 情况 1：FTS 没有命中，但向量搜索有结果 —— 直接按向量结果取图片列表
-      if (ftsResults.length === 0) {
-        const uniqueVectorIds = Array.from(new Set(vectorResults.map((r) => r.media_id)));
-        try {
-          const vectorImages = await searchService.getMediasByIds({
-            userId,
-            imageIds: uniqueVectorIds,
-          });
-
-          finalResults = vectorImages;
-          finalTotal = vectorImages.length;
-
-          logger.info({
-            message: "搜索结果：仅向量命中",
-            details: {
-              query: searchQuery,
-              imageCount: vectorImages.length,
-            },
-          });
-        } catch (error) {
-          logger.warn({
-            message: "仅向量命中场景下获取图片信息失败，降级为无结果",
-            details: { error: error.message, imageIds: uniqueVectorIds },
-          });
-          finalResults = [];
-          finalTotal = 0;
-        }
-      } else {
-        // 情况 2：FTS 和向量都有结果，使用 RRF 合并
-        const mergedRanks = mergeAndRank(ftsResults, vectorResults);
-
-        // 创建 mediaId -> 完整结果对象的映射（FTS 结果）
-        const ftsResultsMap = new Map();
-        ftsResults.forEach((result) => {
-          ftsResultsMap.set(result.mediaId, result);
-        });
-
-        // 收集需要从数据库获取的图片 ID（只在向量结果中出现的）
-        const vectorImageIds = new Set(vectorResults.map((r) => r.media_id));
-        const ftsImageIds = new Set(ftsResults.map((r) => r.mediaId));
-        const missingImageIds = Array.from(vectorImageIds).filter((id) => !ftsImageIds.has(id));
-
-        // 如果有只在向量结果中的图片，从数据库获取
-        let vectorOnlyImages = [];
-        if (missingImageIds.length > 0) {
-          try {
-            vectorOnlyImages = await searchService.getMediasByIds({
-              userId,
-              imageIds: missingImageIds,
-            });
-            // 添加到映射中
-            vectorOnlyImages.forEach((img) => {
-              ftsResultsMap.set(img.mediaId, img);
-            });
-          } catch (error) {
-            logger.warn({
-              message: "获取向量结果图片信息失败",
-              details: { error: error.message, missingImageIds },
-            });
-          }
-        }
-
-        // 按 RRF 排序后的顺序构建最终结果
-        const mergedResults = [];
-        const mergedImageIds = new Set();
-
-        for (const { mediaId } of mergedRanks) {
-          if (mergedImageIds.has(mediaId)) continue;
-
-          const result = ftsResultsMap.get(mediaId);
-          if (result) {
-            mergedResults.push(result);
-            mergedImageIds.add(mediaId);
-          }
-        }
-
-        finalResults = mergedResults;
-        // 总数：FTS 和向量结果的并集大小（去重后的 mediaId 数量）
-        const allUniqueImageIds = new Set([...ftsResults.map((r) => r.mediaId), ...vectorResults.map((r) => r.media_id)]);
-        finalTotal = Math.max(ftsTotalCount, allUniqueImageIds.size);
-      }
-    }
-
-    // 分页（如果之前取了更多结果）
-    if (hasQuery && vectorResults.length > 0) {
-      finalResults = finalResults.slice(offset, offset + pageSize);
-    }
-
-    // 添加完整URL（thumbnailUrl 和 highResUrl）
-    const resultsWithUrls = await addFullUrlToMedia(finalResults);
+    const resultsWithUrls = await addFullUrlToMedia(searchResult.list);
 
     logger.info({
       message: `搜索完成: ${userId}`,
       details: {
         query,
         resultCount: resultsWithUrls.length,
-        totalCount: finalTotal,
-        ftsCount: ftsResults.length,
-        vectorCount: vectorResults.length,
+        totalCount: searchResult.total,
+        termCount: searchResult.stats?.termCount || 0,
+        ftsCount: searchResult.stats?.ftsCount || 0,
+        vectorCount: searchResult.stats?.vectorCount || 0,
         appliedFilters: Object.keys(filters).filter((key) => {
           const value = filters[key];
           if (Array.isArray(value)) return value.length > 0;
@@ -742,32 +549,8 @@ async function handleSearchMedias(req, res, next) {
     res.sendResponse({
       data: {
         list: resultsWithUrls,
-        total: finalTotal,
+        total: searchResult.total,
       },
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * 获取搜索建议
- * GET /search/suggestions
- */
-async function handleGetSearchSuggestions(req, res, next) {
-  try {
-    const { userId } = req.user;
-    const { prefix = "", limit = 10 } = req.query;
-
-    const suggestions = await searchService.getSearchSuggestions({
-      userId,
-      prefix,
-      limit: parseInt(limit),
-    });
-
-    res.sendResponse({
-      data: { suggestions },
       messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
     });
   } catch (error) {
@@ -817,12 +600,12 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
       scopeClusterId,
     } = req.query;
 
-    if (!type || !["city", "year", "month", "weekday", "scene", "object"].includes(type)) {
+    if (!type || !["city", "year", "month", "weekday"].includes(type)) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
         messageType: "error",
-        message: "type 参数必须是 city、year、month、weekday、scene 或 object",
+        message: "type 参数必须是 city、year、month 或 weekday",
       });
     }
 
@@ -856,15 +639,6 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
       scopeParams: scopeParams.length ? scopeParams : null,
     });
 
-    // 场景/物体按请求语言返回 { value, label }，便于前端直接展示
-    const lang = req.userLanguage || "zh";
-    if (type === "scene" || type === "object") {
-      result.list = (result.list || []).map((v) => ({
-        value: v,
-        label: getLocalizedFilterLabel(type, v, lang),
-      }));
-    }
-
     res.sendResponse({
       data: result,
       messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
@@ -879,30 +653,9 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
   }
 }
 
-/**
- * 分页获取场景筛选选项
- * GET /search/filters/scenes?pageNo=1&pageSize=20
- */
-async function handleGetSceneFilterOptionsPaginated(req, res, next) {
-  req.query.type = "scene";
-  return handleGetFilterOptionsPaginated(req, res, next);
-}
-
-/**
- * 分页获取物体筛选选项
- * GET /search/filters/objects?pageNo=1&pageSize=20
- */
-async function handleGetObjectFilterOptionsPaginated(req, res, next) {
-  req.query.type = "object";
-  return handleGetFilterOptionsPaginated(req, res, next);
-}
-
 module.exports = {
   handleSearchMedias,
-  handleGetSearchSuggestions,
   handleGetQueueStatus,
   handleGetFilterOptionsPaginated,
-  handleGetSceneFilterOptionsPaginated,
-  handleGetObjectFilterOptionsPaginated,
   buildScopeConditions,
 };

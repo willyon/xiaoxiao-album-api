@@ -5,66 +5,6 @@
  */
 const { db } = require("../services/database");
 
-/**
- * 自动相册类型（固定规则）
- * - key: 唯一标识
- * - label: 前端展示文案
- * - description: 可选描述
- * - where: 结构化过滤条件（SQL 片段）
- */
-const AUTO_ALBUM_DEFINITIONS = [
-  {
-    key: "pets",
-    label: "宠物",
-    description: "包含宠物（狗、猫等动物）的照片",
-    where: `
-      EXISTS (
-        SELECT 1 FROM media_objects mo
-        WHERE mo.media_id = m.id
-          AND mo.label IN (
-            'dog','puppy','cat','kitten','bird','pigeon','sparrow','fish','goldfish','horse','cow','sheep','rabbit'
-          )
-      )
-    `,
-  },
-  {
-    key: "beach",
-    label: "海边旅行",
-    description: "在海边/海滩拍摄的照片",
-    where: `
-      EXISTS (
-        SELECT 1 FROM media_analysis ma2
-        WHERE ma2.media_id = m.id
-          AND ma2.scene_primary IN ('beach','sea','seaside')
-      )
-    `,
-  },
-  {
-    key: "family",
-    label: "家庭日常",
-    description: "家中或公园等日常场景，且有人物",
-    where: `
-      COALESCE(ma.person_count, 0) > 0
-      AND EXISTS (
-        SELECT 1 FROM media_analysis ma2
-        WHERE ma2.media_id = m.id
-          AND ma2.scene_primary IN ('home','living_room','bedroom','kitchen','park')
-      )
-    `,
-  },
-  {
-    key: "party",
-    label: "聚会与生日",
-    description: "派对、生日、婚礼等聚会场景",
-    where: `
-      EXISTS (
-        SELECT 1 FROM media_analysis ma2
-        WHERE ma2.media_id = m.id
-          AND ma2.scene_primary IN ('party','birthday_party','wedding','restaurant','bar')
-      )
-    `,
-  },
-];
 const { mapFields } = require("../utils/fieldMapper");
 const logger = require("../utils/logger");
 
@@ -628,48 +568,7 @@ function updateAlbumsStatsForMedias(imageIds) {
   });
 }
 
-/**
- * 按条件查询自动相册所用媒体列表（用于 getAutoAlbums）
- * @param {{ userId: number, whereClause: string, limit: number }} - whereClause 为 SQL 片段，仅来自 AUTO_ALBUM_DEFINITIONS
- * @returns {{ list: Array<Object>, totalCount: number }}
- */
-function getAutoAlbumMediaList({ userId, whereClause, limit = 1 }) {
-  const baseSql = `
-    FROM media m
-    LEFT JOIN media_analysis ma ON ma.media_id = m.id
-    WHERE m.user_id = ?
-      AND m.deleted_at IS NULL
-      AND (${whereClause})
-  `;
-  const listSql = `
-    SELECT
-      m.id,
-      m.thumbnail_storage_key,
-      m.high_res_storage_key,
-      m.original_storage_key,
-      m.storage_type,
-      m.media_type,
-      m.duration_sec,
-      m.captured_at
-    ${baseSql}
-    ORDER BY COALESCE(m.captured_at, 0) DESC, m.id DESC
-    LIMIT ?
-  `;
-  const countSql = `
-    SELECT COUNT(*) AS total
-    ${baseSql}
-  `;
-  const list = db.prepare(listSql).all(userId, limit);
-  const { total } = db.prepare(countSql).get(userId);
-  return {
-    list,
-    totalCount: total || 0,
-  };
-}
-
 module.exports = {
-  AUTO_ALBUM_DEFINITIONS,
-  getAutoAlbumMediaList,
   createAlbum,
   getAlbumsByUserId,
   getRecentAlbumsByUserId,

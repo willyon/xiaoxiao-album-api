@@ -144,23 +144,6 @@ async function getRecentAlbums(req, res, next) {
 }
 
 /**
- * 获取自动相册列表（宠物、海边旅行、家庭日常、聚会等）
- * GET /api/albums/auto
- */
-async function getAutoAlbums(req, res, next) {
-  try {
-    const userId = req.user.userId;
-    const albums = await albumService.getAutoAlbums({
-      userId,
-      limitPerAlbum: 1,
-    });
-    res.sendResponse({ data: albums });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
  * 统一获取相册图片列表（year/month/date/custom）
  * GET /albums/:albumId/images?type=year&pageNo=1&pageSize=20&clusterId=123
  * 注意：type 参数必须提供，用于明确指定相册类型
@@ -353,7 +336,6 @@ module.exports = {
   deleteAlbum,
   getCustomAlbums,
   getRecentAlbums,
-  getAutoAlbums,
   queryAlbumPhotos,
   addMediasToAlbum,
   removeMediasFromAlbum,

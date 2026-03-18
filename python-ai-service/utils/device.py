@@ -74,13 +74,14 @@ def normalize_device(device: str) -> Tuple[str, str | None]:
 def resolve_device(device: str) -> str:
     """
     解析设备并返回实际使用的设备字符串。
-    若 device 非法或 cuda 不可用且请求了 cuda，会 fallback 到 cpu（不在此处抛错，
-    由上层根据 normalize_device 的 error_code 决定是否返回 400）。
     
-    推荐用法：先调 normalize_device，若 error_code 非空则直接返回 400 + 错误体；
-    否则用 resolve_device( normalized_device ) 得到 "cpu" 或 "cuda" 再传给 ModelManager。
+    - 合法输入：返回 "cpu" 或 "cuda"
+    - 非法输入（例如 "mps"）或 cuda 不可用：一律回落到 "cpu"，避免下游出现 KeyError("mps") 之类错误。
     """
     resolved, err = normalize_device(device)
-    if err and resolved == RESOLVED_CUDA:
-        return RESOLVED_CPU  # cuda 不可用时 fallback
+    if err:
+        # 包括两类：
+        # - 请求 cuda 但当前环境不支持
+        # - 传入了未在 VALID_DEVICES 中的字符串（如 "mps"）
+        return RESOLVED_CPU
     return resolved

@@ -2,13 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 健康检查路由
-扩展：cuda_available、resolved_device、各能力是否已加载、支持 profile 列表
+扩展：轻量健康检查 + 配置态/运行态能力视图
 """
 
 from fastapi import APIRouter
 
 from config import settings
-from loaders.ocr_loader import is_ocr_loaded
 from services.model_manager import get_model_manager
 from services.model_registry import MODEL_CONFIGS, get_model_version
 from utils.device import cuda_available, resolve_device
@@ -19,29 +18,32 @@ router = APIRouter()
 
 @router.get('/health')
 async def health_check():
-    """健康检查：status、cuda_available、resolved_device、各能力加载状态、profile 列表"""
+    """轻量健康检查：不触发模型加载，仅返回服务状态与能力配置摘要。"""
     manager = get_model_manager()
     resolved = resolve_device(settings.DEFAULT_DEVICE)
-    capabilities = manager.capabilities_loaded()
-    profiles_capabilities = {p: manager.capabilities_loaded_for_profile(p) for p in settings.SUPPORTED_PROFILES}
+    configured = manager.capabilities_configured()
+    runtime = manager.capabilities_runtime_status(device=resolved)
+    profiles_capabilities = {
+        p: manager.capabilities_configured_for_profile(p) for p in settings.SUPPORTED_PROFILES
+    }
     response = {
         "status": "healthy",
         "cuda_available": cuda_available(),
         "resolved_device": resolved,
         "profiles": list(settings.SUPPORTED_PROFILES),
-        "capabilities": capabilities,
+        "capabilities": configured,
         "profiles_capabilities": profiles_capabilities,
     }
 
-    # 按当前 capabilities 计算 face/ocr 相关聚合字段，便于前端/监控直接使用
+    # 聚合字段：只反映配置态，不触发真实加载
     response.update(
         {
-            "models_loaded": capabilities.get("face", False) or capabilities.get("ocr", False),
-            "face_loaded": capabilities.get("face", False),
-            "ocr_loaded": capabilities.get("ocr", False),
+            "models_loaded": any(bool((runtime.get(k) or {}).get("loaded", False)) for k in ("caption", "ocr")),
+            "face_loaded": False,
+            "ocr_loaded": bool((runtime.get("ocr") or {}).get("loaded", False)),
             "services": {
-                "face_recognition": capabilities.get("face", False),
-                "ocr_recognition": capabilities.get("ocr", False),
+                "face_recognition": False,
+                "ocr_recognition": bool((configured.get("ocr") or {}).get("available", False)),
             },
         }
     )
@@ -53,12 +55,15 @@ async def capabilities_view():
     """
     能力视图：
     - model_versions：各能力使用的模型及版本
-    - capabilities：当前是否已加载可用
+    - configured：配置态 provider / vendor / enabled / available
+    - runtime：运行态 loaded / resolved provider / resolved vendor
     - profiles：支持的分析档位
     - taxonomy_version：与 Node 侧约定的分类版本号
     """
     manager = get_model_manager()
-    capabilities = manager.capabilities_loaded()
+    configured = manager.capabilities_configured()
+    runtime = manager.capabilities_runtime_status(device="cpu")
+    profiles_runtime = {p: manager.capabilities_runtime_status_for_profile(p, device="cpu") for p in settings.SUPPORTED_PROFILES}
     runtime_models = manager.runtime_model_report(device="cpu")
 
     def _ver(model_id: str):
@@ -99,7 +104,9 @@ async def capabilities_view():
 
     return {
         "profiles": list(settings.SUPPORTED_PROFILES),
-        "capabilities": capabilities,
+        "configured": configured,
+        "runtime": runtime,
+        "profiles_runtime": profiles_runtime,
         "runtime_models": runtime_models,
         "model_versions": model_versions,
         "models_meta": models_meta,

@@ -20,6 +20,7 @@ def analyze_cleanup(
     profile: str,
     device: str,
     manager: Any,
+    precomputed_embedding: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     质量分析入口（对外 API：POST /analyze_quality）。
@@ -46,6 +47,7 @@ def analyze_cleanup(
             image_bgr=image_bgr,
             profile=profile,
             device=device,
+            precomputed_embedding=precomputed_embedding,
         )
     except Exception as exc:  # pragma: no cover
         logger.error("analyze_cleanup 处理失败", details={"error": str(exc)})

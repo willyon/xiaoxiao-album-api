@@ -68,7 +68,7 @@ from config import settings
 from logger import logger
 
 # 导入路由模块
-from routes import analyze_full, caption, quality, face_cluster, health, objects, ocr, person, scene, search_embedding
+from routes import analyze_full, caption, quality, face_cluster, health, ocr, person, search_embedding
 
 # 导入向量索引与 ModelManager
 from services.vector_search_service import init_hnsw_index
@@ -174,8 +174,6 @@ def create_app():
     ANALYSIS_LOG_PATHS = {
         "/analyze_full",
         "/analyze_caption",
-        "/analyze_objects",
-        "/analyze_scene",
         "/ocr",
         "/analyze_quality",
         "/analyze_person",
@@ -196,6 +194,15 @@ def create_app():
             "requested_device": getattr(state, "_log_requested_device", None),
             "resolved_device": getattr(state, "_log_resolved_device", None),
             "model_name": getattr(state, "_log_model_name", None),
+            "configured_provider": getattr(state, "_log_configured_provider", None),
+            "resolved_provider": getattr(state, "_log_resolved_provider", None),
+            "configured_vendor": getattr(state, "_log_configured_vendor", None),
+            "resolved_vendor": getattr(state, "_log_resolved_vendor", None),
+            "ocr_trigger_mode": getattr(state, "_log_ocr_trigger_mode", None),
+            "ocr_triggered": getattr(state, "_log_ocr_triggered", None),
+            "caption_status": getattr(state, "_log_caption_status", None),
+            "ocr_status": getattr(state, "_log_ocr_status", None),
+            "top_status": getattr(state, "_log_top_status", None),
             "latency_ms": latency_ms,
             "result_count": getattr(state, "_log_result_count", None),
             "error_code": getattr(state, "_log_error_code", None),
@@ -209,8 +216,6 @@ def create_app():
     app.include_router(health.router, tags=["健康检查"])
     app.include_router(analyze_full.router, tags=["全量分析"])
     app.include_router(caption.router, tags=["Caption"])
-    app.include_router(objects.router, tags=["物体检测"])
-    app.include_router(scene.router, tags=["场景分类"])
     app.include_router(person.router, tags=["人物分析"])
     app.include_router(ocr.router, tags=["OCR识别"])
     app.include_router(face_cluster.router, tags=["人脸聚类"])
@@ -232,8 +237,6 @@ def main():
         logger.info("🔍 可用接口:")
         logger.info("  - GET  /health - 健康检查")
         logger.info("  - POST /analyze_caption - Caption 分析")
-        logger.info("  - POST /analyze_objects - 物体检测")
-        logger.info("  - POST /analyze_scene - 场景分类")
         logger.info("  - POST /analyze_person - 人物分析（人脸+人体检测）")
         logger.info("  - POST /analyze_quality - 图片质量指标")
         logger.info("  - POST /ocr - OCR 文字识别")

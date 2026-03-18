@@ -5,6 +5,7 @@
  */
 
 const { db } = require("../services/database");
+const { createTableMediaSearchTerms } = require("./initTableModel");
 const { mapFields } = require("../utils/fieldMapper");
 
 function normalizeSearchRows(rows) {
@@ -175,6 +176,96 @@ function getSearchResultsCount({ userId, ftsQuery, whereConditions = [], wherePa
   return result ? result.total : 0;
 }
 
+function searchMediaIdsByFts({ userId, ftsQuery, whereConditions = [], whereParams = [], limit = 50 }) {
+  if (!ftsQuery) {
+    return [];
+  }
+
+  let sql = `
+    SELECT
+      i.id AS media_id,
+      bm25(media_fts, 8.0, 9.0, 6.0, 4.0, 3.0) AS fts_score,
+      i.captured_at
+    FROM media_fts fts
+    JOIN media_search ms ON fts.rowid = ms.media_id
+    JOIN media i ON ms.media_id = i.id
+    LEFT JOIN media_analysis ma ON ma.media_id = i.id
+    WHERE i.user_id = ?
+      AND i.deleted_at IS NULL
+      AND media_fts MATCH ?
+  `;
+
+  if (whereConditions.length > 0) {
+    sql += " AND " + whereConditions.join(" AND ");
+  }
+
+  sql += `
+    ORDER BY fts_score ASC, i.captured_at DESC
+    LIMIT ?
+  `;
+
+  return db.prepare(sql).all(userId, ftsQuery, ...whereParams, limit);
+}
+
+function searchMediaIdsByChineseTerms({ userId, terms = [], whereConditions = [], whereParams = [], limit = 100 }) {
+  if (!Array.isArray(terms) || terms.length === 0) {
+    return [];
+  }
+  createTableMediaSearchTerms();
+
+  const placeholders = terms.map(() => "?").join(",");
+  let sql = `
+    SELECT
+      mst.media_id,
+      mst.field_type,
+      mst.term,
+      mst.term_len,
+      i.captured_at
+    FROM media_search_terms mst
+    JOIN media i ON i.id = mst.media_id
+    LEFT JOIN media_analysis ma ON ma.media_id = i.id
+    WHERE mst.user_id = ?
+      AND i.deleted_at IS NULL
+      AND mst.term IN (${placeholders})
+  `;
+
+  if (whereConditions.length > 0) {
+    sql += " AND " + whereConditions.join(" AND ");
+  }
+
+  sql += `
+    ORDER BY mst.term_len DESC, i.captured_at DESC
+    LIMIT ?
+  `;
+
+  return db.prepare(sql).all(userId, ...terms, ...whereParams, limit);
+}
+
+function countMediaIdsByChineseTerms({ userId, terms = [], whereConditions = [], whereParams = [] }) {
+  if (!Array.isArray(terms) || terms.length === 0) {
+    return 0;
+  }
+  createTableMediaSearchTerms();
+
+  const placeholders = terms.map(() => "?").join(",");
+  let sql = `
+    SELECT COUNT(DISTINCT mst.media_id) AS total
+    FROM media_search_terms mst
+    JOIN media i ON i.id = mst.media_id
+    LEFT JOIN media_analysis ma ON ma.media_id = i.id
+    WHERE mst.user_id = ?
+      AND i.deleted_at IS NULL
+      AND mst.term IN (${placeholders})
+  `;
+
+  if (whereConditions.length > 0) {
+    sql += " AND " + whereConditions.join(" AND ");
+  }
+
+  const row = db.prepare(sql).get(userId, ...terms, ...whereParams);
+  return row ? row.total : 0;
+}
+
 /**
  * 根据图片 ID 列表获取图片信息（用于向量搜索结果）
  * @param {number} userId - 用户ID
@@ -221,65 +312,6 @@ function getMediasByIds({ userId, imageIds }) {
   const stmt = db.prepare(sql);
   const results = stmt.all(userId, ...imageIds);
   return normalizeSearchRows(results);
-}
-
-/**
- * 获取搜索建议（基于现有标签）
- * 改进：使用包含匹配（LIKE %prefix%），确保任意 tag 包含 prefix 都能被建议
- */
-function getSearchSuggestions({ userId, prefix = "", limit = 10 }) {
-  const suggestions = [];
-
-  // 如果 prefix 为空，返回空数组
-  if (!prefix || !prefix.trim()) {
-    return [];
-  }
-
-  const normalizedPrefix = prefix.trim().toLowerCase();
-
-  const sql = `
-    SELECT caption_text, object_text, scene_text
-    FROM media_search
-    WHERE user_id = ?
-      AND (
-        caption_text IS NOT NULL
-        OR object_text IS NOT NULL
-        OR scene_text IS NOT NULL
-      )
-    LIMIT ?
-  `;
-  const rows = db.prepare(sql).all(userId, limit * 20);
-  rows.forEach((row) => {
-    [row.caption_text, row.object_text, row.scene_text].forEach((text) => {
-      if (!text) return;
-      String(text)
-        .split(/[,\s]+/)
-        .map((v) => v.trim())
-        .filter(Boolean)
-        .forEach((token) => {
-          if (token.toLowerCase().includes(normalizedPrefix) && !suggestions.includes(token)) {
-            suggestions.push(token);
-          }
-        });
-    });
-  });
-
-  // 按长度和匹配位置排序：优先显示短且以 prefix 开头的 tag
-  suggestions.sort((a, b) => {
-    const aLower = a.toLowerCase();
-    const bLower = b.toLowerCase();
-    const aStartsWith = aLower.startsWith(normalizedPrefix);
-    const bStartsWith = bLower.startsWith(normalizedPrefix);
-
-    // 以 prefix 开头的优先
-    if (aStartsWith && !bStartsWith) return -1;
-    if (!aStartsWith && bStartsWith) return 1;
-
-    // 长度短的优先
-    return a.length - b.length;
-  });
-
-  return suggestions.slice(0, limit);
 }
 
 /**
@@ -390,7 +422,7 @@ function getFilterOptions(userId) {
  * 分页获取筛选选项列表（支持 scope：在当前维度下的选项）
  * @param {Object} params
  * @param {number} params.userId - 用户ID
- * @param {string} params.type - 选项类型: 'city' | 'year' | 'month' | 'weekday' | 'scene' | 'object'
+ * @param {string} params.type - 选项类型: 'city' | 'year' | 'month' | 'weekday'
  * @param {number} params.pageNo - 页码（从1开始）
  * @param {number} params.pageSize - 每页数量（默认20）
  * @param {string} params.timeDimension - 时间维度（可选）
@@ -551,75 +583,6 @@ function getFilterOptionsPaginated({
         total = weekdayTotal.total;
         break;
       }
-      case "scene": {
-        const sceneData = db
-          .prepare(
-            `
-          SELECT ma.scene_primary, COUNT(*) as count
-          FROM media_analysis ma
-          INNER JOIN media ON media.id = ma.media_id
-          WHERE media.user_id = ?
-            AND ma.scene_primary IS NOT NULL
-            AND TRIM(ma.scene_primary) != ''${mediaClause}${scopeClause}
-          GROUP BY ma.scene_primary
-          ORDER BY count DESC, ma.scene_primary ASC
-          LIMIT ? OFFSET ?
-        `,
-          )
-          .all(userId, ...baseParams, pageSize, offset);
-
-        const sceneTotal = db
-          .prepare(
-            `
-          SELECT COUNT(DISTINCT ma.scene_primary) as total
-          FROM media_analysis ma
-          INNER JOIN media ON media.id = ma.media_id
-          WHERE media.user_id = ?
-            AND ma.scene_primary IS NOT NULL
-            AND TRIM(ma.scene_primary) != ''${mediaClause}${scopeClause}
-        `,
-          )
-          .get(userId, ...baseParams);
-
-        list = sceneData.map((s) => s.scene_primary);
-        total = sceneTotal.total;
-        break;
-      }
-      case "object": {
-        const objectData = db
-          .prepare(
-            `
-          SELECT mo.label, COUNT(*) as count
-          FROM media_objects mo
-          INNER JOIN media ON media.id = mo.media_id
-          WHERE media.user_id = ?
-            AND mo.label IS NOT NULL
-            AND TRIM(mo.label) != ''${mediaClause}${scopeClause}
-          GROUP BY mo.label
-          ORDER BY count DESC, mo.label ASC
-          LIMIT ? OFFSET ?
-        `,
-          )
-          .all(userId, ...baseParams, pageSize, offset);
-
-        const objectTotal = db
-          .prepare(
-            `
-          SELECT COUNT(DISTINCT mo.label) as total
-          FROM media_objects mo
-          INNER JOIN media ON media.id = mo.media_id
-          WHERE media.user_id = ?
-            AND mo.label IS NOT NULL
-            AND TRIM(mo.label) != ''${mediaClause}${scopeClause}
-        `,
-          )
-          .get(userId, ...baseParams);
-
-        list = objectData.map((o) => o.label);
-        total = objectTotal.total;
-        break;
-      }
-
       default:
         throw new Error(`Unknown filter type: ${type}`);
     }
@@ -637,7 +600,9 @@ function getFilterOptionsPaginated({
 module.exports = {
   searchMediasByText,
   getSearchResultsCount,
-  getSearchSuggestions,
+  searchMediaIdsByFts,
+  searchMediaIdsByChineseTerms,
+  countMediaIdsByChineseTerms,
   getFilterOptionsPaginated,
   getMediasByIds,
 };

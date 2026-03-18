@@ -21,11 +21,6 @@ def load_ocr_model():
     global paddle_ocr, ocr_loaded
 
     try:
-        if not settings.OCR_ENABLED:
-            logger.info("OCR 功能已禁用")
-            ocr_loaded = False
-            return
-
         # 在 import 前强制指定缓存目录。PaddleX 在 import 时从 paddlex.utils.cache 读 PADDLE_PDX_CACHE_HOME
         cfg = get_model_config("ocr.shared.paddleocr.ppocrv5")
         if cfg and cfg.local_path:
@@ -54,7 +49,7 @@ def load_ocr_model():
 
 def get_ocr_model():
     """获取 OCR 模型"""
-    if not ocr_loaded and settings.OCR_ENABLED:
+    if not ocr_loaded:
         load_ocr_model()
     return paddle_ocr if ocr_loaded else None
 

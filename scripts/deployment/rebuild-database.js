@@ -2,10 +2,10 @@
  * 数据库重建脚本：删除所有业务表，并按 initTableModel 中的 createTable* 按外键依赖顺序重建。
  * 使用方式：node scripts/deployment/rebuild-database.js
  *
- * 覆盖表：users, media, media_analysis, media_captions, media_text_blocks, media_objects,
+ * 覆盖表：users, media, media_analysis, media_captions, media_text_blocks,
  *        media_face_embeddings, media_embeddings, video_keyframes, video_transcripts,
  *        albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta,
- *        similar_groups, similar_group_members, media_search, media_fts, tag_statistics
+ *        similar_groups, similar_group_members, media_search, media_fts, media_search_terms
  */
 
 const path = require("path");
@@ -22,7 +22,6 @@ const {
   createTableMediaAnalysis,
   createTableMediaCaptions,
   createTableMediaTextBlocks,
-  createTableMediaObjects,
   createTableMediaFaceEmbeddings,
   createTableMediaEmbeddings,
   createTableVideoKeyframes,
@@ -36,7 +35,7 @@ const {
   createTableSimilarGroupMembersMediaVersion,
   createTableMediaSearch,
   createTableMediaFts,
-  createTableTagStatistics,
+  createTableMediaSearchTerms,
 } = require(path.join(projectRoot, "src", "models", "initTableModel"));
 
 /** 按外键依赖顺序：先删被引用表，再删主表 */
@@ -46,11 +45,11 @@ const TABLES_TO_DROP = [
   "video_transcripts",
   "video_keyframes",
   "media_fts",
+  "media_search_terms",
   "media_search",
   "media_analysis",
   "media_captions",
   "media_text_blocks",
-  "media_objects",
   "similar_group_members",
   "similar_groups",
   "face_cluster_representatives",
@@ -58,7 +57,6 @@ const TABLES_TO_DROP = [
   "face_clusters",
   "media_face_embeddings",
   "media_embeddings",
-  "tag_statistics",
   "media",
   "users",
 ];
@@ -97,7 +95,6 @@ async function rebuildDatabase() {
       createTableMediaAnalysis();
       createTableMediaCaptions();
       createTableMediaTextBlocks();
-      createTableMediaObjects();
       createTableMediaFaceEmbeddings();
       createTableMediaEmbeddings();
       createTableVideoKeyframes();
@@ -111,13 +108,13 @@ async function rebuildDatabase() {
       createTableSimilarGroupMembersMediaVersion();
       createTableMediaSearch();
       createTableMediaFts();
-      createTableTagStatistics();
+      createTableMediaSearchTerms();
 
       db.prepare("COMMIT").run();
 
       console.log("🎉 数据库重建完成！");
       console.log(
-        "📋 已创建表：users, media, media_analysis, media_captions, media_text_blocks, media_objects, media_face_embeddings, media_embeddings, video_keyframes, video_transcripts, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_fts, tag_statistics",
+        "📋 已创建表：users, media, media_analysis, media_captions, media_text_blocks, media_face_embeddings, media_embeddings, video_keyframes, video_transcripts, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_fts, media_search_terms",
       );
     } catch (err) {
       db.prepare("ROLLBACK").run();

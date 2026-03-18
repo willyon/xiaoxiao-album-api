@@ -11,18 +11,12 @@ const {
   insertFaceEmbeddings,
   rebuildMediaSearchDoc,
   upsertMediaCaptionsForAnalysis,
-  upsertMediaObjectsForAnalysis,
   upsertMediaTextBlocksOcrForAnalysis,
 } = require("../models/mediaModel");
 const { updateProgressOnce } = require("../services/mediaProcessingProgressService");
 const axios = require("axios");
 const { withAiSlot } = require("../services/aiConcurrencyLimiter");
-const {
-  markMediaAnalysisRunning,
-  markMediaAnalysisFailed,
-  finalizeMediaAnalysis: finalizeMediaAnalysisInModel,
-  upsertSceneForMedia,
-} = require("../models/mediaAnalysisModel");
+const { markMediaAnalysisRunning, markMediaAnalysisFailed, finalizeMediaAnalysis: finalizeMediaAnalysisInModel } = require("../models/mediaAnalysisModel");
 const cleanupModel = require("../models/cleanupModel");
 const { upsertMediaEmbedding } = require("../models/mediaEmbeddingModel");
 const { scheduleUserRebuild } = require("../services/cleanupGroupingScheduler");
@@ -33,25 +27,10 @@ const ANALYZE_FULL_TIMEOUT_MS = Number(process.env.ANALYZE_FULL_TIMEOUT_MS || 12
 
 const ANALYSIS_VERSION = process.env.ANALYSIS_VERSION || "1.0";
 
-function resolveCapabilities() {
-  // 仅支持 standard / enhanced，默认与 standard 一致
-  const defaults = {
-    face: true,
-    caption: true,
-    object: true,
-    scene: true,
-    ocr: true,
-  };
-
-  // 显式 ENABLE_* 覆盖 profile 默认
-  const face = process.env.ENABLE_FACE_ANALYSIS ? process.env.ENABLE_FACE_ANALYSIS === "true" : defaults.face;
-  const caption = process.env.ENABLE_CAPTION ? process.env.ENABLE_CAPTION !== "false" : defaults.caption;
-  const object = process.env.ENABLE_OBJECT_DETECTION ? process.env.ENABLE_OBJECT_DETECTION !== "false" : defaults.object;
-  const scene = process.env.ENABLE_SCENE_ANALYSIS ? process.env.ENABLE_SCENE_ANALYSIS === "true" : defaults.scene;
-  const ocr = process.env.ENABLE_OCR ? process.env.ENABLE_OCR === "true" : defaults.ocr;
-
-  return { face, caption, object, scene, ocr };
-}
+// 最新设计：Node 侧不再决定「开启哪些能力」，一律视为参与分析；是否真正可用由 Python 端模型加载结果与降级逻辑决定
+// 最新设计说明：
+// - Node 侧不再提供按能力维度的开关，face / caption / OCR 均视为分析流程的一部分
+// - 是否真正可用由 Python 端模型加载结果与降级逻辑决定，这里只关注「哪些步骤参与 done 判定」
 
 async function processMediaAnalysis(job) {
   const { imageId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType = "image", fileName } = job.data || {};
@@ -89,14 +68,12 @@ async function processMediaAnalysis(job) {
       face: { status: "pending", errorCode: null, data: {} },
       cleanup: { status: "pending", errorCode: null, data: {} },
       caption: { status: "pending", errorCode: null, data: {} },
-      object: { status: "pending", errorCode: null, data: {} },
-      scene: { status: "pending", errorCode: null, data: {} },
       ocr: { status: "pending", errorCode: null, data: {} },
     };
 
     await _runAnalyzeFull({ imageId, userId, imageData, analysisVersion, stepResults });
 
-    await finalizeMediaAnalysis({ imageId, userId, analysisVersion, stepResults, allowPartialSuccess: true });
+    await finalizeMediaAnalysis({ imageId, userId, analysisVersion, stepResults });
 
     if (sessionId) {
       await updateProgressOnce({ sessionId, status: "aiDoneCount", dedupeKey: imageId });
@@ -214,29 +191,21 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
 
   if (modules.caption?.status === "success" && modules.caption.data) {
     const d = modules.caption.data;
-    upsertMediaCaptionsForAnalysis(imageId, d.text, d.keywords || [], analysisVersion);
-    stepResults.caption = { status: "completed", errorCode: null, data: { caption: d.text, keywords: d.keywords || [] } };
+    const captionText = typeof d.caption === "string" ? d.caption : (typeof d.text === "string" ? d.text : "");
+    const keywords = Array.isArray(d.keywords) ? d.keywords : [];
+    upsertMediaCaptionsForAnalysis({
+      mediaId: imageId,
+      caption: captionText,
+      keywords,
+      analysisVersion,
+    });
+    stepResults.caption = {
+      status: "completed",
+      errorCode: null,
+      data: { caption: captionText, keywords },
+    };
   } else {
     stepResults.caption = { status: modules.caption?.status || "failed", errorCode: modules.caption?.error?.code || null, data: {} };
-  }
-
-  if (modules.scene?.status === "success" && modules.scene.data) {
-    const d = modules.scene.data;
-    let environment = null;
-    const ps = (d.primary_scene || "").toLowerCase();
-    if (ps.includes("indoor") || ps.includes("room") || ps.includes("home") || ps.includes("office")) environment = "indoor";
-    else if (ps.includes("outdoor") || ps.includes("beach") || ps.includes("mountain") || ps.includes("street") || ps.includes("park")) environment = "outdoor";
-    upsertSceneForMedia(imageId, analysisVersion, d.primary_scene ?? null, environment);
-    stepResults.scene = { status: "completed", errorCode: null, data: { primaryScene: d.primary_scene, sceneTags: d.scene_tags || [], confidence: d.confidence, environment } };
-  } else {
-    stepResults.scene = { status: modules.scene?.status || "failed", errorCode: modules.scene?.error?.code || null, data: {} };
-  }
-
-  if (modules.objects?.status === "success" && Array.isArray(modules.objects.data)) {
-    upsertMediaObjectsForAnalysis(imageId, modules.objects.data, analysisVersion);
-    stepResults.object = { status: "completed", errorCode: null, data: { objects: modules.objects.data } };
-  } else {
-    stepResults.object = { status: modules.objects?.status || "failed", errorCode: modules.objects?.error?.code || null, data: {} };
   }
 
   if (modules.ocr?.status === "success" && modules.ocr.data?.blocks) {
@@ -298,6 +267,7 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
       genderTags: genders.join(","),
       primaryExpressionConfidence: primaryFace?.expression_confidence ?? null,
       primaryFaceQuality: primaryFace?.quality_score ?? null,
+      rebuildSearchArtifacts: false,
     });
     const highQualityFaces = faces.filter((f) => f.is_high_quality);
     if (highQualityFaces.length > 0) {
@@ -332,47 +302,11 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
   }
 }
 
-async function finalizeMediaAnalysis({ imageId, analysisVersion, stepResults, allowPartialSuccess = false }) {
+async function finalizeMediaAnalysis({ imageId, analysisVersion, stepResults }) {
   const faceData = stepResults.face?.data || {};
   const cleanupData = stepResults.cleanup?.data || {};
   const captionData = stepResults.caption?.data || {};
   const ocrData = stepResults.ocr?.data || {};
-  const sceneData = stepResults.scene?.data || {};
-
-  const { face: enabledFace, caption: enabledCaption, object: enabledObject, scene: enabledScene, ocr: enabledOcr } = resolveCapabilities();
-
-  const requiredSteps = [
-    { key: "cleanup", enabled: true },
-    { key: "face", enabled: enabledFace },
-    { key: "caption", enabled: enabledCaption },
-    { key: "object", enabled: enabledObject },
-    { key: "scene", enabled: enabledScene },
-    { key: "ocr", enabled: enabledOcr },
-  ];
-
-  const enabledStepStatuses = requiredSteps.filter((s) => s.enabled).map((s) => ({ key: s.key, status: stepResults[s.key]?.status || "pending" }));
-
-  if (!allowPartialSuccess) {
-    const failedSteps = enabledStepStatuses.filter((s) => s.status === "failed").map((s) => s.key);
-    if (failedSteps.length > 0) {
-      const err = new Error(`MEDIA_ANALYSIS_STEP_FAILED:${failedSteps.join(",")}`);
-      err.code = "MEDIA_ANALYSIS_STEP_FAILED";
-      throw err;
-    }
-    const incompleteSteps = enabledStepStatuses.filter((s) => s.status !== "completed" && s.status !== "disabled" && s.status !== "skipped");
-    if (incompleteSteps.length > 0) {
-      const err = new Error(`MEDIA_ANALYSIS_STEP_INCOMPLETE:${incompleteSteps.map((s) => s.key).join(",")}`);
-      err.code = "MEDIA_ANALYSIS_STEP_INCOMPLETE";
-      throw err;
-    }
-  } else {
-    const completedOrDisabled = enabledStepStatuses.filter((s) => s.status === "completed" || s.status === "disabled" || s.status === "skipped");
-    if (completedOrDisabled.length === 0) {
-      const err = new Error("MEDIA_ANALYSIS_ALL_STEPS_FAILED");
-      err.code = "MEDIA_ANALYSIS_ALL_STEPS_FAILED";
-      throw err;
-    }
-  }
 
   finalizeMediaAnalysisInModel({
     mediaId: imageId,
@@ -380,7 +314,6 @@ async function finalizeMediaAnalysis({ imageId, analysisVersion, stepResults, al
     faceData,
     cleanupData,
     captionData,
-    sceneData,
     ocrData,
   });
 

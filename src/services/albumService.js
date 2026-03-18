@@ -40,42 +40,6 @@ async function getRecentAlbumsList({ userId, limit = 8, excludeAlbumId = null })
 }
 
 /**
- * 获取自动相册列表（基于固定规则的虚拟相册）
- * - 不写入 albums 表，只按需聚合当前用户媒体
- * - 每个自动相册返回：key/label/description/coverImageUrl/imageCount
- */
-async function getAutoAlbums({ userId, limitPerAlbum = 1 }) {
-  const definitions = albumModel.AUTO_ALBUM_DEFINITIONS || [];
-  const result = [];
-
-  for (const def of definitions) {
-    const rows = albumModel.getAutoAlbumMediaList({ userId, whereClause: def.where, limit: limitPerAlbum });
-    const imageCount = rows.totalCount;
-    if (imageCount === 0) {
-      continue;
-    }
-
-    let coverImageUrl = null;
-    if (rows.list.length > 0) {
-      const cover = rows.list[0];
-      if (cover.thumbnail_storage_key) {
-        coverImageUrl = await storageService.getFileUrl(cover.thumbnail_storage_key, cover.storage_type);
-      }
-    }
-
-    result.push({
-      key: def.key,
-      label: def.label,
-      description: def.description || null,
-      coverImageUrl,
-      imageCount,
-    });
-  }
-
-  return result;
-}
-
-/**
  * 获取用户的自定义相册列表（包含封面图片URL）
  * excludeAlbumId 可选，排除该相册（如当前相册）
  */
