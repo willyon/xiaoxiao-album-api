@@ -67,7 +67,7 @@ function listMediaSearchResults({ userId, ftsQuery, whereConditions = [], whereP
     }
 
     sql += `
-      ORDER BY fts.rank DESC, i.captured_at DESC
+      ORDER BY fts.rank ASC, i.captured_at DESC
       LIMIT ? OFFSET ?
     `;
 
@@ -184,7 +184,7 @@ function recallMediaIdsByFts({ userId, ftsQuery, whereConditions = [], wherePara
   let sql = `
     SELECT
       i.id AS media_id,
-      bm25(media_fts, 7.0, 6.0, 11.0, 12.0, 9.0, 4.0, 3.0, 2.0) AS fts_score,
+      bm25(media_fts, 6.0, 7.0, 11.0, 12.0, 9.0, 4.0, 3.0) AS fts_score,
       i.captured_at
     FROM media_fts fts
     JOIN media_search ms ON fts.rowid = ms.media_id
@@ -222,8 +222,7 @@ function getSearchDocsByMediaIds({ userId, imageIds }) {
       ms.action_tags_text,
       ms.scene_tags_text,
       ms.ocr_text,
-      ms.transcript_text,
-      ms.location_text
+      ms.transcript_text
     FROM media_search ms
     JOIN media i ON i.id = ms.media_id
     WHERE i.user_id = ?

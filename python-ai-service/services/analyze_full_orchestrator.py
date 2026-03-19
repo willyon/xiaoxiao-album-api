@@ -46,7 +46,6 @@ def run_analyze_full(
     manager: Any,
     image_id: Optional[str] = None,
     request_id: Optional[str] = None,
-    force_ocr: bool = False,
 ) -> Dict[str, Any]:
     """
     串行执行 profile 对应模块，聚合为统一结构。
@@ -82,7 +81,6 @@ def run_analyze_full(
                 device=device,
                 manager=manager,
                 modules=modules,
-                force_ocr=force_ocr,
             )
             duration_ms = round((time.perf_counter() - t0) * 1000)
             module_result["duration_ms"] = duration_ms
@@ -137,7 +135,6 @@ def _run_one_module(
     device: str,
     manager: Any,
     modules: Optional[Dict[str, Dict[str, Any]]] = None,
-    force_ocr: bool = False,
 ) -> Dict[str, Any]:
     """执行单个模块，返回统一模块结果结构。"""
     try:
@@ -225,9 +222,7 @@ def _run_one_module(
                 trigger_signals = (
                     collect_ocr_trigger_signals(
                         image_bgr,
-                        force_ocr=force_ocr,
                         caption_module=caption_module,
-                        provider_policy_requires_ocr=False,
                     )
                     if trigger_mode == "smart"
                     else {}

@@ -23,7 +23,6 @@ const SEARCH_TERM_FIELD_WEIGHTS = {
   caption: 100,
   ocr: 85,
   transcript: 65,
-  location: 55,
 };
 
 // 查询词自身加分。

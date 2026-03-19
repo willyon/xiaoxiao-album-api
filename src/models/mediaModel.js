@@ -51,7 +51,7 @@ function parseJsonTextArray(input) {
 }
 
 function collectMediaSearchDocument(mediaId) {
-  const media = db.prepare("SELECT id, user_id, country, city, gps_location, deleted_at FROM media WHERE id = ?").get(mediaId);
+  const media = db.prepare("SELECT id, user_id, deleted_at FROM media WHERE id = ?").get(mediaId);
   if (!media) return null;
   const captionRows = db
     .prepare("SELECT caption, keywords_json, subject_tags_json, action_tags_json, scene_tags_json FROM media_captions WHERE media_id = ?")
@@ -88,7 +88,6 @@ function collectMediaSearchDocument(mediaId) {
     .prepare("SELECT GROUP_CONCAT(transcript_text, ' ') AS value FROM video_transcripts WHERE media_id = ?")
     .get(mediaId);
 
-  const locationText = [media.country, media.city, media.gps_location].filter(Boolean).join(" ").trim() || null;
   return {
     media,
     fields: {
@@ -99,7 +98,6 @@ function collectMediaSearchDocument(mediaId) {
       scene_tags: sceneTagsText,
       ocr: ocrTextRow?.value || null,
       transcript: transcriptTextRow?.value || null,
-      location: locationText,
     },
   };
 }
@@ -122,8 +120,7 @@ function replaceMediaSearchTermsForDocument({ mediaId, userId, fields, updatedAt
   return rows.length;
 }
 
-function rebuildMediaSearchDoc(mediaId, options = {}) {
-  const { rebuildFts = true } = options;
+function rebuildMediaSearchDoc(mediaId) {
   const doc = collectMediaSearchDocument(mediaId);
   if (!doc) return { affectedRows: 0, termRows: 0 };
   const { media, fields } = doc;
@@ -133,16 +130,13 @@ function rebuildMediaSearchDoc(mediaId, options = {}) {
     createTableMediaSearchTerms();
     const deleted = db.prepare("DELETE FROM media_search WHERE media_id = ?").run(mediaId);
     db.prepare("DELETE FROM media_search_terms WHERE media_id = ?").run(mediaId);
-    if (rebuildFts) {
-      db.prepare("INSERT INTO media_fts(media_fts) VALUES('rebuild')").run();
-    }
     return { affectedRows: deleted.changes, termRows: 0 };
   }
 
   const upsert = db.prepare(`
     INSERT INTO media_search (
-      media_id, user_id, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text, location_text, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      media_id, user_id, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(media_id) DO UPDATE SET
       user_id = excluded.user_id,
       caption_text = excluded.caption_text,
@@ -152,7 +146,6 @@ function rebuildMediaSearchDoc(mediaId, options = {}) {
       scene_tags_text = excluded.scene_tags_text,
       ocr_text = excluded.ocr_text,
       transcript_text = excluded.transcript_text,
-      location_text = excluded.location_text,
       updated_at = excluded.updated_at
   `);
 
@@ -166,7 +159,6 @@ function rebuildMediaSearchDoc(mediaId, options = {}) {
     fields.scene_tags,
     fields.ocr,
     fields.transcript,
-    fields.location,
     updatedAt,
   );
 
@@ -177,9 +169,6 @@ function rebuildMediaSearchDoc(mediaId, options = {}) {
     updatedAt,
   });
 
-  if (rebuildFts) {
-    db.prepare("INSERT INTO media_fts(media_fts) VALUES('rebuild')").run();
-  }
   return { affectedRows: result.changes, termRows };
 }
 
@@ -215,7 +204,6 @@ function insertMedia({ userId, imageHash, thumbnailStorageKey, storageType, file
       db.prepare(
         "INSERT OR IGNORE INTO media_analysis (media_id, analysis_status, analysis_version) VALUES (?, 'pending', '1.0')",
       ).run(media.id);
-      rebuildMediaSearchDoc(media.id);
     }
   }
 
@@ -1525,7 +1513,8 @@ function updateMediaSearchMetadata({
 }
 
 // 异步更新图片位置信息
-function updateLocationInfo(imageId, { gpsLocation, country, city }) {
+function updateLocationInfo(imageId, { gpsLocation, country, city }, options = {}) {
+  const { rebuildSearchArtifacts = false } = options;
   const sql = `
     UPDATE media SET
       gps_location = COALESCE(?, gps_location),
@@ -1537,7 +1526,9 @@ function updateLocationInfo(imageId, { gpsLocation, country, city }) {
   const stmt = db.prepare(sql);
   const result = stmt.run(gpsLocation, country, city, imageId);
 
-  rebuildMediaSearchDoc(imageId);
+  if (rebuildSearchArtifacts) {
+    rebuildMediaSearchDoc(imageId);
+  }
   return { affectedRows: result.changes };
 }
 

@@ -97,12 +97,10 @@ function rebuildSearchArtifacts() {
   let totalTermRows = 0;
 
   for (const mediaId of mediaIds) {
-    const result = rebuildMediaSearchDoc(mediaId, { rebuildFts: false });
+    const result = rebuildMediaSearchDoc(mediaId);
     rebuiltCount += result.affectedRows > 0 ? 1 : 0;
     totalTermRows += result.termRows || 0;
   }
-
-  db.prepare("INSERT INTO media_fts(media_fts) VALUES('rebuild')").run();
 
   return {
     mediaCount: mediaIds.length,

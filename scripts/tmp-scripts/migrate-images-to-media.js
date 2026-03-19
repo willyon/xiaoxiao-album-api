@@ -386,7 +386,7 @@ function rebuildMediaSearchData() {
   db.prepare("DELETE FROM media_search_terms").run();
   db.prepare(`
     INSERT INTO media_search (
-      media_id, user_id, caption_text, keywords_text, ocr_text, transcript_text, location_text, updated_at
+      media_id, user_id, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text, updated_at
     )
     SELECT
       m.id AS media_id,
@@ -402,6 +402,21 @@ function rebuildMediaSearchData() {
         WHERE c.media_id = m.id
       ) AS keywords_text,
       (
+        SELECT GROUP_CONCAT(j.value, ' ')
+        FROM media_captions c, json_each(c.subject_tags_json) j
+        WHERE c.media_id = m.id
+      ) AS subject_tags_text,
+      (
+        SELECT GROUP_CONCAT(j.value, ' ')
+        FROM media_captions c, json_each(c.action_tags_json) j
+        WHERE c.media_id = m.id
+      ) AS action_tags_text,
+      (
+        SELECT GROUP_CONCAT(j.value, ' ')
+        FROM media_captions c, json_each(c.scene_tags_json) j
+        WHERE c.media_id = m.id
+      ) AS scene_tags_text,
+      (
         SELECT GROUP_CONCAT(t.text, ' ')
         FROM media_text_blocks t
         WHERE t.media_id = m.id
@@ -411,18 +426,13 @@ function rebuildMediaSearchData() {
         FROM video_transcripts vt
         WHERE vt.media_id = m.id
       ) AS transcript_text,
-      TRIM(
-        COALESCE(m.country, '') || ' ' ||
-        COALESCE(m.city, '') || ' ' ||
-        COALESCE(m.gps_location, '')
-      ) AS location_text,
       (strftime('%s','now') * 1000) AS updated_at
     FROM media m
     WHERE m.deleted_at IS NULL
   `).run();
 
   const rows = db.prepare(`
-    SELECT media_id, user_id, caption_text, keywords_text, ocr_text, transcript_text, location_text, updated_at
+    SELECT media_id, user_id, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text, updated_at
     FROM media_search
   `).all();
   const insertTermStmt = db.prepare(`
@@ -438,9 +448,11 @@ function rebuildMediaSearchData() {
       fields: {
         caption: row.caption_text,
         keywords: row.keywords_text,
+        subject_tags: row.subject_tags_text,
+        action_tags: row.action_tags_text,
+        scene_tags: row.scene_tags_text,
         ocr: row.ocr_text,
         transcript: row.transcript_text,
-        location: row.location_text,
       },
       updatedAt: row.updated_at,
     });
@@ -455,8 +467,6 @@ function rebuildMediaSearchData() {
       );
     }
   }
-
-  db.prepare("INSERT INTO media_fts(media_fts) VALUES('rebuild')").run();
 }
 
 function updateAnalysisStatus() {

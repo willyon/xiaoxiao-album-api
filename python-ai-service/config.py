@@ -190,11 +190,11 @@ class Settings:
     # 当前默认使用 cloud，便于云模型联调
     OCR_PROVIDER = os.getenv("OCR_PROVIDER", "cloud").strip().lower() or "cloud"
 
-    # OCR 触发模式：always | off | smart
+    # OCR 触发模式：always| smart | off
     # - always：总是执行 OCR
-    # - off：不执行 OCR，模块状态为 skipped
     # - smart：按启发式信号决定是否执行 OCR
-    OCR_TRIGGER_MODE = os.getenv("OCR_TRIGGER_MODE", "always").strip().lower() or "always"
+    # - off：不执行 OCR，模块状态为 skipped
+    OCR_TRIGGER_MODE = os.getenv("OCR_TRIGGER_MODE", "smart").strip().lower() or "smart"
 
     # Caption 云厂商：qwen | openai
     # - qwen：开发阶段默认接入阿里云千问
@@ -232,6 +232,10 @@ class Settings:
     # OCR 长边限制（内部 resize 用）
     # 默认 2048，保证截图中文字可读性；若重新启用 OCR 后仍有资源压力，可通过环境变量下调到 1536/1024。
     OCR_MAX_LONG_EDGE = int(os.getenv("OCR_MAX_LONG_EDGE", "2048"))
+    
+    # smart OCR: 文本区域触发阈值（命中轮廓数量）
+    # 阈值越低，召回越高（更不易漏掉有字图片），但误触发概率也会增加。
+    OCR_SMART_TEXT_LIKE_COUNT_THRESHOLD = int(os.getenv("OCR_SMART_TEXT_LIKE_COUNT_THRESHOLD", "18"))
     
     # 物体检测置信度阈值（YOLO）
     YOLO_CONF_THRESHOLD = float(os.getenv("YOLO_CONF_THRESHOLD", "0.25"))

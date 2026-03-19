@@ -30,7 +30,6 @@ async def analyze_full_route(
     device: str = Form("auto"),
     image_id: Optional[str] = Form(None),
     request_id: Optional[str] = Form(None),
-    force_ocr: bool = Form(False),
 ):
     """
     全量图片分析：按 profile 串行执行 caption/scene/objects/person/ocr/quality/embedding，
@@ -68,13 +67,13 @@ async def analyze_full_route(
         manager=manager,
         image_id=image_id,
         request_id=request_id,
-        force_ocr=force_ocr,
     )
     modules = result.get("modules") or {}
     caption_module = modules.get("caption") or {}
     ocr_module = modules.get("ocr") or {}
     caption_meta = caption_module.get("meta") or {}
     ocr_meta = ocr_module.get("meta") or {}
+    trigger_signals = ocr_meta.get("trigger_signals") if isinstance(ocr_meta.get("trigger_signals"), dict) else {}
     ocr_status = str(ocr_module.get("status") or "")
     set_request_log_context(
         request,
@@ -86,6 +85,8 @@ async def analyze_full_route(
         resolved_vendor=str(ocr_meta.get("resolved_vendor") or caption_meta.get("resolved_vendor") or ""),
         ocr_trigger_mode=str(ocr_meta.get("trigger_mode") or ""),
         ocr_triggered=ocr_status in {"success", "empty", "failed"},
+        ocr_signal_has_dense_text_like_regions=bool(trigger_signals.get("has_dense_text_like_regions")),
+        ocr_signal_caption_hint_text_related=bool(trigger_signals.get("caption_hint_text_related")),
         caption_status=str(caption_module.get("status") or ""),
         ocr_status=ocr_status,
         top_status=str(result.get("status") or ""),
@@ -94,8 +95,6 @@ async def analyze_full_route(
     if getattr(settings, "LOG_ANALYZE_FULL_RESULT", False):
         try:
             log_modules = {k: v for k, v in modules.items() if k != "embedding"}
-            if "embedding" in modules:
-                log_modules["embedding"] = modules["embedding"]
             logger.info(
                 "analyze_full_result",
                 details={
@@ -103,6 +102,10 @@ async def analyze_full_route(
                     "request_id": request_id,
                     "status": result.get("status"),
                     "modules": log_modules,
+                    "ocr_trigger_signals": {
+                        "has_dense_text_like_regions": bool(trigger_signals.get("has_dense_text_like_regions")),
+                        "caption_hint_text_related": bool(trigger_signals.get("caption_hint_text_related")),
+                    },
                     "errors": result.get("errors"),
                     "timing": result.get("timing"),
                 },

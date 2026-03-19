@@ -29,7 +29,7 @@ function rebuildMediaSearchTerms() {
   db.prepare("DELETE FROM media_search_terms").run();
 
   const rows = db.prepare(`
-    SELECT media_id, user_id, caption_text, keywords_text, ocr_text, transcript_text, location_text, updated_at
+    SELECT media_id, user_id, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text, updated_at
     FROM media_search
   `).all();
 
@@ -47,9 +47,11 @@ function rebuildMediaSearchTerms() {
       fields: {
         caption: row.caption_text,
         keywords: row.keywords_text,
+        subject_tags: row.subject_tags_text,
+        action_tags: row.action_tags_text,
+        scene_tags: row.scene_tags_text,
         ocr: row.ocr_text,
         transcript: row.transcript_text,
-        location: row.location_text,
       },
       updatedAt: row.updated_at || Date.now(),
     });

@@ -332,7 +332,7 @@ function createTableAlbumMedia() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_album_media_media_id ON album_media(media_id);").run();
 }
 
-/** 创建 media_search：汇总 caption/OCR/转写/位置等，供搜索与 FTS 同步 */
+/** 创建 media_search：汇总 caption/OCR/转写等，供搜索与 FTS 同步（地点用 media.city 筛选，不入全文检索） */
 function createTableMediaSearch() {
   const sql = `
     CREATE TABLE IF NOT EXISTS media_search (
@@ -345,7 +345,6 @@ function createTableMediaSearch() {
       scene_tags_text TEXT,
       ocr_text TEXT,
       transcript_text TEXT,
-      location_text TEXT,
       updated_at INTEGER,
       FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
     );
@@ -365,12 +364,42 @@ function createTableMediaFts() {
       scene_tags_text,
       ocr_text,
       transcript_text,
-      location_text,
       content='media_search',
       content_rowid='media_id'
     );
   `;
   db.prepare(sql).run();
+  createTableMediaSearchFtsTriggers();
+}
+
+/** 创建 media_search -> media_fts 同步触发器，INSERT/UPDATE/DELETE 时自动增量更新 FTS */
+function createTableMediaSearchFtsTriggers() {
+  db.prepare("DROP TRIGGER IF EXISTS media_search_fts_ai").run();
+  db.prepare("DROP TRIGGER IF EXISTS media_search_fts_ad").run();
+  db.prepare("DROP TRIGGER IF EXISTS media_search_fts_au").run();
+
+  db.prepare(`
+    CREATE TRIGGER media_search_fts_ai AFTER INSERT ON media_search BEGIN
+      INSERT INTO media_fts(rowid, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text)
+      VALUES (new.media_id, new.caption_text, new.keywords_text, new.subject_tags_text, new.action_tags_text, new.scene_tags_text, new.ocr_text, new.transcript_text);
+    END
+  `).run();
+
+  db.prepare(`
+    CREATE TRIGGER media_search_fts_ad AFTER DELETE ON media_search BEGIN
+      INSERT INTO media_fts(media_fts, rowid, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text)
+      VALUES ('delete', old.media_id, old.caption_text, old.keywords_text, old.subject_tags_text, old.action_tags_text, old.scene_tags_text, old.ocr_text, old.transcript_text);
+    END
+  `).run();
+
+  db.prepare(`
+    CREATE TRIGGER media_search_fts_au AFTER UPDATE ON media_search BEGIN
+      INSERT INTO media_fts(media_fts, rowid, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text)
+      VALUES ('delete', old.media_id, old.caption_text, old.keywords_text, old.subject_tags_text, old.action_tags_text, old.scene_tags_text, old.ocr_text, old.transcript_text);
+      INSERT INTO media_fts(rowid, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text)
+      VALUES (new.media_id, new.caption_text, new.keywords_text, new.subject_tags_text, new.action_tags_text, new.scene_tags_text, new.ocr_text, new.transcript_text);
+    END
+  `).run();
 }
 
 /** 创建 media_search_terms：中文 term 索引，用于单字/双字稳定召回 */
