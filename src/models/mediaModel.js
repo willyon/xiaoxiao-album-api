@@ -28,33 +28,60 @@ function pickPrimaryTag(input) {
   return arr.length > 0 ? arr[0] : null;
 }
 
+function normalizeTextArray(input) {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set();
+  const output = [];
+  for (const item of input) {
+    const value = typeof item === "string" ? item.trim() : "";
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    output.push(value);
+  }
+  return output;
+}
+
+function parseJsonTextArray(input) {
+  if (!input || typeof input !== "string") return [];
+  try {
+    return normalizeTextArray(JSON.parse(input));
+  } catch {
+    return [];
+  }
+}
+
 function collectMediaSearchDocument(mediaId) {
   const media = db.prepare("SELECT id, user_id, country, city, gps_location, deleted_at FROM media WHERE id = ?").get(mediaId);
   if (!media) return null;
   const captionRows = db
-    .prepare("SELECT caption, keywords_json FROM media_captions WHERE media_id = ?")
+    .prepare("SELECT caption, keywords_json, subject_tags_json, action_tags_json, scene_tags_json FROM media_captions WHERE media_id = ?")
     .all(mediaId);
   let captionText = null;
   const keywordTokens = new Set();
+  const subjectTagTokens = new Set();
+  const actionTagTokens = new Set();
+  const sceneTagTokens = new Set();
   for (const row of captionRows) {
     if (row.caption) {
       captionText = captionText ? `${captionText} ${row.caption}` : String(row.caption);
     }
-    if (row.keywords_json) {
-      try {
-        const arr = JSON.parse(row.keywords_json);
-        if (Array.isArray(arr)) {
-          for (const kw of arr) {
-            const v = typeof kw === "string" ? kw.trim() : "";
-            if (v) keywordTokens.add(v);
-          }
-        }
-      } catch {
-        // ignore malformed json
-      }
+    for (const kw of parseJsonTextArray(row.keywords_json)) {
+      keywordTokens.add(kw);
+    }
+    for (const tag of parseJsonTextArray(row.subject_tags_json)) {
+      subjectTagTokens.add(tag);
+    }
+    for (const tag of parseJsonTextArray(row.action_tags_json)) {
+      actionTagTokens.add(tag);
+    }
+    for (const tag of parseJsonTextArray(row.scene_tags_json)) {
+      sceneTagTokens.add(tag);
     }
   }
   const keywordsText = keywordTokens.size > 0 ? Array.from(keywordTokens).join(" ") : null;
+  const subjectTagsText = subjectTagTokens.size > 0 ? Array.from(subjectTagTokens).join(" ") : null;
+  const actionTagsText = actionTagTokens.size > 0 ? Array.from(actionTagTokens).join(" ") : null;
+  const sceneTagsText = sceneTagTokens.size > 0 ? Array.from(sceneTagTokens).join(" ") : null;
   const ocrTextRow = db.prepare("SELECT GROUP_CONCAT(text, ' ') AS value FROM media_text_blocks WHERE media_id = ?").get(mediaId);
 
   const transcriptTextRow = db
@@ -67,6 +94,9 @@ function collectMediaSearchDocument(mediaId) {
     fields: {
       caption: captionText,
       keywords: keywordsText,
+      subject_tags: subjectTagsText,
+      action_tags: actionTagsText,
+      scene_tags: sceneTagsText,
       ocr: ocrTextRow?.value || null,
       transcript: transcriptTextRow?.value || null,
       location: locationText,
@@ -111,12 +141,15 @@ function rebuildMediaSearchDoc(mediaId, options = {}) {
 
   const upsert = db.prepare(`
     INSERT INTO media_search (
-      media_id, user_id, caption_text, keywords_text, ocr_text, transcript_text, location_text, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      media_id, user_id, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text, location_text, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(media_id) DO UPDATE SET
       user_id = excluded.user_id,
       caption_text = excluded.caption_text,
       keywords_text = excluded.keywords_text,
+      subject_tags_text = excluded.subject_tags_text,
+      action_tags_text = excluded.action_tags_text,
+      scene_tags_text = excluded.scene_tags_text,
       ocr_text = excluded.ocr_text,
       transcript_text = excluded.transcript_text,
       location_text = excluded.location_text,
@@ -128,6 +161,9 @@ function rebuildMediaSearchDoc(mediaId, options = {}) {
     media.user_id,
     fields.caption,
     fields.keywords,
+    fields.subject_tags,
+    fields.action_tags,
+    fields.scene_tags,
     fields.ocr,
     fields.transcript,
     fields.location,
@@ -2361,16 +2397,24 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
  * 媒体分析链路：按 media_id 覆盖写入 media_captions（source_type='image'），事务内 DELETE + INSERT
  * 约定：keywords 直接保存 Python 返回的关键词结果。
  */
-function upsertMediaCaptionsForAnalysis({ mediaId, caption, keywords, analysisVersion }) {
+function upsertMediaCaptionsForAnalysis({ mediaId, caption, keywords, subjectTags, actionTags, sceneTags, analysisVersion }) {
+  const normalizedKeywords = normalizeTextArray(keywords);
+  const normalizedSubjectTags = normalizeTextArray(subjectTags);
+  const normalizedActionTags = normalizeTextArray(actionTags);
+  const normalizedSceneTags = normalizeTextArray(sceneTags);
   const tx = db.transaction(() => {
     db.prepare("DELETE FROM media_captions WHERE media_id = ? AND source_type = 'image'").run(mediaId);
     db.prepare(
-      `INSERT INTO media_captions (media_id, source_type, caption, keywords_json, analysis_version, created_at)
-       VALUES (?, 'image', ?, ?, ?, ?)`,
+      `INSERT INTO media_captions (
+        media_id, source_type, caption, keywords_json, subject_tags_json, action_tags_json, scene_tags_json, analysis_version, created_at
+      ) VALUES (?, 'image', ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       mediaId,
       caption || "",
-      JSON.stringify(Array.isArray(keywords) ? keywords : []),
+      JSON.stringify(normalizedKeywords),
+      JSON.stringify(normalizedSubjectTags),
+      JSON.stringify(normalizedActionTags),
+      JSON.stringify(normalizedSceneTags),
       analysisVersion,
       Date.now(),
     );

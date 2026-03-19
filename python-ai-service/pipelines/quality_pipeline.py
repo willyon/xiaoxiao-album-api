@@ -24,7 +24,7 @@ def analyze_cleanup(
 ) -> Dict[str, Any]:
     """
     质量分析入口（对外 API：POST /analyze_quality）。
-    仅返回 hashes、aesthetic_score、sharpness_score；图像向量由 /encode_image 提供。
+    仅返回 hashes、aesthetic_score、sharpness_score。
     """
     if image_bgr is None:
         logger.warning("analyze_cleanup: 收到空图像，返回空结果")

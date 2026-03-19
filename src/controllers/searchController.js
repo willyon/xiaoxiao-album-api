@@ -43,7 +43,7 @@ function buildSafeFtsQuery(query) {
  * @returns {Array<string>} whereConditions - WHERE 条件数组
  * @returns {Array} whereParams - WHERE 条件参数
  */
-function buildSearchConditions(query, filters, options = {}) {
+function buildSearchQueryParts(query, filters, options = {}) {
   // 将前端值转换为后端值（创建一个新的 filters 对象，避免修改原始对象）
   const convertedFilters = { ...filters };
 
@@ -201,6 +201,23 @@ function buildSearchConditions(query, filters, options = {}) {
       const placeholders = knownValues.map(() => "?").join(",");
       whereConditions.push(`i.day_key IN (${placeholders})`);
       whereParams.push(...knownValues);
+    } else if (filters.timeDimension === "season") {
+      // 春 3–5 月，夏 6–8 月，秋 9–11 月，冬 12、1、2 月（与 queryTimeParser 一致）
+      const seasonMonths = {
+        spring: ["03", "04", "05"],
+        summer: ["06", "07", "08"],
+        autumn: ["09", "10", "11"],
+        winter: ["12", "01", "02"],
+      };
+      const months = new Set();
+      knownValues.forEach((season) => {
+        (seasonMonths[season] || []).forEach((m) => months.add(m));
+      });
+      if (months.size > 0) {
+        const placeholders = [...months].map(() => "?").join(",");
+        whereConditions.push(`SUBSTR(i.month_key, 6, 2) IN (${placeholders})`);
+        whereParams.push(...months);
+      }
     }
   }
 
@@ -350,7 +367,7 @@ function buildSearchConditions(query, filters, options = {}) {
 
 /**
  * 根据 source + scope 构建「范围」条件（用于统一列表与按维度筛选选项）
- * 返回的 whereConditions 使用表别名 "i."，可直接与 buildSearchConditions 的结果合并。
+ * 返回的 whereConditions 使用表别名 "i."，可直接与 buildSearchQueryParts 的结果合并。
  * @param {Object} scope - { source, type?, albumId?, clusterId? }
  * @param {number} userId - 用户ID
  * @returns {{ scopeConditions: string[], scopeParams: any[] }}
@@ -417,7 +434,7 @@ function buildScopeConditions(scope, userId) {
  * 搜索/列表图片（统一接口）
  * POST /search/media
  * body: query?, filters?, pageNo, pageSize, clusterId?
- *       可选 scope：source?, type?, albumId?（传了 source 且不为 search 时在范围内列表/搜索，不做向量；未传或 source=search 为全局搜索，有 query 时做向量）
+ *       可选 scope：source?, type?, albumId?（传了 source 且不为 search 时在范围内列表/搜索；未传或 source=search 为全局搜索）
  */
 async function handleSearchMedias(req, res, next) {
   try {
@@ -441,17 +458,28 @@ async function handleSearchMedias(req, res, next) {
 
     let searchQuery = query && query.trim() ? query.trim() : "*";
     const hasQuery = searchQuery !== "*" && searchQuery.trim() !== "";
+    let effectiveSearchQuery = searchQuery;
 
     let enhancedFilters = { ...filters };
     if (hasQuery) {
       const parsedIntent = parseQueryIntent(searchQuery);
       enhancedFilters = mergeFilters(filters, parsedIntent);
+      if (parsedIntent.residualQuery && parsedIntent.residualQuery.trim()) {
+        effectiveSearchQuery = parsedIntent.residualQuery.trim();
+      } else if (
+        parsedIntent.filters?.timeDimension
+        || parsedIntent.filters?.customDateRange
+        || parsedIntent.filters?.location?.length
+      ) {
+        effectiveSearchQuery = "*";
+      }
     }
 
     logger.info({
       message: hasScope ? `范围列表/搜索: ${userId}` : `用户搜索: ${userId}`,
       details: {
         query: searchQuery,
+        effectiveQuery: effectiveSearchQuery,
         filters: enhancedFilters,
         pageNo,
         pageSize,
@@ -469,20 +497,19 @@ async function handleSearchMedias(req, res, next) {
       const scope = { source, type, albumId, clusterId: validClusterId };
       const { scopeConditions, scopeParams } = buildScopeConditions(scope, userId);
       const filterOptions = { userId };
-      const normalizedForFts = hasQuery ? searchQuery : "*";
-      const filterBuilt = buildSearchConditions(hasQuery ? normalizedForFts : "*", enhancedFilters, filterOptions);
+      const normalizedForFts = hasQuery ? effectiveSearchQuery : "*";
+      const filterBuilt = buildSearchQueryParts(hasQuery ? normalizedForFts : "*", enhancedFilters, filterOptions);
       ftsQuery = filterBuilt.ftsQuery;
       whereConditions = [...scopeConditions, ...filterBuilt.whereConditions];
       whereParams = [...scopeParams, ...filterBuilt.whereParams];
-      searchResult = await searchService.searchMediasHybrid({
+      searchResult = await searchService.searchMediaResults({
         userId,
-        query: hasQuery ? searchQuery : "",
+        query: hasQuery && effectiveSearchQuery !== "*" ? effectiveSearchQuery : "",
         ftsQuery,
         whereConditions,
         whereParams,
         pageNo: parseInt(pageNo, 10),
         pageSize: parseInt(pageSize, 10),
-        allowVector: false,
       });
       let resultsWithUrls = await addFullUrlToMedia(searchResult.list);
       if (source === "people" && validClusterId != null && resultsWithUrls.length > 0) {
@@ -503,10 +530,10 @@ async function handleSearchMedias(req, res, next) {
       });
     }
 
-    // 全局搜索（无 scope 或 source=search）：中文 term + FTS + 向量混合
+    // 全局搜索（无 scope 或 source=search）：中文 term + FTS 纯文本召回
     const filterOptions = { userId, clusterId: validClusterId };
-    const normalizedForFts = hasQuery ? searchQuery : "*";
-    const built = buildSearchConditions(normalizedForFts, enhancedFilters, filterOptions);
+    const normalizedForFts = hasQuery ? effectiveSearchQuery : "*";
+    const built = buildSearchQueryParts(normalizedForFts, enhancedFilters, filterOptions);
     ftsQuery = built.ftsQuery;
     whereConditions = built.whereConditions;
     whereParams = built.whereParams;
@@ -516,15 +543,14 @@ async function handleSearchMedias(req, res, next) {
       details: { ftsQuery, whereConditionsCount: whereConditions.length, whereParamsCount: whereParams.length },
     });
 
-    searchResult = await searchService.searchMediasHybrid({
+    searchResult = await searchService.searchMediaResults({
       userId,
-      query: hasQuery ? searchQuery : "",
+      query: hasQuery && effectiveSearchQuery !== "*" ? effectiveSearchQuery : "",
       ftsQuery,
       whereConditions,
       whereParams,
       pageNo: parseInt(pageNo, 10),
       pageSize: parseInt(pageSize, 10),
-      allowVector: hasQuery,
     });
 
     const resultsWithUrls = await addFullUrlToMedia(searchResult.list);
@@ -533,11 +559,11 @@ async function handleSearchMedias(req, res, next) {
       message: `搜索完成: ${userId}`,
       details: {
         query,
+        effectiveQuery: effectiveSearchQuery,
         resultCount: resultsWithUrls.length,
         totalCount: searchResult.total,
         termCount: searchResult.stats?.termCount || 0,
         ftsCount: searchResult.stats?.ftsCount || 0,
-        vectorCount: searchResult.stats?.vectorCount || 0,
         appliedFilters: Object.keys(filters).filter((key) => {
           const value = filters[key];
           if (Array.isArray(value)) return value.length > 0;

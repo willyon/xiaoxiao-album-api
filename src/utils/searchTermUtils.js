@@ -1,17 +1,10 @@
 /*
  * @Description: 中文 term 索引与查询工具
  */
+const { SEARCH_TERM_FIELD_WEIGHTS, CHINESE_QUERY_TERM_BOOST } = require("../config/searchRankingWeights");
 
 const CHINESE_RUN_REGEX = /[\u3400-\u9fff]+/g;
 const HAS_CHINESE_REGEX = /[\u3400-\u9fff]/;
-
-const SEARCH_TERM_FIELD_WEIGHTS = {
-  keywords: 120,
-  caption: 100,
-  ocr: 85,
-  transcript: 65,
-  location: 55,
-};
 
 function containsChinese(input) {
   return HAS_CHINESE_REGEX.test(String(input || ""));
@@ -75,7 +68,7 @@ function buildChineseQueryTerms(query) {
       return {
         term,
         termLen,
-        boost: termLen >= 2 ? 40 : 16,
+        boost: termLen >= 2 ? CHINESE_QUERY_TERM_BOOST.multiChar : CHINESE_QUERY_TERM_BOOST.singleChar,
       };
     })
     .sort((a, b) => b.termLen - a.termLen || a.term.localeCompare(b.term, "zh-Hans-CN"));

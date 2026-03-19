@@ -34,7 +34,13 @@ class QwenCaptionProvider(BaseCaptionProvider):
         configured_provider: str,
         resolved_provider: str,
     ) -> Dict[str, Any]:
-        base_data = {"caption": "", "keywords": []}
+        base_data = {
+            "caption": "",
+            "keywords": [],
+            "subject_tags": [],
+            "action_tags": [],
+            "scene_tags": [],
+        }
         configured_vendor = getattr(settings, "CAPTION_CLOUD_VENDOR", "qwen")
         model = getattr(settings, "CAPTION_CLOUD_MODEL", "") or "qwen3-vl-plus"
         endpoint = resolve_endpoint(
@@ -62,9 +68,13 @@ class QwenCaptionProvider(BaseCaptionProvider):
 
         prompt = (
             "请分析这张图片，并严格输出一个 JSON 对象，不要输出 Markdown 或额外解释。"
-            'JSON 结构必须为 {"caption":"", "keywords":[]}。'
-            "caption 用一到两句简体中文客观描述图片主要内容；"
-            "keywords 输出 3 到 8 个简短关键词；"
+            'JSON 结构必须为 {"caption":"","keywords":[],"subject_tags":[],"action_tags":[],"scene_tags":[]}。'
+            "caption 用一到两句简体中文客观描述图片主要内容，并尽量说清主体、动作和场景；"
+            "keywords 输出 4 到 10 个简短关键词；"
+            "subject_tags 输出 1 到 4 个主体标签，如宝宝、妈妈、爸爸、多人；"
+            "action_tags 输出 1 到 4 个动作标签，如吃饭、睡觉、玩耍、抱着、看电视；"
+            "scene_tags 输出 1 到 6 个场景或物件标签，如餐椅、卧室、客厅、户外、婴儿车；"
+            "标签应为简短中文短语，避免重复，避免输出完整句子；"
             "若无法判断，请返回空字符串和空数组。"
         )
         payload = {
@@ -87,7 +97,15 @@ class QwenCaptionProvider(BaseCaptionProvider):
             data = _coerce_caption_response(raw_text)
             logger.info(
                 "qwen_caption.success",
-                details={"profile": profile, "model": model, "has_caption": bool(data.get("caption")), "keyword_count": len(data.get("keywords") or [])},
+                details={
+                    "profile": profile,
+                    "model": model,
+                    "has_caption": bool(data.get("caption")),
+                    "keyword_count": len(data.get("keywords") or []),
+                    "subject_tag_count": len(data.get("subject_tags") or []),
+                    "action_tag_count": len(data.get("action_tags") or []),
+                    "scene_tag_count": len(data.get("scene_tags") or []),
+                },
             )
             if is_caption_effective(data):
                 return build_module_result(status=MODULE_STATUS_SUCCESS, data=data, meta=meta)
@@ -131,12 +149,21 @@ def _coerce_caption_response(raw_text: str) -> Dict[str, Any]:
     if isinstance(obj, dict):
         caption = str(obj.get("caption") or "").strip()
         keywords = normalize_keywords(obj.get("keywords") or [])
+        subject_tags = normalize_keywords(obj.get("subject_tags") or [])
+        action_tags = normalize_keywords(obj.get("action_tags") or [])
+        scene_tags = normalize_keywords(obj.get("scene_tags") or [])
         return {
             "caption": caption,
             "keywords": list(keywords),
+            "subject_tags": list(subject_tags),
+            "action_tags": list(action_tags),
+            "scene_tags": list(scene_tags),
         }
     caption = str(raw_text or "").strip()
     return {
         "caption": caption,
         "keywords": [],
+        "subject_tags": [],
+        "action_tags": [],
+        "scene_tags": [],
     }

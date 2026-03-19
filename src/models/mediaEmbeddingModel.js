@@ -53,7 +53,7 @@ function getMediaEmbedding(imageId) {
 }
 
 /**
- * 获取用户的所有图片 embedding（用于向量搜索）
+ * 获取用户的所有图片 embedding
  * @param {number} userId - 用户ID
  * @param {number} limit - 最大返回数量（避免单次请求过大，默认 5000）
  * @returns {Array<{imageId: number, vector: number[]}>} 图片 embedding 列表

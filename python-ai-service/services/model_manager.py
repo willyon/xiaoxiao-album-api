@@ -316,7 +316,7 @@ class ModelManager:
         """
         Image/Text embedding 模型聚合：
         - image_model: SigLIP2 图像向量（与现有 1152 维向量兼容）
-        - text_model: BGE-M3 文本向量（骨架，暂未接入现有索引主链路）
+        - text_model: BGE-M3 文本向量（骨架，当前未接入搜索链路）
         """
         if not self._capability_enabled(profile, "embedding"):
             return None

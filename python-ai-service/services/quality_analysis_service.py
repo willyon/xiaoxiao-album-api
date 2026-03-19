@@ -36,7 +36,7 @@ def analyze_image_from_bytes(
     """
     路由层入口：从上传的原始字节解析图片并生成清理指标。
     - 输入：原始图片字节（任意常见格式）
-    - 输出：见 analyze_image 的返回结构（不含 embedding，图像向量由 /encode_image 提供）
+    - 输出：见 analyze_image 的返回结构（不含 embedding）
     """
     t0 = time.perf_counter()
     image_bgr, error = decode_image(image_bytes)
@@ -60,7 +60,7 @@ def analyze_image(
 ) -> Dict[str, object]:
     """
     针对 OpenCV BGR 图片生成清理指标。
-    返回字段：hashes、aesthetic_score、sharpness_score（不含 embedding，图像向量由 /encode_image 提供）。
+    返回字段：hashes、aesthetic_score、sharpness_score（不含 embedding）。
     内部仍计算 SigLIP 向量用于 aesthetic_score，但不返回。
     """
     if image_bgr is None or not isinstance(image_bgr, np.ndarray):

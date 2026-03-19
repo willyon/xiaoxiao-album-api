@@ -68,23 +68,17 @@ from config import settings
 from logger import logger
 
 # 导入路由模块
-from routes import analyze_full, caption, quality, face_cluster, health, ocr, person, search_embedding
+from routes import analyze_full, caption, quality, face_cluster, health, ocr, person
 
-# 导入向量索引与 ModelManager
-from services.vector_search_service import init_hnsw_index
+# 导入 ModelManager
 from services.model_manager import get_model_manager
 from services.model_registry import MODEL_CONFIGS, resolve_local_path
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """生命周期：启动时初始化向量索引、ModelManager 并预热 preload 模型；关闭时暂无逻辑。"""
+    """生命周期：启动时初始化 ModelManager 并预热 preload 模型；关闭时暂无逻辑。"""
     # --- startup ---
-    try:
-        init_hnsw_index()
-    except Exception as e:
-        logger.error("向量索引初始化失败，向量搜索将退化为 FTS", details={"error": str(e)})
-
     manager = get_model_manager()
     logger.info("✅ ModelManager 已初始化")
 
@@ -177,7 +171,6 @@ def create_app():
         "/ocr",
         "/analyze_quality",
         "/analyze_person",
-        "/encode_image",
     }
 
     @app.middleware("http")
@@ -220,7 +213,6 @@ def create_app():
     app.include_router(ocr.router, tags=["OCR识别"])
     app.include_router(face_cluster.router, tags=["人脸聚类"])
     app.include_router(quality.router, tags=["图片质量"])
-    app.include_router(search_embedding.router, tags=["搜索向量化"])
     
     return app
 
@@ -241,10 +233,7 @@ def main():
         logger.info("  - POST /analyze_quality - 图片质量指标")
         logger.info("  - POST /ocr - OCR 文字识别")
         logger.info("  - POST /analyze_full - 全量图片分析（统一入口）")
-        logger.info("  - POST /encode_image - 图像向量化")
         logger.info("  - POST /cluster_faces - 人脸聚类")
-        logger.info("  - POST /encode_text - 文本向量化")
-        logger.info("  - POST /ann_search_by_vector - 向量相似度搜索（hnsw ANN）")
         
         # 启动服务器
         uvicorn.run(

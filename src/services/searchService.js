@@ -4,37 +4,15 @@
  * @Description: 搜索业务逻辑服务
  */
 const searchModel = require("../models/searchModel");
-const pythonSearchClient = require("./pythonSearchClient");
-const logger = require("../utils/logger");
-const { SEARCH_TERM_FIELD_WEIGHTS, buildChineseQueryTerms, containsChinese, extractChineseRuns } = require("../utils/searchTermUtils");
-
-/**
- * 搜索图片（支持复杂筛选条件）
- * @param {Object} params
- * @param {number} params.userId - 用户ID
- * @param {string|null} params.ftsQuery - FTS 查询字符串（如果为 null，则不使用 FTS）
- * @param {Array<string>} params.whereConditions - WHERE 条件数组
- * @param {Array} params.whereParams - WHERE 条件参数
- * @param {number} params.limit - 返回结果数量
- * @param {number} params.offset - 偏移量
- * @returns {Array} 搜索结果
- */
-async function searchMediasByText(params) {
-  return searchModel.searchMediasByText(params);
-}
-
-/**
- * 获取搜索结果总数
- * @param {Object} params
- * @param {number} params.userId - 用户ID
- * @param {string|null} params.ftsQuery - FTS 查询字符串（如果为 null，则不使用 FTS）
- * @param {Array<string>} params.whereConditions - WHERE 条件数组
- * @param {Array} params.whereParams - WHERE 条件参数
- * @returns {number} 总记录数
- */
-async function getSearchResultsCount(params) {
-  return searchModel.getSearchResultsCount(params);
-}
+const {
+  FTS_RANKING,
+  SEARCH_TERM_FIELD_WEIGHTS,
+  STRUCTURED_COMBO_BOOSTS,
+  STRUCTURED_ROLE_BOOSTS,
+} = require("../config/searchRankingWeights");
+const { parseQuerySemanticSignals } = require("../utils/querySemanticParser");
+const { normalizeSemanticText } = require("../utils/querySemanticMatcher");
+const { buildChineseQueryTerms, containsChinese, extractChineseRuns } = require("../utils/searchTermUtils");
 
 function ensureCandidate(candidates, mediaId) {
   if (!candidates.has(mediaId)) {
@@ -44,8 +22,13 @@ function ensureCandidate(candidates, mediaId) {
       chineseHits: 0,
       chineseDoubleHits: 0,
       ftsRank: null,
-      vectorRank: null,
       matchedFields: new Set(),
+      matchedTermsByField: new Map(),
+      roleSignals: {
+        subject: false,
+        action: false,
+        scene: false,
+      },
     });
   }
   return candidates.get(mediaId);
@@ -69,34 +52,75 @@ function scoreChineseTermHits(termRows, queryTerms) {
       candidate.chineseDoubleHits += 1;
     }
     candidate.matchedFields.add(row.field_type);
+    if (!candidate.matchedTermsByField.has(row.field_type)) {
+      candidate.matchedTermsByField.set(row.field_type, new Set());
+    }
+    candidate.matchedTermsByField.get(row.field_type).add(row.term);
   }
 
   return candidates;
 }
 
 function mergeFtsScores(candidates, ftsRows, hasChineseQuery) {
-  const baseScore = hasChineseQuery ? 28 : 90;
+  const baseScore = hasChineseQuery ? FTS_RANKING.chineseBaseScore : FTS_RANKING.nonChineseBaseScore;
   for (let index = 0; index < (ftsRows || []).length; index += 1) {
     const row = ftsRows[index];
     const mediaId = Number(row.media_id);
     if (!Number.isFinite(mediaId)) continue;
     const candidate = ensureCandidate(candidates, mediaId);
-    candidate.score += Math.max(6, baseScore - index);
+    candidate.score += Math.max(FTS_RANKING.minScore, baseScore - index);
     candidate.ftsRank = index + 1;
   }
 }
 
-function mergeVectorScores(candidates, vectorRows, hasChineseQuery, options = {}) {
-  const { onlyExisting = false } = options;
-  const baseScore = hasChineseQuery ? 14 : 36;
-  for (let index = 0; index < (vectorRows || []).length; index += 1) {
-    const row = vectorRows[index];
-    const mediaId = Number(row.media_id);
-    if (!Number.isFinite(mediaId)) continue;
-    if (onlyExisting && !candidates.has(mediaId)) continue;
-    const candidate = ensureCandidate(candidates, mediaId);
-    candidate.score += Math.max(4, baseScore - index);
-    candidate.vectorRank = index + 1;
+function normalizeFieldText(value) {
+  return typeof value === "string" ? normalizeSemanticText(value) : "";
+}
+
+function fieldIncludesAny(text, terms = []) {
+  if (!text || !Array.isArray(terms) || terms.length === 0) {
+    return false;
+  }
+  return terms.some((term) => text.includes(term));
+}
+
+function boostStructuredMatches(candidates, searchDocs, structuredSignals) {
+  if (!structuredSignals?.hasRoleSignals) {
+    return;
+  }
+
+  const searchDocMap = new Map((searchDocs || []).map((doc) => [Number(doc.media_id), doc]));
+  for (const candidate of candidates.values()) {
+    const doc = searchDocMap.get(candidate.mediaId);
+    const subjectText = normalizeFieldText(doc?.subject_tags_text);
+    const actionText = normalizeFieldText(doc?.action_tags_text);
+    const sceneText = normalizeFieldText(doc?.scene_tags_text);
+
+    const hasSubjectSignal =
+      candidate.matchedFields.has("subject_tags")
+      || structuredSignals.subjects.some((group) => fieldIncludesAny(subjectText, group.terms));
+    const hasActionSignal =
+      candidate.matchedFields.has("action_tags")
+      || structuredSignals.actions.some((group) => fieldIncludesAny(actionText, group.terms));
+    const hasSceneSignal =
+      candidate.matchedFields.has("scene_tags")
+      || structuredSignals.scenes.some((group) => fieldIncludesAny(sceneText, group.terms));
+
+    candidate.roleSignals.subject = hasSubjectSignal;
+    candidate.roleSignals.action = hasActionSignal;
+    candidate.roleSignals.scene = hasSceneSignal;
+
+    if (hasSubjectSignal) candidate.score += STRUCTURED_ROLE_BOOSTS.subject;
+    if (hasActionSignal) candidate.score += STRUCTURED_ROLE_BOOSTS.action;
+    if (hasSceneSignal) candidate.score += STRUCTURED_ROLE_BOOSTS.scene;
+
+    if (hasSubjectSignal && hasActionSignal && hasSceneSignal) {
+      candidate.score += STRUCTURED_COMBO_BOOSTS.subjectActionScene;
+    } else {
+      if (hasSubjectSignal && hasActionSignal) candidate.score += STRUCTURED_COMBO_BOOSTS.subjectAction;
+      if (hasSubjectSignal && hasSceneSignal) candidate.score += STRUCTURED_COMBO_BOOSTS.subjectScene;
+      if (hasActionSignal && hasSceneSignal) candidate.score += STRUCTURED_COMBO_BOOSTS.actionScene;
+    }
   }
 }
 
@@ -128,6 +152,11 @@ function sortCandidates(candidates, mediaMap) {
     if (b.score !== a.score) {
       return b.score - a.score;
     }
+    const roleCountA = Number(a.roleSignals.subject) + Number(a.roleSignals.action) + Number(a.roleSignals.scene);
+    const roleCountB = Number(b.roleSignals.subject) + Number(b.roleSignals.action) + Number(b.roleSignals.scene);
+    if (roleCountB !== roleCountA) {
+      return roleCountB - roleCountA;
+    }
     const mediaA = mediaMap.get(a.mediaId);
     const mediaB = mediaMap.get(b.mediaId);
     const capturedA = Number(mediaA?.capturedAt || 0);
@@ -139,7 +168,7 @@ function sortCandidates(candidates, mediaMap) {
   });
 }
 
-async function searchMediasHybrid({
+async function searchMediaResults({
   userId,
   query,
   ftsQuery,
@@ -147,7 +176,6 @@ async function searchMediasHybrid({
   whereParams = [],
   pageNo = 1,
   pageSize = 20,
-  allowVector = false,
 }) {
   const offset = Math.max(0, (pageNo - 1) * pageSize);
   const normalizedQuery = typeof query === "string" ? query.trim() : "";
@@ -155,7 +183,7 @@ async function searchMediasHybrid({
 
   if (!hasQuery) {
     const [list, total] = await Promise.all([
-      searchModel.searchMediasByText({
+      searchModel.listMediaSearchResults({
         userId,
         ftsQuery,
         whereConditions,
@@ -163,7 +191,7 @@ async function searchMediasHybrid({
         limit: pageSize,
         offset,
       }),
-      searchModel.getSearchResultsCount({
+      searchModel.countMediaSearchResults({
         userId,
         ftsQuery,
         whereConditions,
@@ -173,19 +201,20 @@ async function searchMediasHybrid({
     return {
       list,
       total,
-      stats: { termCount: 0, ftsCount: list.length, vectorCount: 0 },
+      stats: { termCount: 0, ftsCount: list.length },
     };
   }
 
   const hasChineseQuery = containsChinese(normalizedQuery);
   const chineseQueryTerms = hasChineseQuery ? buildChineseQueryTerms(normalizedQuery) : [];
   const chinesePrecisionRules = hasChineseQuery ? buildChinesePrecisionRules(normalizedQuery) : null;
+  const structuredSignals = hasChineseQuery ? parseQuerySemanticSignals(normalizedQuery) : null;
   const recallLimit = Math.max(pageSize * 6, 120);
 
   const recalls = [
     Promise.resolve(
       hasChineseQuery
-        ? searchModel.searchMediaIdsByChineseTerms({
+        ? searchModel.recallMediaIdsByChineseTerms({
             userId,
             terms: chineseQueryTerms.map((item) => item.term),
             whereConditions,
@@ -195,7 +224,7 @@ async function searchMediasHybrid({
         : [],
     ),
     Promise.resolve(
-      searchModel.searchMediaIdsByFts({
+      searchModel.recallMediaIdsByFts({
         userId,
         ftsQuery,
         whereConditions,
@@ -203,50 +232,10 @@ async function searchMediasHybrid({
         limit: recallLimit,
       }),
     ),
-    Promise.resolve(
-      hasChineseQuery
-        ? searchModel.countMediaIdsByChineseTerms({
-            userId,
-            terms: chineseQueryTerms.map((item) => item.term),
-            whereConditions,
-            whereParams,
-          })
-        : 0,
-    ),
-    Promise.resolve(
-      searchModel.getSearchResultsCount({
-        userId,
-        ftsQuery,
-        whereConditions,
-        whereParams,
-      }),
-    ),
   ];
-
-  if (allowVector) {
-    recalls.push(
-      (async () => {
-        try {
-          const { vector: queryVector } = await pythonSearchClient.encodeText(normalizedQuery);
-          return pythonSearchClient.annSearchByVector(userId, queryVector, recallLimit);
-        } catch (error) {
-          logger.warn({
-            message: "向量搜索失败，降级为纯文本召回",
-            details: { userId, query: normalizedQuery, error: error.message },
-          });
-          return [];
-        }
-      })(),
-    );
-  } else {
-    recalls.push(Promise.resolve([]));
-  }
-
-  const [termRows, ftsRows, termTotalCount, ftsTotalCount, vectorRows] = await Promise.all(recalls);
+  const [termRows, ftsRows] = await Promise.all(recalls);
   let candidates = scoreChineseTermHits(termRows, chineseQueryTerms);
   mergeFtsScores(candidates, ftsRows, hasChineseQuery);
-  const hasTextHits = candidates.size > 0;
-  mergeVectorScores(candidates, vectorRows, hasChineseQuery, { onlyExisting: hasTextHits });
   candidates = filterCandidatesForChinesePrecision(candidates, chinesePrecisionRules);
 
   const mergedIds = Array.from(candidates.keys());
@@ -254,12 +243,16 @@ async function searchMediasHybrid({
     return {
       list: [],
       total: 0,
-      stats: { termCount: termRows.length, ftsCount: ftsRows.length, vectorCount: vectorRows.length },
+      stats: { termCount: termRows.length, ftsCount: ftsRows.length },
     };
   }
 
-  const mediaRows = await searchModel.getMediasByIds({ userId, imageIds: mergedIds });
+  const [mediaRows, searchDocs] = await Promise.all([
+    searchModel.getMediasByIds({ userId, imageIds: mergedIds }),
+    searchModel.getSearchDocsByMediaIds({ userId, imageIds: mergedIds }),
+  ]);
   const mediaMap = new Map(mediaRows.map((item) => [item.mediaId, item]));
+  boostStructuredMatches(candidates, searchDocs, structuredSignals);
   const ranked = sortCandidates(candidates, mediaMap).filter((item) => mediaMap.has(item.mediaId));
   const pagedIds = ranked.slice(offset, offset + pageSize).map((item) => item.mediaId);
   const list = pagedIds.map((mediaId) => mediaMap.get(mediaId)).filter(Boolean);
@@ -271,7 +264,6 @@ async function searchMediasHybrid({
     stats: {
       termCount: termRows.length,
       ftsCount: ftsRows.length,
-      vectorCount: vectorRows.length,
     },
   };
 }
@@ -304,9 +296,7 @@ async function getMediasByIds(params) {
 }
 
 module.exports = {
-  searchMediasByText,
-  getSearchResultsCount,
-  searchMediasHybrid,
+  searchMediaResults,
   getFilterOptionsPaginated,
   getMediasByIds,
 };

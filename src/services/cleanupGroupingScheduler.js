@@ -8,10 +8,12 @@ const userMaxDelayTimers = new Map();
 // 记录首次调度时间
 const userFirstScheduleTime = new Map();
 
-// 去抖间隔（毫秒），默认 60s，可通过环境变量覆盖
-const DEBOUNCE_MS = Number(process.env.CLEANUP_GROUPING_DEBOUNCE_MS || 60000);
-// 最大延迟时间（毫秒），默认 5 分钟，确保即使有大量图片处理，也能定期重建
-const MAX_DELAY_MS = Number(process.env.CLEANUP_GROUPING_MAX_DELAY_MS || 300000);
+// 去抖间隔（毫秒），默认 1 分钟，可通过环境变量覆盖
+// 批量导入场景：更希望在“导入结束后”再重建，因此默认放大去抖时间
+const DEBOUNCE_MS = Number(process.env.CLEANUP_GROUPING_DEBOUNCE_MS || 1 * 60 * 1000);
+// 最大延迟时间（毫秒）。默认关闭（0），以确保只在导入停止后重建；
+// 如需在持续导入时也周期重建，可设置为正数（例如 30*60*1000）。
+const MAX_DELAY_MS = Number(process.env.CLEANUP_GROUPING_MAX_DELAY_MS || 0);
 
 function scheduleUserRebuild(userId) {
   if (!userId) return;
@@ -24,21 +26,23 @@ function scheduleUserRebuild(userId) {
     userFirstScheduleTime.set(userId, now);
 
     // 设置最大延迟计时器，确保即使有大量图片处理，也能定期重建
-    if (userMaxDelayTimers.has(userId)) {
-      clearTimeout(userMaxDelayTimers.get(userId));
-    }
-    const maxDelayTimer = setTimeout(() => {
-      userMaxDelayTimers.delete(userId);
-      userFirstScheduleTime.delete(userId);
-      // 清除去抖计时器，强制立即重建
-      if (userTimers.has(userId)) {
-        clearTimeout(userTimers.get(userId));
-        userTimers.delete(userId);
+    if (MAX_DELAY_MS > 0) {
+      if (userMaxDelayTimers.has(userId)) {
+        clearTimeout(userMaxDelayTimers.get(userId));
       }
-      // 立即执行重建
-      _executeRebuild(userId);
-    }, MAX_DELAY_MS);
-    userMaxDelayTimers.set(userId, maxDelayTimer);
+      const maxDelayTimer = setTimeout(() => {
+        userMaxDelayTimers.delete(userId);
+        userFirstScheduleTime.delete(userId);
+        // 清除去抖计时器，强制立即重建
+        if (userTimers.has(userId)) {
+          clearTimeout(userTimers.get(userId));
+          userTimers.delete(userId);
+        }
+        // 立即执行重建
+        _executeRebuild(userId);
+      }, MAX_DELAY_MS);
+      userMaxDelayTimers.set(userId, maxDelayTimer);
+    }
   }
 
   // 重置去抖计时器

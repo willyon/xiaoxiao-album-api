@@ -12,7 +12,6 @@ from . import (
     health,
     ocr,
     person,
-    search_embedding,
 )
 
 __all__ = [
@@ -23,5 +22,4 @@ __all__ = [
     "health",
     "ocr",
     "person",
-    "search_embedding",
 ]

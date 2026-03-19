@@ -148,7 +148,13 @@ def _run_one_module(
             if provider is None:
                 out = build_module_result(
                     status=MODULE_STATUS_DISABLED,
-                    data={"caption": "", "keywords": []},
+                    data={
+                        "caption": "",
+                        "keywords": [],
+                        "subject_tags": [],
+                        "action_tags": [],
+                        "scene_tags": [],
+                    },
                     reason="provider_off",
                     meta={
                         "configured_provider": configured_provider,
@@ -167,9 +173,15 @@ def _run_one_module(
             data = out.get("data") or {}
             caption = data.get("caption", "") or ""
             keywords = data.get("keywords")
+            subject_tags = data.get("subject_tags")
+            action_tags = data.get("action_tags")
+            scene_tags = data.get("scene_tags")
             out["data"] = {
                 "caption": caption,
                 "keywords": keywords or [],
+                "subject_tags": subject_tags or [],
+                "action_tags": action_tags or [],
+                "scene_tags": scene_tags or [],
             }
             out.setdefault("meta", {})
             out["meta"]["configured_provider"] = configured_provider

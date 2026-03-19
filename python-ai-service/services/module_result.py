@@ -48,12 +48,15 @@ def build_module_result(
 
 
 def is_caption_effective(data: Optional[Dict[str, Any]]) -> bool:
-    """caption 只要 caption 非空，或 keywords 任一非空，即视为有效结果。"""
+    """caption 只要 caption、keywords 或三类 tags 任一非空，即视为有效结果。"""
     if not isinstance(data, dict):
         return False
     caption = str(data.get("caption") or "").strip()
     keywords = data.get("keywords") or []
-    return bool(caption) or bool(keywords)
+    subject_tags = data.get("subject_tags") or []
+    action_tags = data.get("action_tags") or []
+    scene_tags = data.get("scene_tags") or []
+    return bool(caption) or bool(keywords) or bool(subject_tags) or bool(action_tags) or bool(scene_tags)
 
 
 def is_ocr_effective(data: Optional[Dict[str, Any]]) -> bool:

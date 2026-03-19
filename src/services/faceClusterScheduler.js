@@ -10,8 +10,8 @@
  *
  * 🔄 工作流程:
  * 1. 人脸识别完成后调用 scheduleUserClustering(userId)
- * 2. 去抖机制：60秒内多次调用只执行一次
- * 3. 最大延迟：5分钟内必须执行一次（即使有大量图片）
+ * 2. 去抖机制：1分钟内多次调用只执行一次
+ * 3. 最大延迟：可通过环境变量开启（默认关闭）
  * 4. 执行聚类：调用 faceClusterService.performFaceClustering
  */
 
@@ -25,10 +25,12 @@ const userMaxDelayTimers = new Map();
 // 记录首次调度时间
 const userFirstScheduleTime = new Map();
 
-// 去抖间隔（毫秒），默认 60s，可通过环境变量覆盖
-const DEBOUNCE_MS = Number(process.env.FACE_CLUSTERING_DEBOUNCE_MS || 60000);
-// 最大延迟时间（毫秒），默认 5 分钟，确保即使有大量图片处理，也能定期执行聚类
-const MAX_DELAY_MS = Number(process.env.FACE_CLUSTERING_MAX_DELAY_MS || 300000);
+// 去抖间隔（毫秒），默认 1 分钟，可通过环境变量覆盖
+// 批量导入场景：更希望在“导入结束后”再聚类，因此默认放大去抖时间
+const DEBOUNCE_MS = Number(process.env.FACE_CLUSTERING_DEBOUNCE_MS || 1 * 60 * 1000);
+// 最大延迟时间（毫秒）。默认关闭（0），以确保只在导入停止后聚类；
+// 如需在持续导入时也周期聚类，可设置为正数（例如 30*60*1000）。
+const MAX_DELAY_MS = Number(process.env.FACE_CLUSTERING_MAX_DELAY_MS || 0);
 
 /**
  * 调度用户的人脸聚类任务（去抖机制）
@@ -45,21 +47,23 @@ function scheduleUserClustering(userId) {
     userFirstScheduleTime.set(userId, now);
 
     // 设置最大延迟计时器，确保即使有大量图片处理，也能定期执行聚类
-    if (userMaxDelayTimers.has(userId)) {
-      clearTimeout(userMaxDelayTimers.get(userId));
-    }
-    const maxDelayTimer = setTimeout(() => {
-      userMaxDelayTimers.delete(userId);
-      userFirstScheduleTime.delete(userId);
-      // 清除去抖计时器，强制立即执行聚类
-      if (userTimers.has(userId)) {
-        clearTimeout(userTimers.get(userId));
-        userTimers.delete(userId);
+    if (MAX_DELAY_MS > 0) {
+      if (userMaxDelayTimers.has(userId)) {
+        clearTimeout(userMaxDelayTimers.get(userId));
       }
-      // 立即执行聚类
-      _executeClustering(userId);
-    }, MAX_DELAY_MS);
-    userMaxDelayTimers.set(userId, maxDelayTimer);
+      const maxDelayTimer = setTimeout(() => {
+        userMaxDelayTimers.delete(userId);
+        userFirstScheduleTime.delete(userId);
+        // 清除去抖计时器，强制立即执行聚类
+        if (userTimers.has(userId)) {
+          clearTimeout(userTimers.get(userId));
+          userTimers.delete(userId);
+        }
+        // 立即执行聚类
+        _executeClustering(userId);
+      }, MAX_DELAY_MS);
+      userMaxDelayTimers.set(userId, maxDelayTimer);
+    }
   }
 
   // 重置去抖计时器

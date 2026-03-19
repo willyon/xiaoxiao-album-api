@@ -1,7 +1,7 @@
 # Python AI Service
 
 AI 图片分析服务，使用 InsightFace + FairFace + EmotiEffLib + YOLOv11x 进行高精度图片分析。  
-功能：人物分析（人脸+人体检测）、人脸聚类、OCR、智能清理、**搜索向量化**（文本编码与向量相似度）。
+功能：人物分析（人脸+人体检测）、人脸聚类、OCR、智能清理、embedding 生成。
 
 ---
 
@@ -92,8 +92,6 @@ python3 scripts/prepare_model_assets.py --family yolo --variant yolo11x
 | POST | `/analyze_person` | 人物分析（人脸+人体检测） |
 | POST | `/analyze_quality` | 图片质量指标 |
 | POST | `/cluster_faces` | 人脸聚类 |
-| POST | `/encode_text` | 文本向量化（搜索用） |
-| POST | `/search_by_vector` | 向量相似度搜索 |
 
 ---
 

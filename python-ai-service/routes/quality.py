@@ -3,7 +3,7 @@
 """
 图片质量指标接口（原智能清理）
 - 统一 decode_image + ModelManager + pipeline
-- 仅返回质量相关：hashes、aesthetic_score、sharpness_score；图像向量由 /encode_image 提供
+- 仅返回质量相关：hashes、aesthetic_score、sharpness_score
 """
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
@@ -28,7 +28,6 @@ async def analyze_quality(
 ):
     """
     生成图片质量指标（哈希、清晰度、美学分），供智能清理/筛选使用。
-    图像向量请使用 POST /encode_image。
     """
     set_request_log_context(request, profile="standard", requested_device="cpu", resolved_device="cpu")
     try:

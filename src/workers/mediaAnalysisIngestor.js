@@ -21,6 +21,7 @@ const cleanupModel = require("../models/cleanupModel");
 const { upsertMediaEmbedding } = require("../models/mediaEmbeddingModel");
 const { scheduleUserRebuild } = require("../services/cleanupGroupingScheduler");
 const { scheduleUserClustering } = require("../services/faceClusterScheduler");
+const { scheduleCityDictionaryRefresh } = require("../services/cityDictionaryScheduler");
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_CLEANUP_SERVICE_URL || process.env.PYTHON_FACE_SERVICE_URL || "http://localhost:5001";
 const ANALYZE_FULL_TIMEOUT_MS = Number(process.env.ANALYZE_FULL_TIMEOUT_MS || 120000);
@@ -74,6 +75,8 @@ async function processMediaAnalysis(job) {
     await _runAnalyzeFull({ imageId, userId, imageData, analysisVersion, stepResults });
 
     await finalizeMediaAnalysis({ imageId, userId, analysisVersion, stepResults });
+    // 由于城市词典基础集合来自 media.city，导入过程中 city 可能持续新增，这里做去抖刷新
+    scheduleCityDictionaryRefresh("mediaAnalysis.completed");
 
     if (sessionId) {
       await updateProgressOnce({ sessionId, status: "aiDoneCount", dedupeKey: imageId });
@@ -193,16 +196,28 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
     const d = modules.caption.data;
     const captionText = typeof d.caption === "string" ? d.caption : (typeof d.text === "string" ? d.text : "");
     const keywords = Array.isArray(d.keywords) ? d.keywords : [];
+    const subjectTags = Array.isArray(d.subject_tags) ? d.subject_tags : [];
+    const actionTags = Array.isArray(d.action_tags) ? d.action_tags : [];
+    const sceneTags = Array.isArray(d.scene_tags) ? d.scene_tags : [];
     upsertMediaCaptionsForAnalysis({
       mediaId: imageId,
       caption: captionText,
       keywords,
+      subjectTags,
+      actionTags,
+      sceneTags,
       analysisVersion,
     });
     stepResults.caption = {
       status: "completed",
       errorCode: null,
-      data: { caption: captionText, keywords },
+      data: {
+        caption: captionText,
+        keywords,
+        subjectTags,
+        actionTags,
+        sceneTags,
+      },
     };
   } else {
     stepResults.caption = { status: modules.caption?.status || "failed", errorCode: modules.caption?.error?.code || null, data: {} };

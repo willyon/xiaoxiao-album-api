@@ -13,7 +13,7 @@ function normalizeSearchRows(rows) {
 }
 
 /**
- * 全文搜索图片（支持复杂筛选条件）
+ * 列出媒体搜索结果（支持复杂筛选条件）
  * @param {Object} params
  * @param {number} params.userId - 用户ID
  * @param {string|null} params.ftsQuery - FTS 查询字符串（如果为 null，则不使用 FTS）
@@ -23,7 +23,7 @@ function normalizeSearchRows(rows) {
  * @param {number} params.offset - 偏移量
  * @returns {Array} 搜索结果
  */
-function searchMediasByText({ userId, ftsQuery, whereConditions = [], whereParams = [], limit = 50, offset = 0 }) {
+function listMediaSearchResults({ userId, ftsQuery, whereConditions = [], whereParams = [], limit = 50, offset = 0 }) {
   let sql;
   let params;
 
@@ -122,7 +122,7 @@ function searchMediasByText({ userId, ftsQuery, whereConditions = [], whereParam
 }
 
 /**
- * 获取搜索结果总数
+ * 统计媒体搜索结果总数
  * @param {Object} params
  * @param {number} params.userId - 用户ID
  * @param {string|null} params.ftsQuery - FTS 查询字符串（如果为 null，则不使用 FTS）
@@ -130,7 +130,7 @@ function searchMediasByText({ userId, ftsQuery, whereConditions = [], whereParam
  * @param {Array} params.whereParams - WHERE 条件参数
  * @returns {number} 总记录数
  */
-function getSearchResultsCount({ userId, ftsQuery, whereConditions = [], whereParams = [] }) {
+function countMediaSearchResults({ userId, ftsQuery, whereConditions = [], whereParams = [] }) {
   let sql;
   let params;
 
@@ -176,7 +176,7 @@ function getSearchResultsCount({ userId, ftsQuery, whereConditions = [], wherePa
   return result ? result.total : 0;
 }
 
-function searchMediaIdsByFts({ userId, ftsQuery, whereConditions = [], whereParams = [], limit = 50 }) {
+function recallMediaIdsByFts({ userId, ftsQuery, whereConditions = [], whereParams = [], limit = 50 }) {
   if (!ftsQuery) {
     return [];
   }
@@ -184,7 +184,7 @@ function searchMediaIdsByFts({ userId, ftsQuery, whereConditions = [], wherePara
   let sql = `
     SELECT
       i.id AS media_id,
-      bm25(media_fts, 8.0, 9.0, 6.0, 4.0, 3.0) AS fts_score,
+      bm25(media_fts, 7.0, 6.0, 11.0, 12.0, 9.0, 4.0, 3.0, 2.0) AS fts_score,
       i.captured_at
     FROM media_fts fts
     JOIN media_search ms ON fts.rowid = ms.media_id
@@ -207,7 +207,34 @@ function searchMediaIdsByFts({ userId, ftsQuery, whereConditions = [], wherePara
   return db.prepare(sql).all(userId, ftsQuery, ...whereParams, limit);
 }
 
-function searchMediaIdsByChineseTerms({ userId, terms = [], whereConditions = [], whereParams = [], limit = 100 }) {
+function getSearchDocsByMediaIds({ userId, imageIds }) {
+  if (!Array.isArray(imageIds) || imageIds.length === 0) {
+    return [];
+  }
+
+  const placeholders = imageIds.map(() => "?").join(",");
+  const sql = `
+    SELECT
+      ms.media_id,
+      ms.caption_text,
+      ms.keywords_text,
+      ms.subject_tags_text,
+      ms.action_tags_text,
+      ms.scene_tags_text,
+      ms.ocr_text,
+      ms.transcript_text,
+      ms.location_text
+    FROM media_search ms
+    JOIN media i ON i.id = ms.media_id
+    WHERE i.user_id = ?
+      AND i.deleted_at IS NULL
+      AND ms.media_id IN (${placeholders})
+  `;
+
+  return db.prepare(sql).all(userId, ...imageIds);
+}
+
+function recallMediaIdsByChineseTerms({ userId, terms = [], whereConditions = [], whereParams = [], limit = 100 }) {
   if (!Array.isArray(terms) || terms.length === 0) {
     return [];
   }
@@ -267,7 +294,7 @@ function countMediaIdsByChineseTerms({ userId, terms = [], whereConditions = [],
 }
 
 /**
- * 根据图片 ID 列表获取图片信息（用于向量搜索结果）
+ * 根据图片 ID 列表获取图片信息
  * @param {number} userId - 用户ID
  * @param {Array<number>} imageIds - 图片ID列表
  * @returns {Array} 图片信息列表
@@ -598,11 +625,12 @@ function getFilterOptionsPaginated({
 }
 
 module.exports = {
-  searchMediasByText,
-  getSearchResultsCount,
-  searchMediaIdsByFts,
-  searchMediaIdsByChineseTerms,
+  listMediaSearchResults,
+  countMediaSearchResults,
+  recallMediaIdsByFts,
+  recallMediaIdsByChineseTerms,
   countMediaIdsByChineseTerms,
   getFilterOptionsPaginated,
   getMediasByIds,
+  getSearchDocsByMediaIds,
 };
