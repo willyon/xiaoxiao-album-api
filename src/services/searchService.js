@@ -12,7 +12,29 @@ const {
 } = require("../config/searchRankingWeights");
 const { parseQuerySemanticSignals } = require("../utils/querySemanticParser");
 const { normalizeSemanticText } = require("../utils/querySemanticMatcher");
-const { buildChineseQueryTerms, containsChinese, extractChineseRuns } = require("../utils/searchTermUtils");
+const {
+  buildChineseQueryTerms,
+  containsChinese,
+  extractChineseRuns,
+  normalizeQueryForFts,
+} = require("../utils/searchTermUtils");
+
+function sanitizeFtsToken(token) {
+  const value = String(token || "").trim();
+  if (!value) return "";
+  if (/^[\p{L}\p{N}_\u3400-\u9fff*]+$/u.test(value)) {
+    return value;
+  }
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+function buildFtsQueryForToken(token) {
+  const raw = String(token || "").trim();
+  if (!raw) return null;
+  const preprocessed = containsChinese(raw) ? normalizeQueryForFts(raw) : raw;
+  const tokens = preprocessed.split(/\s+/).map(sanitizeFtsToken).filter(Boolean);
+  return tokens.length > 0 ? tokens.join(" ") : null;
+}
 
 function ensureCandidate(candidates, mediaId) {
   if (!candidates.has(mediaId)) {
@@ -20,7 +42,6 @@ function ensureCandidate(candidates, mediaId) {
       mediaId,
       score: 0,
       chineseHits: 0,
-      chineseDoubleHits: 0,
       ftsRank: null,
       matchedFields: new Set(),
       matchedTermsByField: new Map(),
@@ -48,9 +69,6 @@ function scoreChineseTermHits(termRows, queryTerms) {
     const fieldWeight = SEARCH_TERM_FIELD_WEIGHTS[row.field_type] || 40;
     candidate.score += fieldWeight + queryTerm.boost;
     candidate.chineseHits += 1;
-    if (queryTerm.termLen >= 2) {
-      candidate.chineseDoubleHits += 1;
-    }
     candidate.matchedFields.add(row.field_type);
     if (!candidate.matchedTermsByField.has(row.field_type)) {
       candidate.matchedTermsByField.set(row.field_type, new Set());
@@ -124,29 +142,6 @@ function boostStructuredMatches(candidates, searchDocs, structuredSignals) {
   }
 }
 
-function buildChinesePrecisionRules(query) {
-  const runs = extractChineseRuns(query);
-  const maxRunLength = runs.reduce((max, run) => Math.max(max, Array.from(run).length), 0);
-  return {
-    maxRunLength,
-    requiresDoubleHit: maxRunLength >= 2,
-  };
-}
-
-function filterCandidatesForChinesePrecision(candidates, rules) {
-  if (!rules?.requiresDoubleHit) {
-    return candidates;
-  }
-
-  const filtered = new Map();
-  for (const [mediaId, candidate] of candidates.entries()) {
-    if (candidate.chineseDoubleHits > 0) {
-      filtered.set(mediaId, candidate);
-    }
-  }
-  return filtered;
-}
-
 function sortCandidates(candidates, mediaMap) {
   return Array.from(candidates.values()).sort((a, b) => {
     if (b.score !== a.score) {
@@ -206,37 +201,77 @@ async function searchMediaResults({
   }
 
   const hasChineseQuery = containsChinese(normalizedQuery);
-  const chineseQueryTerms = hasChineseQuery ? buildChineseQueryTerms(normalizedQuery) : [];
-  const chinesePrecisionRules = hasChineseQuery ? buildChinesePrecisionRules(normalizedQuery) : null;
+  // 先按空格分词：每个 token 内再用连续中文段长度判断是否把它拆成 1~2 字去召回
+  // - token 内最长连续中文段长度 <= 2：走 media_search_terms
+  // - token 内最长连续中文段长度 >= 3：该 token 仅走 FTS（避免语义被拆开造成噪音）
+  const tokens = hasChineseQuery
+    ? normalizedQuery
+        .split(/\s+/)
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : [];
+
+  const shortChineseTokens = [];
+  const longChineseTokens = [];
+  for (const token of tokens) {
+    const runs = extractChineseRuns(token);
+    if (!runs || runs.length === 0) continue;
+    const maxRunLen = runs.reduce((max, run) => Math.max(max, Array.from(run).length), 0);
+    if (maxRunLen <= 2) {
+      shortChineseTokens.push(token);
+    } else {
+      longChineseTokens.push(token);
+    }
+  }
+
+  const shouldRecallChineseTerms = shortChineseTokens.length > 0;
+  const shouldRecallFts = longChineseTokens.length > 0;
+  const chineseQueryTermItems = shortChineseTokens.flatMap((token) => buildChineseQueryTerms(token));
+  const chineseQueryTerms = Array.from(
+    chineseQueryTermItems.reduce((acc, item) => {
+      const current = acc.get(item.term);
+      if (!current || item.termLen > current.termLen) {
+        acc.set(item.term, item);
+      }
+      return acc;
+    }, new Map()).values(),
+  ).sort((a, b) => b.termLen - a.termLen || a.term.localeCompare(b.term, "zh-Hans-CN"));
   const structuredSignals = hasChineseQuery ? parseQuerySemanticSignals(normalizedQuery) : null;
   const recallLimit = Math.max(pageSize * 6, 120);
 
-  const recalls = [
-    Promise.resolve(
-      hasChineseQuery
-        ? searchModel.recallMediaIdsByChineseTerms({
-            userId,
-            terms: chineseQueryTerms.map((item) => item.term),
-            whereConditions,
-            whereParams,
-            limit: recallLimit,
-          })
-        : [],
-    ),
-    Promise.resolve(
-      searchModel.recallMediaIdsByFts({
-        userId,
-        ftsQuery,
-        whereConditions,
-        whereParams,
-        limit: recallLimit,
-      }),
-    ),
-  ];
-  const [termRows, ftsRows] = await Promise.all(recalls);
+  const termRecalls = shouldRecallChineseTerms
+    ? [
+        searchModel.recallMediaIdsByChineseTerms({
+          userId,
+          terms: chineseQueryTerms.map((item) => item.term),
+          whereConditions,
+          whereParams,
+          limit: recallLimit,
+        }),
+      ]
+    : [];
+  const ftsRecalls = shouldRecallFts
+    ? longChineseTokens
+        .map((token) => buildFtsQueryForToken(token))
+        .filter(Boolean)
+        .map((singleFtsQuery) => searchModel.recallMediaIdsByFts({
+          userId,
+          ftsQuery: singleFtsQuery,
+          whereConditions,
+          whereParams,
+          limit: recallLimit,
+        }))
+    : [];
+  const [termRecallGroups, ftsRecallGroups] = await Promise.all([
+    Promise.all(termRecalls),
+    Promise.all(ftsRecalls),
+  ]);
+  const termRows = termRecallGroups.flat();
+  const ftsRows = ftsRecallGroups.flat();
   let candidates = scoreChineseTermHits(termRows, chineseQueryTerms);
-  mergeFtsScores(candidates, ftsRows, hasChineseQuery);
-  candidates = filterCandidatesForChinesePrecision(candidates, chinesePrecisionRules);
+  for (const ftsRowsOfToken of ftsRecallGroups) {
+    mergeFtsScores(candidates, ftsRowsOfToken, hasChineseQuery);
+  }
 
   const mergedIds = Array.from(candidates.keys());
   if (mergedIds.length === 0) {

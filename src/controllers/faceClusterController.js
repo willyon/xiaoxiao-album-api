@@ -17,6 +17,7 @@ const {
   getFaceEmbeddingIdsByClusterId,
 } = require("../models/faceClusterModel");
 const { addFullUrlToMedia, getGroupsByYearForCluster, getGroupsByMonthForCluster } = require("../services/mediaService");
+const storageService = require("../services/storageService");
 const logger = require("../utils/logger");
 const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
@@ -99,7 +100,6 @@ async function getClusters(req, res, next) {
       .filter((cluster) => cluster.coverImage?.thumbnailStorageKey)
       .map((cluster) => ({
         thumbnailStorageKey: cluster.coverImage.thumbnailStorageKey,
-        storageType: cluster.coverImage.storageType || "aliyun-oss",
       }));
 
     const urlsMap = new Map();
@@ -164,7 +164,6 @@ async function getRecentClusters(req, res, next) {
       .filter((cluster) => cluster.coverImage?.thumbnailStorageKey)
       .map((cluster) => ({
         thumbnailStorageKey: cluster.coverImage.thumbnailStorageKey,
-        storageType: cluster.coverImage.storageType || "aliyun-oss",
       }));
 
     const urlsMap = new Map();
@@ -450,17 +449,7 @@ async function restoreClusterCoverImage(req, res, next) {
     let coverImageUrl = null;
     if (result.thumbnailStorageKey) {
       try {
-        // 从 images 表获取 storage_type
-        const { getFaceEmbeddingsByIds } = require("../models/faceClusterModel");
-        const { getMediaStorageInfo } = require("../models/mediaModel");
-        const storageService = require("../services/storageService");
-
-        const faceEmbeddings = getFaceEmbeddingsByIds([result.faceEmbeddingId]);
-        if (faceEmbeddings.length > 0) {
-          const imageInfo = getMediaStorageInfo(faceEmbeddings[0].image_id);
-          const storageType = imageInfo?.storageType || "aliyun-oss";
-          coverImageUrl = await storageService.getFileUrl(result.thumbnailStorageKey, storageType);
-        }
+        coverImageUrl = await storageService.getFileUrl(result.thumbnailStorageKey);
       } catch (error) {
         logger.error({
           message: `获取封面URL失败: faceEmbeddingId=${result.faceEmbeddingId}`,
@@ -565,17 +554,7 @@ async function setClusterCoverImage(req, res, next) {
     let coverImageUrl = null;
     if (thumbnailStorageKey) {
       try {
-        // 从 images 表获取 storage_type
-        const { getFaceEmbeddingsByIds } = require("../models/faceClusterModel");
-        const { getMediaStorageInfo } = require("../models/mediaModel");
-        const storageService = require("../services/storageService");
-
-        const faceEmbeddings = getFaceEmbeddingsByIds([faceEmbeddingIdNum]);
-        if (faceEmbeddings.length > 0) {
-          const imageInfo = getMediaStorageInfo(faceEmbeddings[0].image_id);
-          const storageType = imageInfo?.storageType || "aliyun-oss";
-          coverImageUrl = await storageService.getFileUrl(thumbnailStorageKey, storageType);
-        }
+        coverImageUrl = await storageService.getFileUrl(thumbnailStorageKey);
       } catch (error) {
         logger.error({
           message: `获取封面URL失败: faceEmbeddingId=${faceEmbeddingIdNum}`,

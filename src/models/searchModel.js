@@ -52,13 +52,13 @@ function listMediaSearchResults({ userId, ftsQuery, whereConditions = [], whereP
         NULL AS age_tags,
         ma.primary_expression AS expression_tags,
         i.is_favorite
-      FROM media_fts fts
+      FROM media_search_fts fts
       JOIN media_search ms ON fts.rowid = ms.media_id
       JOIN media i ON ms.media_id = i.id
       LEFT JOIN media_analysis ma ON ma.media_id = i.id
       WHERE i.user_id = ? 
         AND i.deleted_at IS NULL
-        AND media_fts MATCH ?
+        AND media_search_fts MATCH ?
     `;
 
     // 添加额外的 WHERE 条件
@@ -138,13 +138,13 @@ function countMediaSearchResults({ userId, ftsQuery, whereConditions = [], where
     // 使用 FTS 查询计数
     sql = `
       SELECT COUNT(*) as total
-      FROM media_fts fts
+      FROM media_search_fts fts
       JOIN media_search ms ON fts.rowid = ms.media_id
       JOIN media i ON ms.media_id = i.id
       LEFT JOIN media_analysis ma ON ma.media_id = i.id
       WHERE i.user_id = ? 
         AND i.deleted_at IS NULL
-        AND media_fts MATCH ?
+        AND media_search_fts MATCH ?
     `;
 
     // 添加额外的 WHERE 条件
@@ -184,15 +184,15 @@ function recallMediaIdsByFts({ userId, ftsQuery, whereConditions = [], wherePara
   let sql = `
     SELECT
       i.id AS media_id,
-      bm25(media_fts, 6.0, 7.0, 11.0, 12.0, 9.0, 4.0, 3.0) AS fts_score,
+      bm25(media_search_fts, 6.0, 7.0, 11.0, 12.0, 9.0, 4.0, 3.0, 14.0) AS fts_score,
       i.captured_at
-    FROM media_fts fts
+    FROM media_search_fts fts
     JOIN media_search ms ON fts.rowid = ms.media_id
     JOIN media i ON ms.media_id = i.id
     LEFT JOIN media_analysis ma ON ma.media_id = i.id
     WHERE i.user_id = ?
       AND i.deleted_at IS NULL
-      AND media_fts MATCH ?
+      AND media_search_fts MATCH ?
   `;
 
   if (whereConditions.length > 0) {

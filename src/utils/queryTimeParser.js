@@ -45,12 +45,30 @@ function endOfWeek(date) {
   return end;
 }
 
+function parseChineseMonthToken(fragment) {
+  const t = String(fragment || "")
+    .replace(/份/g, "")
+    .replace(/月$/, "")
+    .trim();
+  const cn = { 十二: 12, 十一: 11, 十: 10, 九: 9, 八: 8, 七: 7, 六: 6, 五: 5, 四: 4, 三: 3, 二: 2, 一: 1 };
+  for (const k of Object.keys(cn).sort((a, b) => b.length - a.length)) {
+    if (t === k) return cn[k];
+  }
+  return null;
+}
+
 function buildTimeFilter(type, payload) {
   switch (type) {
     case "absolute_year":
       return { timeDimension: "year", selectedTimeValues: [String(payload.year)] };
     case "absolute_month":
       return { timeDimension: "month", selectedTimeValues: [formatMonthKey(payload.year, payload.month)] };
+    case "named_month": {
+      const m = Number(payload.month);
+      if (!Number.isFinite(m) || m < 1 || m > 12) return null;
+      const year = new Date().getFullYear();
+      return { timeDimension: "month", selectedTimeValues: [formatMonthKey(year, m)] };
+    }
     case "absolute_date": {
       const dateKey = formatDateKey(payload.year, payload.month, payload.day);
       return { customDateRange: [dateKey, dateKey] };
@@ -168,7 +186,25 @@ function collectRegexMatches(normalizedQuery, patterns) {
 }
 
 function collectExplicitTimeSignals(normalizedQuery) {
+  const cnMonthWithOptionalFen = "(?:十二|十一|十|[一二三四五六七八九])月(?:份)?";
   const relativeYearPatterns = [
+    {
+      regex: new RegExp(`(前年|去年|今年)(${cnMonthWithOptionalFen})`, "g"),
+      mapMatch: (match) => {
+        const offsetMap = { 前年: -2, 去年: -1, 今年: 0 };
+        const year = new Date().getFullYear() + offsetMap[match[1]];
+        const monthNum = parseChineseMonthToken(match[2]);
+        if (!monthNum) return null;
+        return createTimeSignal({
+          label: `${match[1]}${match[2]}`,
+          type: "absolute_month",
+          matchedText: match[0],
+          start: match.index,
+          end: match.index + match[0].length,
+          payload: { year, month: monthNum },
+        });
+      },
+    },
     {
       regex: /(前年|去年|今年)(\d{1,2})月(\d{1,2})[日号]?/g,
       mapMatch: (match) => {
@@ -187,11 +223,12 @@ function collectExplicitTimeSignals(normalizedQuery) {
       },
     },
     {
-      regex: /(前年|去年|今年)(\d{1,2})月/g,
+      regex: /(前年|去年|今年)(\d{1,2})月(?:份)?/g,
       mapMatch: (match) => {
         const offsetMap = { 前年: -2, 去年: -1, 今年: 0 };
         const year = new Date().getFullYear() + offsetMap[match[1]];
         const month = Number(match[2]);
+        if (month < 1 || month > 12) return null;
         return createTimeSignal({
           label: `${match[1]}${match[2]}月`,
           type: "absolute_month",
@@ -295,6 +332,7 @@ function collectKeywordTimeSignals(normalizedQuery) {
                             : group.label === "本周末" ? 0
                               : group.label === "上周末" ? -1
                         : undefined,
+      month: group.month,
       days: group.label === "最近" ? 30
         : group.label === "最近几天" ? 7
           : undefined,
@@ -343,7 +381,7 @@ function pickPrimaryTimeFilter(timeSignals) {
       if (signal.type === "absolute_date" || signal.type === "relative_day") return 4;
       if (signal.type === "weekend") return 4;
       if (signal.type === "relative_week") return 3;
-      if (signal.type === "absolute_month" || signal.type === "relative_month") return 3;
+      if (signal.type === "absolute_month" || signal.type === "relative_month" || signal.type === "named_month") return 3;
       if (signal.type === "absolute_year" || signal.type === "relative_year") return 2;
       if (signal.type === "recent") return 1;
       return 0;

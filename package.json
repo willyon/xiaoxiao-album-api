@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@alicloud/credentials": "^2.4.4",
+    "@node-rs/jieba": "^2.0.1",
     "ali-oss": "^6.23.0",
     "archiver": "^7.0.1",
     "async": "^3.2.6",

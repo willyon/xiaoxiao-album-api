@@ -2,7 +2,7 @@
  * @Author: zhangshouchang
  * @Date: 2025-01-28
  * @Description: 查询意图解析器
- * 从自然语言查询中提取必须走字段过滤的结构化信息（当前仅时间、地点）
+ * 从自然语言查询中提取必须走字段过滤的结构化信息（时间、地点）；residual 仅去掉上述片段，主体/动作/场景仍保留给 FTS。
  */
 const { parseQuerySemanticSignals } = require("./querySemanticParser");
 

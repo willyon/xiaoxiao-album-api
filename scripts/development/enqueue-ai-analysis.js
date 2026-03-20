@@ -44,7 +44,6 @@ function findImagesNeedingAI() {
       m.high_res_storage_key,
       m.original_storage_key,
       m.thumbnail_storage_key,
-      m.storage_type,
       m.created_at,
       m.captured_at
     FROM media m

@@ -1,15 +1,15 @@
 /*
  * @Description: 查询地点解析工具
  */
-const { getCityDictionary } = require("../services/cityDictionaryProvider");
+const { CITY_DICTIONARY } = require("../config/searchSemanticDictionary");
 const { uniqueTerms, collectMatches } = require("./querySemanticMatcher");
 
 function collectCitySignals(normalizedQuery) {
-  return collectMatches(normalizedQuery, getCityDictionary());
+  return collectMatches(normalizedQuery, CITY_DICTIONARY);
 }
 
 function buildLocationFilter(cities) {
-  const values = uniqueTerms((cities || []).flatMap((city) => city.filterValues || [city.label]));
+  const values = uniqueTerms((cities || []).map((city) => city.label).filter(Boolean));
   return values.length > 0 ? { location: values } : null;
 }
 

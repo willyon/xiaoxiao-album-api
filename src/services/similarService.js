@@ -77,7 +77,7 @@ async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
       // 补齐缩略图 URL
       if (row.thumbnail_storage_key) {
         try {
-          const url = await storageService.getFileUrl(row.thumbnail_storage_key, row.storage_type);
+          const url = await storageService.getFileUrl(row.thumbnail_storage_key);
           target.thumbnailUrl = url;
         } catch (error) {
           logger.warn({
@@ -90,7 +90,7 @@ async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
       // 补齐高清图 URL
       if (row.high_res_storage_key) {
         try {
-          const url = await storageService.getFileUrl(row.high_res_storage_key, row.storage_type);
+          const url = await storageService.getFileUrl(row.high_res_storage_key);
           target.highResUrl = url;
         } catch (error) {
           logger.warn({

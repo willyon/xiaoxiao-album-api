@@ -30,7 +30,6 @@ function selectDeletedMediasByPage({ userId, pageNo, pageSize, mediaType }) {
       high_res_storage_key,
       thumbnail_storage_key,
       original_storage_key,
-      storage_type,
       captured_at,
       gps_location,
       day_key,
@@ -86,7 +85,6 @@ function selectDeletedMediasByIds(userId, imageIds) {
       thumbnail_storage_key,
       high_res_storage_key,
       original_storage_key,
-      storage_type,
       deleted_at
     FROM media
     WHERE user_id = ?
@@ -164,8 +162,7 @@ function selectMediasForFileDeletion(userId, imageIds) {
       user_id,
       thumbnail_storage_key,
       high_res_storage_key,
-      original_storage_key,
-      storage_type
+      original_storage_key
     FROM media
     WHERE user_id = ?
       AND deleted_at IS NOT NULL
@@ -186,8 +183,7 @@ function selectTrashMediasForFileDeletion(userId) {
       user_id,
       thumbnail_storage_key,
       high_res_storage_key,
-      original_storage_key,
-      storage_type
+      original_storage_key
     FROM media
     WHERE user_id = ?
       AND deleted_at IS NOT NULL

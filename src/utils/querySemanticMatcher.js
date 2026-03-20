@@ -40,6 +40,7 @@ function buildAliasCandidates(dictionary) {
         terms,
         type: entry.type,
         filterValues: entry.filterValues,
+        ...(entry.month != null ? { month: entry.month } : {}),
       });
     }
   }
@@ -80,6 +81,7 @@ function collectMatches(normalizedQuery, dictionary, options = {}) {
         matchedRanges: [],
         type: candidate.type,
         filterValues: candidate.filterValues,
+        ...(candidate.month != null ? { month: candidate.month } : {}),
       };
       existing.matchedAliases.push(candidate.term);
       if (includeMatchedRanges) {

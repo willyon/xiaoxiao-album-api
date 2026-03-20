@@ -11,15 +11,7 @@ const albumModel = require("../models/albumModel");
 const cleanupModel = require("../models/cleanupModel");
 const mediaModel = require("../models/mediaModel");
 const storageService = require("./storageService");
-const StorageAdapterFactory = require("../storage/factory/StorageAdapterFactory");
-const { STORAGE_TYPES } = require("../storage/constants/StorageTypes");
-const LocalStorageAdapter = require("../storage/adapters/LocalStorageAdapter");
-const AliyunOSSAdapter = require("../storage/adapters/AliyunOSSAdapter");
-const { getStorageConfig } = require("../storage/constants/StorageTypes");
 const logger = require("../utils/logger");
-
-// 适配器缓存（按存储类型）
-const adapterCache = {};
 
 /**
  * 规范化ID列表
@@ -37,116 +29,8 @@ function _normalizeIdList(ids) {
 }
 
 /**
- * 根据存储类型获取对应的适配器（带缓存）
- * @param {string} storageType - 存储类型 ('local' 或 'aliyun-oss')
- * @returns {Object} 存储适配器实例
- */
-function _getAdapterByStorageType(storageType) {
-  // 如果已有缓存的适配器，直接返回
-  if (adapterCache[storageType]) {
-    return adapterCache[storageType];
-  }
-
-  // 获取存储配置
-  const storageConfig = getStorageConfig();
-  let adapter;
-
-  if (storageType === STORAGE_TYPES.LOCAL) {
-    const options = storageConfig[STORAGE_TYPES.LOCAL] || {};
-    adapter = new LocalStorageAdapter(options);
-  } else if (storageType === STORAGE_TYPES.ALIYUN_OSS) {
-    const ossConfig = storageConfig[STORAGE_TYPES.ALIYUN_OSS] || {};
-    const authType = ossConfig.ossAuthType || "ecs_ram_role";
-    const options = ossConfig[authType] || ossConfig;
-    adapter = new AliyunOSSAdapter(options);
-  } else {
-    // 如果存储类型未知，使用当前配置的适配器
-    logger.warn({
-      message: "Unknown storage type, using default adapter",
-      details: { storageType },
-    });
-    adapter = StorageAdapterFactory.createAdapter();
-  }
-
-  // 缓存适配器实例
-  adapterCache[storageType] = adapter;
-  return adapter;
-}
-
-/**
- * 删除单个图片的所有存储文件（thumbnail, high_res, original）
- * @param {Object} image - 图片信息对象
- * @param {string} image.storage_type - 存储类型
- * @param {string} [image.thumbnail_storage_key] - 缩略图存储键
- * @param {string} [image.high_res_storage_key] - 高清图存储键
- * @param {string} [image.original_storage_key] - 原图存储键
- * @returns {Promise<Array>} 删除结果数组
- */
-async function _deleteMediaFiles(image) {
-  const { storage_type, thumbnail_storage_key, high_res_storage_key, original_storage_key } = image;
-
-  // 收集所有需要删除的存储键
-  const storageKeys = [];
-  if (thumbnail_storage_key) storageKeys.push(thumbnail_storage_key);
-  if (high_res_storage_key) storageKeys.push(high_res_storage_key);
-  if (original_storage_key) storageKeys.push(original_storage_key);
-
-  if (storageKeys.length === 0) {
-    logger.info({
-      message: "No storage keys to delete",
-      details: { imageId: image.id },
-    });
-    return [];
-  }
-
-  // 根据存储类型获取对应的适配器
-  const adapter = _getAdapterByStorageType(storage_type);
-
-  // 删除文件
-  const results = [];
-  try {
-    // OSS适配器支持批量删除，本地适配器需要循环删除
-    if (storage_type === STORAGE_TYPES.ALIYUN_OSS && adapter.deleteFiles) {
-      // OSS批量删除（最多1000个）
-      const deleteResults = await adapter.deleteFiles(storageKeys);
-      results.push(...deleteResults);
-    } else {
-      // 本地存储或其他情况，循环删除
-      for (const key of storageKeys) {
-        try {
-          await adapter.deleteFile(key);
-          results.push({ key, success: true });
-        } catch (error) {
-          logger.error({
-            message: "Failed to delete file",
-            details: { key, storageType: storage_type, error: error.message },
-          });
-          results.push({ key, success: false, error: error.message });
-        }
-      }
-    }
-  } catch (error) {
-    logger.error({
-      message: "Failed to delete image files",
-      details: {
-        imageId: image.id,
-        storageType: storage_type,
-        storageKeys,
-        error: error.message,
-      },
-    });
-    // 即使删除失败，也记录结果
-    storageKeys.forEach((key) => {
-      results.push({ key, success: false, error: error.message });
-    });
-  }
-
-  return results;
-}
-
-/**
- * 批量删除图片的存储文件
- * @param {Array<Object>} images - 图片信息数组
+ * 批量删除图片的存储文件（使用当前环境配置的单一存储适配器）
+ * @param {Array<Object>} images - 图片信息数组（含 thumbnail/high_res/original storage key）
  * @returns {Promise<Object>} 删除统计结果
  */
 async function _deleteMediasFiles(images) {
@@ -154,107 +38,91 @@ async function _deleteMediasFiles(images) {
     return { total: 0, success: 0, failed: 0, details: [] };
   }
 
-  // 按存储类型分组，以便批量处理
-  const imagesByStorageType = {};
+  const adapter = storageService.storage;
+  const allStorageKeys = [];
+  const keyToImageMap = {};
+
   images.forEach((image) => {
-    const storageType = image.storage_type || STORAGE_TYPES.LOCAL;
-    if (!imagesByStorageType[storageType]) {
-      imagesByStorageType[storageType] = [];
-    }
-    imagesByStorageType[storageType].push(image);
+    const keys = [];
+    if (image.thumbnail_storage_key) keys.push(image.thumbnail_storage_key);
+    if (image.high_res_storage_key) keys.push(image.high_res_storage_key);
+    if (image.original_storage_key) keys.push(image.original_storage_key);
+
+    keys.forEach((key) => {
+      allStorageKeys.push(key);
+      if (!keyToImageMap[key]) {
+        keyToImageMap[key] = [];
+      }
+      keyToImageMap[key].push(image.id);
+    });
   });
 
+  if (allStorageKeys.length === 0) {
+    return { total: 0, success: 0, failed: 0, details: [] };
+  }
+
   const allResults = [];
-  let totalFiles = 0;
   let successFiles = 0;
   let failedFiles = 0;
+  const totalFiles = allStorageKeys.length;
 
-  // 按存储类型分别处理
-  for (const [storageType, typeImages] of Object.entries(imagesByStorageType)) {
-    const adapter = _getAdapterByStorageType(storageType);
-
-    // 收集该类型下所有需要删除的存储键
-    const allStorageKeys = [];
-    const keyToImageMap = {}; // 用于追踪每个key属于哪个图片
-
-    typeImages.forEach((image) => {
-      const keys = [];
-      if (image.thumbnail_storage_key) keys.push(image.thumbnail_storage_key);
-      if (image.high_res_storage_key) keys.push(image.high_res_storage_key);
-      if (image.original_storage_key) keys.push(image.original_storage_key);
-
-      keys.forEach((key) => {
-        allStorageKeys.push(key);
-        if (!keyToImageMap[key]) {
-          keyToImageMap[key] = [];
-        }
-        keyToImageMap[key].push(image.id);
-      });
-    });
-
-    if (allStorageKeys.length === 0) continue;
-
-    totalFiles += allStorageKeys.length;
-
-    try {
-      // OSS支持批量删除
-      if (storageType === STORAGE_TYPES.ALIYUN_OSS && adapter.deleteFiles) {
-        const deleteResults = await adapter.deleteFiles(allStorageKeys);
-        deleteResults.forEach((result) => {
-          allResults.push({
-            imageIds: keyToImageMap[result.key] || [],
-            key: result.key,
-            success: result.success,
-            error: result.error,
-          });
-          if (result.success) {
-            successFiles++;
-          } else {
-            failedFiles++;
-          }
+  try {
+    if (adapter.deleteFiles) {
+      const deleteResults = await adapter.deleteFiles(allStorageKeys);
+      deleteResults.forEach((result) => {
+        allResults.push({
+          imageIds: keyToImageMap[result.key] || [],
+          key: result.key,
+          success: result.success,
+          error: result.error,
         });
-      } else {
-        // 本地存储或其他情况，循环删除
-        for (const key of allStorageKeys) {
-          try {
-            await adapter.deleteFile(key);
-            allResults.push({
-              imageIds: keyToImageMap[key] || [],
-              key,
-              success: true,
-            });
-            successFiles++;
-          } catch (error) {
-            logger.error({
-              message: "Failed to delete file",
-              details: { key, storageType, error: error.message },
-            });
-            allResults.push({
-              imageIds: keyToImageMap[key] || [],
-              key,
-              success: false,
-              error: error.message,
-            });
-            failedFiles++;
-          }
+        if (result.success) {
+          successFiles++;
+        } else {
+          failedFiles++;
+        }
+      });
+    } else {
+      for (const key of allStorageKeys) {
+        try {
+          await adapter.deleteFile(key);
+          allResults.push({
+            imageIds: keyToImageMap[key] || [],
+            key,
+            success: true,
+          });
+          successFiles++;
+        } catch (error) {
+          logger.error({
+            message: "Failed to delete file",
+            details: { key, error: error.message },
+          });
+          allResults.push({
+            imageIds: keyToImageMap[key] || [],
+            key,
+            success: false,
+            error: error.message,
+          });
+          failedFiles++;
         }
       }
-    } catch (error) {
-      logger.error({
-        message: "Failed to delete files batch",
-        details: { storageType, count: allStorageKeys.length, error: error.message },
-      });
-      // 标记所有文件为失败
-      allStorageKeys.forEach((key) => {
-        allResults.push({
-          imageIds: keyToImageMap[key] || [],
-          key,
-          success: false,
-          error: error.message,
-        });
-        failedFiles++;
-      });
     }
+  } catch (error) {
+    logger.error({
+      message: "Failed to delete files batch",
+      details: { count: allStorageKeys.length, error: error.message },
+    });
+    allResults.length = 0;
+    allStorageKeys.forEach((key) => {
+      allResults.push({
+        imageIds: keyToImageMap[key] || [],
+        key,
+        success: false,
+        error: error.message,
+      });
+    });
+    successFiles = 0;
+    failedFiles = totalFiles;
   }
 
   return {
@@ -290,13 +158,12 @@ async function getDeletedMedias({ userId, pageNo, pageSize, mediaType }) {
         let thumbnailUrl = null;
         if (item.thumbnailStorageKey) {
           try {
-            thumbnailUrl = await storageService.getFileUrl(item.thumbnailStorageKey, item.storageType);
+            thumbnailUrl = await storageService.getFileUrl(item.thumbnailStorageKey);
           } catch (error) {
             logger.warn({
               message: "获取缩略图URL失败",
               details: {
                 storageKey: item.thumbnailStorageKey,
-                storageType: item.storageType,
                 error: error.message,
               },
             });
@@ -307,13 +174,12 @@ async function getDeletedMedias({ userId, pageNo, pageSize, mediaType }) {
         let highResUrl = null;
         if (item.highResStorageKey) {
           try {
-            highResUrl = await storageService.getFileUrl(item.highResStorageKey, item.storageType);
+            highResUrl = await storageService.getFileUrl(item.highResStorageKey);
           } catch (error) {
             logger.warn({
               message: "获取高清图URL失败",
               details: {
                 storageKey: item.highResStorageKey,
-                storageType: item.storageType,
                 error: error.message,
               },
             });
@@ -325,13 +191,12 @@ async function getDeletedMedias({ userId, pageNo, pageSize, mediaType }) {
         const needsOriginalUrl = item.mediaType === "video" || !item.highResStorageKey;
         if (needsOriginalUrl && item.originalStorageKey) {
           try {
-            originalUrl = await storageService.getFileUrl(item.originalStorageKey, item.storageType);
+            originalUrl = await storageService.getFileUrl(item.originalStorageKey);
           } catch (error) {
             logger.warn({
               message: "获取原片URL失败",
               details: {
                 storageKey: item.originalStorageKey,
-                storageType: item.storageType,
                 error: error.message,
               },
             });
@@ -487,7 +352,7 @@ async function permanentlyDeleteMedias({ userId, imageIds }) {
   const albumIds = albumModel.getAlbumsContainingMedias(normalizedIds);
   const groupIds = cleanupModel.getGroupsContainingMedias(normalizedIds);
 
-  // 删除存储文件（根据存储类型使用对应适配器）
+  // 删除存储文件
   const fileDeleteResult = await _deleteMediasFiles(images);
 
   // 物理删除数据库记录（会触发 CASCADE 删除 album_media 和 similar_group_members）
@@ -496,7 +361,6 @@ async function permanentlyDeleteMedias({ userId, imageIds }) {
   // 更新相册统计（图片数量、封面）
   // 注意：album_media 已被 CASCADE 删除，所以需要更新相册统计
   if (albumIds.length > 0) {
-    const now = Date.now();
     albumIds.forEach((albumId) => {
       albumModel.updateAlbumMediaCount(albumId);
       albumModel.updateAlbumCover(albumId);
@@ -554,7 +418,7 @@ async function clearTrash({ userId }) {
   // 获取所有需要删除文件的图片信息
   const images = trashModel.selectTrashMediasForFileDeletion(userId);
 
-  // 删除存储文件（根据存储类型使用对应适配器）
+  // 删除存储文件
   const fileDeleteResult = await _deleteMediasFiles(images);
 
   // 物理删除数据库记录

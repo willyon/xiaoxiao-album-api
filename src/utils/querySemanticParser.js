@@ -2,6 +2,7 @@
  * @Description: 中文场景搜索查询解析器
  * 将自然语言查询中的主体、动作、场景信号解析为结构化语义组，
  * 供搜索排序层做“角色命中 + 组合命中”加分。
+ * residualQuery 仅从句中去掉「时间、城市」已转结构化筛选的片段；主体/动作/场景不剥离，须进入 FTS。
  */
 const {
   SUBJECT_DICTIONARY,
@@ -26,10 +27,11 @@ function parseQuerySemanticSignals(query) {
     ...cities.map((group) => ({ category: "city", ...group })),
     ...timeSignals.map((group) => ({ category: "time", ...group })),
   ];
-  const { residualQuery, residualSegments } = collectResidualQuery(
-    normalizedQuery,
-    allSignals.flatMap((group) => group.matchedRanges || []),
-  );
+  const rangesStrippedForStructuredFilters = [
+    ...cities.flatMap((group) => group.matchedRanges || []),
+    ...timeSignals.flatMap((group) => group.matchedRanges || []),
+  ];
+  const { residualQuery, residualSegments } = collectResidualQuery(normalizedQuery, rangesStrippedForStructuredFilters);
 
   return {
     normalizedQuery,

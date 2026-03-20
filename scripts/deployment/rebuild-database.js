@@ -5,7 +5,7 @@
  * 覆盖表：users, media, media_analysis, media_captions, media_text_blocks,
  *        media_face_embeddings, media_embeddings, video_keyframes, video_transcripts,
  *        albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta,
- *        similar_groups, similar_group_members, media_search, media_fts, media_search_terms
+ *        similar_groups, similar_group_members, media_search, media_search_fts, media_search_terms
  */
 
 const path = require("path");
@@ -34,7 +34,7 @@ const {
   createTableSimilarGroupsMediaVersion,
   createTableSimilarGroupMembersMediaVersion,
   createTableMediaSearch,
-  createTableMediaFts,
+  createTableMediaSearchFts,
   createTableMediaSearchTerms,
 } = require(path.join(projectRoot, "src", "models", "initTableModel"));
 
@@ -44,6 +44,7 @@ const TABLES_TO_DROP = [
   "albums",
   "video_transcripts",
   "video_keyframes",
+  "media_search_fts",
   "media_fts",
   "media_search_terms",
   "media_search",
@@ -107,14 +108,14 @@ async function rebuildDatabase() {
       createTableSimilarGroupsMediaVersion();
       createTableSimilarGroupMembersMediaVersion();
       createTableMediaSearch();
-      createTableMediaFts();
+      createTableMediaSearchFts();
       createTableMediaSearchTerms();
 
       db.prepare("COMMIT").run();
 
       console.log("🎉 数据库重建完成！");
       console.log(
-        "📋 已创建表：users, media, media_analysis, media_captions, media_text_blocks, media_face_embeddings, media_embeddings, video_keyframes, video_transcripts, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_fts, media_search_terms",
+        "📋 已创建表：users, media, media_analysis, media_captions, media_text_blocks, media_face_embeddings, media_embeddings, video_keyframes, video_transcripts, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_search_fts, media_search_terms",
       );
     } catch (err) {
       db.prepare("ROLLBACK").run();

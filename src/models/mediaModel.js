@@ -8,7 +8,7 @@
 const { db } = require("../services/database");
 const { mapFields } = require("../utils/fieldMapper");
 const { createTableMediaSearchTerms } = require("./initTableModel");
-const { buildMediaSearchTermRows } = require("../utils/searchTermUtils");
+const { buildMediaSearchTermRows, buildSearchTermsFromFields } = require("../utils/searchTermUtils");
 
 function parseCommaTags(input) {
   if (!input || typeof input !== "string") return [];
@@ -133,10 +133,12 @@ function rebuildMediaSearchDoc(mediaId) {
     return { affectedRows: deleted.changes, termRows: 0 };
   }
 
+  const searchTermsText = buildSearchTermsFromFields(fields);
+
   const upsert = db.prepare(`
     INSERT INTO media_search (
-      media_id, user_id, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      media_id, user_id, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text, search_terms, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(media_id) DO UPDATE SET
       user_id = excluded.user_id,
       caption_text = excluded.caption_text,
@@ -146,6 +148,7 @@ function rebuildMediaSearchDoc(mediaId) {
       scene_tags_text = excluded.scene_tags_text,
       ocr_text = excluded.ocr_text,
       transcript_text = excluded.transcript_text,
+      search_terms = excluded.search_terms,
       updated_at = excluded.updated_at
   `);
 
@@ -159,6 +162,7 @@ function rebuildMediaSearchDoc(mediaId) {
     fields.scene_tags,
     fields.ocr,
     fields.transcript,
+    searchTermsText,
     updatedAt,
   );
 
@@ -173,7 +177,7 @@ function rebuildMediaSearchDoc(mediaId) {
 }
 
 //保存用户上传的图片元数据到数据库（初始上传时的必要字段）
-function insertMedia({ userId, imageHash, thumbnailStorageKey, storageType, fileSizeBytes, mediaType }) {
+function insertMedia({ userId, imageHash, thumbnailStorageKey, fileSizeBytes, mediaType }) {
   const now = Date.now();
   const normalizedType = mediaType === "video" ? "video" : "image";
   const stmt = db.prepare(`
@@ -182,7 +186,6 @@ function insertMedia({ userId, imageHash, thumbnailStorageKey, storageType, file
       file_hash,
       created_at,
       thumbnail_storage_key,
-      storage_type,
       file_size_bytes,
       media_type,
       ingest_status
@@ -193,7 +196,6 @@ function insertMedia({ userId, imageHash, thumbnailStorageKey, storageType, file
     imageHash,
     now,
     thumbnailStorageKey || null,
-    storageType || null,
     fileSizeBytes || null,
     normalizedType,
   );
@@ -239,7 +241,6 @@ function selectMediasByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
         i.day_key, 
         i.month_key, 
         i.year_key, 
-        i.storage_type, 
         i.gps_location,
         i.width_px,
         i.height_px,
@@ -297,7 +298,6 @@ function selectMediasByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
         day_key, 
         month_key, 
         year_key, 
-        storage_type, 
         gps_location,
         width_px,
         height_px,
@@ -358,7 +358,6 @@ function selectMediasByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
         i.day_key, 
         i.month_key, 
         i.year_key, 
-        i.storage_type, 
         i.gps_location,
         i.width_px,
         i.height_px,
@@ -416,7 +415,6 @@ function selectMediasByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
         day_key, 
         month_key, 
         year_key, 
-        storage_type, 
         gps_location,
         width_px,
         height_px,
@@ -473,7 +471,6 @@ function selectMediasByDate({ pageNo, pageSize, albumId, userId }) {
       day_key, 
       month_key, 
       year_key, 
-      storage_type, 
       gps_location,
       width_px,
       height_px,
@@ -527,7 +524,6 @@ function getMediasByBlurry({ userId, pageNo, pageSize }) {
       day_key,
       month_key,
       year_key,
-      storage_type,
       gps_location,
       width_px,
       height_px,
@@ -619,7 +615,6 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
         thumbnail_storage_key,
         captured_at,
         id,
-        storage_type,
         ROW_NUMBER() OVER (
           PARTITION BY month_key 
           ORDER BY 
@@ -671,7 +666,6 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
         thumbnail_storage_key,
         captured_at,
         id,
-        storage_type
       FROM ranked_images
       WHERE rn = 1
     ),
@@ -688,7 +682,6 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
       latest.month_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      latest.storage_type,
       counts.imageCount
     FROM latest
     JOIN counts ON counts.month_key = latest.month_key
@@ -726,7 +719,6 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
         thumbnail_storage_key,
         captured_at,
         id,
-        storage_type,
         ROW_NUMBER() OVER (
           PARTITION BY year_key 
           ORDER BY 
@@ -775,7 +767,6 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
         thumbnail_storage_key,
         captured_at,
         id,
-        storage_type
       FROM ranked_images
       WHERE rn = 1
     ),
@@ -792,7 +783,6 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
       latest.year_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      latest.storage_type,
       counts.imageCount
     FROM latest
     JOIN counts ON counts.year_key = latest.year_key
@@ -827,7 +817,6 @@ function selectUnknownGroup({ userId }) {
         thumbnail_storage_key,
         captured_at,
         id,
-        storage_type,
         ROW_NUMBER() OVER (
           ORDER BY COALESCE(captured_at, 0) DESC, id DESC
         ) AS rn
@@ -836,7 +825,7 @@ function selectUnknownGroup({ userId }) {
         AND (COALESCE(media_type, 'image') IN ('image', 'video', 'audio'))
     ),
     cover AS (
-      SELECT year_key, thumbnail_storage_key, captured_at, storage_type
+      SELECT year_key, thumbnail_storage_key, captured_at
       FROM ranked WHERE rn = 1
     ),
     cnt AS (
@@ -847,7 +836,6 @@ function selectUnknownGroup({ userId }) {
       'unknown' AS album_id,
       cover.thumbnail_storage_key AS latestImagekey,
       cover.captured_at,
-      cover.storage_type,
       cnt.imageCount
     FROM cover CROSS JOIN cnt;
   `);
@@ -880,7 +868,6 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
         i.thumbnail_storage_key,
         i.captured_at,
         i.id,
-        i.storage_type,
         ROW_NUMBER() OVER (
           PARTITION BY i.year_key 
           ORDER BY 
@@ -922,7 +909,6 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
         thumbnail_storage_key,
         captured_at,
         id,
-        storage_type
       FROM ranked_images
       WHERE rn = 1
     ),
@@ -940,7 +926,6 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
       latest.year_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      latest.storage_type,
       counts.imageCount
     FROM latest
     JOIN counts ON counts.year_key = latest.year_key
@@ -981,7 +966,6 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
         i.thumbnail_storage_key,
         i.captured_at,
         i.id,
-        i.storage_type,
         ROW_NUMBER() OVER (
           PARTITION BY i.month_key 
           ORDER BY 
@@ -1023,7 +1007,6 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
         thumbnail_storage_key,
         captured_at,
         id,
-        storage_type
       FROM ranked_images
       WHERE rn = 1
     ),
@@ -1041,7 +1024,6 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
       latest.month_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      latest.storage_type,
       counts.imageCount
     FROM latest
     JOIN counts ON counts.month_key = latest.month_key
@@ -1082,7 +1064,6 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
         thumbnail_storage_key,
         captured_at,
         id,
-        storage_type,
         ROW_NUMBER() OVER (
           PARTITION BY date_key 
           ORDER BY 
@@ -1130,7 +1111,6 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
         thumbnail_storage_key,
         captured_at,
         id,
-        storage_type
       FROM ranked_images
       WHERE rn = 1
     ),
@@ -1146,7 +1126,6 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
       latest.date_key AS album_id,  -- 相册ID（统一使用 album_id，mapper 会映射为 albumId）
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      latest.storage_type,
       counts.imageCount
     FROM latest
     JOIN counts ON counts.date_key = latest.date_key
@@ -1184,8 +1163,7 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
         id,
         COALESCE(NULLIF(TRIM(city), ''), 'unknown') AS city_key,
         thumbnail_storage_key,
-        captured_at,
-        storage_type
+        captured_at
       FROM media
       WHERE user_id = ? AND deleted_at IS NULL
         AND (COALESCE(media_type, 'image') IN ('image', 'video', 'audio'))
@@ -1196,7 +1174,6 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
         thumbnail_storage_key,
         captured_at,
         id,
-        storage_type,
         ROW_NUMBER() OVER (
           PARTITION BY city_key 
           ORDER BY captured_at DESC, id DESC
@@ -1204,7 +1181,7 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
       FROM city_normalized
     ),
     latest AS (
-      SELECT city_key, thumbnail_storage_key, captured_at, id, storage_type
+      SELECT city_key, thumbnail_storage_key, captured_at, id
       FROM ranked_images
       WHERE rn = 1
     ),
@@ -1217,7 +1194,6 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
       latest.city_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      latest.storage_type,
       counts.imageCount
     FROM latest
     JOIN counts ON counts.city_key = latest.city_key
@@ -1262,7 +1238,6 @@ function selectMediasByCity({ pageNo, pageSize, albumId, userId }) {
       day_key, 
       month_key, 
       year_key, 
-      storage_type, 
       gps_location,
       width_px,
       height_px,
@@ -1666,7 +1641,6 @@ function getMediaStorageInfo(imageId) {
       thumbnail_storage_key,
       high_res_storage_key,
       original_storage_key,
-      storage_type,
       media_type
     FROM media
     WHERE id = ? AND deleted_at IS NULL
@@ -1685,7 +1659,6 @@ function getMediaStorageInfo(imageId) {
     thumbnailStorageKey: image.thumbnail_storage_key,
     highResStorageKey: image.high_res_storage_key,
     originalStorageKey: image.original_storage_key,
-    storageType: image.storage_type,
     mediaType: image.media_type || "image",
   };
 }
@@ -1700,8 +1673,7 @@ function getMediaDownloadInfo({ userId, imageId }) {
       media_type,
       original_storage_key,
       high_res_storage_key,
-      thumbnail_storage_key,
-      storage_type
+      thumbnail_storage_key
     FROM media
     WHERE id = ? AND user_id = ? AND deleted_at IS NULL
     LIMIT 1
@@ -1720,7 +1692,6 @@ function getMediaDownloadInfo({ userId, imageId }) {
     originalStorageKey: image.original_storage_key,
     highResStorageKey: image.high_res_storage_key,
     thumbnailStorageKey: image.thumbnail_storage_key,
-    storageType: image.storage_type,
   };
 }
 
@@ -1738,8 +1709,7 @@ function getMediasDownloadInfo({ userId, imageIds }) {
       id,
       original_storage_key,
       high_res_storage_key,
-      thumbnail_storage_key,
-      storage_type
+      thumbnail_storage_key
     FROM media
     WHERE id IN (${placeholders}) AND user_id = ? AND deleted_at IS NULL
   `;
@@ -1752,7 +1722,6 @@ function getMediasDownloadInfo({ userId, imageIds }) {
     originalStorageKey: image.original_storage_key,
     highResStorageKey: image.high_res_storage_key,
     thumbnailStorageKey: image.thumbnail_storage_key,
-    storageType: image.storage_type,
   }));
 }
 
@@ -1770,7 +1739,6 @@ function _mediaSelectColumns(alias = "m") {
     ${alias}.day_key,
     ${alias}.month_key,
     ${alias}.year_key,
-    ${alias}.storage_type,
     ${alias}.gps_location,
     ${alias}.width_px,
     ${alias}.height_px,
@@ -1798,7 +1766,6 @@ function getMediasByBlurry({ userId, pageNo, pageSize }) {
       m.day_key,
       m.month_key,
       m.year_key,
-      m.storage_type,
       m.gps_location,
       m.width_px,
       m.height_px,
@@ -2004,7 +1971,6 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
         m.thumbnail_storage_key,
         m.captured_at,
         m.id,
-        m.storage_type,
         ROW_NUMBER() OVER (PARTITION BY m.month_key ORDER BY COALESCE(m.captured_at,0) DESC, m.id DESC) AS rn
       FROM media m
       WHERE m.user_id = ?
@@ -2012,7 +1978,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
         AND m.month_key != 'unknown'
     ),
     latest AS (
-      SELECT month_key, thumbnail_storage_key, captured_at, storage_type
+      SELECT month_key, thumbnail_storage_key, captured_at
       FROM ranked_media
       WHERE rn = 1
     ),
@@ -2028,7 +1994,6 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
       latest.month_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      latest.storage_type,
       counts.imageCount
     FROM latest
     JOIN counts ON counts.month_key = latest.month_key
@@ -2056,7 +2021,6 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
         m.thumbnail_storage_key,
         m.captured_at,
         m.id,
-        m.storage_type,
         ROW_NUMBER() OVER (
           PARTITION BY m.year_key
           ORDER BY COALESCE(m.captured_at,0) DESC, m.id DESC
@@ -2069,7 +2033,7 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
         AND m.deleted_at IS NULL
     ),
     latest AS (
-      SELECT year_key, thumbnail_storage_key, captured_at, storage_type
+      SELECT year_key, thumbnail_storage_key, captured_at
       FROM ranked_media
       WHERE rn = 1
     ),
@@ -2087,7 +2051,6 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
       latest.year_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      latest.storage_type,
       counts.imageCount
     FROM latest
     JOIN counts ON counts.year_key = latest.year_key
@@ -2119,7 +2082,6 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
         m.thumbnail_storage_key,
         m.captured_at,
         m.id,
-        m.storage_type,
         ROW_NUMBER() OVER (
           PARTITION BY m.month_key
           ORDER BY COALESCE(m.captured_at,0) DESC, m.id DESC
@@ -2132,7 +2094,7 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
         AND m.deleted_at IS NULL
     ),
     latest AS (
-      SELECT month_key, thumbnail_storage_key, captured_at, storage_type
+      SELECT month_key, thumbnail_storage_key, captured_at
       FROM ranked_media
       WHERE rn = 1
     ),
@@ -2150,7 +2112,6 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
       latest.month_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      latest.storage_type,
       counts.imageCount
     FROM latest
     JOIN counts ON counts.month_key = latest.month_key
@@ -2182,7 +2143,6 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
         m.thumbnail_storage_key,
         m.captured_at,
         m.id,
-        m.storage_type,
         ROW_NUMBER() OVER (PARTITION BY m.year_key ORDER BY COALESCE(m.captured_at,0) DESC, m.id DESC) AS rn
       FROM media m
       WHERE m.user_id = ?
@@ -2190,7 +2150,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
         AND m.year_key != 'unknown'
     ),
     latest AS (
-      SELECT year_key, thumbnail_storage_key, captured_at, storage_type
+      SELECT year_key, thumbnail_storage_key, captured_at
       FROM ranked_media
       WHERE rn = 1
     ),
@@ -2206,7 +2166,6 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
       latest.year_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      latest.storage_type,
       counts.imageCount
     FROM latest
     JOIN counts ON counts.year_key = latest.year_key
@@ -2233,7 +2192,6 @@ function selectUnknownGroup({ userId }) {
         thumbnail_storage_key,
         captured_at,
         id,
-        storage_type,
         ROW_NUMBER() OVER (ORDER BY COALESCE(captured_at,0) DESC, id DESC) AS rn
       FROM media
       WHERE user_id = ?
@@ -2241,7 +2199,7 @@ function selectUnknownGroup({ userId }) {
         AND year_key = 'unknown'
     ),
     cover AS (
-      SELECT year_key, thumbnail_storage_key, captured_at, storage_type
+      SELECT year_key, thumbnail_storage_key, captured_at
       FROM ranked WHERE rn = 1
     ),
     cnt AS (
@@ -2255,7 +2213,6 @@ function selectUnknownGroup({ userId }) {
       'unknown' AS album_id,
       cover.thumbnail_storage_key AS latestImagekey,
       cover.captured_at,
-      cover.storage_type,
       cnt.imageCount
     FROM cover CROSS JOIN cnt
   `);
@@ -2280,14 +2237,13 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
         m.thumbnail_storage_key,
         m.captured_at,
         m.id,
-        m.storage_type,
         ROW_NUMBER() OVER (PARTITION BY m.date_key ORDER BY COALESCE(m.captured_at,0) DESC, m.id DESC) AS rn
       FROM media m
       WHERE m.user_id = ?
         AND m.deleted_at IS NULL
     ),
     latest AS (
-      SELECT date_key, thumbnail_storage_key, captured_at, storage_type
+      SELECT date_key, thumbnail_storage_key, captured_at
       FROM ranked_media
       WHERE rn = 1
     ),
@@ -2302,7 +2258,6 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
       latest.date_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      latest.storage_type,
       counts.imageCount
     FROM latest
     JOIN counts ON counts.date_key = latest.date_key
@@ -2330,8 +2285,7 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
         id,
         COALESCE(NULLIF(TRIM(city), ''), 'unknown') AS city_key,
         thumbnail_storage_key,
-        captured_at,
-        storage_type
+        captured_at
       FROM media
       WHERE user_id = ?
         AND deleted_at IS NULL
@@ -2342,7 +2296,6 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
         thumbnail_storage_key,
         captured_at,
         id,
-        storage_type,
         ROW_NUMBER() OVER (
           PARTITION BY city_key
           ORDER BY COALESCE(captured_at,0) DESC, id DESC
@@ -2350,7 +2303,7 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
       FROM city_normalized
     ),
     latest AS (
-      SELECT city_key, thumbnail_storage_key, captured_at, storage_type
+      SELECT city_key, thumbnail_storage_key, captured_at
       FROM ranked_media
       WHERE rn = 1
     ),
@@ -2363,7 +2316,6 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
       latest.city_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      latest.storage_type,
       counts.imageCount
     FROM latest
     JOIN counts ON counts.city_key = latest.city_key

@@ -17,24 +17,7 @@ require("dotenv").config();
 
 const { db } = require(path.join(projectRoot, "src", "services", "database"));
 const storageService = require(path.join(projectRoot, "src", "services", "storageService"));
-const { getStorageConfig } = require(path.join(projectRoot, "src", "storage", "constants", "StorageTypes"));
 const { storeVideoThumbnail } = require(path.join(projectRoot, "src", "services", "videoProcessingService"));
-const { STORAGE_TYPES } = require(path.join(projectRoot, "src", "storage", "constants", "StorageTypes"));
-
-async function getAdapterForStorageType(storageType) {
-  const effectiveType = storageType || STORAGE_TYPES.LOCAL;
-  const config = getStorageConfig();
-  const currentType = config.storageType;
-
-  if (effectiveType === currentType) {
-    return storageService.storage;
-  }
-  const backup = storageService.getBackupStorageAdapter();
-  if (!backup) {
-    throw new Error(`无法获取存储类型 ${effectiveType} 的适配器（备用适配器创建失败，可能缺少 OSS 配置）`);
-  }
-  return backup;
-}
 
 /**
  * @returns {{ videoPath: string, isTemp: boolean }}
@@ -56,9 +39,9 @@ async function getVideoPath(adapter, originalStorageKey) {
 async function main() {
   const rows = db
     .prepare(
-      `SELECT id, user_id, thumbnail_storage_key, original_storage_key, storage_type
-       FROM images
-       WHERE media_type = 'video' AND deleted_at IS NULL`
+      `SELECT id, user_id, thumbnail_storage_key, original_storage_key
+       FROM media
+       WHERE media_type = 'video' AND deleted_at IS NULL`,
     )
     .all();
 
@@ -69,12 +52,13 @@ async function main() {
 
   console.log(`共 ${rows.length} 个视频待重新生成缩略图\n`);
 
+  const adapter = storageService.storage;
   let ok = 0;
   let fail = 0;
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    const { id, user_id, thumbnail_storage_key, original_storage_key, storage_type } = row;
+    const { id, user_id, thumbnail_storage_key, original_storage_key } = row;
 
     if (!original_storage_key || !thumbnail_storage_key) {
       console.log(`[${i + 1}/${rows.length}] 跳过 id=${id}: 缺少 original_storage_key 或 thumbnail_storage_key`);
@@ -85,7 +69,6 @@ async function main() {
     let tempPath = null;
 
     try {
-      const adapter = await getAdapterForStorageType(storage_type);
       const { videoPath, isTemp } = await getVideoPath(adapter, original_storage_key);
       tempPath = isTemp ? videoPath : null;
 
@@ -99,7 +82,9 @@ async function main() {
       if (tempPath) {
         try {
           await fs.unlink(tempPath);
-        } catch (_) {}
+        } catch (_) {
+          /* ignore */
+        }
       }
     }
   }
@@ -107,7 +92,7 @@ async function main() {
   console.log(`\n完成: 成功 ${ok}, 失败 ${fail}`);
 }
 
-main().catch((err) => {
-  console.error(err);
+main().catch((e) => {
+  console.error(e);
   process.exit(1);
 });

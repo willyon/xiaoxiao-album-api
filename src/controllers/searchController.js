@@ -12,6 +12,7 @@ const { addFullUrlToMedia } = require("../services/mediaService");
 const faceClusterModel = require("../models/faceClusterModel");
 const { parseQueryIntent, mergeFilters } = require("../utils/queryIntentParser");
 const logger = require("../utils/logger");
+const { containsChinese, normalizeQueryForFts } = require("../utils/searchTermUtils");
 
 const ALLOWED_EXPRESSION_FILTERS = new Set(["happy", "sad", "anger", "surprise", "neutral"]);
 
@@ -29,7 +30,8 @@ function buildSafeFtsQuery(query) {
   if (!raw || raw === "*") {
     return raw || null;
   }
-  const tokens = raw.split(/\s+/).map(sanitizeFtsToken).filter(Boolean);
+  const preprocessed = containsChinese(raw) ? normalizeQueryForFts(raw) : raw;
+  const tokens = preprocessed.split(/\s+/).map(sanitizeFtsToken).filter(Boolean);
   return tokens.length > 0 ? tokens.join(" ") : null;
 }
 

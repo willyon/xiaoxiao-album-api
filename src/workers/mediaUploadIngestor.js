@@ -13,7 +13,6 @@ const { mediaMetaQueue } = require("../queues/mediaMetaQueue");
 const storageService = require("../services/storageService");
 const videoProcessingService = require("../services/videoProcessingService");
 const timeIt = require("../utils/timeIt");
-const { getDefaultStorageType } = require("../storage/constants/StorageTypes");
 const { updateProgress } = require("../services/mediaProcessingProgressService");
 
 // 原子化：先查集合 → 抢锁 → 失败则再查集合 → 再决定 busy/重复
@@ -278,7 +277,6 @@ async function processAndSaveSingleMedia(job) {
       userId,
       imageHash,
       thumbnailStorageKey,
-      storageType: getDefaultStorageType(),
       fileSizeBytes: fileSize,
       mediaType: mediaType === "video" ? "video" : "image",
     };

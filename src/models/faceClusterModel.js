@@ -492,7 +492,6 @@ function getFacesByClusterId(userId, clusterId, options = {}) {
       m.id AS image_id,
       m.thumbnail_storage_key,
       m.high_res_storage_key,
-      m.storage_type,
       m.captured_at AS image_created_at,
       m.year_key,
       m.month_key,
@@ -522,7 +521,6 @@ function getFacesByClusterId(userId, clusterId, options = {}) {
     imageId: row.image_id,
     thumbnailStorageKey: row.thumbnail_storage_key,
     highResStorageKey: row.high_res_storage_key,
-    storageType: row.storage_type,
     imageCreatedAt: row.image_created_at,
     yearKey: row.year_key,
     monthKey: row.month_key,
@@ -726,14 +724,13 @@ function getClustersByUserId(userId, options = {}) {
 
   // 第二步：批量查询封面图片（使用 IN 查询，一次性获取所有聚类的封面）
   // 优化（2025-12-03）：优先使用人脸缩略图作为封面，如果没有则使用整张图片
-  // 只查询必要的字段：cluster_id, face_thumbnail_storage_key, thumbnail_storage_key, storage_type
+  // 只查询必要的字段：cluster_id, face_thumbnail_storage_key, thumbnail_storage_key
   const coverPlaceholders = clusterIds.map(() => "?").join(", ");
   const coverSql = `
     SELECT 
       fc.cluster_id,
       fe.face_thumbnail_storage_key,
       m.thumbnail_storage_key,
-      COALESCE(m.storage_type, 'aliyun-oss') AS storage_type,
       fc.representative_type,
       fc.similarity_score
     FROM face_clusters fc
@@ -766,13 +763,11 @@ function getClustersByUserId(userId, options = {}) {
         if (row.face_thumbnail_storage_key) {
           coversMap.set(row.cluster_id, {
             thumbnailStorageKey: row.face_thumbnail_storage_key,
-            storageType: row.storage_type,
           });
         } else if (row.thumbnail_storage_key) {
           // 降级：使用整张图片的缩略图
           coversMap.set(row.cluster_id, {
             thumbnailStorageKey: row.thumbnail_storage_key,
-            storageType: row.storage_type,
           });
         }
       }
@@ -909,7 +904,7 @@ function getRecentClustersByUserId(userId, options = {}) {
   const clusterIds = basicRows.map((row) => row.cluster_id);
   const coverPlaceholders = clusterIds.map(() => "?").join(", ");
   const coverSql = `
-    SELECT fc.cluster_id, fe.face_thumbnail_storage_key, m.thumbnail_storage_key, COALESCE(m.storage_type, 'aliyun-oss') AS storage_type, fc.representative_type, fc.similarity_score
+    SELECT fc.cluster_id, fe.face_thumbnail_storage_key, m.thumbnail_storage_key, fc.representative_type, fc.similarity_score
     FROM face_clusters fc
     INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
     INNER JOIN media m ON fe.media_id = m.id
@@ -921,9 +916,9 @@ function getRecentClustersByUserId(userId, options = {}) {
   for (const row of coverRows) {
     if (!coversMap.has(row.cluster_id)) {
       if (row.face_thumbnail_storage_key) {
-        coversMap.set(row.cluster_id, { thumbnailStorageKey: row.face_thumbnail_storage_key, storageType: row.storage_type });
+        coversMap.set(row.cluster_id, { thumbnailStorageKey: row.face_thumbnail_storage_key });
       } else if (row.thumbnail_storage_key) {
-        coversMap.set(row.cluster_id, { thumbnailStorageKey: row.thumbnail_storage_key, storageType: row.storage_type });
+        coversMap.set(row.cluster_id, { thumbnailStorageKey: row.thumbnail_storage_key });
       }
     }
   }

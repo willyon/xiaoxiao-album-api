@@ -1,7 +1,7 @@
 /*
  * @Description: 保留现有数据的搜索 schema 迁移脚本
  * 为 media_captions / media_search 补充主体、动作、场景字段，
- * 重建 media_fts，并重新物化 media_search / media_search_terms。
+ * 重建 media_search_fts，并重新物化 media_search / media_search_terms。
  *
  * @Usage: node scripts/tmp-scripts/migrate-scene-search-schema.js
  */
@@ -19,7 +19,7 @@ const { db } = require(path.join(projectRoot, "src", "services", "database"));
 const {
   createTableMediaCaptions,
   createTableMediaSearch,
-  createTableMediaFts,
+  createTableMediaSearchFts,
   createTableMediaSearchTerms,
 } = require(path.join(projectRoot, "src", "models", "initTableModel"));
 const { rebuildMediaSearchDoc } = require(path.join(projectRoot, "src", "models", "mediaModel"));
@@ -73,11 +73,12 @@ function migrateSchemaColumns() {
   return changedColumns;
 }
 
-function recreateMediaFts() {
+function recreateMediaSearchFts() {
   db.prepare("DROP TABLE IF EXISTS media_fts").run();
-  console.log("✅ 已删除旧 media_fts");
-  createTableMediaFts();
-  console.log("✅ 已按新结构创建 media_fts");
+  db.prepare("DROP TABLE IF EXISTS media_search_fts").run();
+  console.log("✅ 已删除旧 FTS 虚拟表（media_fts / media_search_fts）");
+  createTableMediaSearchFts();
+  console.log("✅ 已按新结构创建 media_search_fts");
 }
 
 function listMediaIds() {
@@ -117,7 +118,7 @@ function main() {
   db.prepare("BEGIN").run();
   try {
     const changedColumns = migrateSchemaColumns();
-    recreateMediaFts();
+    recreateMediaSearchFts();
     const rebuildResult = rebuildSearchArtifacts();
     db.prepare("COMMIT").run();
 
@@ -139,6 +140,6 @@ if (require.main === module) {
 
 module.exports = {
   migrateSchemaColumns,
-  recreateMediaFts,
+  recreateMediaSearchFts,
   rebuildSearchArtifacts,
 };

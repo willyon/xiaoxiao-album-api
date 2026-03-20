@@ -11,7 +11,6 @@ function selectMediaForCleanup(imageId) {
       m.high_res_storage_key,
       m.original_storage_key,
       m.thumbnail_storage_key,
-      m.storage_type,
       m.file_size_bytes,
       ma.aesthetic_score,
       ma.sharpness_score,
@@ -256,7 +255,6 @@ function selectMembersByGroupIds(groupIds) {
       i.user_id,
       i.thumbnail_storage_key,
       i.high_res_storage_key,
-      i.storage_type,
       i.file_size_bytes,
       ma.aesthetic_score AS image_aesthetic_score,
       i.captured_at,
@@ -408,7 +406,6 @@ function selectMediasByIds(imageIds) {
       thumbnail_storage_key,
       high_res_storage_key,
       original_storage_key,
-      storage_type,
       file_size_bytes,
       file_hash AS image_hash
     FROM media

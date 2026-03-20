@@ -1,5 +1,5 @@
 /**
- * 批量重建 media_search / media_search_terms / media_fts。
+ * 批量重建 media_search / media_search_terms / media_search_fts。
  * 用于搜索 schema 升级后，为历史媒体重新物化搜索文档。
  *
  * 用法：
@@ -20,7 +20,7 @@ require("dotenv").config();
 const { db } = require(path.join(projectRoot, "src", "services", "database"));
 const {
   createTableMediaSearch,
-  createTableMediaFts,
+  createTableMediaSearchFts,
   createTableMediaSearchTerms,
 } = require(path.join(projectRoot, "src", "models", "initTableModel"));
 const { rebuildMediaSearchDoc } = require(path.join(projectRoot, "src", "models", "mediaModel"));
@@ -78,7 +78,7 @@ async function rebuildMediaSearchIndexes() {
 
   createTableMediaSearch();
   createTableMediaSearchTerms();
-  createTableMediaFts();
+  createTableMediaSearchFts();
 
   const mediaIds = listMediaIds(options);
   console.log(`📦 待重建媒体数: ${mediaIds.length}`);

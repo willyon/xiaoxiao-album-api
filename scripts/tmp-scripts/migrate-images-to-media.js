@@ -20,11 +20,11 @@ const {
   createTableVideoKeyframes,
   createTableVideoTranscripts,
   createTableMediaSearch,
-  createTableMediaFts,
+  createTableMediaSearchFts,
   createTableMediaSearchTerms,
   createTableAlbumMedia,
 } = require(path.join(projectRoot, "src", "models", "initTableModel"));
-const { buildMediaSearchTermRows } = require(path.join(projectRoot, "src", "utils", "searchTermUtils"));
+const { buildMediaSearchTermRows, buildSearchTermsFromFields } = require(path.join(projectRoot, "src", "utils", "searchTermUtils"));
 
 function tableExists(name) {
   return db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(name) != null;
@@ -170,7 +170,7 @@ function createNewSchema() {
   createTableVideoKeyframes();
   createTableVideoTranscripts();
   createTableMediaSearch();
-  createTableMediaFts();
+  createTableMediaSearchFts();
   createTableMediaSearchTerms();
   createTableAlbumMedia();
 
@@ -187,13 +187,13 @@ function migrateMediaRows() {
   const stmt = db.prepare(`
     INSERT OR IGNORE INTO media (
       id, user_id, original_storage_key, high_res_storage_key, thumbnail_storage_key,
-      storage_type, mime, file_size_bytes, file_hash, phash, dhash, media_type,
+      mime, file_size_bytes, file_hash, phash, dhash, media_type,
       width_px, height_px, aspect_ratio, raw_orientation, layout_type, hd_width_px, hd_height_px,
       captured_at, year_key, month_key, date_key, day_key, gps_latitude, gps_longitude, gps_altitude,
       gps_location, country, city, duration_sec, video_codec, ingest_status, deleted_at, created_at, is_favorite
     ) VALUES (
       @id, @user_id, @original_storage_key, @high_res_storage_key, @thumbnail_storage_key,
-      @storage_type, @mime, @file_size_bytes, @file_hash, @phash, @dhash, @media_type,
+      @mime, @file_size_bytes, @file_hash, @phash, @dhash, @media_type,
       @width_px, @height_px, @aspect_ratio, @raw_orientation, @layout_type, @hd_width_px, @hd_height_px,
       @captured_at, @year_key, @month_key, @date_key, @day_key, @gps_latitude, @gps_longitude, @gps_altitude,
       @gps_location, @country, @city, @duration_sec, @video_codec, @ingest_status, @deleted_at, @created_at, @is_favorite
@@ -207,7 +207,6 @@ function migrateMediaRows() {
       original_storage_key: row.original_storage_key || null,
       high_res_storage_key: row.high_res_storage_key || null,
       thumbnail_storage_key: row.thumbnail_storage_key || null,
-      storage_type: row.storage_type || null,
       mime: row.mime || null,
       file_size_bytes: row.file_size_bytes || null,
       file_hash: row.image_hash || null,
@@ -441,19 +440,27 @@ function rebuildMediaSearchData() {
     ) VALUES (?, ?, ?, ?, ?, ?)
   `);
 
+  const updateSearchTermsStmt = columnExists("media_search", "search_terms")
+    ? db.prepare("UPDATE media_search SET search_terms = ? WHERE media_id = ?")
+    : null;
+
   for (const row of rows) {
+    const fields = {
+      caption: row.caption_text,
+      keywords: row.keywords_text,
+      subject_tags: row.subject_tags_text,
+      action_tags: row.action_tags_text,
+      scene_tags: row.scene_tags_text,
+      ocr: row.ocr_text,
+      transcript: row.transcript_text,
+    };
+    if (updateSearchTermsStmt) {
+      updateSearchTermsStmt.run(buildSearchTermsFromFields(fields), row.media_id);
+    }
     const termRows = buildMediaSearchTermRows({
       mediaId: row.media_id,
       userId: row.user_id,
-      fields: {
-        caption: row.caption_text,
-        keywords: row.keywords_text,
-        subject_tags: row.subject_tags_text,
-        action_tags: row.action_tags_text,
-        scene_tags: row.scene_tags_text,
-        ocr: row.ocr_text,
-        transcript: row.transcript_text,
-      },
+      fields,
       updatedAt: row.updated_at,
     });
     for (const termRow of termRows) {

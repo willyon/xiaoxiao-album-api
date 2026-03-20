@@ -137,86 +137,15 @@ function _applyEncoderByExt(pipeline, ext, quality = 80, fileSize = FILE_SIZE_TH
 }
 
 /**
- * 统一存储服务 - 支持多存储类型和智能适配器管理
- *
- * 设计理念：
- * 1. 数据分类：将图片数据按存储类型分组
- * 2. 当前适配器处理：直接用当前配置的适配器处理对应类型的数据
- * 3. 备用适配器处理：为另一种类型创建临时适配器处理
- * 4. 性能优化：避免重复创建适配器实例
+ * 统一存储服务 — 单一适配器，由环境变量 STORAGE_TYPE 决定（local | aliyun-oss）
  */
 class StorageService {
   /**
    * 创建存储服务实例
    */
   constructor() {
-    // 当前配置的存储适配器（可能是本地存储或OSS）
     this.storage = StorageAdapterFactory.createAdapter();
-
-    // 获取当前存储类型
     this._currentStorageType = this.storage.type;
-
-    // 备用适配器改为懒加载：仅在首次调用 getBackupStorageAdapter() 时创建
-    // 避免在仅使用主存储的场景（如本地跑人脸聚类脚本）时触发 OSS/ECS 元数据请求（100.100.100.200）
-    this._backupAdapter = null;
-    this._backupAdapterTried = false;
-  }
-
-  /**
-   * 创建备用存储适配器（与当前适配器不同的类型）
-   * @returns {Object} 备用存储适配器实例
-   */
-  _createBackupAdapter() {
-    try {
-      // 如果当前是本地存储，返回OSS适配器
-      if (this._currentStorageType === STORAGE_TYPES.LOCAL) {
-        try {
-          return StorageAdapterFactory.createBackupAdapter(STORAGE_TYPES.ALIYUN_OSS);
-        } catch (error) {
-          // OSS配置缺失时，不创建备用适配器
-          logger.warn({
-            message: "创建OSS备用适配器失败，跳过（OSS配置可能缺失）",
-            details: { error: error.message },
-          });
-          return null;
-        }
-      }
-
-      // 如果当前是OSS存储，返回本地适配器
-      if (this._currentStorageType === STORAGE_TYPES.ALIYUN_OSS) {
-        return StorageAdapterFactory.createBackupAdapter(STORAGE_TYPES.LOCAL);
-      }
-
-      // 默认返回本地适配器
-      return StorageAdapterFactory.createBackupAdapter(STORAGE_TYPES.LOCAL);
-    } catch (error) {
-      // 如果创建备用适配器失败，回退到本地适配器
-      logger.warn({
-        message: "创建备用适配器失败，跳过",
-        details: { error: error.message },
-      });
-      return null;
-    }
-  }
-
-  /**
-   * 获取备用存储适配器（与当前适配器不同的类型）
-   * 懒加载：首次调用时才创建，避免仅用主存储时触发 OSS/元数据请求
-   * @returns {Object|null} 备用存储适配器实例，若创建失败或未需要则为 null
-   */
-  getBackupStorageAdapter() {
-    if (this._backupAdapterTried) return this._backupAdapter;
-    this._backupAdapterTried = true;
-    try {
-      this._backupAdapter = this._createBackupAdapter();
-    } catch (error) {
-      logger.warn({
-        message: "创建备用存储适配器失败，将跳过备用适配器",
-        details: { error: error.message },
-      });
-      this._backupAdapter = null;
-    }
-    return this._backupAdapter;
   }
 
   /**
@@ -268,125 +197,24 @@ class StorageService {
   }
 
   /**
-   * 智能获取文件完整URL
-   * 根据图片的存储类型自动选择对应的存储适配器
+   * 获取文件完整 URL（始终使用当前环境配置的存储适配器）
    * @param {string} storageKey - 存储键名
-   * @param {string} storageType - 存储类型
-   * @param {Object} [options={}] - 选项
-   * @param {number} [options.expiresIn=3600] - 签名URL过期时间（秒）
-   * @param {boolean} [options.forceSigned=false] - 是否强制生成签名URL
+   * @param {Object} [options={}] - 选项（如签名 URL）
    * @returns {Promise<string|null>} 完整的文件访问URL
    */
-  async getFileUrl(storageKey, storageType, options = {}) {
+  async getFileUrl(storageKey, options = {}) {
     try {
-      let adapter;
-
-      // 根据存储类型选择对应的适配器
-      if (storageType === this._currentStorageType) {
-        adapter = this.storage;
-      } else if (this._backupAdapter && storageType === this._backupAdapter.type) {
-        adapter = this._backupAdapter;
-      } else {
-        // 如果都不匹配，使用当前适配器作为默认
-        adapter = this.storage;
-      }
-
-      return await adapter.getFileUrl(storageKey, options);
+      return await this.storage.getFileUrl(storageKey, options);
     } catch (error) {
       logger.error({
         message: "获取文件访问URL失败",
         details: {
           storageKey,
-          storageType,
           error: error.message,
         },
       });
       return null;
     }
-  }
-
-  /**
-   * 批量获取文件URL（优化版本）
-   * 先对数据进行分类，然后批量处理，避免重复的适配器判断和创建
-   * @param {Array<{storageKey: string, storageType: string}>} files - 文件信息数组
-   * @param {Object} [options={}] - 选项
-   * @param {number} [options.expiresIn=3600] - 签名URL过期时间（秒）
-   * @param {boolean} [options.forceSigned=false] - 是否强制生成签名URL
-   * @returns {Promise<Array<{storageKey: string, storageType: string, url: string|null}>>} URL结果数组
-   */
-  async getFileUrls(files, options = {}) {
-    // 创建文件到索引的映射，保持原始顺序
-    const fileToIndexMap = new Map();
-    files.forEach((file, index) => {
-      fileToIndexMap.set(file.storageKey, index);
-    });
-
-    // 按存储类型分组
-    const currentTypeFiles = [];
-    const otherTypeFiles = [];
-
-    files.forEach((file) => {
-      if (file.storageType === this._currentStorageType) {
-        currentTypeFiles.push(file);
-      } else {
-        otherTypeFiles.push(file);
-      }
-    });
-
-    // 初始化结果数组，保持原始顺序
-    const results = new Array(files.length);
-
-    // 1. 使用当前配置的适配器处理对应类型的数据（性能最优）
-    if (currentTypeFiles.length > 0) {
-      const currentUrls = await Promise.all(
-        currentTypeFiles.map(async (file) => {
-          try {
-            const url = await this.storage.getFileUrl(file.storageKey, options);
-            return { storageKey: file.storageKey, storageType: file.storageType, url };
-          } catch (error) {
-            logger.error({
-              message: "获取文件URL失败",
-              details: { storageKey: file.storageKey, storageType: file.storageType, error: error.message },
-            });
-            return { storageKey: file.storageKey, storageType: file.storageType, url: null };
-          }
-        }),
-      );
-
-      // 将结果放回原始位置
-      currentUrls.forEach((result) => {
-        const index = fileToIndexMap.get(result.storageKey);
-        results[index] = result;
-      });
-    }
-
-    // 2. 使用备用适配器处理其他类型的数据
-    if (otherTypeFiles.length > 0) {
-      const backupAdapter = this.getBackupStorageAdapter();
-
-      const otherUrls = await Promise.all(
-        otherTypeFiles.map(async (file) => {
-          try {
-            const url = await backupAdapter.getFileUrl(file.storageKey, options);
-            return { storageKey: file.storageKey, storageType: file.storageType, url };
-          } catch (error) {
-            logger.error({
-              message: "获取文件URL失败",
-              details: { storageKey: file.storageKey, storageType: file.storageType, error: error.message },
-            });
-            return { storageKey: file.storageKey, storageType: file.storageType, url: null };
-          }
-        }),
-      );
-
-      // 将结果放回原始位置
-      otherUrls.forEach((result) => {
-        const index = fileToIndexMap.get(result.storageKey);
-        results[index] = result;
-      });
-    }
-
-    return results;
   }
 
   // ========== 业务方法（有实际价值的封装） ==========

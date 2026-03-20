@@ -1,6 +1,6 @@
 /*
- * 一次性迁移：从 images 表移除 has_young、has_adult 列及 idx_images_user_age_flags 索引
- * 新库由 initTableModel.createTableImages 直接不包含该字段，无需运行本脚本。
+ * 归档：从旧 images 表移除 has_young、has_adult 列及 idx_images_user_age_flags；重建后的 images_new 同时不含 storage_type。
+ * 仅适用于仍使用 images 表的老库；已使用 media 表请用 migrate-images-to-media.js 或 scripts/deployment/rebuild-database.js。
  *
  * SQLite 不支持 DROP COLUMN，采用「建新表 → 迁移数据 → 删旧表 → 重命名」方案。
  *
@@ -16,7 +16,7 @@ process.chdir(projectRoot);
 require("dotenv").config();
 const { db } = require(path.join(projectRoot, "src", "services", "database"));
 
-// 新表结构（不含 has_young、has_adult）
+// 新表结构（不含 has_young、has_adult、不含 storage_type）
 const CREATE_IMAGES_NEW = `
   CREATE TABLE images_new (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,7 +45,6 @@ const CREATE_IMAGES_NEW = `
     layout_type TEXT,
     hd_width_px INTEGER,
     hd_height_px INTEGER,
-    storage_type TEXT,
     media_type TEXT DEFAULT 'image',
     duration_sec REAL,
     video_codec TEXT,
@@ -74,7 +73,7 @@ const CREATE_IMAGES_NEW = `
   )
 `;
 
-// 插入时排除 has_young、has_adult
+// 插入时排除 has_young、has_adult；不复制 storage_type（新表无该列）
 const INSERT_SQL = `
   INSERT INTO images_new (
     id, user_id, original_storage_key, high_res_storage_key, thumbnail_storage_key,
@@ -82,7 +81,7 @@ const INSERT_SQL = `
     year_key, month_key, date_key, day_key,
     gps_latitude, gps_longitude, gps_altitude, gps_location, country, city,
     width_px, height_px, aspect_ratio, raw_orientation, layout_type,
-    hd_width_px, hd_height_px, storage_type, media_type, duration_sec, video_codec,
+    hd_width_px, hd_height_px, media_type, duration_sec, video_codec,
     file_size_bytes, mime, created_at, deleted_at,
     alt_text, ocr_text, keywords, object_tags,
     face_count, person_count, expression_tags, age_tags, gender_tags,
@@ -94,7 +93,7 @@ const INSERT_SQL = `
     year_key, month_key, date_key, day_key,
     gps_latitude, gps_longitude, gps_altitude, gps_location, country, city,
     width_px, height_px, aspect_ratio, raw_orientation, layout_type,
-    hd_width_px, hd_height_px, storage_type, media_type, duration_sec, video_codec,
+    hd_width_px, hd_height_px, media_type, duration_sec, video_codec,
     file_size_bytes, mime, created_at, deleted_at,
     alt_text, ocr_text, keywords, object_tags,
     face_count, person_count, expression_tags, age_tags, gender_tags,
@@ -124,7 +123,7 @@ function migrate() {
     // 2. 删除 FTS 虚拟表
     db.prepare("DROP TABLE IF EXISTS images_fts").run();
 
-    // 3. 创建新表（无 has_young、has_adult）
+    // 3. 创建新表（无 has_young、has_adult、无 storage_type）
     db.prepare(CREATE_IMAGES_NEW).run();
 
     // 4. 迁移数据
@@ -144,7 +143,6 @@ function migrate() {
       "CREATE INDEX IF NOT EXISTS idx_images_user_creation_desc ON images(user_id, image_created_at DESC, id DESC)",
       "CREATE INDEX IF NOT EXISTS idx_images_user_year_creation ON images(user_id, year_key, image_created_at DESC, id DESC)",
       "CREATE INDEX IF NOT EXISTS idx_images_user_month_creation ON images(user_id, month_key, image_created_at DESC, id DESC)",
-      "CREATE INDEX IF NOT EXISTS idx_images_user_storage_creation ON images(user_id, storage_type, image_created_at DESC, id DESC)",
       "CREATE INDEX IF NOT EXISTS idx_images_user_year ON images(user_id, year_key)",
       "CREATE INDEX IF NOT EXISTS idx_images_user_month ON images(user_id, month_key)",
       "CREATE INDEX IF NOT EXISTS idx_images_user_date_creation ON images(user_id, date_key, image_created_at DESC, id DESC)",
@@ -208,7 +206,7 @@ function migrate() {
     `).run();
 
     db.exec("COMMIT");
-    console.log("✅ 迁移完成：images 表已移除 has_young、has_adult 列及 idx_images_user_age_flags 索引");
+    console.log("✅ 迁移完成：images 已移除 has_young/has_adult；新表无 storage_type，且无 idx_images_user_age_flags / idx_images_user_storage_creation");
   } catch (err) {
     db.exec("ROLLBACK");
     console.error("❌ 迁移失败：", err.message);

@@ -21,8 +21,6 @@ const cleanupModel = require("../models/cleanupModel");
 const { upsertMediaEmbedding } = require("../models/mediaEmbeddingModel");
 const { scheduleUserRebuild } = require("../services/cleanupGroupingScheduler");
 const { scheduleUserClustering } = require("../services/faceClusterScheduler");
-const { scheduleCityDictionaryRefresh } = require("../services/cityDictionaryScheduler");
-
 const PYTHON_SERVICE_URL = process.env.PYTHON_CLEANUP_SERVICE_URL || process.env.PYTHON_FACE_SERVICE_URL || "http://localhost:5001";
 const ANALYZE_FULL_TIMEOUT_MS = Number(process.env.ANALYZE_FULL_TIMEOUT_MS || 120000);
 
@@ -75,9 +73,6 @@ async function processMediaAnalysis(job) {
     await _runAnalyzeFull({ imageId, userId, imageData, analysisVersion, stepResults });
 
     await finalizeMediaAnalysis({ imageId, userId, analysisVersion, stepResults });
-    // 由于城市词典基础集合来自 media.city，导入过程中 city 可能持续新增，这里做去抖刷新
-    scheduleCityDictionaryRefresh("mediaAnalysis.completed");
-
     if (sessionId) {
       await updateProgressOnce({ sessionId, status: "aiDoneCount", dedupeKey: imageId });
       logger.info({

@@ -283,7 +283,6 @@ function getAlbumMedias({ albumId, pageNo, pageSize }) {
       i.day_key,
       i.month_key,
       i.year_key,
-      i.storage_type,
       i.gps_location,
       i.width_px,
       i.height_px,

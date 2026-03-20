@@ -16,7 +16,6 @@ let adapterContainer = {
 
 class StorageAdapterFactory {
   static currentAdapter = null;
-  static backupAdapter = null;
   static storageConfig = null;
 
   /**
@@ -70,40 +69,6 @@ class StorageAdapterFactory {
     StorageAdapterFactory.currentAdapter = adapter;
 
     return adapter;
-  }
-
-  /**
-   * 创建备用存储适配器
-   * @param {string} storageType - 存储类型
-   * @returns {LocalStorageAdapter|AliyunOSSAdapter|null} 备用存储适配器实例
-   */
-  static createBackupAdapter(storageType = null) {
-    if (!storageType) return null;
-
-    // 如果已有备用适配器，直接返回
-    if (StorageAdapterFactory.backupAdapter) {
-      return StorageAdapterFactory.backupAdapter;
-    }
-
-    try {
-      // 设置配置对象
-      const storageConfig = StorageAdapterFactory.storageConfig || getStorageConfig();
-      let Adapter = adapterContainer[storageType];
-      let options = storageConfig[storageType];
-      let adapter = new Adapter(options || {});
-
-      // 根据配置对象创建存储适配器
-      StorageAdapterFactory.backupAdapter = adapter;
-
-      return adapter;
-    } catch (error) {
-      // 如果创建备用适配器失败（如OSS配置缺失），返回null
-      logger.warn({
-        message: "创建备用存储适配器失败",
-        details: { storageType, error: error.message },
-      });
-      return null;
-    }
   }
 
   /**

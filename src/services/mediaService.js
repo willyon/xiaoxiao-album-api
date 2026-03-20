@@ -51,28 +51,25 @@ async function _addFullUrls(items, type = "image") {
       for (const item of items) {
         const needsOriginalUrl = item.mediaType === "video" || !item.highResStorageKey;
         if (item.highResStorageKey) {
-          item.highResUrl = await storageService.getFileUrl(item.highResStorageKey, item.storageType);
+          item.highResUrl = await storageService.getFileUrl(item.highResStorageKey);
           delete item.highResStorageKey;
         }
         if (item.thumbnailStorageKey) {
-          item.thumbnailUrl = await storageService.getFileUrl(item.thumbnailStorageKey, item.storageType);
+          item.thumbnailUrl = await storageService.getFileUrl(item.thumbnailStorageKey);
           delete item.thumbnailStorageKey;
         }
         if (needsOriginalUrl && item.originalStorageKey) {
-          item.originalUrl = await storageService.getFileUrl(item.originalStorageKey, item.storageType);
+          item.originalUrl = await storageService.getFileUrl(item.originalStorageKey);
           delete item.originalStorageKey;
         }
-        delete item.storageType;
       }
     } else if (type === "group") {
       // 处理分组：生成封面图片URL
       for (const item of items) {
         if (item.latestImagekey) {
-          item.latestImageUrl = await storageService.getFileUrl(item.latestImagekey, item.storageType);
+          item.latestImageUrl = await storageService.getFileUrl(item.latestImagekey);
           delete item.latestImagekey; // 删除原始字段
         }
-        // 删除 storageType 字段
-        delete item.storageType;
       }
     }
 
@@ -191,14 +188,14 @@ async function getBlurryMedias({ userId, pageNo = 1, pageSize = 20 }) {
       let highResUrl = null;
       if (img.thumbnailStorageKey != null) {
         try {
-          thumbnailUrl = await storageService.getFileUrl(img.thumbnailStorageKey, img.storageType);
+          thumbnailUrl = await storageService.getFileUrl(img.thumbnailStorageKey);
         } catch (e) {
           logger.warn({ message: "获取模糊图缩略图 URL 失败", details: { error: e?.message } });
         }
       }
       if (img.highResStorageKey != null) {
         try {
-          highResUrl = await storageService.getFileUrl(img.highResStorageKey, img.storageType);
+          highResUrl = await storageService.getFileUrl(img.highResStorageKey);
         } catch (e) {
           logger.warn({ message: "获取模糊图高清 URL 失败", details: { error: e?.message } });
         }
@@ -549,7 +546,7 @@ async function deleteMedias({ userId, imageIds }) {
   // 执行删除操作：软删除，标记 deleted_at
   cleanupModel.markMediasDeleted(normalizedIds, now);
 
-  // 同步 media_search / media_fts（软删除后移除搜索文档）
+  // 同步 media_search / media_search_fts（软删除后移除搜索文档）
   normalizedIds.forEach((id) => {
     try {
       mediaModel.rebuildMediaSearchDoc(id);

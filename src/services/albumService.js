@@ -24,7 +24,7 @@ async function getRecentAlbumsList({ userId, limit = 8, excludeAlbumId = null })
       if (album.coverImageId) {
         const coverImage = await _getMediaById(album.coverImageId);
         if (coverImage && coverImage.thumbnailStorageKey) {
-          coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
+          coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey);
         }
       }
       const timeRange = albumModel.getAlbumTimeRange(album.albumId);
@@ -70,7 +70,7 @@ async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null,
         // 查询封面图片的存储信息
         const coverImage = await _getMediaById(album.coverImageId);
         if (coverImage && coverImage.thumbnailStorageKey) {
-          coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
+          coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey);
         }
       }
 
@@ -221,7 +221,7 @@ async function updateAlbum({ userId, albumId, name, description, coverImageId })
   if (updatedAlbum.coverImageId) {
     const coverImage = _getMediaById(updatedAlbum.coverImageId);
     if (coverImage) {
-      coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
+      coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey);
     }
   }
 
@@ -345,7 +345,7 @@ async function setAlbumCover({ userId, albumId, imageId }) {
   if (updatedAlbum.coverImageId) {
     const coverImage = await _getMediaById(updatedAlbum.coverImageId);
     if (coverImage && coverImage.thumbnailStorageKey) {
-      coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
+      coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey);
     }
   }
 
@@ -370,7 +370,7 @@ async function getAlbumById({ userId, albumId }) {
   if (album.coverImageId) {
     const coverImage = _getMediaById(album.coverImageId);
     if (coverImage && coverImage.thumbnailStorageKey) {
-      coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey, coverImage.storageType);
+      coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey);
     }
   }
 
@@ -411,15 +411,15 @@ async function getAlbumMediasList({ userId, albumId, pageNo, pageSize }) {
       let highResUrl = null;
       let originalUrl = null;
       if (image.thumbnailStorageKey) {
-        thumbnailUrl = await storageService.getFileUrl(image.thumbnailStorageKey, image.storageType);
+        thumbnailUrl = await storageService.getFileUrl(image.thumbnailStorageKey);
       }
       if (image.highResStorageKey) {
-        highResUrl = await storageService.getFileUrl(image.highResStorageKey, image.storageType);
+        highResUrl = await storageService.getFileUrl(image.highResStorageKey);
       }
       if (image.mediaType === "video" && image.originalStorageKey) {
-        originalUrl = await storageService.getFileUrl(image.originalStorageKey, image.storageType);
+        originalUrl = await storageService.getFileUrl(image.originalStorageKey);
       } else if (!image.highResStorageKey && image.originalStorageKey) {
-        originalUrl = await storageService.getFileUrl(image.originalStorageKey, image.storageType);
+        originalUrl = await storageService.getFileUrl(image.originalStorageKey);
       }
 
       return {
@@ -447,7 +447,6 @@ function _getMediaById(imageId) {
     ? {
         thumbnailStorageKey: image.thumbnailStorageKey,
         highResStorageKey: image.highResStorageKey,
-        storageType: image.storageType,
       }
     : null;
 }
