@@ -2,7 +2,7 @@
  * @Description: 搜索排序与评分权重配置
  * 调参约定：
  * 1. 先调字段基础权重，再调结构化角色/组合加分，最后再调 FTS 基础分。
- * 2. 结构化标签（subject/action/scene）应始终高于 keywords/caption。
+ * 2. 结构化标签（subject/action/scene）应始终高于 keywords/description。
  * 3. 组合命中加分应明显高于单角色加分，但不要高到压死纯文本召回。
  * 4. 如果查询开始过度偏向“最新图片”，优先检查 FTS 基础分和组合加分是否过低。
  *
@@ -14,13 +14,13 @@
 
 // 中文 term 命中基础权重。
 // 用于 media_search_terms 召回后的字段打分，决定“命中哪个字段更重要”。
-// 建议关系：action_tags >= subject_tags >= scene_tags > keywords > caption。
+// 建议关系：action_tags >= subject_tags >= scene_tags > keywords > description。
 const SEARCH_TERM_FIELD_WEIGHTS = {
   subject_tags: 180,
   action_tags: 200,
   scene_tags: 170,
   keywords: 120,
-  caption: 100,
+  description: 100,
   ocr: 85,
   transcript: 65,
 };

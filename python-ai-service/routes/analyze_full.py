@@ -7,17 +7,20 @@
 """
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from typing import Optional
 
 from constants.error_codes import AI_DEVICE_NOT_SUPPORTED, IMAGE_DECODE_FAILED
+from config import normalize_profile, settings
 from logger import logger
 from schemas.error_schema import ErrorBody
 from services.analyze_full_orchestrator import run_analyze_full
 from services.model_manager import get_model_manager
-from config import normalize_profile, settings
 from utils.device import normalize_device
 from utils.image_decode import decode_image
 from utils.request_log_context import get_image_size, set_request_log_context
+from utils.response_log_redact import redact_embeddings_for_log
 
 router = APIRouter()
 
@@ -32,7 +35,7 @@ async def analyze_full_route(
     request_id: Optional[str] = Form(None),
 ):
     """
-    全量图片分析：按 profile 串行执行 caption/scene/objects/person/ocr/quality/embedding，
+    全量图片分析：按 profile 串行执行各模块（含 caption/person/ocr/quality/embedding 等），
     返回统一结构。Node 写库只读 response.modules。
     """
     profile = normalize_profile(profile)
@@ -75,10 +78,12 @@ async def analyze_full_route(
     ocr_meta = ocr_module.get("meta") or {}
     trigger_signals = ocr_meta.get("trigger_signals") if isinstance(ocr_meta.get("trigger_signals"), dict) else {}
     ocr_status = str(ocr_module.get("status") or "")
+    errs = result.get("errors") or []
+    first_err = errs[0] if errs and isinstance(errs[0], dict) else None
     set_request_log_context(
         request,
         result_count=len(modules),
-        error_code=(result.get("errors") or [{}])[0].get("code") if result.get("errors") else None,
+        error_code=first_err.get("code") if first_err else None,
         configured_provider=str(ocr_meta.get("configured_provider") or caption_meta.get("configured_provider") or ""),
         resolved_provider=str(ocr_meta.get("resolved_provider") or caption_meta.get("resolved_provider") or ""),
         configured_vendor=str(ocr_meta.get("configured_vendor") or caption_meta.get("configured_vendor") or ""),
@@ -91,26 +96,20 @@ async def analyze_full_route(
         ocr_status=ocr_status,
         top_status=str(result.get("status") or ""),
     )
-    # 调试用途：仅开发环境打印完整分析结果
+    # 开发环境：返回 Node 前打一行与响应同结构的预览（已剔除 embedding/长 vector）
     if getattr(settings, "LOG_ANALYZE_FULL_RESULT", False):
         try:
-            log_modules = {k: v for k, v in modules.items() if k != "embedding"}
+            preview = redact_embeddings_for_log(jsonable_encoder(result))
             logger.info(
-                "analyze_full_result",
+                "analyze_full_return_preview",
                 details={
                     "image_id": image_id,
                     "request_id": request_id,
-                    "status": result.get("status"),
-                    "modules": log_modules,
-                    "ocr_trigger_signals": {
-                        "has_dense_text_like_regions": bool(trigger_signals.get("has_dense_text_like_regions")),
-                        "caption_hint_text_related": bool(trigger_signals.get("caption_hint_text_related")),
-                    },
-                    "errors": result.get("errors"),
-                    "timing": result.get("timing"),
+                    "note": "与返回 Node 的 JSON 同结构；已递归剔除 embedding/高维 vector",
+                    "response": preview,
                 },
             )
         except Exception:
-            # 日志失败不影响主流程返回
             pass
-    return result
+    # numpy / 其它非 JSON 原生类型需经 jsonable_encoder，否则 Starlette 序列化会 500
+    return JSONResponse(content=jsonable_encoder(result))

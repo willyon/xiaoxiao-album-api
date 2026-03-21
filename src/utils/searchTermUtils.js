@@ -44,11 +44,36 @@ function generateChineseTerms(input, maxTermLength = 2) {
   return Array.from(terms);
 }
 
+/** 英文单词（≥2 字母，小写去重）与连续数字串（含 1 位） */
+function extractEnglishWordAndDigitTerms(input) {
+  const s = String(input || "");
+  const terms = new Set();
+  for (const m of s.matchAll(/[a-zA-Z]{2,}/g)) {
+    terms.add(m[0].toLowerCase());
+  }
+  for (const m of s.matchAll(/[0-9]+/g)) {
+    terms.add(m[0]);
+  }
+  return Array.from(terms);
+}
+
+/** 写入 media_search_terms：中文 1～2 字滑窗 + 英文词 + 连续数字 */
+function generateMediaSearchTerms(input) {
+  const terms = new Set();
+  for (const t of generateChineseTerms(input, 2)) {
+    terms.add(t);
+  }
+  for (const t of extractEnglishWordAndDigitTerms(input)) {
+    terms.add(t);
+  }
+  return Array.from(terms);
+}
+
 function buildMediaSearchTermRows({ mediaId, userId, fields, updatedAt = Date.now() }) {
   const rows = [];
 
   for (const [fieldType, value] of Object.entries(fields || {})) {
-    const terms = generateChineseTerms(value, 2);
+    const terms = generateMediaSearchTerms(value);
     for (const term of terms) {
       rows.push({
         mediaId,
@@ -64,18 +89,34 @@ function buildMediaSearchTermRows({ mediaId, userId, fields, updatedAt = Date.no
   return rows;
 }
 
+// 合并进 search_terms（jieba）的字段：仅图片理解相关 + 转写；OCR 的 jieba 单独写入 media_search.ocr_search_terms
 const FIELD_KEYS_FOR_SEARCH_TERMS = [
-  "caption",
+  "description",
   "keywords",
   "subject_tags",
   "action_tags",
   "scene_tags",
-  "ocr",
   "transcript",
 ];
 
 /**
- * 合并图片理解 + OCR/转写等字段 → 按字段分词（中文 jieba 搜索模式，无中文则标点/空白切），去重保序，空格拼接。
+ * OCR 原文 → jieba 检索 token 空格拼接，写入 media_search.ocr_search_terms / FTS ocr_search_terms（与查询 normalizeQueryForFts 对齐）
+ */
+function buildOcrSearchTermsFromRaw(rawOcr) {
+  if (!rawOcr || typeof rawOcr !== "string" || !rawOcr.trim()) return null;
+  const tokens = [];
+  const seen = new Set();
+  for (const tok of segmentFieldForSearchTerms(rawOcr)) {
+    if (!tok) continue;
+    if (seen.has(tok)) continue;
+    seen.add(tok);
+    tokens.push(tok);
+  }
+  return tokens.length > 0 ? tokens.join(" ") : null;
+}
+
+/**
+ * 合并多字段 → jieba 搜索模式分词后写入 search_terms（不含 OCR；OCR 见 buildOcrSearchTermsFromRaw）
  */
 function buildSearchTermsFromFields(fields) {
   const seen = new Set();
@@ -99,39 +140,43 @@ function buildChineseQueryTerms(query) {
   if (!text) {
     return [];
   }
-  // 这里的 buildChineseQueryTerms 用于 media_search_terms 的精确命中（mst.term IN ...）。
-  // 为避免把用户二字词拆成单字造成噪音：连续中文段长度为 1 只保留 1 字；长度为 2 只保留整段 2 字。
-  if (!containsChinese(text)) {
-    return [];
-  }
+  // media_search_terms 精确命中（mst.term IN ...）：中文 + 英文词 + 数字串（与 generateMediaSearchTerms 对齐）
+  const termMap = new Map();
 
-  const runs = extractChineseRuns(text);
-  const terms = new Set();
-  for (const run of runs) {
-    const runLen = Array.from(run).length;
-    if (runLen === 1) {
-      terms.add(run);
-    } else if (runLen === 2) {
-      terms.add(run);
-    } else {
-      // 防御性：如果意外进入（理应由 searchService token 过滤掉），仍只生成 2 字滑窗子串
-      const chars = Array.from(run);
-      for (let i = 0; i + 1 < chars.length; i += 1) {
-        terms.add(chars.slice(i, i + 2).join(""));
+  if (containsChinese(text)) {
+    const runs = extractChineseRuns(text);
+    for (const run of runs) {
+      const runLen = Array.from(run).length;
+      const terms = new Set();
+      if (runLen === 1) {
+        terms.add(run);
+      } else if (runLen === 2) {
+        terms.add(run);
+      } else {
+        const chars = Array.from(run);
+        for (let i = 0; i + 1 < chars.length; i += 1) {
+          terms.add(chars.slice(i, i + 2).join(""));
+        }
+      }
+      for (const term of terms) {
+        const termLen = Array.from(term).length;
+        const boost = termLen >= 2 ? CHINESE_QUERY_TERM_BOOST.multiChar : CHINESE_QUERY_TERM_BOOST.singleChar;
+        termMap.set(term, { term, termLen, boost });
       }
     }
   }
 
-  return Array.from(terms)
-    .map((term) => {
-      const termLen = Array.from(term).length;
-      return {
-        term,
-        termLen,
-        boost: termLen >= 2 ? CHINESE_QUERY_TERM_BOOST.multiChar : CHINESE_QUERY_TERM_BOOST.singleChar,
-      };
-    })
-    .sort((a, b) => b.termLen - a.termLen || a.term.localeCompare(b.term, "zh-Hans-CN"));
+  for (const term of extractEnglishWordAndDigitTerms(text)) {
+    const termLen = Array.from(term).length;
+    const boost = termLen >= 2 ? CHINESE_QUERY_TERM_BOOST.multiChar : CHINESE_QUERY_TERM_BOOST.singleChar;
+    if (!termMap.has(term)) {
+      termMap.set(term, { term, termLen, boost });
+    }
+  }
+
+  return Array.from(termMap.values()).sort(
+    (a, b) => b.termLen - a.termLen || a.term.localeCompare(b.term, "zh-Hans-CN"),
+  );
 }
 
 function normalizeQueryForFts(query) {
@@ -142,10 +187,15 @@ module.exports = {
   SEARCH_TERM_FIELD_WEIGHTS,
   buildChineseQueryTerms,
   buildMediaSearchTermRows,
+  buildOcrSearchTermsFromRaw,
+  /** @deprecated 使用 buildOcrSearchTermsFromRaw */
+  buildOcrTextForSearchFts: buildOcrSearchTermsFromRaw,
   buildSearchTermsFromFields,
   containsChinese,
   extractChineseRuns,
+  extractEnglishWordAndDigitTerms,
   generateChineseTerms,
+  generateMediaSearchTerms,
   normalizeQueryForFts,
   normalizeSearchText,
 };

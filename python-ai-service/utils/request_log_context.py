@@ -38,6 +38,8 @@ def set_request_log_context(
     resolved_vendor: Optional[str] = None,
     ocr_trigger_mode: Optional[str] = None,
     ocr_triggered: Optional[bool] = None,
+    ocr_signal_has_dense_text_like_regions: Optional[bool] = None,
+    ocr_signal_caption_hint_text_related: Optional[bool] = None,
     caption_status: Optional[str] = None,
     ocr_status: Optional[str] = None,
     top_status: Optional[str] = None,
@@ -74,6 +76,10 @@ def set_request_log_context(
         request.state._log_ocr_trigger_mode = ocr_trigger_mode
     if ocr_triggered is not None:
         request.state._log_ocr_triggered = ocr_triggered
+    if ocr_signal_has_dense_text_like_regions is not None:
+        request.state._log_ocr_signal_has_dense_text_like_regions = ocr_signal_has_dense_text_like_regions
+    if ocr_signal_caption_hint_text_related is not None:
+        request.state._log_ocr_signal_caption_hint_text_related = ocr_signal_caption_hint_text_related
     if caption_status is not None:
         request.state._log_caption_status = caption_status
     if ocr_status is not None:

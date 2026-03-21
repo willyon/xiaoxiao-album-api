@@ -11,7 +11,7 @@ const {
   insertFaceEmbeddings,
   rebuildMediaSearchDoc,
   upsertMediaCaptionsForAnalysis,
-  upsertMediaTextBlocksOcrForAnalysis,
+  upsertMediaOcrForAnalysis,
 } = require("../models/mediaModel");
 const { updateProgressOnce } = require("../services/mediaProcessingProgressService");
 const axios = require("axios");
@@ -28,7 +28,7 @@ const ANALYSIS_VERSION = process.env.ANALYSIS_VERSION || "1.0";
 
 // 最新设计：Node 侧不再决定「开启哪些能力」，一律视为参与分析；是否真正可用由 Python 端模型加载结果与降级逻辑决定
 // 最新设计说明：
-// - Node 侧不再提供按能力维度的开关，face / caption / OCR 均视为分析流程的一部分
+// - Node 侧不再提供按能力维度的开关，face / description / OCR 均视为分析流程的一部分
 // - 是否真正可用由 Python 端模型加载结果与降级逻辑决定，这里只关注「哪些步骤参与 done 判定」
 
 async function processMediaAnalysis(job) {
@@ -66,7 +66,7 @@ async function processMediaAnalysis(job) {
     const stepResults = {
       face: { status: "pending", errorCode: null, data: {} },
       cleanup: { status: "pending", errorCode: null, data: {} },
-      caption: { status: "pending", errorCode: null, data: {} },
+      description: { status: "pending", errorCode: null, data: {} },
       ocr: { status: "pending", errorCode: null, data: {} },
     };
 
@@ -187,27 +187,29 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
   const modules = body.modules || {};
   const round2 = (v) => (typeof v === "number" ? Number(v.toFixed(2)) : null);
 
-  if (modules.caption?.status === "success" && modules.caption.data) {
-    const d = modules.caption.data;
-    const captionText = typeof d.caption === "string" ? d.caption : (typeof d.text === "string" ? d.text : "");
+  // Python analyze_full：modules.caption 为 VLM 模块；兼容旧版 modules.description
+  const captionModule = modules.caption ?? modules.description;
+  if (captionModule?.status === "success" && captionModule.data) {
+    const d = captionModule.data;
+    const descriptionText = typeof d.description === "string" ? d.description : "";
     const keywords = Array.isArray(d.keywords) ? d.keywords : [];
     const subjectTags = Array.isArray(d.subject_tags) ? d.subject_tags : [];
     const actionTags = Array.isArray(d.action_tags) ? d.action_tags : [];
     const sceneTags = Array.isArray(d.scene_tags) ? d.scene_tags : [];
     upsertMediaCaptionsForAnalysis({
       mediaId: imageId,
-      caption: captionText,
+      description: descriptionText,
       keywords,
       subjectTags,
       actionTags,
       sceneTags,
       analysisVersion,
     });
-    stepResults.caption = {
+    stepResults.description = {
       status: "completed",
       errorCode: null,
       data: {
-        caption: captionText,
+        description: descriptionText,
         keywords,
         subjectTags,
         actionTags,
@@ -215,11 +217,11 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
       },
     };
   } else {
-    stepResults.caption = { status: modules.caption?.status || "failed", errorCode: modules.caption?.error?.code || null, data: {} };
+    stepResults.description = { status: captionModule?.status || "failed", errorCode: captionModule?.error?.code || null, data: {} };
   }
 
   if (modules.ocr?.status === "success" && modules.ocr.data?.blocks) {
-    upsertMediaTextBlocksOcrForAnalysis(imageId, modules.ocr.data.blocks, analysisVersion);
+    upsertMediaOcrForAnalysis(imageId, modules.ocr.data.blocks, analysisVersion);
     stepResults.ocr = { status: "completed", errorCode: null, data: { blocks: modules.ocr.data.blocks } };
   } else {
     stepResults.ocr = { status: modules.ocr?.status || "failed", errorCode: modules.ocr?.error?.code || null, data: {} };
@@ -315,7 +317,7 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
 async function finalizeMediaAnalysis({ imageId, analysisVersion, stepResults }) {
   const faceData = stepResults.face?.data || {};
   const cleanupData = stepResults.cleanup?.data || {};
-  const captionData = stepResults.caption?.data || {};
+  const descriptionData = stepResults.description?.data || {};
   const ocrData = stepResults.ocr?.data || {};
 
   finalizeMediaAnalysisInModel({
@@ -323,7 +325,7 @@ async function finalizeMediaAnalysis({ imageId, analysisVersion, stepResults }) 
     analysisVersion,
     faceData,
     cleanupData,
-    captionData,
+    descriptionData,
     ocrData,
   });
 

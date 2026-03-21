@@ -7,8 +7,8 @@
  */
 const { db } = require("../services/database");
 const { mapFields } = require("../utils/fieldMapper");
-const { createTableMediaSearchTerms } = require("./initTableModel");
-const { buildMediaSearchTermRows, buildSearchTermsFromFields } = require("../utils/searchTermUtils");
+const { buildMediaSearchTermRows, buildSearchTermsFromFields, buildOcrSearchTermsFromRaw } = require("../utils/searchTermUtils");
+const { clearSearchRankCache } = require("../utils/searchRankCacheStore");
 
 function parseCommaTags(input) {
   if (!input || typeof input !== "string") return [];
@@ -54,16 +54,16 @@ function collectMediaSearchDocument(mediaId) {
   const media = db.prepare("SELECT id, user_id, deleted_at FROM media WHERE id = ?").get(mediaId);
   if (!media) return null;
   const captionRows = db
-    .prepare("SELECT caption, keywords_json, subject_tags_json, action_tags_json, scene_tags_json FROM media_captions WHERE media_id = ?")
+    .prepare("SELECT description, keywords_json, subject_tags_json, action_tags_json, scene_tags_json FROM media_captions WHERE media_id = ?")
     .all(mediaId);
-  let captionText = null;
+  let descriptionText = null;
   const keywordTokens = new Set();
   const subjectTagTokens = new Set();
   const actionTagTokens = new Set();
   const sceneTagTokens = new Set();
   for (const row of captionRows) {
-    if (row.caption) {
-      captionText = captionText ? `${captionText} ${row.caption}` : String(row.caption);
+    if (row.description) {
+      descriptionText = descriptionText ? `${descriptionText} ${row.description}` : String(row.description);
     }
     for (const kw of parseJsonTextArray(row.keywords_json)) {
       keywordTokens.add(kw);
@@ -82,7 +82,7 @@ function collectMediaSearchDocument(mediaId) {
   const subjectTagsText = subjectTagTokens.size > 0 ? Array.from(subjectTagTokens).join(" ") : null;
   const actionTagsText = actionTagTokens.size > 0 ? Array.from(actionTagTokens).join(" ") : null;
   const sceneTagsText = sceneTagTokens.size > 0 ? Array.from(sceneTagTokens).join(" ") : null;
-  const ocrTextRow = db.prepare("SELECT GROUP_CONCAT(text, ' ') AS value FROM media_text_blocks WHERE media_id = ?").get(mediaId);
+  const ocrTextRow = db.prepare("SELECT ocr AS value FROM media_ocr WHERE media_id = ?").get(mediaId);
 
   const transcriptTextRow = db
     .prepare("SELECT GROUP_CONCAT(transcript_text, ' ') AS value FROM video_transcripts WHERE media_id = ?")
@@ -91,7 +91,7 @@ function collectMediaSearchDocument(mediaId) {
   return {
     media,
     fields: {
-      caption: captionText,
+      description: descriptionText,
       keywords: keywordsText,
       subject_tags: subjectTagsText,
       action_tags: actionTagsText,
@@ -103,7 +103,6 @@ function collectMediaSearchDocument(mediaId) {
 }
 
 function replaceMediaSearchTermsForDocument({ mediaId, userId, fields, updatedAt }) {
-  createTableMediaSearchTerms();
   db.prepare("DELETE FROM media_search_terms WHERE media_id = ?").run(mediaId);
   const rows = buildMediaSearchTermRows({ mediaId, userId, fields, updatedAt });
   if (rows.length === 0) {
@@ -127,26 +126,29 @@ function rebuildMediaSearchDoc(mediaId) {
   const updatedAt = Date.now();
 
   if (media.deleted_at != null) {
-    createTableMediaSearchTerms();
     const deleted = db.prepare("DELETE FROM media_search WHERE media_id = ?").run(mediaId);
     db.prepare("DELETE FROM media_search_terms WHERE media_id = ?").run(mediaId);
+    clearSearchRankCache();
     return { affectedRows: deleted.changes, termRows: 0 };
   }
 
   const searchTermsText = buildSearchTermsFromFields(fields);
+  const ocrSearchTermsText = buildOcrSearchTermsFromRaw(fields.ocr);
 
   const upsert = db.prepare(`
     INSERT INTO media_search (
-      media_id, user_id, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text, search_terms, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      media_id, user_id, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text,
+      ocr_text, ocr_search_terms, transcript_text, search_terms, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(media_id) DO UPDATE SET
       user_id = excluded.user_id,
-      caption_text = excluded.caption_text,
+      description_text = excluded.description_text,
       keywords_text = excluded.keywords_text,
       subject_tags_text = excluded.subject_tags_text,
       action_tags_text = excluded.action_tags_text,
       scene_tags_text = excluded.scene_tags_text,
       ocr_text = excluded.ocr_text,
+      ocr_search_terms = excluded.ocr_search_terms,
       transcript_text = excluded.transcript_text,
       search_terms = excluded.search_terms,
       updated_at = excluded.updated_at
@@ -155,12 +157,13 @@ function rebuildMediaSearchDoc(mediaId) {
   const result = upsert.run(
     media.id,
     media.user_id,
-    fields.caption,
+    fields.description,
     fields.keywords,
     fields.subject_tags,
     fields.action_tags,
     fields.scene_tags,
     fields.ocr,
+    ocrSearchTermsText,
     fields.transcript,
     searchTermsText,
     updatedAt,
@@ -173,6 +176,7 @@ function rebuildMediaSearchDoc(mediaId) {
     updatedAt,
   });
 
+  clearSearchRankCache();
   return { affectedRows: result.changes, termRows };
 }
 
@@ -189,7 +193,7 @@ function insertMedia({ userId, imageHash, thumbnailStorageKey, fileSizeBytes, me
       file_size_bytes,
       media_type,
       ingest_status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
+    ) VALUES (?, ?, ?, ?, ?, ?, 'pending')
   `);
   const result = stmt.run(
     userId,
@@ -1441,7 +1445,7 @@ function updateMediaSearchMetadata({
         primary_face_quality = COALESCE(?, primary_face_quality),
         primary_expression = COALESCE(?, primary_expression),
         primary_expression_confidence = COALESCE(?, primary_expression_confidence),
-        has_caption = CASE WHEN ? IS NOT NULL THEN 1 ELSE has_caption END,
+        has_description = CASE WHEN ? IS NOT NULL THEN 1 ELSE has_description END,
         has_ocr = CASE WHEN ? IS NOT NULL THEN 1 ELSE has_ocr END,
         analysis_version = COALESCE(?, analysis_version),
         analysis_status = 'done',
@@ -1465,16 +1469,16 @@ function updateMediaSearchMetadata({
       db.prepare("DELETE FROM media_captions WHERE media_id = ? AND source_type = 'image'").run(imageId);
       db.prepare(`
         INSERT INTO media_captions (
-          media_id, source_type, source_ref_id, language, caption, keywords_json, analysis_version, created_at
-        ) VALUES (?, 'image', NULL, 'auto', ?, ?, ?, ?)
+          media_id, source_type, description, keywords_json, analysis_version, created_at
+        ) VALUES (?, 'image', ?, ?, ?, ?)
       `).run(imageId, altText || null, toJsonArrayString(keywords), analysisVersion, Date.now());
     }
 
     if (ocrText) {
-      db.prepare("DELETE FROM media_text_blocks WHERE media_id = ? AND source_type = 'ocr'").run(imageId);
+      db.prepare("DELETE FROM media_ocr WHERE media_id = ?").run(imageId);
       db.prepare(`
-        INSERT INTO media_text_blocks (media_id, source_type, text, analysis_version, created_at)
-        VALUES (?, 'ocr', ?, ?, ?)
+        INSERT INTO media_ocr (media_id, ocr, analysis_version, created_at)
+        VALUES (?, ?, ?, ?)
       `).run(imageId, ocrText, analysisVersion, Date.now());
     }
 
@@ -2340,7 +2344,7 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
  * 媒体分析链路：按 media_id 覆盖写入 media_captions（source_type='image'），事务内 DELETE + INSERT
  * 约定：keywords 直接保存 Python 返回的关键词结果。
  */
-function upsertMediaCaptionsForAnalysis({ mediaId, caption, keywords, subjectTags, actionTags, sceneTags, analysisVersion }) {
+function upsertMediaCaptionsForAnalysis({ mediaId, description, keywords, subjectTags, actionTags, sceneTags, analysisVersion }) {
   const normalizedKeywords = normalizeTextArray(keywords);
   const normalizedSubjectTags = normalizeTextArray(subjectTags);
   const normalizedActionTags = normalizeTextArray(actionTags);
@@ -2349,11 +2353,11 @@ function upsertMediaCaptionsForAnalysis({ mediaId, caption, keywords, subjectTag
     db.prepare("DELETE FROM media_captions WHERE media_id = ? AND source_type = 'image'").run(mediaId);
     db.prepare(
       `INSERT INTO media_captions (
-        media_id, source_type, caption, keywords_json, subject_tags_json, action_tags_json, scene_tags_json, analysis_version, created_at
+        media_id, source_type, description, keywords_json, subject_tags_json, action_tags_json, scene_tags_json, analysis_version, created_at
       ) VALUES (?, 'image', ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       mediaId,
-      caption || "",
+      description || "",
       JSON.stringify(normalizedKeywords),
       JSON.stringify(normalizedSubjectTags),
       JSON.stringify(normalizedActionTags),
@@ -2365,28 +2369,29 @@ function upsertMediaCaptionsForAnalysis({ mediaId, caption, keywords, subjectTag
   tx();
 }
 
+function buildOcrPlainTextFromBlocks(blocks) {
+  if (!Array.isArray(blocks)) return "";
+  const parts = [];
+  for (const b of blocks) {
+    const t = b && typeof b.text === "string" ? b.text.trim() : "";
+    if (t) parts.push(t);
+  }
+  return parts.join(" ");
+}
+
 /**
- * 媒体分析链路：按 media_id 覆盖写入 media_text_blocks（source_type='ocr'），事务内 DELETE + INSERT
+ * 媒体分析链路：按 media_id 覆盖写入 media_ocr（每图一行，仅 ocr 全文）
  * @param {Array<{ text: string, bbox?: Array<number>, confidence?: number }>} blocks
  */
-function upsertMediaTextBlocksOcrForAnalysis(imageId, blocks, analysisVersion) {
+function upsertMediaOcrForAnalysis(imageId, blocks, analysisVersion) {
+  const plain = buildOcrPlainTextFromBlocks(blocks || []);
   const tx = db.transaction(() => {
-    db.prepare("DELETE FROM media_text_blocks WHERE media_id = ? AND source_type = 'ocr'").run(imageId);
-    const insertStmt = db.prepare(
-      `INSERT INTO media_text_blocks (media_id, source_type, text, bbox, confidence, analysis_version, created_at)
-       VALUES (?, 'ocr', ?, ?, ?, ?, ?)`,
-    );
-    const now = Date.now();
-    for (const block of blocks || []) {
-      insertStmt.run(
-        imageId,
-        block.text || "",
-        JSON.stringify(block.bbox ?? null),
-        block.confidence ?? null,
-        analysisVersion,
-        now,
-      );
-    }
+    db.prepare("DELETE FROM media_ocr WHERE media_id = ?").run(imageId);
+    if (!plain.trim()) return;
+    db.prepare(
+      `INSERT INTO media_ocr (media_id, ocr, analysis_version, created_at)
+       VALUES (?, ?, ?, ?)`,
+    ).run(imageId, plain, analysisVersion, Date.now());
   });
   tx();
 }
@@ -2418,5 +2423,5 @@ module.exports = {
   rebuildMediaSearchDoc,
   updateIngestStatusByHash,
   upsertMediaCaptionsForAnalysis,
-  upsertMediaTextBlocksOcrForAnalysis,
+  upsertMediaOcrForAnalysis,
 };

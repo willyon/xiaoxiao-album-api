@@ -90,7 +90,7 @@ def _caption_hint_text_related(caption_module: Dict[str, Any] | None) -> bool:
     if not isinstance(caption_module, dict):
         return False
     data = caption_module.get("data") or {}
-    parts = [str(data.get("caption") or "").strip()]
+    parts = [str(data.get("description") or "").strip()]
     keywords = data.get("keywords") or []
     if isinstance(keywords, list):
         parts.extend(str(x).strip() for x in keywords if str(x).strip())

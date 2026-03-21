@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Caption 分析路由：POST /analyze_caption
+图片描述（caption）分析路由：POST /analyze_caption
 Form: image, profile, device；统一 decode_image + normalize_device + pipeline
 """
 
@@ -36,7 +36,7 @@ async def analyze_caption_route(
     profile: str = Form("standard"),
     device: str = Form("auto"),
 ):
-    """分析图片生成 caption 与 keywords。无模型时返回空 caption/keywords。"""
+    """分析图片生成 description、keywords 与 subject/action/scene 标签（若模型支持）。无模型时各字段为空。"""
     try:
         profile = normalize_profile(profile)
         resolved, err = normalize_device(device)
@@ -65,7 +65,13 @@ async def analyze_caption_route(
         manager = get_model_manager()
         result = analyze_caption(img, profile, resolved, manager)
         set_request_log_context(request, result_count=1)
-        return CaptionResponse(caption=result["caption"], keywords=result.get("keywords", []))
+        return CaptionResponse(
+            description=result["description"],
+            keywords=result.get("keywords", []),
+            subject_tags=result.get("subject_tags", []),
+            action_tags=result.get("action_tags", []),
+            scene_tags=result.get("scene_tags", []),
+        )
     except HTTPException:
         raise
     except AiTimeoutError as e:

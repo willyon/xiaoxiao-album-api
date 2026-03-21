@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Caption / OCR provider 工厂。"""
+"""图像 caption / OCR provider 工厂。"""
 
 from providers.caption_cloud import CloudCaptionProvider
 from providers.caption_local import LocalCaptionProvider

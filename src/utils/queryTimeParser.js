@@ -129,30 +129,13 @@ function buildTimeFilter(type, payload) {
       };
     }
     case "season": {
-      const year = new Date().getFullYear();
+      // 与 buildSearchQueryParts 中 timeDimension===season 一致：按月份 12/1/2、3–5… 过滤任意年份，
+      // 勿用「当年12月～次年2月」的 customDateRange（在冬春之交会漏掉当年 1–2 月；在 3–11 月则变成未来日期，导致零结果）。
       const season = String(payload?.season || "");
-      const map = {
-        spring: [3, 5],
-        summer: [6, 8],
-        autumn: [9, 11],
-        winter: [12, 2],
-      };
-      const months = map[season];
-      if (!months) return null;
-      const [startMonth, endMonth] = months;
-      if (season === "winter") {
-        return {
-          customDateRange: [
-            formatDateKey(year, 12, 1),
-            formatDateKey(year + 1, 2, 28),
-          ],
-        };
-      }
+      if (!season) return null;
       return {
-        customDateRange: [
-          formatDateKey(year, startMonth, 1),
-          formatDateKey(year, endMonth, 31),
-        ],
+        timeDimension: "season",
+        selectedTimeValues: [season],
       };
     }
     default:

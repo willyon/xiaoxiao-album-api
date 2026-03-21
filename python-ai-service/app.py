@@ -164,7 +164,8 @@ def create_app():
         allow_headers=["*"],
     )
 
-    # 统一结构化接口日志：对核心推理接口在响应后打一行 endpoint/profile/device/latency/result_count/error_code
+    # 统一结构化接口日志：在路由 handler **返回响应对象之后**执行（故晚于 analyze_full_return_preview），
+    # 只含 endpoint/latency/状态摘要，不含 modules 全文
     ANALYSIS_LOG_PATHS = {
         "/analyze_full",
         "/analyze_caption",
@@ -193,6 +194,8 @@ def create_app():
             "resolved_vendor": getattr(state, "_log_resolved_vendor", None),
             "ocr_trigger_mode": getattr(state, "_log_ocr_trigger_mode", None),
             "ocr_triggered": getattr(state, "_log_ocr_triggered", None),
+            "ocr_signal_has_dense_text_like_regions": getattr(state, "_log_ocr_signal_has_dense_text_like_regions", None),
+            "ocr_signal_caption_hint_text_related": getattr(state, "_log_ocr_signal_caption_hint_text_related", None),
             "caption_status": getattr(state, "_log_caption_status", None),
             "ocr_status": getattr(state, "_log_ocr_status", None),
             "top_status": getattr(state, "_log_top_status", None),
@@ -228,7 +231,7 @@ def main():
         logger.info(f"📡 服务地址: http://{settings.HOST}:{settings.PORT}")
         logger.info("🔍 可用接口:")
         logger.info("  - GET  /health - 健康检查")
-        logger.info("  - POST /analyze_caption - Caption 分析")
+        logger.info("  - POST /analyze_caption - 图片描述（caption）分析")
         logger.info("  - POST /analyze_person - 人物分析（人脸+人体检测）")
         logger.info("  - POST /analyze_quality - 图片质量指标")
         logger.info("  - POST /ocr - OCR 文字识别")

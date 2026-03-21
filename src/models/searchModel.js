@@ -5,7 +5,6 @@
  */
 
 const { db } = require("../services/database");
-const { createTableMediaSearchTerms } = require("./initTableModel");
 const { mapFields } = require("../utils/fieldMapper");
 
 function normalizeSearchRows(rows) {
@@ -176,7 +175,7 @@ function countMediaSearchResults({ userId, ftsQuery, whereConditions = [], where
   return result ? result.total : 0;
 }
 
-function recallMediaIdsByFts({ userId, ftsQuery, whereConditions = [], whereParams = [], limit = 50 }) {
+function recallMediaIdsByFts({ userId, ftsQuery, whereConditions = [], whereParams = [], limit } = {}) {
   if (!ftsQuery) {
     return [];
   }
@@ -184,7 +183,7 @@ function recallMediaIdsByFts({ userId, ftsQuery, whereConditions = [], wherePara
   let sql = `
     SELECT
       i.id AS media_id,
-      bm25(media_search_fts, 6.0, 7.0, 11.0, 12.0, 9.0, 4.0, 3.0, 14.0) AS fts_score,
+      bm25(media_search_fts, 6.0, 7.0, 11.0, 12.0, 9.0, 8.0, 3.0, 14.0) AS fts_score,
       i.captured_at
     FROM media_search_fts fts
     JOIN media_search ms ON fts.rowid = ms.media_id
@@ -201,10 +200,85 @@ function recallMediaIdsByFts({ userId, ftsQuery, whereConditions = [], wherePara
 
   sql += `
     ORDER BY fts_score ASC, i.captured_at DESC
-    LIMIT ?
   `;
 
-  return db.prepare(sql).all(userId, ftsQuery, ...whereParams, limit);
+  const params = [userId, ftsQuery, ...whereParams];
+  if (limit != null && Number.isFinite(limit) && limit > 0) {
+    sql += " LIMIT ?";
+    params.push(limit);
+  }
+
+  return db.prepare(sql).all(...params);
+}
+
+/**
+ * 仅按筛选 WHERE 召回媒体 id（无 FTS），用于分段搜索中「只剩结构化条件」的路径。
+ */
+function recallMediaIdsByFiltersOnly({ userId, whereConditions = [], whereParams = [], limit = 200000 } = {}) {
+  let sql = `
+    SELECT
+      i.id AS media_id,
+      i.captured_at
+    FROM media i
+    LEFT JOIN media_analysis ma ON ma.media_id = i.id
+    WHERE i.user_id = ?
+      AND i.deleted_at IS NULL
+  `;
+
+  if (whereConditions.length > 0) {
+    sql += " AND " + whereConditions.join(" AND ");
+  }
+
+  sql += `
+    ORDER BY i.captured_at DESC
+  `;
+
+  const params = [userId, ...whereParams];
+  if (limit != null && Number.isFinite(limit) && limit > 0) {
+    sql += " LIMIT ?";
+    params.push(limit);
+  }
+
+  return db.prepare(sql).all(...params);
+}
+
+/**
+ * 仅对 media_search_fts.ocr_search_terms 列做 MATCH（与图片理解列组分离；列为 OCR 的 jieba 空格串）。
+ */
+function recallMediaIdsByOcrFts({ userId, ftsQuery, whereConditions = [], whereParams = [], limit } = {}) {
+  if (!ftsQuery) {
+    return [];
+  }
+
+  let sql = `
+    SELECT
+      i.id AS media_id,
+      bm25(media_search_fts, 6.0, 7.0, 11.0, 12.0, 9.0, 8.0, 3.0, 14.0) AS fts_score,
+      i.captured_at
+    FROM media_search_fts fts
+    JOIN media_search ms ON fts.rowid = ms.media_id
+    JOIN media i ON ms.media_id = i.id
+    LEFT JOIN media_analysis ma ON ma.media_id = i.id
+    WHERE i.user_id = ?
+      AND i.deleted_at IS NULL
+      AND media_search_fts MATCH ?
+  `;
+
+  if (whereConditions.length > 0) {
+    sql += " AND " + whereConditions.join(" AND ");
+  }
+
+  sql += `
+    ORDER BY fts_score ASC, i.captured_at DESC
+  `;
+
+  const params = [userId, ftsQuery, ...whereParams];
+  if (limit != null && Number.isFinite(limit) && limit > 0) {
+    sql += " LIMIT ?";
+    params.push(limit);
+  }
+
+  return db.prepare(sql).all(...params);
 }
 
 function getSearchDocsByMediaIds({ userId, imageIds }) {
@@ -216,12 +290,13 @@ function getSearchDocsByMediaIds({ userId, imageIds }) {
   const sql = `
     SELECT
       ms.media_id,
-      ms.caption_text,
+      ms.description_text,
       ms.keywords_text,
       ms.subject_tags_text,
       ms.action_tags_text,
       ms.scene_tags_text,
       ms.ocr_text,
+      ms.ocr_search_terms,
       ms.transcript_text
     FROM media_search ms
     JOIN media i ON i.id = ms.media_id
@@ -233,11 +308,18 @@ function getSearchDocsByMediaIds({ userId, imageIds }) {
   return db.prepare(sql).all(userId, ...imageIds);
 }
 
-function recallMediaIdsByChineseTerms({ userId, terms = [], whereConditions = [], whereParams = [], limit = 100 }) {
+function recallMediaIdsByChineseTerms({
+  userId,
+  terms = [],
+  whereConditions = [],
+  whereParams = [],
+  limit,
+  fieldTypes,
+  excludeFieldTypes,
+} = {}) {
   if (!Array.isArray(terms) || terms.length === 0) {
     return [];
   }
-  createTableMediaSearchTerms();
 
   const placeholders = terms.map(() => "?").join(",");
   let sql = `
@@ -255,23 +337,51 @@ function recallMediaIdsByChineseTerms({ userId, terms = [], whereConditions = []
       AND mst.term IN (${placeholders})
   `;
 
+  if (Array.isArray(fieldTypes) && fieldTypes.length > 0) {
+    const ftPh = fieldTypes.map(() => "?").join(",");
+    sql += ` AND mst.field_type IN (${ftPh})`;
+  }
+  if (Array.isArray(excludeFieldTypes) && excludeFieldTypes.length > 0) {
+    const exPh = excludeFieldTypes.map(() => "?").join(",");
+    sql += ` AND mst.field_type NOT IN (${exPh})`;
+  }
+
   if (whereConditions.length > 0) {
     sql += " AND " + whereConditions.join(" AND ");
   }
 
   sql += `
     ORDER BY mst.term_len DESC, i.captured_at DESC
-    LIMIT ?
   `;
 
-  return db.prepare(sql).all(userId, ...terms, ...whereParams, limit);
+  const params = [userId, ...terms];
+  if (Array.isArray(fieldTypes) && fieldTypes.length > 0) {
+    params.push(...fieldTypes);
+  }
+  if (Array.isArray(excludeFieldTypes) && excludeFieldTypes.length > 0) {
+    params.push(...excludeFieldTypes);
+  }
+  params.push(...whereParams);
+  if (limit != null && Number.isFinite(limit) && limit > 0) {
+    sql += " LIMIT ?";
+    params.push(limit);
+  }
+
+  return db.prepare(sql).all(...params);
+}
+
+/** 仅图片理解：media_search_terms 中排除 OCR 行，与 OCR 召回分离。 */
+function recallMediaIdsByChineseTermsForVisual(params) {
+  return recallMediaIdsByChineseTerms({
+    ...params,
+    excludeFieldTypes: ["ocr"],
+  });
 }
 
 function countMediaIdsByChineseTerms({ userId, terms = [], whereConditions = [], whereParams = [] }) {
   if (!Array.isArray(terms) || terms.length === 0) {
     return 0;
   }
-  createTableMediaSearchTerms();
 
   const placeholders = terms.map(() => "?").join(",");
   let sql = `
@@ -627,7 +737,10 @@ module.exports = {
   listMediaSearchResults,
   countMediaSearchResults,
   recallMediaIdsByFts,
+  recallMediaIdsByFiltersOnly,
+  recallMediaIdsByOcrFts,
   recallMediaIdsByChineseTerms,
+  recallMediaIdsByChineseTermsForVisual,
   countMediaIdsByChineseTerms,
   getFilterOptionsPaginated,
   getMediasByIds,

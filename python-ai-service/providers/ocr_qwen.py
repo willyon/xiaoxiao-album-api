@@ -90,10 +90,6 @@ class QwenOcrProvider(BaseOcrProvider):
             if not blocks:
                 blocks = _extract_text_only_blocks(response)
             data = {"blocks": blocks}
-            logger.info(
-                "qwen_ocr.success",
-                details={"profile": profile, "model": model, "block_count": len(data["blocks"])},
-            )
             if is_ocr_effective(data):
                 return build_module_result(status=MODULE_STATUS_SUCCESS, data=data, meta=meta)
             return build_module_result(

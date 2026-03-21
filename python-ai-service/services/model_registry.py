@@ -149,7 +149,7 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         is_primary=True,
         notes="BGE-M3 文本向量，仅作为文本语义能力",
     ),
-    # Caption 增强模型（standard 按需）
+    # 图像 caption / VLM（standard 按需）
     "caption.standard.qwen2_5_vl.3b_lazy": ModelConfig(
         model_id="caption.standard.qwen2_5_vl.3b_lazy",
         task_type="caption",
@@ -161,7 +161,7 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         is_primary=True,
         notes="standard 档按需使用 Qwen2.5-VL-3B 生成 caption",
     ),
-    # Caption 增强模型（enhanced 核心：7B 主力，失败回退 3B）
+    # 图像 caption / VLM（enhanced 核心：7B 主力，失败回退 3B）
     "caption.enhanced.qwen2_5_vl.7b": ModelConfig(
         model_id="caption.enhanced.qwen2_5_vl.7b",
         task_type="caption",

@@ -13,8 +13,9 @@ class Settings:
     
     # ========== 服务配置 ==========
     NODE_ENV = (os.getenv("NODE_ENV", "development") or "development").strip().lower()
+    # /analyze_full 返回 Node 前是否打印 analyze_full_return_preview（仅开发环境，见 routes/analyze_full.py）
     LOG_ANALYZE_FULL_RESULT = NODE_ENV == "development"
-    
+
     # 服务端口号配置
     # os.getenv("环境变量名", "默认值") - 从环境变量读取值，如果不存在则使用默认值
     # int() - 将字符串转换为整数类型
@@ -176,12 +177,12 @@ class Settings:
     # 分析档位：standard / enhanced（已移除 basic）
     SUPPORTED_PROFILES = ("standard", "enhanced")
 
-    # Caption provider：local | cloud | off
+    # 图像 caption（VLM）provider：local | cloud | off
     # - local：使用本地 caption 模型
     # - cloud：使用云 caption provider
-    # - off：关闭 caption 能力
+    # - off：关闭能力
     # 当前默认使用 cloud，便于云模型联调
-    CAPTION_PROVIDER = os.getenv("CAPTION_PROVIDER", "cloud").strip().lower() or "cloud"
+    CAPTION_PROVIDER = (os.getenv("CAPTION_PROVIDER") or "cloud").strip().lower() or "cloud"
 
     # OCR provider：local | cloud | off
     # - local：使用本地 OCR 引擎（PaddleOCR）
@@ -197,9 +198,7 @@ class Settings:
     OCR_TRIGGER_MODE = os.getenv("OCR_TRIGGER_MODE", "smart").strip().lower() or "smart"
 
     # Caption 云厂商：qwen | openai
-    # - qwen：开发阶段默认接入阿里云千问
-    # - openai：为后续切换 OpenAI 预留
-    CAPTION_CLOUD_VENDOR = os.getenv("CAPTION_CLOUD_VENDOR", "qwen").strip().lower() or "qwen"
+    CAPTION_CLOUD_VENDOR = (os.getenv("CAPTION_CLOUD_VENDOR") or "qwen").strip().lower() or "qwen"
 
     # OCR 云厂商：qwen | openai
     # - qwen：开发阶段默认接入阿里云千问
@@ -207,23 +206,23 @@ class Settings:
     OCR_CLOUD_VENDOR = os.getenv("OCR_CLOUD_VENDOR", "qwen").strip().lower() or "qwen"
 
     # 云模型名：不同 vendor 可复用同一配置位，方便未来切换云厂商
-    CAPTION_CLOUD_MODEL = os.getenv("CAPTION_CLOUD_MODEL", "qwen3-vl-plus").strip()
+    CAPTION_CLOUD_MODEL = (os.getenv("CAPTION_CLOUD_MODEL") or "qwen3-vl-plus").strip()
     OCR_CLOUD_MODEL = os.getenv("OCR_CLOUD_MODEL", "qwen-vl-ocr").strip()
 
     # 可选：云 API Base URL
     # - 默认留空，使用各 vendor SDK / 官方默认地址
     # - 需要代理、网关或兼容层时可按能力单独覆盖
-    CAPTION_CLOUD_BASE_URL = os.getenv("CAPTION_CLOUD_BASE_URL", "").strip()
+    CAPTION_CLOUD_BASE_URL = (os.getenv("CAPTION_CLOUD_BASE_URL") or "").strip()
     OCR_CLOUD_BASE_URL = os.getenv("OCR_CLOUD_BASE_URL", "").strip()
 
     # 通用云 API Key
-    # - 当 caption / ocr 共用同一云账号时，只配置这一项即可
-    CLOUD_API_KEY = os.getenv("CLOUD_API_KEY", "sk-31168d332fc24970a9ef71123ef3fc20").strip()
+    # - 当描述 / ocr 共用同一云账号时，只配置这一项即可
+    CLOUD_API_KEY = os.getenv("CLOUD_API_KEY", "sk-333be461c3ac4e5bb015838918ebe7d0").strip()
 
     # 云 provider 的 API Key
     # - 优先读取能力级 key；若未配置，则回退到通用 CLOUD_API_KEY
     # - 这样当前开发阶段可以只配一次，后续也保留按能力拆分的空间
-    CAPTION_CLOUD_API_KEY = os.getenv("CAPTION_CLOUD_API_KEY", CLOUD_API_KEY).strip()
+    CAPTION_CLOUD_API_KEY = (os.getenv("CAPTION_CLOUD_API_KEY") or CLOUD_API_KEY).strip()
     OCR_CLOUD_API_KEY = os.getenv("OCR_CLOUD_API_KEY", CLOUD_API_KEY).strip()
     
     # 推理与模型缓存（首版可不实现 LRU，仅占位）
@@ -240,11 +239,12 @@ class Settings:
     # 物体检测置信度阈值（YOLO）
     YOLO_CONF_THRESHOLD = float(os.getenv("YOLO_CONF_THRESHOLD", "0.25"))
     
-    # Caption 最大 token
-    CAPTION_MAX_TOKENS = int(os.getenv("CAPTION_MAX_TOKENS", "128"))
+    # Caption：OpenAI 兼容接口里模型单次生成上限（token），过短会截断 JSON
+    CAPTION_MAX_TOKENS = int(os.getenv("CAPTION_MAX_TOKENS") or "150")
 
     # 各能力单次推理超时时间（秒）
-    CAPTION_TIMEOUT_SECONDS = float(os.getenv("CAPTION_TIMEOUT_SECONDS", "10"))
+    CAPTION_TIMEOUT_SECONDS = float(os.getenv("CAPTION_TIMEOUT_SECONDS") or "10")
+
     OBJECT_TIMEOUT_SECONDS = float(os.getenv("OBJECT_TIMEOUT_SECONDS", "10"))
     OCR_TIMEOUT_SECONDS = float(os.getenv("OCR_TIMEOUT_SECONDS", "15"))
     

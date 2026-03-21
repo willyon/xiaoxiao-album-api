@@ -42,7 +42,7 @@ function finalizeMediaAnalysis({
   analysisVersion,
   faceData = {},
   cleanupData = {},
-  captionData = {},
+  descriptionData = {},
   ocrData = {},
 }) {
   const faceCount = faceData.faceCount ?? null;
@@ -52,7 +52,7 @@ function finalizeMediaAnalysis({
   const primaryExpressionConfidence = faceData.primaryExpressionConfidence ?? null;
   const aestheticScore = cleanupData.aestheticScore ?? null;
   const sharpnessScore = cleanupData.sharpnessScore ?? null;
-  const hasCaption = typeof captionData.caption === "string" ? 1 : null;
+  const hasDescription = typeof descriptionData.description === "string" ? 1 : null;
   const hasOcr = Array.isArray(ocrData.blocks) && ocrData.blocks.length > 0 ? 1 : null;
 
   db.prepare(
@@ -60,7 +60,7 @@ function finalizeMediaAnalysis({
     INSERT INTO media_analysis (
       media_id, analysis_status, analysis_version, analyzed_at,
       face_count, person_count, primary_face_quality, primary_expression, primary_expression_confidence,
-      aesthetic_score, sharpness_score, has_caption, has_ocr, last_error, last_error_at
+      aesthetic_score, sharpness_score, has_description, has_ocr, last_error, last_error_at
     )
     VALUES (?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
     ON CONFLICT(media_id) DO UPDATE SET
@@ -74,7 +74,7 @@ function finalizeMediaAnalysis({
       primary_expression_confidence = COALESCE(excluded.primary_expression_confidence, media_analysis.primary_expression_confidence),
       aesthetic_score = COALESCE(excluded.aesthetic_score, media_analysis.aesthetic_score),
       sharpness_score = COALESCE(excluded.sharpness_score, media_analysis.sharpness_score),
-      has_caption = COALESCE(excluded.has_caption, media_analysis.has_caption),
+      has_description = COALESCE(excluded.has_description, media_analysis.has_description),
       has_ocr = COALESCE(excluded.has_ocr, media_analysis.has_ocr),
       last_error = NULL,
       last_error_at = NULL
@@ -90,7 +90,7 @@ function finalizeMediaAnalysis({
     primaryExpressionConfidence,
     aestheticScore,
     sharpnessScore,
-    hasCaption,
+    hasDescription,
     hasOcr,
   );
 }

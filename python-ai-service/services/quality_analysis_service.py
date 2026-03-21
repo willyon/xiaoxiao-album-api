@@ -44,8 +44,6 @@ def analyze_image_from_bytes(
         raise ValueError(error or "图片解码失败")
     try:
         result = analyze_image(image_bgr, profile=profile, precomputed_embedding=precomputed_embedding)
-        elapsed_ms = int((time.perf_counter() - t0) * 1000)
-        logger.info("quality.decode_and_analyze.ok", details={"elapsed_ms": elapsed_ms})
         return result
     except Exception as exc:
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
@@ -66,55 +64,24 @@ def analyze_image(
     if image_bgr is None or not isinstance(image_bgr, np.ndarray):
         raise ValueError("无效的图片数据")
 
-    t0 = time.perf_counter()
     gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
     rgb_image = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-    t_prep = int((time.perf_counter() - t0) * 1000)
-    logger.info("quality.stage.preprocess", details={"elapsed_ms": t_prep})
-
-    t2 = time.perf_counter()
     if precomputed_embedding and precomputed_embedding.get("vector"):
         embedding_payload = precomputed_embedding
-        t_embed = int((time.perf_counter() - t2) * 1000)
-        logger.info(
-            "quality.stage.embedding_reused",
-            details={"elapsed_ms": t_embed, "has_vector": True},
-        )
     else:
         embedding_payload = compute_siglip_embedding(rgb_image, profile=profile)
-        t_embed = int((time.perf_counter() - t2) * 1000)
-        logger.info(
-            "quality.stage.embedding",
-            details={"elapsed_ms": t_embed, "has_vector": bool(embedding_payload and embedding_payload.get("vector"))},
-        )
     embedding_vector = np.asarray(embedding_payload["vector"], dtype=np.float32) if embedding_payload and embedding_payload.get("vector") else None
 
-    t3 = time.perf_counter()
     aesthetic_score = _compute_aesthetic_score(embedding_vector)
-    t_aes = int((time.perf_counter() - t3) * 1000)
-    logger.info("quality.stage.aesthetic", details={"elapsed_ms": t_aes, "aesthetic_score": aesthetic_score})
 
-    t4 = time.perf_counter()
     sharpness_metrics = _compute_sharpness_metrics(gray)
     sharpness_score = float(sharpness_metrics["score"])
-    t_sharpness = int((time.perf_counter() - t4) * 1000)
-    logger.info("quality.stage.sharpness", details={"elapsed_ms": t_sharpness, "sharpness_score": sharpness_score})
 
     payload = {
         "hashes": _compute_hashes(gray),
         "aesthetic_score": aesthetic_score,
         "sharpness_score": sharpness_score,
     }
-    total_ms = int((time.perf_counter() - t0) * 1000)
-    logger.info(
-        "quality.stage.hashes_and_summary",
-        details={
-            "elapsed_ms": total_ms,
-            "has_hashes": True,
-            "aesthetic_score": aesthetic_score,
-            "sharpness_score": sharpness_score,
-        },
-    )
     return _convert_to_native_types(payload)
 
 

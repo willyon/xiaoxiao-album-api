@@ -156,7 +156,7 @@ function createTableMediaAnalysis() {
       primary_expression TEXT,
       primary_expression_confidence REAL,
       has_ocr INTEGER DEFAULT 0,
-      has_caption INTEGER DEFAULT 0,
+      has_description INTEGER DEFAULT 0,
       environment TEXT,
       FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
     );
@@ -175,23 +175,19 @@ function createTableMediaAnalysis() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_analysis_status_face ON media_analysis(analysis_status, face_count);").run();
 }
 
-/** 创建 media_captions：媒体描述/关键词等，支持多来源、多语言 */
+/** 创建 media_captions：图片理解文案与标签（description + 各 JSON） */
 function createTableMediaCaptions() {
   const sql = `
     CREATE TABLE IF NOT EXISTS media_captions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       media_id INTEGER NOT NULL,
       source_type TEXT NOT NULL,
-      source_ref_id INTEGER,
-      language TEXT DEFAULT 'auto',
-      caption TEXT,
+      description TEXT,
       keywords_json TEXT,
       subject_tags_json TEXT,
       action_tags_json TEXT,
       scene_tags_json TEXT,
-      model_id TEXT,
       analysis_version TEXT,
-      confidence REAL,
       created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
       FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
     );
@@ -202,24 +198,21 @@ function createTableMediaCaptions() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_caption_media_source ON media_captions(media_id, source_type);").run();
 }
 
-/** 创建 media_text_blocks：OCR 等文本块，带 bbox、置信度 */
-function createTableMediaTextBlocks() {
+/** 创建 media_ocr：每张图片一行，仅存 OCR 全文，字段命名对齐 media_captions（如 description） */
+function createTableMediaOcr() {
   const sql = `
-    CREATE TABLE IF NOT EXISTS media_text_blocks (
+    CREATE TABLE IF NOT EXISTS media_ocr (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      media_id INTEGER NOT NULL,
-      source_type TEXT NOT NULL DEFAULT 'ocr',
-      text TEXT NOT NULL,
-      confidence REAL,
-      bbox TEXT,
-      created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
+      media_id INTEGER NOT NULL UNIQUE,
+      ocr TEXT,
       analysis_version TEXT,
+      created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
       FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
     );
   `;
   db.prepare(sql).run();
-  db.prepare("CREATE INDEX IF NOT EXISTS idx_text_media ON media_text_blocks(media_id);").run();
-  db.prepare("CREATE INDEX IF NOT EXISTS idx_text_version ON media_text_blocks(analysis_version);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_ocr_media ON media_ocr(media_id);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_ocr_version ON media_ocr(analysis_version);").run();
 }
 
 /** 创建 video_keyframes：视频关键帧及存储 key */
@@ -331,18 +324,19 @@ function createTableAlbumMedia() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_album_media_media_id ON album_media(media_id);").run();
 }
 
-/** 创建 media_search：汇总 caption/OCR/转写等，供搜索与 FTS 同步（地点用 media.city 筛选，不入全文检索） */
+/** 创建 media_search：汇总 caption/OCR/转写等，供搜索与 FTS 同步（ocr_text 为 OCR 原文；ocr_search_terms 为 OCR 的 jieba 空格串） */
 function createTableMediaSearch() {
   const sql = `
     CREATE TABLE IF NOT EXISTS media_search (
       media_id INTEGER PRIMARY KEY,
       user_id INTEGER NOT NULL,
-      caption_text TEXT,
+      description_text TEXT,
       keywords_text TEXT,
       subject_tags_text TEXT,
       action_tags_text TEXT,
       scene_tags_text TEXT,
       ocr_text TEXT,
+      ocr_search_terms TEXT,
       transcript_text TEXT,
       search_terms TEXT,
       updated_at INTEGER,
@@ -357,12 +351,12 @@ function createTableMediaSearch() {
 function createTableMediaSearchFts() {
   const sql = `
     CREATE VIRTUAL TABLE IF NOT EXISTS media_search_fts USING fts5(
-      caption_text,
+      description_text,
       keywords_text,
       subject_tags_text,
       action_tags_text,
       scene_tags_text,
-      ocr_text,
+      ocr_search_terms,
       transcript_text,
       search_terms,
       content='media_search',
@@ -381,24 +375,24 @@ function createTableMediaSearchFtsTriggers() {
 
   db.prepare(`
     CREATE TRIGGER media_search_fts_ai AFTER INSERT ON media_search BEGIN
-      INSERT INTO media_search_fts(rowid, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text, search_terms)
-      VALUES (new.media_id, new.caption_text, new.keywords_text, new.subject_tags_text, new.action_tags_text, new.scene_tags_text, new.ocr_text, new.transcript_text, new.search_terms);
+      INSERT INTO media_search_fts(rowid, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_search_terms, transcript_text, search_terms)
+      VALUES (new.media_id, new.description_text, new.keywords_text, new.subject_tags_text, new.action_tags_text, new.scene_tags_text, new.ocr_search_terms, new.transcript_text, new.search_terms);
     END
   `).run();
 
   db.prepare(`
     CREATE TRIGGER media_search_fts_ad AFTER DELETE ON media_search BEGIN
-      INSERT INTO media_search_fts(media_search_fts, rowid, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text, search_terms)
-      VALUES ('delete', old.media_id, old.caption_text, old.keywords_text, old.subject_tags_text, old.action_tags_text, old.scene_tags_text, old.ocr_text, old.transcript_text, old.search_terms);
+      INSERT INTO media_search_fts(media_search_fts, rowid, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_search_terms, transcript_text, search_terms)
+      VALUES ('delete', old.media_id, old.description_text, old.keywords_text, old.subject_tags_text, old.action_tags_text, old.scene_tags_text, old.ocr_search_terms, old.transcript_text, old.search_terms);
     END
   `).run();
 
   db.prepare(`
     CREATE TRIGGER media_search_fts_au AFTER UPDATE ON media_search BEGIN
-      INSERT INTO media_search_fts(media_search_fts, rowid, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text, search_terms)
-      VALUES ('delete', old.media_id, old.caption_text, old.keywords_text, old.subject_tags_text, old.action_tags_text, old.scene_tags_text, old.ocr_text, old.transcript_text, old.search_terms);
-      INSERT INTO media_search_fts(rowid, caption_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_text, transcript_text, search_terms)
-      VALUES (new.media_id, new.caption_text, new.keywords_text, new.subject_tags_text, new.action_tags_text, new.scene_tags_text, new.ocr_text, new.transcript_text, new.search_terms);
+      INSERT INTO media_search_fts(media_search_fts, rowid, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_search_terms, transcript_text, search_terms)
+      VALUES ('delete', old.media_id, old.description_text, old.keywords_text, old.subject_tags_text, old.action_tags_text, old.scene_tags_text, old.ocr_search_terms, old.transcript_text, old.search_terms);
+      INSERT INTO media_search_fts(rowid, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_search_terms, transcript_text, search_terms)
+      VALUES (new.media_id, new.description_text, new.keywords_text, new.subject_tags_text, new.action_tags_text, new.scene_tags_text, new.ocr_search_terms, new.transcript_text, new.search_terms);
     END
   `).run();
 }
@@ -525,7 +519,7 @@ module.exports = {
   createTableMedia,
   createTableMediaAnalysis,
   createTableMediaCaptions,
-  createTableMediaTextBlocks,
+  createTableMediaOcr,
   createTableMediaFaceEmbeddings,
   createTableMediaEmbeddings,
   createTableVideoKeyframes,

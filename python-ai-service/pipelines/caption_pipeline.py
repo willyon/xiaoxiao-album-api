@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Caption 分析流程：拿模型 → 生成 caption + keywords → 返回统一结构
+Caption 分析流程：调用 VLM → 生成描述正文、keywords，以及 subject/action/scene 三类标签（云模型返回 dict 时解析），
+统一为 { description, keywords, subject_tags, action_tags, scene_tags }；失败或纯文本回退时 tags 可为空数组。
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from services.module_result import (
 )
 from utils.timeout import run_with_timeout
 from utils.errors import AiTimeoutError
+from providers.qwen_common import normalize_keywords
 
 
 def analyze_caption(
@@ -32,35 +34,45 @@ def analyze_caption(
     model_manager: Any,
 ) -> Dict[str, Any]:
     """
-    执行 caption 分析，统一返回 {"caption", "keywords"} 结构。
+    执行 caption 分析，统一返回 description / keywords / subject_tags / action_tags / scene_tags。
     - 所有 profile（standard/enhanced）统一使用 VLM（QwenCaptionModel）作为唯一语义源；
-    - 若 VLM 返回 dict，则期望包含 {"caption", "keywords"} 字段；
-    - 若 VLM 返回字符串，则视为 caption，并通过模型自身的 extract_keywords 生成 keywords。
+    - 若 VLM 返回 dict，则解析上述字段（云模型可返回结构化 tags）；
+    - 若 VLM 返回字符串，则视为描述正文，并通过模型自身的 extract_keywords 生成 keywords。
     无模型或推理异常时返回极简空结果，避免接口整体失败。
     """
     model = model_manager.get_caption_model(profile, device) if model_manager else None
     if model is None:
-        return _structured_caption()
+        return _structured_caption_payload()
     try:
         # 使用统一超时包装，避免单次推理长时间阻塞
         timeout = getattr(settings, "CAPTION_TIMEOUT_SECONDS", 30.0)
         result = run_with_timeout(model.generate_caption, timeout, image)
 
-        caption: str = ""
+        main_text: str = ""
         keywords: List[str] = []
 
         # VLM 直接返回结构化 JSON
         if isinstance(result, dict):
-            caption = str(result.get("caption") or "").strip()
+            main_text = str(result.get("description") or "").strip()
             raw = result.get("keywords") or []
             if isinstance(raw, (list, tuple)):
                 keywords = [str(x).strip() for x in raw if str(x).strip()]
-        # VLM 返回纯文本 caption
+            subject_tags = normalize_keywords(result.get("subject_tags") or [])
+            action_tags = normalize_keywords(result.get("action_tags") or [])
+            scene_tags = normalize_keywords(result.get("scene_tags") or [])
+            return {
+                "description": main_text or "",
+                "keywords": keywords,
+                "subject_tags": subject_tags,
+                "action_tags": action_tags,
+                "scene_tags": scene_tags,
+            }
+        # VLM 返回纯文本
         elif isinstance(result, str):
-            caption = result.strip()
+            main_text = result.strip()
             if hasattr(model, "extract_keywords"):
                 try:
-                    kw = model.extract_keywords(caption)
+                    kw = model.extract_keywords(main_text)
                 except Exception as kw_exc:  # pragma: no cover - 关键词提取失败时仅记日志
                     logger.warning("caption_pipeline 提取关键词失败: %s" % kw_exc)
                     kw = []
@@ -70,12 +82,15 @@ def analyze_caption(
             logger.warning("caption_pipeline: generate_caption 返回了非预期类型: %s" % type(result))
 
         return {
-            "caption": caption or "",
+            "description": main_text or "",
             "keywords": keywords,
+            "subject_tags": [],
+            "action_tags": [],
+            "scene_tags": [],
         }
     except Exception as e:
         logger.warning("caption_pipeline 推理失败: %s" % e)
-        return _structured_caption()
+        return _structured_caption_payload()
 
 
 def analyze_caption_detailed(
@@ -87,11 +102,11 @@ def analyze_caption_detailed(
     resolved_provider: str = "local",
 ) -> Dict[str, Any]:
     """
-    提供给 analyze_full 的详细 caption 结果。
+    提供给 analyze_full 的详细 caption 模块结果。
     返回统一模块结果结构：{status, data, error, reason, meta}。
     """
     provider = normalize_provider(resolved_provider)
-    base_data = _structured_caption()
+    base_data = _structured_caption_payload()
     meta: Dict[str, Any] = {
         "resolved_provider": provider,
         "configured_provider": provider,
@@ -155,40 +170,52 @@ def analyze_caption_detailed(
         )
 
 
-def _structured_caption(
-    caption: str | None = None,
+def _structured_caption_payload(
+    text: str | None = None,
     keywords: List[str] | None = None,
+    subject_tags: List[str] | None = None,
+    action_tags: List[str] | None = None,
+    scene_tags: List[str] | None = None,
 ) -> Dict[str, Any]:
     """
     在 VLM 不可用或抛错时的极简 fallback，保证接口不会挂掉。
     当前阶段策略：
     - 不再依赖 scene/object 模块；
     - 直接返回空或调用方传入的极简结果；
-    - keywords 直接作为对外唯一关键词字段。
+    - keywords / tags 与云模型 JSON 字段对齐。
     """
-    safe_caption = (caption or "").strip()
+    safe_text = (text or "").strip()
     kw_list: List[str] = [str(k).strip() for k in (keywords or []) if str(k).strip()]
     return {
-        "caption": safe_caption,
+        "description": safe_text,
         "keywords": kw_list,
+        "subject_tags": normalize_keywords(subject_tags or []),
+        "action_tags": normalize_keywords(action_tags or []),
+        "scene_tags": normalize_keywords(scene_tags or []),
     }
 
 
 def _coerce_caption_result(result: Any, model: Any) -> Dict[str, Any]:
-    """将 caption 模型输出转为统一 data 结构。"""
-    caption: str = ""
+    """将 VLM 输出转为统一 data 结构（正文键名仍为 description）。"""
+    main_text: str = ""
     keywords: List[str] = []
+    subject_tags: List[str] = []
+    action_tags: List[str] = []
+    scene_tags: List[str] = []
 
     if isinstance(result, dict):
-        caption = str(result.get("caption") or "").strip()
+        main_text = str(result.get("description") or "").strip()
         raw = result.get("keywords") or []
         if isinstance(raw, (list, tuple)):
             keywords = [str(x).strip() for x in raw if str(x).strip()]
+        subject_tags = normalize_keywords(result.get("subject_tags") or [])
+        action_tags = normalize_keywords(result.get("action_tags") or [])
+        scene_tags = normalize_keywords(result.get("scene_tags") or [])
     elif isinstance(result, str):
-        caption = result.strip()
+        main_text = result.strip()
         if hasattr(model, "extract_keywords"):
             try:
-                kw = model.extract_keywords(caption)
+                kw = model.extract_keywords(main_text)
             except Exception as kw_exc:  # pragma: no cover
                 logger.warning("caption_pipeline 提取关键词失败: %s" % kw_exc)
                 kw = []
@@ -198,6 +225,9 @@ def _coerce_caption_result(result: Any, model: Any) -> Dict[str, Any]:
         logger.warning("caption_pipeline: generate_caption 返回了非预期类型: %s" % type(result))
 
     return {
-        "caption": caption or "",
+        "description": main_text or "",
         "keywords": keywords,
+        "subject_tags": subject_tags,
+        "action_tags": action_tags,
+        "scene_tags": scene_tags,
     }

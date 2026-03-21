@@ -27,7 +27,7 @@ from services.module_result import (
 )
 from services.ocr_trigger_service import collect_ocr_trigger_signals, should_run_ocr
 
-# 智能分析全流程固定顺序：caption 为主语义，其他模块为辅助；profile 仅影响各节点内部模型/逻辑
+# 智能分析全流程固定顺序：caption（VLM 描述/标签）为主语义，其他模块为辅助；profile 仅影响各节点内部模型/逻辑
 FULL_MODULE_ORDER = [
     "embedding",
     "person",
@@ -37,6 +37,23 @@ FULL_MODULE_ORDER = [
 ]
 
 PIPELINE_VERSION = "image-analysis-v1"
+
+
+def _bgr_to_rgb_safe(image_bgr: np.ndarray) -> np.ndarray:
+    """BGR / 灰度 / BGRA → RGB，避免非三通道时 cv2.cvtColor 抛错导致整请求 500。"""
+    if image_bgr.ndim == 2:
+        return cv2.cvtColor(image_bgr, cv2.COLOR_GRAY2RGB)
+    if image_bgr.ndim != 3:
+        raise ValueError("unsupported image shape for RGB conversion")
+    ch = image_bgr.shape[2]
+    if ch == 1:
+        return cv2.cvtColor(image_bgr[:, :, 0], cv2.COLOR_GRAY2RGB)
+    if ch == 3:
+        return cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    if ch == 4:
+        bgr = cv2.cvtColor(image_bgr, cv2.COLOR_BGRA2BGR)
+        return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    raise ValueError(f"unsupported channel count: {ch}")
 
 
 def run_analyze_full(
@@ -63,7 +80,15 @@ def run_analyze_full(
     if profile not in ("standard", "enhanced"):
         profile = "standard"
     module_names = FULL_MODULE_ORDER
-    rgb_image = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    try:
+        rgb_image = _bgr_to_rgb_safe(image_bgr)
+    except Exception as exc:
+        return _fail_response(
+            image_id=image_id,
+            request_id=request_id,
+            profile=profile,
+            errors=[{"code": IMAGE_DECODE_FAILED, "message": str(exc)}],
+        )
 
     task_id = str(uuid.uuid4())
     started_at = time.perf_counter()
@@ -146,7 +171,7 @@ def _run_one_module(
                 out = build_module_result(
                     status=MODULE_STATUS_DISABLED,
                     data={
-                        "caption": "",
+                        "description": "",
                         "keywords": [],
                         "subject_tags": [],
                         "action_tags": [],
@@ -168,13 +193,13 @@ def _run_one_module(
                     resolved_provider=resolved_provider,
                 )
             data = out.get("data") or {}
-            caption = data.get("caption", "") or ""
+            caption_text = str(data.get("description") or "").strip()
             keywords = data.get("keywords")
             subject_tags = data.get("subject_tags")
             action_tags = data.get("action_tags")
             scene_tags = data.get("scene_tags")
             out["data"] = {
-                "caption": caption,
+                "description": caption_text,
                 "keywords": keywords or [],
                 "subject_tags": subject_tags or [],
                 "action_tags": action_tags or [],

@@ -24,7 +24,7 @@ class OpenAICaptionProvider(BaseCaptionProvider):
         return provider_not_implemented_result(
             capability="caption",
             provider="cloud:openai",
-            data={"caption": "", "keywords": []},
+            data={"description": "", "keywords": [], "subject_tags": [], "action_tags": [], "scene_tags": []},
             meta={
                 "configured_provider": configured_provider,
                 "resolved_provider": resolved_provider,

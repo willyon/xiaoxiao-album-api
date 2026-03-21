@@ -130,7 +130,7 @@ class ModelManager:
 
     def get_caption_model(self, profile: str, device: str) -> Optional[Any]:
         """
-        Caption 模型；能力关闭时返回 None。
+        本地 Caption（VLM）模型；能力关闭时返回 None。
 
         规则：
         - 按 (profile, task_type='caption') 通过模型注册表解析首选 model_id；
