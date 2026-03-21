@@ -89,7 +89,7 @@ function buildMediaSearchTermRows({ mediaId, userId, fields, updatedAt = Date.no
   return rows;
 }
 
-// 合并进 search_terms（jieba）的字段：仅图片理解相关 + 转写；OCR 的 jieba 单独写入 media_search.ocr_search_terms
+// 合并进 media_search.caption_search_terms（jieba）的字段：仅图片理解相关 + 转写；OCR 的 jieba 单独写入 media_search.ocr_search_terms
 const FIELD_KEYS_FOR_SEARCH_TERMS = [
   "description",
   "keywords",
@@ -116,7 +116,7 @@ function buildOcrSearchTermsFromRaw(rawOcr) {
 }
 
 /**
- * 合并多字段 → jieba 搜索模式分词后写入 search_terms（不含 OCR；OCR 见 buildOcrSearchTermsFromRaw）
+ * 合并多字段 → jieba 搜索模式分词后写入 caption_search_terms（不含 OCR；OCR 见 buildOcrSearchTermsFromRaw）
  */
 function buildSearchTermsFromFields(fields) {
   const seen = new Set();

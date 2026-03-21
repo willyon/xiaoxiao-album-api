@@ -38,9 +38,9 @@ function buildFtsQueryForToken(token) {
   return tokens.length > 0 ? tokens.join(" ") : null;
 }
 
-/** 图片理解 FTS：search_terms 仅为 description/标签/转写等 jieba，不含 OCR；OCR 见 ocr_search_terms 列。 */
+/** 图片理解 FTS：caption_search_terms 为 description/标签/转写等 jieba，不含 OCR；OCR 见 ocr_search_terms 列。 */
 const VISUAL_FTS5_COLUMN_GROUP =
-  "{description_text keywords_text subject_tags_text action_tags_text scene_tags_text transcript_text search_terms}";
+  "{description_text keywords_text subject_tags_text action_tags_text scene_tags_text transcript_text caption_search_terms}";
 
 function wrapFtsQueryForVisualColumnsOnly(innerQuery) {
   const inner = String(innerQuery || "").trim();

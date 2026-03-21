@@ -22,6 +22,7 @@ from services.module_result import (
     build_module_result,
     is_ocr_effective,
 )
+from services.ocr_utils import normalize_ocr_blocks
 from utils.timeout import run_with_timeout
 from utils.errors import AiTimeoutError
 
@@ -42,13 +43,14 @@ def analyze_ocr(
     try:
         timeout = getattr(settings, "OCR_TIMEOUT_SECONDS", 20.0)
         blocks = run_with_timeout(engine.recognize, timeout, image)
+        blocks = normalize_ocr_blocks(blocks if isinstance(blocks, list) else [])
         # 成功时打印简单统计日志，便于观察 OCR 运行情况
         logger.info(
             "ocr_pipeline.success",
             details={
                 "profile": profile,
                 "device": device,
-                "block_count": len(blocks) if isinstance(blocks, list) else 0,
+                "block_count": len(blocks),
             },
         )
         return {"blocks": blocks}
@@ -125,7 +127,7 @@ def analyze_ocr_detailed(
     try:
         timeout = getattr(settings, "OCR_TIMEOUT_SECONDS", 20.0)
         blocks = run_with_timeout(engine.recognize, timeout, image)
-        data = {"blocks": blocks if isinstance(blocks, list) else []}
+        data = {"blocks": normalize_ocr_blocks(blocks if isinstance(blocks, list) else [])}
         if is_ocr_effective(data):
             logger.info(
                 "ocr_pipeline.success",

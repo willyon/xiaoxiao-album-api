@@ -187,8 +187,7 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
   const modules = body.modules || {};
   const round2 = (v) => (typeof v === "number" ? Number(v.toFixed(2)) : null);
 
-  // Python analyze_full：modules.caption 为 VLM 模块；兼容旧版 modules.description
-  const captionModule = modules.caption ?? modules.description;
+  const captionModule = modules.caption;
   if (captionModule?.status === "success" && captionModule.data) {
     const d = captionModule.data;
     const descriptionText = typeof d.description === "string" ? d.description : "";
@@ -220,11 +219,15 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
     stepResults.description = { status: captionModule?.status || "failed", errorCode: captionModule?.error?.code || null, data: {} };
   }
 
-  if (modules.ocr?.status === "success" && modules.ocr.data?.blocks) {
-    upsertMediaOcrForAnalysis(imageId, modules.ocr.data.blocks, analysisVersion);
-    stepResults.ocr = { status: "completed", errorCode: null, data: { blocks: modules.ocr.data.blocks } };
+  const ocrMod = modules.ocr;
+  if (ocrMod?.status === "success" && Array.isArray(ocrMod.data?.blocks)) {
+    upsertMediaOcrForAnalysis(imageId, ocrMod.data.blocks);
+    stepResults.ocr = { status: "completed", errorCode: null, data: { blocks: ocrMod.data.blocks } };
+  } else if (ocrMod?.status === "empty") {
+    upsertMediaOcrForAnalysis(imageId, []);
+    stepResults.ocr = { status: "completed", errorCode: null, data: { blocks: [] } };
   } else {
-    stepResults.ocr = { status: modules.ocr?.status || "failed", errorCode: modules.ocr?.error?.code || null, data: {} };
+    stepResults.ocr = { status: ocrMod?.status || "failed", errorCode: ocrMod?.error?.code || null, data: {} };
   }
 
   if (modules.quality?.status === "success" && modules.quality.data) {

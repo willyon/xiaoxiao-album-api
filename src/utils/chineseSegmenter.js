@@ -1,5 +1,5 @@
 /*
- * @Description: 中文分词（@node-rs/jieba）+ 可选用户词表，供 search_terms 与查询侧对齐
+ * @Description: 中文分词（@node-rs/jieba）+ 可选用户词表，供 caption_search_terms 与查询侧对齐
  */
 const fs = require("fs");
 const path = require("path");

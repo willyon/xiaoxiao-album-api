@@ -104,6 +104,12 @@ const FIELD_MAPPING = {
     media_type: "mediaType",
     duration_sec: "durationSec",
     video_codec: "videoCodec",
+    ai_description: "aiDescription",
+    ai_keywords_json: "aiKeywordsJson",
+    ai_subject_tags_json: "aiSubjectTagsJson",
+    ai_action_tags_json: "aiActionTagsJson",
+    ai_scene_tags_json: "aiSceneTagsJson",
+    ai_ocr_text: "aiOcrText",
   },
 };
 

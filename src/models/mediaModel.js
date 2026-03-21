@@ -51,38 +51,28 @@ function parseJsonTextArray(input) {
 }
 
 function collectMediaSearchDocument(mediaId) {
-  const media = db.prepare("SELECT id, user_id, deleted_at FROM media WHERE id = ?").get(mediaId);
+  const media = db
+    .prepare(
+      `
+      SELECT id, user_id, deleted_at,
+             ai_description, ai_keywords_json, ai_subject_tags_json, ai_action_tags_json, ai_scene_tags_json, ai_ocr_text
+      FROM media WHERE id = ?
+    `,
+    )
+    .get(mediaId);
   if (!media) return null;
-  const captionRows = db
-    .prepare("SELECT description, keywords_json, subject_tags_json, action_tags_json, scene_tags_json FROM media_captions WHERE media_id = ?")
-    .all(mediaId);
-  let descriptionText = null;
-  const keywordTokens = new Set();
-  const subjectTagTokens = new Set();
-  const actionTagTokens = new Set();
-  const sceneTagTokens = new Set();
-  for (const row of captionRows) {
-    if (row.description) {
-      descriptionText = descriptionText ? `${descriptionText} ${row.description}` : String(row.description);
-    }
-    for (const kw of parseJsonTextArray(row.keywords_json)) {
-      keywordTokens.add(kw);
-    }
-    for (const tag of parseJsonTextArray(row.subject_tags_json)) {
-      subjectTagTokens.add(tag);
-    }
-    for (const tag of parseJsonTextArray(row.action_tags_json)) {
-      actionTagTokens.add(tag);
-    }
-    for (const tag of parseJsonTextArray(row.scene_tags_json)) {
-      sceneTagTokens.add(tag);
-    }
-  }
+
+  const descriptionText = media.ai_description ? String(media.ai_description) : null;
+  const keywordTokens = new Set(parseJsonTextArray(media.ai_keywords_json));
+  const subjectTagTokens = new Set(parseJsonTextArray(media.ai_subject_tags_json));
+  const actionTagTokens = new Set(parseJsonTextArray(media.ai_action_tags_json));
+  const sceneTagTokens = new Set(parseJsonTextArray(media.ai_scene_tags_json));
+
   const keywordsText = keywordTokens.size > 0 ? Array.from(keywordTokens).join(" ") : null;
   const subjectTagsText = subjectTagTokens.size > 0 ? Array.from(subjectTagTokens).join(" ") : null;
   const actionTagsText = actionTagTokens.size > 0 ? Array.from(actionTagTokens).join(" ") : null;
   const sceneTagsText = sceneTagTokens.size > 0 ? Array.from(sceneTagTokens).join(" ") : null;
-  const ocrTextRow = db.prepare("SELECT ocr AS value FROM media_ocr WHERE media_id = ?").get(mediaId);
+  const ocrValue = media.ai_ocr_text != null && String(media.ai_ocr_text).trim() !== "" ? String(media.ai_ocr_text) : null;
 
   const transcriptTextRow = db
     .prepare("SELECT GROUP_CONCAT(transcript_text, ' ') AS value FROM video_transcripts WHERE media_id = ?")
@@ -96,7 +86,7 @@ function collectMediaSearchDocument(mediaId) {
       subject_tags: subjectTagsText,
       action_tags: actionTagsText,
       scene_tags: sceneTagsText,
-      ocr: ocrTextRow?.value || null,
+      ocr: ocrValue,
       transcript: transcriptTextRow?.value || null,
     },
   };
@@ -138,7 +128,7 @@ function rebuildMediaSearchDoc(mediaId) {
   const upsert = db.prepare(`
     INSERT INTO media_search (
       media_id, user_id, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text,
-      ocr_text, ocr_search_terms, transcript_text, search_terms, updated_at
+      ocr_text, ocr_search_terms, transcript_text, caption_search_terms, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(media_id) DO UPDATE SET
       user_id = excluded.user_id,
@@ -150,7 +140,7 @@ function rebuildMediaSearchDoc(mediaId) {
       ocr_text = excluded.ocr_text,
       ocr_search_terms = excluded.ocr_search_terms,
       transcript_text = excluded.transcript_text,
-      search_terms = excluded.search_terms,
+      caption_search_terms = excluded.caption_search_terms,
       updated_at = excluded.updated_at
   `);
 
@@ -1466,20 +1456,18 @@ function updateMediaSearchMetadata({
     );
 
     if (altText || keywords) {
-      db.prepare("DELETE FROM media_captions WHERE media_id = ? AND source_type = 'image'").run(imageId);
-      db.prepare(`
-        INSERT INTO media_captions (
-          media_id, source_type, description, keywords_json, analysis_version, created_at
-        ) VALUES (?, 'image', ?, ?, ?, ?)
-      `).run(imageId, altText || null, toJsonArrayString(keywords), analysisVersion, Date.now());
+      db.prepare(
+        `
+        UPDATE media SET
+          ai_description = ?,
+          ai_keywords_json = ?
+        WHERE id = ?
+      `,
+      ).run(altText || null, toJsonArrayString(keywords), imageId);
     }
 
-    if (ocrText) {
-      db.prepare("DELETE FROM media_ocr WHERE media_id = ?").run(imageId);
-      db.prepare(`
-        INSERT INTO media_ocr (media_id, ocr, analysis_version, created_at)
-        VALUES (?, ?, ?, ?)
-      `).run(imageId, ocrText, analysisVersion, Date.now());
+    if (ocrText != null && String(ocrText).trim() !== "") {
+      db.prepare(`UPDATE media SET ai_ocr_text = ? WHERE id = ?`).run(String(ocrText).trim(), imageId);
     }
 
     if (rebuildSearchArtifacts) {
@@ -2341,57 +2329,71 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
 }
 
 /**
- * 媒体分析链路：按 media_id 覆盖写入 media_captions（source_type='image'），事务内 DELETE + INSERT
+ * 媒体分析链路：按 media_id 覆盖写入 media 的 ai_* 文案与标签列。
  * 约定：keywords 直接保存 Python 返回的关键词结果。
  */
-function upsertMediaCaptionsForAnalysis({ mediaId, description, keywords, subjectTags, actionTags, sceneTags, analysisVersion }) {
+function upsertMediaCaptionsForAnalysis({ mediaId, description, keywords, subjectTags, actionTags, sceneTags }) {
   const normalizedKeywords = normalizeTextArray(keywords);
   const normalizedSubjectTags = normalizeTextArray(subjectTags);
   const normalizedActionTags = normalizeTextArray(actionTags);
   const normalizedSceneTags = normalizeTextArray(sceneTags);
   const tx = db.transaction(() => {
-    db.prepare("DELETE FROM media_captions WHERE media_id = ? AND source_type = 'image'").run(mediaId);
     db.prepare(
-      `INSERT INTO media_captions (
-        media_id, source_type, description, keywords_json, subject_tags_json, action_tags_json, scene_tags_json, analysis_version, created_at
-      ) VALUES (?, 'image', ?, ?, ?, ?, ?, ?, ?)`,
+      `
+      UPDATE media SET
+        ai_description = ?,
+        ai_keywords_json = ?,
+        ai_subject_tags_json = ?,
+        ai_action_tags_json = ?,
+        ai_scene_tags_json = ?
+      WHERE id = ?
+    `,
     ).run(
-      mediaId,
       description || "",
       JSON.stringify(normalizedKeywords),
       JSON.stringify(normalizedSubjectTags),
       JSON.stringify(normalizedActionTags),
       JSON.stringify(normalizedSceneTags),
-      analysisVersion,
-      Date.now(),
+      mediaId,
     );
   });
   tx();
+}
+
+/**
+ * 块内 text：Python 无文字时应给 blocks: []，此处仅做拼接与类型兼容。
+ * number 的 0 视为无效占位；字符串 "0" 为合法识别结果。
+ */
+function normalizeOcrBlockText(block) {
+  if (!block || block.text == null) return "";
+  const raw = block.text;
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw) || raw === 0) return "";
+    return String(raw).trim();
+  }
+  if (typeof raw === "boolean") return "";
+  return String(raw).trim();
 }
 
 function buildOcrPlainTextFromBlocks(blocks) {
   if (!Array.isArray(blocks)) return "";
   const parts = [];
   for (const b of blocks) {
-    const t = b && typeof b.text === "string" ? b.text.trim() : "";
+    const t = normalizeOcrBlockText(b);
     if (t) parts.push(t);
   }
   return parts.join(" ");
 }
 
 /**
- * 媒体分析链路：按 media_id 覆盖写入 media_ocr（每图一行，仅 ocr 全文）
+ * 媒体分析链路：按 media_id 覆盖写入 media.ai_ocr_text（由 blocks 拼成全文）
  * @param {Array<{ text: string, bbox?: Array<number>, confidence?: number }>} blocks
  */
-function upsertMediaOcrForAnalysis(imageId, blocks, analysisVersion) {
+function upsertMediaOcrForAnalysis(imageId, blocks) {
   const plain = buildOcrPlainTextFromBlocks(blocks || []);
   const tx = db.transaction(() => {
-    db.prepare("DELETE FROM media_ocr WHERE media_id = ?").run(imageId);
-    if (!plain.trim()) return;
-    db.prepare(
-      `INSERT INTO media_ocr (media_id, ocr, analysis_version, created_at)
-       VALUES (?, ?, ?, ?)`,
-    ).run(imageId, plain, analysisVersion, Date.now());
+    const value = plain.trim() ? plain : null;
+    db.prepare(`UPDATE media SET ai_ocr_text = ? WHERE id = ?`).run(value, imageId);
   });
   tx();
 }

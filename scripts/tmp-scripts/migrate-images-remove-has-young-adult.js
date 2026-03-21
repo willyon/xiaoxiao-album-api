@@ -1,6 +1,6 @@
 /*
  * 归档：从旧 images 表移除 has_young、has_adult 列及 idx_images_user_age_flags；重建后的 images_new 同时不含 storage_type。
- * 仅适用于仍使用 images 表的老库；已使用 media 表请用 migrate-images-to-media.js 或 scripts/deployment/rebuild-database.js。
+ * 仅适用于仍使用 images 表的老库；已使用 media 表请用 scripts/deployment/rebuild-database.js。
  *
  * SQLite 不支持 DROP COLUMN，采用「建新表 → 迁移数据 → 删旧表 → 重命名」方案。
  *

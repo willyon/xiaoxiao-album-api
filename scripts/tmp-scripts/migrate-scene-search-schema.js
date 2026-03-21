@@ -1,6 +1,5 @@
 /*
- * @Description: 保留现有数据的搜索 schema 迁移脚本
- * 为 media_captions / media_search 补充主体、动作、场景字段，
+ * @Description: 为 media_search 补充主体、动作、场景字段（文案在 media.ai_*），
  * 重建 media_search_fts，并重新物化 media_search / media_search_terms。
  *
  * @Usage: node scripts/tmp-scripts/migrate-scene-search-schema.js
@@ -17,7 +16,7 @@ require("dotenv").config();
 
 const { db } = require(path.join(projectRoot, "src", "services", "database"));
 const {
-  createTableMediaCaptions,
+  createTableMedia,
   createTableMediaSearch,
   createTableMediaSearchFts,
   createTableMediaSearchTerms,
@@ -47,24 +46,17 @@ function addColumnIfMissing(tableName, columnName, definition) {
 }
 
 function ensureBaseTables() {
-  createTableMediaCaptions();
+  createTableMedia();
   createTableMediaSearch();
   createTableMediaSearchTerms();
 }
 
 function migrateSchemaColumns() {
-  if (!tableExists("media_captions")) {
-    throw new Error("未找到 media_captions 表");
-  }
   if (!tableExists("media_search")) {
     throw new Error("未找到 media_search 表");
   }
 
   let changedColumns = 0;
-
-  changedColumns += Number(addColumnIfMissing("media_captions", "subject_tags_json", "TEXT"));
-  changedColumns += Number(addColumnIfMissing("media_captions", "action_tags_json", "TEXT"));
-  changedColumns += Number(addColumnIfMissing("media_captions", "scene_tags_json", "TEXT"));
 
   changedColumns += Number(addColumnIfMissing("media_search", "subject_tags_text", "TEXT"));
   changedColumns += Number(addColumnIfMissing("media_search", "action_tags_text", "TEXT"));

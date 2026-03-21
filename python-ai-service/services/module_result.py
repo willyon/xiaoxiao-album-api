@@ -60,7 +60,7 @@ def is_caption_effective(data: Optional[Dict[str, Any]]) -> bool:
 
 
 def is_ocr_effective(data: Optional[Dict[str, Any]]) -> bool:
-    """OCR 只要 blocks 非空，即视为有效结果。"""
+    """OCR 无文字时须为 blocks: []（与 status=empty 搭配）；有有效块即 True。"""
     if not isinstance(data, dict):
         return False
     blocks = data.get("blocks") or []

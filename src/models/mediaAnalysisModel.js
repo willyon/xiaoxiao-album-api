@@ -53,7 +53,8 @@ function finalizeMediaAnalysis({
   const aestheticScore = cleanupData.aestheticScore ?? null;
   const sharpnessScore = cleanupData.sharpnessScore ?? null;
   const hasDescription = typeof descriptionData.description === "string" ? 1 : null;
-  const hasOcr = Array.isArray(ocrData.blocks) && ocrData.blocks.length > 0 ? 1 : null;
+  /** blocks 未传：本轮未带回 OCR 结果，不更新 has_ocr；[]：明确无字，写 0 */
+  const hasOcr = !Array.isArray(ocrData.blocks) ? null : ocrData.blocks.length > 0 ? 1 : 0;
 
   db.prepare(
     `

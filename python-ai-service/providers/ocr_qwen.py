@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from constants.error_codes import AI_SERVICE_ERROR, AI_TIMEOUT
 from logger import logger
 from services.module_result import MODULE_STATUS_EMPTY, MODULE_STATUS_FAILED, MODULE_STATUS_SUCCESS, build_module_result, is_ocr_effective
+from services.ocr_utils import normalize_ocr_blocks
 from config import settings
 from providers.base import BaseOcrProvider
 from providers.qwen_common import (
@@ -89,6 +90,7 @@ class QwenOcrProvider(BaseOcrProvider):
             blocks = _extract_blocks(response)
             if not blocks:
                 blocks = _extract_text_only_blocks(response)
+            blocks = normalize_ocr_blocks(blocks)
             data = {"blocks": blocks}
             if is_ocr_effective(data):
                 return build_module_result(status=MODULE_STATUS_SUCCESS, data=data, meta=meta)
