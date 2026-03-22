@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Caption 分析流程：调用 VLM → 生成描述正文、keywords，以及 subject/action/scene 三类标签（云模型返回 dict 时解析），
-统一为 { description, keywords, subject_tags, action_tags, scene_tags }；失败或纯文本回退时 tags 可为空数组。
+统一为 { description, keywords, subject_tags, action_tags, scene_tags, ocr }；失败或纯文本回退时 tags 可为空数组。
 """
 
 from __future__ import annotations
@@ -66,6 +66,7 @@ def analyze_caption(
                 "subject_tags": subject_tags,
                 "action_tags": action_tags,
                 "scene_tags": scene_tags,
+                "ocr": str(result.get("ocr") or "").strip(),
             }
         # VLM 返回纯文本
         elif isinstance(result, str):
@@ -87,6 +88,7 @@ def analyze_caption(
             "subject_tags": [],
             "action_tags": [],
             "scene_tags": [],
+            "ocr": "",
         }
     except Exception as e:
         logger.warning("caption_pipeline 推理失败: %s" % e)
@@ -192,6 +194,7 @@ def _structured_caption_payload(
         "subject_tags": normalize_keywords(subject_tags or []),
         "action_tags": normalize_keywords(action_tags or []),
         "scene_tags": normalize_keywords(scene_tags or []),
+        "ocr": "",
     }
 
 
@@ -202,9 +205,11 @@ def _coerce_caption_result(result: Any, model: Any) -> Dict[str, Any]:
     subject_tags: List[str] = []
     action_tags: List[str] = []
     scene_tags: List[str] = []
+    vision_text: str = ""
 
     if isinstance(result, dict):
         main_text = str(result.get("description") or "").strip()
+        vision_text = str(result.get("ocr") or "").strip()
         raw = result.get("keywords") or []
         if isinstance(raw, (list, tuple)):
             keywords = [str(x).strip() for x in raw if str(x).strip()]
@@ -230,4 +235,5 @@ def _coerce_caption_result(result: Any, model: Any) -> Dict[str, Any]:
         "subject_tags": subject_tags,
         "action_tags": action_tags,
         "scene_tags": scene_tags,
+        "ocr": vision_text,
     }

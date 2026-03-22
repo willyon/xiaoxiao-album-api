@@ -10,7 +10,6 @@ from . import (
     quality,
     face_cluster,
     health,
-    ocr,
     person,
 )
 
@@ -20,6 +19,5 @@ __all__ = [
     "quality",
     "face_cluster",
     "health",
-    "ocr",
     "person",
 ]

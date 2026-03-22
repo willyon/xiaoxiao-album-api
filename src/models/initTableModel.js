@@ -1,16 +1,8 @@
 /**
  * 数据库表结构定义与创建
- * 所有业务表均以 media 为核心（媒体、相册、人脸聚类、相似组等）；AI 文案与 OCR 在 media 的 ai_* 列，由 rebuild-database.js 按依赖顺序调用创建。
+ * 所有业务表均以 media 为核心（媒体、相册、人脸聚类、相似组等）；AI 文案、OCR 与视觉分析汇总在 media（ai_*、analysis_*、face_* 等列），由 rebuild-database.js 按依赖顺序调用创建。
  */
 const { db } = require("../services/database");
-
-/** 删除 users 表（慎用，会级联影响依赖表） */
-function deleteTableUsers() {
-  const createtablestmt = `
-    DROP TABLE users
-  `;
-  db.prepare(createtablestmt).run();
-}
 
 /** 创建 users 表：用户账号、验证状态等 */
 function createTableUsers() {
@@ -24,18 +16,12 @@ function createTableUsers() {
       created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
     );
   `;
-  try {
-    db.prepare(createtablestmt).run();
-  } catch (err) {
-    console.error("创建 users 表失败：", err.message);
-    throw err;
-  }
+  db.prepare(createtablestmt).run();
 }
 
 /** 创建 face_cluster_representatives：每人脸聚类一条代表向量，用于增量/全量人脸匹配 */
 function createTableFaceClusterRepresentatives() {
-  try {
-    const sql = `
+  const sql = `
       CREATE TABLE IF NOT EXISTS face_cluster_representatives (
         user_id INTEGER NOT NULL,
         cluster_id INTEGER NOT NULL,
@@ -45,23 +31,18 @@ function createTableFaceClusterRepresentatives() {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       );
     `;
-    db.prepare(sql).run();
-    db.prepare(
-      `
+  db.prepare(sql).run();
+  db.prepare(
+    `
       CREATE INDEX IF NOT EXISTS idx_face_cluster_repr_user_id
       ON face_cluster_representatives(user_id);
     `,
-    ).run();
-  } catch (err) {
-    console.error("创建人脸聚类代表向量表失败：", err.message);
-    throw err;
-  }
+  ).run();
 }
 
 /** 创建 face_cluster_meta：每人脸聚类一条，记录 last_used_at 供「最近使用人物」排序 */
 function createTableFaceClusterMeta() {
-  try {
-    const sql = `
+  const sql = `
       CREATE TABLE IF NOT EXISTS face_cluster_meta (
         user_id INTEGER NOT NULL,
         cluster_id INTEGER NOT NULL,
@@ -70,18 +51,13 @@ function createTableFaceClusterMeta() {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       );
     `;
-    db.prepare(sql).run();
-
-    db.prepare(
-      `
+  db.prepare(sql).run();
+  db.prepare(
+    `
       CREATE INDEX IF NOT EXISTS idx_face_cluster_meta_user_last_used
       ON face_cluster_meta(user_id, last_used_at DESC);
-    `
-    ).run();
-  } catch (err) {
-    console.error("创建 face_cluster_meta 表失败：", err.message);
-    throw err;
-  }
+    `,
+  ).run();
 }
 
 /** 创建 media 表：图片/视频元数据、存储 key、时间/地理/尺寸等，唯一约束 (user_id, file_hash) */
@@ -128,7 +104,25 @@ function createTableMedia() {
       ai_subject_tags_json TEXT,
       ai_action_tags_json TEXT,
       ai_scene_tags_json TEXT,
-      ai_ocr_text TEXT,
+      ai_ocr TEXT,
+      ai_face_count INTEGER,
+      ai_person_count INTEGER,
+      analysis_status TEXT DEFAULT 'pending' CHECK (analysis_status IN ('pending','running','done','failed')),
+      analysis_version TEXT NOT NULL DEFAULT '1.0',
+      analyzed_at INTEGER,
+      last_error TEXT,
+      last_error_at INTEGER,
+      aesthetic_score REAL,
+      sharpness_score REAL,
+      is_blurry INTEGER DEFAULT 0 NOT NULL,
+      face_count INTEGER DEFAULT 0,
+      person_count INTEGER DEFAULT 0,
+      primary_face_quality REAL,
+      primary_expression TEXT,
+      primary_expression_confidence REAL,
+      expression_tags TEXT,
+      age_tags TEXT,
+      gender_tags TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       UNIQUE (user_id, file_hash)
     );
@@ -141,34 +135,8 @@ function createTableMedia() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_deleted ON media(user_id, deleted_at);").run();
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_type ON media(user_id, media_type);").run();
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_favorite ON media(user_id, is_favorite);").run();
-}
-
-/** 创建 media_analysis：单条媒体分析状态与结果（美学/清晰度/人脸/OCR等） */
-function createTableMediaAnalysis() {
-  const sql = `
-    CREATE TABLE IF NOT EXISTS media_analysis (
-      media_id INTEGER PRIMARY KEY,
-      analysis_status TEXT DEFAULT 'pending' CHECK (analysis_status IN ('pending','running','done','failed')),
-      analysis_version TEXT NOT NULL DEFAULT '1.0',
-      analyzed_at INTEGER,
-      last_error TEXT,
-      last_error_at INTEGER,
-      aesthetic_score REAL,
-      sharpness_score REAL,
-      is_blurry INTEGER DEFAULT 0,
-      face_count INTEGER DEFAULT 0,
-      person_count INTEGER DEFAULT 0,
-      primary_face_quality REAL,
-      primary_expression TEXT,
-      primary_expression_confidence REAL,
-      has_ocr INTEGER DEFAULT 0,
-      has_description INTEGER DEFAULT 0,
-      environment TEXT,
-      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
-    );
-  `;
-  db.prepare(sql).run();
-  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_analysis_status_face ON media_analysis(analysis_status, face_count);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_analysis_status ON media(user_id, analysis_status);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_status_face ON media(analysis_status, face_count);").run();
 }
 
 /** 创建 video_keyframes：视频关键帧及存储 key */
@@ -260,7 +228,6 @@ function createTableMediaEmbeddings() {
     );
   `;
   db.prepare(sql).run();
-  db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_media_embeddings_media_model_source ON media_embeddings(media_id, model_id, source_type);").run();
 }
 
 /** 创建 album_media：相册与媒体的多对多关联 */
@@ -309,6 +276,10 @@ function createTableMediaSearchFts() {
   db.prepare("DROP TRIGGER IF EXISTS media_search_fts_ad").run();
   db.prepare("DROP TRIGGER IF EXISTS media_search_fts_au").run();
   db.prepare("DROP TABLE IF EXISTS media_search_fts").run();
+  // 不使用 content=：与触发器组合易触发 SQLite 限制。
+  // 不在此使用 AFTER INSERT/UPDATE/DELETE 触发器写入 FTS：对 media_search 的 UPDATE 会触发
+  // unsafe use of virtual table "media_search_fts"（better-sqlite3 常报 database disk image is malformed）。
+  // FTS 与 media_search 的同步在 mediaModel.syncMediaSearchFtsRow / rebuildMediaSearchDoc 中完成。
   const sql = `
     CREATE VIRTUAL TABLE media_search_fts USING fts5(
       description_text,
@@ -318,43 +289,10 @@ function createTableMediaSearchFts() {
       scene_tags_text,
       ocr_search_terms,
       transcript_text,
-      caption_search_terms,
-      content='media_search',
-      content_rowid='media_id'
+      caption_search_terms
     );
   `;
   db.prepare(sql).run();
-  createTableMediaSearchFtsTriggers();
-}
-
-/** 创建 media_search -> media_search_fts 同步触发器，INSERT/UPDATE/DELETE 时自动增量更新 FTS */
-function createTableMediaSearchFtsTriggers() {
-  db.prepare("DROP TRIGGER IF EXISTS media_search_fts_ai").run();
-  db.prepare("DROP TRIGGER IF EXISTS media_search_fts_ad").run();
-  db.prepare("DROP TRIGGER IF EXISTS media_search_fts_au").run();
-
-  db.prepare(`
-    CREATE TRIGGER media_search_fts_ai AFTER INSERT ON media_search BEGIN
-      INSERT INTO media_search_fts(rowid, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_search_terms, transcript_text, caption_search_terms)
-      VALUES (new.media_id, new.description_text, new.keywords_text, new.subject_tags_text, new.action_tags_text, new.scene_tags_text, new.ocr_search_terms, new.transcript_text, new.caption_search_terms);
-    END
-  `).run();
-
-  db.prepare(`
-    CREATE TRIGGER media_search_fts_ad AFTER DELETE ON media_search BEGIN
-      INSERT INTO media_search_fts(media_search_fts, rowid, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_search_terms, transcript_text, caption_search_terms)
-      VALUES ('delete', old.media_id, old.description_text, old.keywords_text, old.subject_tags_text, old.action_tags_text, old.scene_tags_text, old.ocr_search_terms, old.transcript_text, old.caption_search_terms);
-    END
-  `).run();
-
-  db.prepare(`
-    CREATE TRIGGER media_search_fts_au AFTER UPDATE ON media_search BEGIN
-      INSERT INTO media_search_fts(media_search_fts, rowid, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_search_terms, transcript_text, caption_search_terms)
-      VALUES ('delete', old.media_id, old.description_text, old.keywords_text, old.subject_tags_text, old.action_tags_text, old.scene_tags_text, old.ocr_search_terms, old.transcript_text, old.caption_search_terms);
-      INSERT INTO media_search_fts(rowid, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, ocr_search_terms, transcript_text, caption_search_terms)
-      VALUES (new.media_id, new.description_text, new.keywords_text, new.subject_tags_text, new.action_tags_text, new.scene_tags_text, new.ocr_search_terms, new.transcript_text, new.caption_search_terms);
-    END
-  `).run();
 }
 
 /** 创建 media_search_terms：中文 term 索引，用于单字/双字稳定召回 */
@@ -472,12 +410,10 @@ function createTableSimilarGroupMembersMediaVersion() {
 }
 
 module.exports = {
-  deleteTableUsers,
   createTableUsers,
   createTableFaceClusterRepresentatives,
   createTableFaceClusterMeta,
   createTableMedia,
-  createTableMediaAnalysis,
   createTableMediaFaceEmbeddings,
   createTableMediaEmbeddings,
   createTableVideoKeyframes,

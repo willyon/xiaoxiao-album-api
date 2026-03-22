@@ -26,23 +26,6 @@ class BaseCaptionProvider(ABC):
         raise NotImplementedError
 
 
-class BaseOcrProvider(ABC):
-    @abstractmethod
-    def recognize(
-        self,
-        image: Any,
-        *,
-        profile: str,
-        device: str,
-        model_manager: Any,
-        configured_provider: str,
-        resolved_provider: str,
-        trigger_mode: str,
-        trigger_signals: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        raise NotImplementedError
-
-
 def provider_not_implemented_result(
     *,
     capability: str,

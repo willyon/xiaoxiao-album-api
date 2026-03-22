@@ -10,14 +10,12 @@ const {
   updateMediaSearchMetadata,
   insertFaceEmbeddings,
   rebuildMediaSearchDoc,
-  upsertMediaCaptionsForAnalysis,
-  upsertMediaOcrForAnalysis,
+  upsertMediaAiFieldsForAnalysis,
 } = require("../models/mediaModel");
 const { updateProgressOnce } = require("../services/mediaProcessingProgressService");
 const axios = require("axios");
 const { withAiSlot } = require("../services/aiConcurrencyLimiter");
 const { markMediaAnalysisRunning, markMediaAnalysisFailed, finalizeMediaAnalysis: finalizeMediaAnalysisInModel } = require("../models/mediaAnalysisModel");
-const cleanupModel = require("../models/cleanupModel");
 const { upsertMediaEmbedding } = require("../models/mediaEmbeddingModel");
 const { scheduleUserRebuild } = require("../services/cleanupGroupingScheduler");
 const { scheduleUserClustering } = require("../services/faceClusterScheduler");
@@ -27,9 +25,7 @@ const ANALYZE_FULL_TIMEOUT_MS = Number(process.env.ANALYZE_FULL_TIMEOUT_MS || 12
 const ANALYSIS_VERSION = process.env.ANALYSIS_VERSION || "1.0";
 
 // 最新设计：Node 侧不再决定「开启哪些能力」，一律视为参与分析；是否真正可用由 Python 端模型加载结果与降级逻辑决定
-// 最新设计说明：
-// - Node 侧不再提供按能力维度的开关，face / description / OCR 均视为分析流程的一部分
-// - 是否真正可用由 Python 端模型加载结果与降级逻辑决定，这里只关注「哪些步骤参与 done 判定」
+// 图中可读文字由 Python caption.data.ocr 写入 media.ai_ocr；不再存在独立的 modules.ocr 区块写入链路
 
 async function processMediaAnalysis(job) {
   const { imageId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType = "image", fileName } = job.data || {};
@@ -67,7 +63,6 @@ async function processMediaAnalysis(job) {
       face: { status: "pending", errorCode: null, data: {} },
       cleanup: { status: "pending", errorCode: null, data: {} },
       description: { status: "pending", errorCode: null, data: {} },
-      ocr: { status: "pending", errorCode: null, data: {} },
     };
 
     await _runAnalyzeFull({ imageId, userId, imageData, analysisVersion, stepResults });
@@ -188,56 +183,56 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
   const round2 = (v) => (typeof v === "number" ? Number(v.toFixed(2)) : null);
 
   const captionModule = modules.caption;
-  if (captionModule?.status === "success" && captionModule.data) {
-    const d = captionModule.data;
+  const capStatus = captionModule?.status;
+  const capData = captionModule?.data;
+
+  let captionForDb = null;
+  if ((capStatus === "success" || capStatus === "empty") && capData) {
+    const d = capData;
     const descriptionText = typeof d.description === "string" ? d.description : "";
     const keywords = Array.isArray(d.keywords) ? d.keywords : [];
     const subjectTags = Array.isArray(d.subject_tags) ? d.subject_tags : [];
     const actionTags = Array.isArray(d.action_tags) ? d.action_tags : [];
     const sceneTags = Array.isArray(d.scene_tags) ? d.scene_tags : [];
-    upsertMediaCaptionsForAnalysis({
-      mediaId: imageId,
+    const ocr = typeof d.ocr === "string" ? d.ocr : "";
+    const aiFc = typeof d.face_count === "number" ? d.face_count : undefined;
+    const aiPc = typeof d.person_count === "number" ? d.person_count : undefined;
+    captionForDb = {
       description: descriptionText,
       keywords,
       subjectTags,
       actionTags,
       sceneTags,
-      analysisVersion,
-    });
-    stepResults.description = {
-      status: "completed",
-      errorCode: null,
-      data: {
-        description: descriptionText,
-        keywords,
-        subjectTags,
-        actionTags,
-        sceneTags,
-      },
+      ocr,
+      aiFaceCount: aiFc,
+      aiPersonCount: aiPc,
     };
+    if (capStatus === "success") {
+      stepResults.description = {
+        status: "completed",
+        errorCode: null,
+        data: {
+          description: descriptionText,
+          keywords,
+          subjectTags,
+          actionTags,
+          sceneTags,
+        },
+      };
+    } else {
+      stepResults.description = { status: "empty", errorCode: null, data: {} };
+    }
   } else {
-    stepResults.description = { status: captionModule?.status || "failed", errorCode: captionModule?.error?.code || null, data: {} };
+    stepResults.description = { status: capStatus || "failed", errorCode: captionModule?.error?.code || null, data: {} };
   }
 
-  const ocrMod = modules.ocr;
-  if (ocrMod?.status === "success" && Array.isArray(ocrMod.data?.blocks)) {
-    upsertMediaOcrForAnalysis(imageId, ocrMod.data.blocks);
-    stepResults.ocr = { status: "completed", errorCode: null, data: { blocks: ocrMod.data.blocks } };
-  } else if (ocrMod?.status === "empty") {
-    upsertMediaOcrForAnalysis(imageId, []);
-    stepResults.ocr = { status: "completed", errorCode: null, data: { blocks: [] } };
-  } else {
-    stepResults.ocr = { status: ocrMod?.status || "failed", errorCode: ocrMod?.error?.code || null, data: {} };
-  }
+  upsertMediaAiFieldsForAnalysis({
+    mediaId: imageId,
+    caption: captionForDb,
+  });
 
   if (modules.quality?.status === "success" && modules.quality.data) {
     const d = modules.quality.data;
-    cleanupModel.updateMediaCleanupMetrics(imageId, {
-      imagePhash: d.hashes?.phash ?? null,
-      imageDhash: d.hashes?.dhash ?? null,
-      aestheticScore: round2(d.aesthetic_score ?? null),
-      sharpnessScore: round2(d.sharpness_score ?? null),
-    });
     stepResults.cleanup = {
       status: "completed",
       errorCode: null,
@@ -270,20 +265,12 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
     const faces = Array.isArray(d.faces) ? d.faces : [];
     const summary = d.summary || {};
     const expressions = summary.expressions || [];
+    const expressionTagsText = expressions.length > 0 ? expressions.join(",") : null;
     const ages = summary.ages || [];
     const genders = summary.genders || [];
     const primaryFace = faces[0];
-    updateMediaSearchMetadata({
-      imageId,
-      faceCount,
-      personCount,
-      expressionTags: expressions.join(","),
-      ageTags: ages.join(","),
-      genderTags: genders.join(","),
-      primaryExpressionConfidence: primaryFace?.expression_confidence ?? null,
-      primaryFaceQuality: primaryFace?.quality_score ?? null,
-      rebuildSearchArtifacts: false,
-    });
+    const ageTagsText = ages.length > 0 ? ages.join(",") : null;
+    const genderTagsText = genders.length > 0 ? genders.join(",") : null;
     const highQualityFaces = faces.filter((f) => f.is_high_quality);
     if (highQualityFaces.length > 0) {
       const toInsert = highQualityFaces.map((f) => ({
@@ -306,8 +293,11 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
         faceCount,
         personCount,
         primaryFaceQuality: primaryFace?.quality_score ?? null,
-        primaryExpression: expressions[0],
+        primaryExpression: expressions[0] ?? null,
         primaryExpressionConfidence: primaryFace?.expression_confidence ?? null,
+        expressionTagsText,
+        ageTagsText,
+        genderTagsText,
         hasClusterableFace: highQualityFaces.length > 0,
       },
     };
@@ -321,7 +311,6 @@ async function finalizeMediaAnalysis({ imageId, analysisVersion, stepResults }) 
   const faceData = stepResults.face?.data || {};
   const cleanupData = stepResults.cleanup?.data || {};
   const descriptionData = stepResults.description?.data || {};
-  const ocrData = stepResults.ocr?.data || {};
 
   finalizeMediaAnalysisInModel({
     mediaId: imageId,
@@ -329,7 +318,6 @@ async function finalizeMediaAnalysis({ imageId, analysisVersion, stepResults }) 
     faceData,
     cleanupData,
     descriptionData,
-    ocrData,
   });
 
   await rebuildMediaSearchDoc(imageId);

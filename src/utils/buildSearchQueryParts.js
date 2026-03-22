@@ -74,7 +74,7 @@ function buildSearchQueryParts(query, filters, options = {}) {
   if (filters.expression && Array.isArray(filters.expression) && filters.expression.length > 0) {
     const exprConditions = [];
     filters.expression.forEach((expr) => {
-      exprConditions.push("ma.primary_expression = ?");
+      exprConditions.push("i.primary_expression = ?");
       whereParams.push(`${expr}`);
     });
     if (exprConditions.length > 0) {
@@ -110,9 +110,9 @@ function buildSearchQueryParts(query, filters, options = {}) {
 
   if (filters.aiAnalysisStatus && filters.aiAnalysisStatus !== "" && filters.aiAnalysisStatus !== "all") {
     if (filters.aiAnalysisStatus === "analyzed") {
-      whereConditions.push("ma.analysis_status = 'done'");
+      whereConditions.push("i.analysis_status = 'done'");
     } else if (filters.aiAnalysisStatus === "notAnalyzed") {
-      whereConditions.push("(ma.media_id IS NULL OR ma.analysis_status != 'done')");
+      whereConditions.push("(i.analysis_status IS NULL OR i.analysis_status != 'done')");
     }
   }
 
@@ -192,13 +192,13 @@ function buildSearchQueryParts(query, filters, options = {}) {
     const personConditions = [];
     filters.personCount.forEach((count) => {
       if (count === "zero") {
-        personConditions.push("COALESCE(ma.person_count, 0) = 0");
+        personConditions.push("COALESCE(i.person_count, 0) = 0");
       } else if (count === "one") {
-        personConditions.push("COALESCE(ma.person_count, 0) = 1");
+        personConditions.push("COALESCE(i.person_count, 0) = 1");
       } else if (count === "two") {
-        personConditions.push("COALESCE(ma.person_count, 0) = 2");
+        personConditions.push("COALESCE(i.person_count, 0) = 2");
       } else if (count === "threePlus") {
-        personConditions.push("COALESCE(ma.person_count, 0) >= 3");
+        personConditions.push("COALESCE(i.person_count, 0) >= 3");
       }
     });
     if (personConditions.length > 0) {
@@ -208,9 +208,9 @@ function buildSearchQueryParts(query, filters, options = {}) {
 
   if (filters.faceVisibility) {
     if (filters.faceVisibility === "visible") {
-      whereConditions.push("COALESCE(ma.face_count, 0) > 0");
+      whereConditions.push("COALESCE(i.face_count, 0) > 0");
     } else if (filters.faceVisibility === "notVisible") {
-      whereConditions.push("COALESCE(ma.face_count, 0) = 0");
+      whereConditions.push("COALESCE(i.face_count, 0) = 0");
     }
   }
 

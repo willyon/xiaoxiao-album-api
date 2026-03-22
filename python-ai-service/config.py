@@ -184,58 +184,30 @@ class Settings:
     # 当前默认使用 cloud，便于云模型联调
     CAPTION_PROVIDER = (os.getenv("CAPTION_PROVIDER") or "cloud").strip().lower() or "cloud"
 
-    # OCR provider：local | cloud | off
-    # - local：使用本地 OCR 引擎（PaddleOCR）
-    # - cloud：使用云 OCR provider
-    # - off：关闭 OCR 能力
-    # 当前默认使用 cloud，便于云模型联调
-    OCR_PROVIDER = os.getenv("OCR_PROVIDER", "cloud").strip().lower() or "cloud"
-
-    # OCR 触发模式：always| smart | off
-    # - always：总是执行 OCR
-    # - smart：按启发式信号决定是否执行 OCR
-    # - off：不执行 OCR，模块状态为 skipped
-    OCR_TRIGGER_MODE = os.getenv("OCR_TRIGGER_MODE", "smart").strip().lower() or "smart"
-
     # Caption 云厂商：qwen | openai
     CAPTION_CLOUD_VENDOR = (os.getenv("CAPTION_CLOUD_VENDOR") or "qwen").strip().lower() or "qwen"
 
-    # OCR 云厂商：qwen | openai
-    # - qwen：开发阶段默认接入阿里云千问
-    # - openai：为后续切换 OpenAI 预留
-    OCR_CLOUD_VENDOR = os.getenv("OCR_CLOUD_VENDOR", "qwen").strip().lower() or "qwen"
-
     # 云模型名：不同 vendor 可复用同一配置位，方便未来切换云厂商
     CAPTION_CLOUD_MODEL = (os.getenv("CAPTION_CLOUD_MODEL") or "qwen3-vl-plus").strip()
-    OCR_CLOUD_MODEL = os.getenv("OCR_CLOUD_MODEL", "qwen-vl-ocr").strip()
+
+    # 千问云 caption 的 JSON 固定包含 ocr（图中可读文字）；以下为该能力预留的生成 token 上限（需 ≥ CAPTION_MAX_TOKENS）
+    CAPTION_CLOUD_VISION_OCR_MAX_TOKENS = int(os.getenv("CAPTION_CLOUD_VISION_OCR_MAX_TOKENS", "1024"))
 
     # 可选：云 API Base URL
     # - 默认留空，使用各 vendor SDK / 官方默认地址
     # - 需要代理、网关或兼容层时可按能力单独覆盖
     CAPTION_CLOUD_BASE_URL = (os.getenv("CAPTION_CLOUD_BASE_URL") or "").strip()
-    OCR_CLOUD_BASE_URL = os.getenv("OCR_CLOUD_BASE_URL", "").strip()
 
-    # 通用云 API Key
-    # - 当描述 / ocr 共用同一云账号时，只配置这一项即可
+    # 通用云 API Key（caption 云可回退到此项）
     CLOUD_API_KEY = os.getenv("CLOUD_API_KEY", "sk-333be461c3ac4e5bb015838918ebe7d0").strip()
 
     # 云 provider 的 API Key
     # - 优先读取能力级 key；若未配置，则回退到通用 CLOUD_API_KEY
-    # - 这样当前开发阶段可以只配一次，后续也保留按能力拆分的空间
     CAPTION_CLOUD_API_KEY = (os.getenv("CAPTION_CLOUD_API_KEY") or CLOUD_API_KEY).strip()
-    OCR_CLOUD_API_KEY = os.getenv("OCR_CLOUD_API_KEY", CLOUD_API_KEY).strip()
     
     # 推理与模型缓存（首版可不实现 LRU，仅占位）
     MODEL_CACHE_LIMIT = int(os.getenv("MODEL_CACHE_LIMIT", "16"))
-    
-    # OCR 长边限制（内部 resize 用）
-    # 默认 2048，保证截图中文字可读性；若重新启用 OCR 后仍有资源压力，可通过环境变量下调到 1536/1024。
-    OCR_MAX_LONG_EDGE = int(os.getenv("OCR_MAX_LONG_EDGE", "2048"))
-    
-    # smart OCR: 文本区域触发阈值（命中轮廓数量）
-    # 阈值越低，召回越高（更不易漏掉有字图片），但误触发概率也会增加。
-    OCR_SMART_TEXT_LIKE_COUNT_THRESHOLD = int(os.getenv("OCR_SMART_TEXT_LIKE_COUNT_THRESHOLD", "18"))
-    
+
     # 物体检测置信度阈值（YOLO）
     YOLO_CONF_THRESHOLD = float(os.getenv("YOLO_CONF_THRESHOLD", "0.25"))
     
@@ -243,10 +215,9 @@ class Settings:
     CAPTION_MAX_TOKENS = int(os.getenv("CAPTION_MAX_TOKENS") or "150")
 
     # 各能力单次推理超时时间（秒）
-    CAPTION_TIMEOUT_SECONDS = float(os.getenv("CAPTION_TIMEOUT_SECONDS") or "10")
+    CAPTION_TIMEOUT_SECONDS = float(os.getenv("CAPTION_TIMEOUT_SECONDS") or "30")
 
     OBJECT_TIMEOUT_SECONDS = float(os.getenv("OBJECT_TIMEOUT_SECONDS", "10"))
-    OCR_TIMEOUT_SECONDS = float(os.getenv("OCR_TIMEOUT_SECONDS", "15"))
     
     # ========== ONNX Runtime 配置 ==========
     
@@ -310,9 +281,3 @@ def normalize_cloud_vendor(vendor: str) -> str:
     v = (vendor or "").strip().lower()
     allowed = {"qwen", "openai"}
     return v if v in allowed else "qwen"
-
-
-def normalize_ocr_trigger_mode(trigger_mode: str) -> str:
-    """规范 OCR trigger mode，支持 always/off/smart。"""
-    mode = (trigger_mode or "").strip().lower()
-    return mode if mode in {"always", "off", "smart"} else "always"

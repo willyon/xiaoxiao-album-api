@@ -4,8 +4,11 @@
  *
  * 用法：
  *   node scripts/tmp-scripts/rebuild-media-search-indexes.js
+ *   node scripts/tmp-scripts/rebuild-all-media-search-docs.js   （同上，全量别名）
  *   node scripts/tmp-scripts/rebuild-media-search-indexes.js --userId=1
  *   node scripts/tmp-scripts/rebuild-media-search-indexes.js --userId=1 --limit=500
+ *
+ * 无 --limit 时对「未删除」的 media 全量重建 media_search / media_search_terms / FTS。
  */
 
 const path = require("path");
@@ -86,10 +89,16 @@ async function rebuildMediaSearchIndexes() {
   let rebuiltCount = 0;
   let totalTermRows = 0;
 
-  for (const mediaId of mediaIds) {
+  const progressEvery = 500;
+  for (let i = 0; i < mediaIds.length; i++) {
+    const mediaId = mediaIds[i];
     const result = rebuildMediaSearchDoc(mediaId);
     rebuiltCount += result.affectedRows > 0 ? 1 : 0;
     totalTermRows += result.termRows || 0;
+    const n = i + 1;
+    if (n % progressEvery === 0 || n === mediaIds.length) {
+      console.log(`   … 进度 ${n}/${mediaIds.length}`);
+    }
   }
 
   console.log("✅ 搜索索引重建完成");

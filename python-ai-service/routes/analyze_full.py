@@ -35,7 +35,7 @@ async def analyze_full_route(
     request_id: Optional[str] = Form(None),
 ):
     """
-    全量图片分析：按 profile 串行执行各模块（含 caption/person/ocr/quality/embedding 等），
+    全量图片分析：按 profile 串行执行各模块（含 caption/person/quality/embedding 等），
     返回统一结构。Node 写库只读 response.modules。
     """
     profile = normalize_profile(profile)
@@ -73,27 +73,18 @@ async def analyze_full_route(
     )
     modules = result.get("modules") or {}
     caption_module = modules.get("caption") or {}
-    ocr_module = modules.get("ocr") or {}
     caption_meta = caption_module.get("meta") or {}
-    ocr_meta = ocr_module.get("meta") or {}
-    trigger_signals = ocr_meta.get("trigger_signals") if isinstance(ocr_meta.get("trigger_signals"), dict) else {}
-    ocr_status = str(ocr_module.get("status") or "")
     errs = result.get("errors") or []
     first_err = errs[0] if errs and isinstance(errs[0], dict) else None
     set_request_log_context(
         request,
         result_count=len(modules),
         error_code=first_err.get("code") if first_err else None,
-        configured_provider=str(ocr_meta.get("configured_provider") or caption_meta.get("configured_provider") or ""),
-        resolved_provider=str(ocr_meta.get("resolved_provider") or caption_meta.get("resolved_provider") or ""),
-        configured_vendor=str(ocr_meta.get("configured_vendor") or caption_meta.get("configured_vendor") or ""),
-        resolved_vendor=str(ocr_meta.get("resolved_vendor") or caption_meta.get("resolved_vendor") or ""),
-        ocr_trigger_mode=str(ocr_meta.get("trigger_mode") or ""),
-        ocr_triggered=ocr_status in {"success", "empty", "failed"},
-        ocr_signal_has_dense_text_like_regions=bool(trigger_signals.get("has_dense_text_like_regions")),
-        ocr_signal_caption_hint_text_related=bool(trigger_signals.get("caption_hint_text_related")),
+        configured_provider=str(caption_meta.get("configured_provider") or ""),
+        resolved_provider=str(caption_meta.get("resolved_provider") or ""),
+        configured_vendor=str(caption_meta.get("configured_vendor") or ""),
+        resolved_vendor=str(caption_meta.get("resolved_vendor") or ""),
         caption_status=str(caption_module.get("status") or ""),
-        ocr_status=ocr_status,
         top_status=str(result.get("status") or ""),
     )
     # 开发环境：返回 Node 前打一行与响应同结构的预览（已剔除 embedding/长 vector）
@@ -105,7 +96,7 @@ async def analyze_full_route(
                 details={
                     "image_id": image_id,
                     "request_id": request_id,
-                    "note": "与返回 Node 的 JSON 同结构；已递归剔除 embedding/高维 vector",
+                    "note": "与返回 Node 同结构；已剔除 embedding；VLM 人脸/人物数见 response.modules.caption.data.face_count / person_count；图中文字见 data.ocr",
                     "response": preview,
                 },
             )

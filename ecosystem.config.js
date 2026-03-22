@@ -6,7 +6,7 @@
  * 🚀 包含服务:
  * • Node.js API 服务
  * • Node.js Workers (图片上传、元数据处理、搜索索引)
- * • Python AI 服务 (人脸识别、OCR等)
+ * • Python AI 服务 (人脸识别、图片理解等)
  */
 module.exports = {
   apps: [

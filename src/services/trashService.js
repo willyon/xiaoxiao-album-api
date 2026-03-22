@@ -12,6 +12,7 @@ const cleanupModel = require("../models/cleanupModel");
 const mediaModel = require("../models/mediaModel");
 const storageService = require("./storageService");
 const logger = require("../utils/logger");
+const { removeHashesFromUserSet } = require("../workers/userMediaHashset");
 
 /**
  * 规范化ID列表
@@ -26,6 +27,19 @@ function _normalizeIdList(ids) {
       return Number.isFinite(numeric) ? numeric : null;
     })
     .filter((value) => value !== null);
+}
+
+async function _removeRedisHashesForDeletedMedias(userId, images) {
+  const hashes = (images || []).map((row) => row.file_hash).filter((h) => h != null && String(h).length > 0);
+  if (hashes.length === 0) return;
+  try {
+    await removeHashesFromUserSet(userId, hashes);
+  } catch (error) {
+    logger.warn({
+      message: "彻底删除媒体后清理 Redis 去重集合失败",
+      details: { userId, hashCount: hashes.length, error: error.message },
+    });
+  }
 }
 
 /**
@@ -311,6 +325,19 @@ async function restoreMedias({ userId, imageIds }) {
 }
 
 /**
+ * 若该 hash 仅对应回收站中的媒体，则静默恢复（用于上传预检 / Worker 去重与恢复一致）
+ * @returns {Promise<{ restored: boolean, mediaId?: number }>}
+ */
+async function restoreTrashMediaByHashIfApplicable({ userId, imageHash }) {
+  const row = mediaModel.selectMediaRowByHashForUser({ userId, imageHash });
+  if (!row || row.deleted_at == null) {
+    return { restored: false };
+  }
+  await restoreMedias({ userId, imageIds: [row.id] });
+  return { restored: true, mediaId: row.id };
+}
+
+/**
  * 彻底删除图片（物理删除数据库记录和存储文件）
  * @param {Object} params
  * @param {number} params.userId - 用户ID
@@ -424,6 +451,8 @@ async function clearTrash({ userId }) {
   // 物理删除数据库记录
   const dbResult = trashModel.clearTrash(userId);
 
+  await _removeRedisHashesForDeletedMedias(userId, images);
+
   logger.info({
     message: "trash.clear.completed",
     details: {
@@ -450,6 +479,7 @@ async function clearTrash({ userId }) {
 module.exports = {
   getDeletedMedias,
   restoreMedias,
+  restoreTrashMediaByHashIfApplicable,
   permanentlyDeleteMedias,
   clearTrash,
 };

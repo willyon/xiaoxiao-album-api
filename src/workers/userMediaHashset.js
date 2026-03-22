@@ -91,4 +91,16 @@ async function ensureUserSetReady(userId) {
   }
 }
 
-module.exports = { ensureUserSetReady, userSetKey, readyKeyOf, lockKeyOf };
+/**
+ * 从用户维度的上传去重集合中移除哈希（彻底删除媒体后调用，避免 Redis 残留导致无法重新导入同文件）
+ * @param {number} userId
+ * @param {Array<string|undefined|null>} hashes
+ */
+async function removeHashesFromUserSet(userId, hashes) {
+  const unique = [...new Set((hashes || []).filter((h) => h != null && String(h).length > 0))];
+  if (unique.length === 0) return;
+  const redis = getRedisClient();
+  await redis.srem(userSetKey(userId), ...unique);
+}
+
+module.exports = { ensureUserSetReady, userSetKey, readyKeyOf, lockKeyOf, removeHashesFromUserSet };

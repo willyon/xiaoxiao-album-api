@@ -27,7 +27,7 @@ from utils.device import resolve_device
 class ModelManager:
     """
     统一模型管理：按能力提供 get_*_model(profile, device)。
-    首版：已有能力（face/quality/ocr）委托现有 loader；caption/object/scene 占位返回 None。
+    首版：已有能力（face/quality）委托现有 loader；caption/object/scene 占位返回 None。
     """
 
     def __init__(self) -> None:
@@ -36,7 +36,6 @@ class ModelManager:
         self._caption_models: "OrderedDict[tuple, Any]" = OrderedDict()
         self._object_models: "OrderedDict[tuple, Any]" = OrderedDict()
         self._scene_models: "OrderedDict[tuple, Any]" = OrderedDict()
-        self._ocr_engines: "OrderedDict[tuple, Any]" = OrderedDict()
         self._face_models: "OrderedDict[tuple, Any]" = OrderedDict()
         self._quality_models: "OrderedDict[tuple, Any]" = OrderedDict()
         self._embedding_models: "OrderedDict[tuple, Any]" = OrderedDict()
@@ -75,36 +74,26 @@ class ModelManager:
     def _cloud_api_key(self, capability: str) -> str:
         if capability == "caption":
             return (getattr(settings, "CAPTION_CLOUD_API_KEY", "") or "").strip()
-        if capability == "ocr":
-            return (getattr(settings, "OCR_CLOUD_API_KEY", "") or "").strip()
         return ""
 
     def _configured_cloud_vendor(self, capability: str) -> str:
         if capability == "caption":
             return ((getattr(settings, "CAPTION_CLOUD_VENDOR", "qwen") or "qwen").strip().lower())
-        if capability == "ocr":
-            return ((getattr(settings, "OCR_CLOUD_VENDOR", "qwen") or "qwen").strip().lower())
         return "qwen"
 
     def _cloud_vendor(self, capability: str) -> str:
         if capability == "caption":
             return normalize_cloud_vendor(self._configured_cloud_vendor("caption"))
-        if capability == "ocr":
-            return normalize_cloud_vendor(self._configured_cloud_vendor("ocr"))
         return "qwen"
 
     def _cloud_model(self, capability: str) -> str:
         if capability == "caption":
             return (getattr(settings, "CAPTION_CLOUD_MODEL", "") or "").strip()
-        if capability == "ocr":
-            return (getattr(settings, "OCR_CLOUD_MODEL", "") or "").strip()
         return ""
 
     def _cloud_base_url(self, capability: str) -> str:
         if capability == "caption":
             return (getattr(settings, "CAPTION_CLOUD_BASE_URL", "") or "").strip()
-        if capability == "ocr":
-            return (getattr(settings, "OCR_CLOUD_BASE_URL", "") or "").strip()
         return ""
 
     def _provider_available(self, capability: str, resolved_provider: str) -> bool:
@@ -123,10 +112,6 @@ class ModelManager:
         primary_id = resolve_model_id(resolved_profile, "caption")
         candidates = [x for x in [primary_id, get_fallback_model_id(primary_id) if primary_id else None] if x]
         return any((mid, resolved_device) in self._caption_models for mid in candidates)
-
-    def _ocr_loaded_for_profile(self, profile: str, device: str = "cpu") -> bool:
-        key = (profile or "standard", self._resolve_device(device))
-        return key in self._ocr_engines
 
     def get_caption_model(self, profile: str, device: str) -> Optional[Any]:
         """
@@ -253,25 +238,6 @@ class ModelManager:
         logger.info("get_scene_model: scene capability has been deprecated, always returning None")
         return None
 
-    def get_ocr_engine(self, profile: str, device: str) -> Optional[Any]:
-        """OCR 引擎；加载失败时返回 None。返回 PaddleOcrEngine 包装（含 resize + bbox 回原图）。"""
-        if not self._capability_enabled(profile, "ocr"):
-            return None
-        with self._lock:
-            key = (profile or "standard", self._resolve_device(device))
-            if key in self._ocr_engines:
-                self._touch(self._ocr_engines, key)
-                return self._ocr_engines.get(key)
-            if key not in self._ocr_engines:
-                try:
-                    from loaders.ocr_loader import get_ocr_model
-                    from models.ocr_engine import PaddleOcrEngine
-                    self._put(self._ocr_engines, key, PaddleOcrEngine(get_ocr_model()))
-                except Exception as e:
-                    logger.warning("get_ocr_engine: 加载失败 %s" % e)
-                    return None
-            return self._ocr_engines.get(key)
-
     def get_face_model(self, profile: str, device: str) -> Optional[Any]:
         """人物分析模型（人脸 + 人体）；由 PersonAnalyzer 封装。"""
         if not self._capability_enabled(profile, "face"):
@@ -356,7 +322,6 @@ class ModelManager:
         resolved_profile = profile or "standard"
         face = self._safe_capability(self.get_face_model, resolved_profile, "cpu")
         quality = self._safe_capability(self.get_quality_model, resolved_profile, "cpu")
-        ocr = self._safe_capability(self.get_ocr_engine, resolved_profile, "cpu")
         caption = self._safe_capability(self.get_caption_model, resolved_profile, "cpu")
         object_ = self._safe_capability(self.get_object_model, resolved_profile, "cpu")
         scene = self._safe_capability(self.get_scene_model, resolved_profile, "cpu")
@@ -365,7 +330,6 @@ class ModelManager:
             "caption": bool(caption),
             "object": object_,
             "scene": scene,
-            "ocr": ocr,
             "face": face,
             "quality": quality,
             "embedding": embedding,
@@ -375,7 +339,6 @@ class ModelManager:
         """各能力是否已有可用模型（供 /health）。单能力加载失败仅记为未加载，不抛异常。"""
         face = self._safe_capability(self.get_face_model, "standard", "cpu")
         quality = self._safe_capability(self.get_quality_model, "standard", "cpu")
-        ocr = self._safe_capability(self.get_ocr_engine, "standard", "cpu")
         caption = self._safe_capability(self.get_caption_model, "standard", "cpu")
         object_ = self._safe_capability(self.get_object_model, "standard", "cpu")
         scene = self._safe_capability(self.get_scene_model, "standard", "cpu")
@@ -384,24 +347,19 @@ class ModelManager:
             "caption": caption,
             "object": object_,
             "scene": scene,
-            "ocr": ocr,
             "face": face,
             "quality": quality,
             "embedding": embedding,
         }
 
     def capabilities_configured_for_profile(self, profile: str) -> dict[str, Any]:
-        """返回 caption/ocr 的配置态信息，不触发模型加载。"""
+        """返回 caption 的配置态信息，不触发模型加载。"""
         resolved_profile = profile or "standard"
 
         caption_configured = getattr(settings, "CAPTION_PROVIDER", "local")
         caption_resolved = normalize_provider(caption_configured)
-        ocr_configured = getattr(settings, "OCR_PROVIDER", "local")
-        ocr_resolved = normalize_provider(ocr_configured)
         caption_configured_vendor = self._configured_cloud_vendor("caption") if caption_resolved == "cloud" else None
         caption_resolved_vendor = self._cloud_vendor("caption") if caption_resolved == "cloud" else None
-        ocr_configured_vendor = self._configured_cloud_vendor("ocr") if ocr_resolved == "cloud" else None
-        ocr_resolved_vendor = self._cloud_vendor("ocr") if ocr_resolved == "cloud" else None
 
         return {
             "caption": {
@@ -414,17 +372,6 @@ class ModelManager:
                 "cloud_model": self._cloud_model("caption") if caption_resolved == "cloud" else None,
                 "cloud_base_url": self._cloud_base_url("caption") if caption_resolved == "cloud" else None,
             },
-            "ocr": {
-                "configured_provider": ocr_configured,
-                "resolved_provider": ocr_resolved,
-                "configured_vendor": ocr_configured_vendor,
-                "resolved_vendor": ocr_resolved_vendor,
-                "enabled": ocr_resolved != "off",
-                "available": self._provider_available("ocr", ocr_resolved),
-                "cloud_model": self._cloud_model("ocr") if ocr_resolved == "cloud" else None,
-                "cloud_base_url": self._cloud_base_url("ocr") if ocr_resolved == "cloud" else None,
-                "trigger_mode": getattr(settings, "OCR_TRIGGER_MODE", "always"),
-            },
             "profile": resolved_profile,
         }
 
@@ -433,16 +380,12 @@ class ModelManager:
         return self.capabilities_configured_for_profile("standard")
 
     def capabilities_runtime_status_for_profile(self, profile: str, device: str = "cpu") -> dict[str, Any]:
-        """返回 caption/ocr 的运行态信息，不触发模型加载。"""
+        """返回 caption 的运行态信息，不触发模型加载。"""
         configured = self.capabilities_configured_for_profile(profile)
         return {
             "caption": {
                 **configured["caption"],
                 "loaded": self._caption_loaded_for_profile(profile, device=device),
-            },
-            "ocr": {
-                **configured["ocr"],
-                "loaded": self._ocr_loaded_for_profile(profile, device=device),
             },
             "profile": configured["profile"],
             "device": self._resolve_device(device),

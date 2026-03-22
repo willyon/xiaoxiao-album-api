@@ -46,15 +46,18 @@ function listMediaSearchResults({ userId, ftsQuery, whereConditions = [], whereP
         i.aspect_ratio,
         i.layout_type,
         i.file_size_bytes,
-        COALESCE(ma.face_count, 0) AS face_count,
-        COALESCE(ma.person_count, 0) AS person_count,
+        COALESCE(i.face_count, 0) AS face_count,
+        COALESCE(i.person_count, 0) AS person_count,
+        i.ai_face_count,
+        i.ai_person_count,
+        i.ai_description,
+        i.ai_ocr,
         NULL AS age_tags,
-        ma.primary_expression AS expression_tags,
+        COALESCE(i.expression_tags, i.primary_expression) AS expression_tags,
         i.is_favorite
       FROM media_search_fts fts
       JOIN media_search ms ON fts.rowid = ms.media_id
       JOIN media i ON ms.media_id = i.id
-      LEFT JOIN media_analysis ma ON ma.media_id = i.id
       WHERE i.user_id = ? 
         AND i.deleted_at IS NULL
         AND media_search_fts MATCH ?
@@ -91,13 +94,16 @@ function listMediaSearchResults({ userId, ftsQuery, whereConditions = [], whereP
         i.aspect_ratio,
         i.layout_type,
         i.file_size_bytes,
-        COALESCE(ma.face_count, 0) AS face_count,
-        COALESCE(ma.person_count, 0) AS person_count,
+        COALESCE(i.face_count, 0) AS face_count,
+        COALESCE(i.person_count, 0) AS person_count,
+        i.ai_face_count,
+        i.ai_person_count,
+        i.ai_description,
+        i.ai_ocr,
         NULL AS age_tags,
-        ma.primary_expression AS expression_tags,
+        COALESCE(i.expression_tags, i.primary_expression) AS expression_tags,
         i.is_favorite
       FROM media i
-      LEFT JOIN media_analysis ma ON ma.media_id = i.id
       WHERE i.user_id = ?
         AND i.deleted_at IS NULL
     `;
@@ -140,7 +146,6 @@ function countMediaSearchResults({ userId, ftsQuery, whereConditions = [], where
       FROM media_search_fts fts
       JOIN media_search ms ON fts.rowid = ms.media_id
       JOIN media i ON ms.media_id = i.id
-      LEFT JOIN media_analysis ma ON ma.media_id = i.id
       WHERE i.user_id = ? 
         AND i.deleted_at IS NULL
         AND media_search_fts MATCH ?
@@ -157,7 +162,6 @@ function countMediaSearchResults({ userId, ftsQuery, whereConditions = [], where
     sql = `
       SELECT COUNT(*) as total
       FROM media i
-      LEFT JOIN media_analysis ma ON ma.media_id = i.id
       WHERE i.user_id = ?
         AND i.deleted_at IS NULL
     `;
@@ -188,7 +192,6 @@ function recallMediaIdsByFts({ userId, ftsQuery, whereConditions = [], wherePara
     FROM media_search_fts fts
     JOIN media_search ms ON fts.rowid = ms.media_id
     JOIN media i ON ms.media_id = i.id
-    LEFT JOIN media_analysis ma ON ma.media_id = i.id
     WHERE i.user_id = ?
       AND i.deleted_at IS NULL
       AND media_search_fts MATCH ?
@@ -220,7 +223,6 @@ function recallMediaIdsByFiltersOnly({ userId, whereConditions = [], whereParams
       i.id AS media_id,
       i.captured_at
     FROM media i
-    LEFT JOIN media_analysis ma ON ma.media_id = i.id
     WHERE i.user_id = ?
       AND i.deleted_at IS NULL
   `;
@@ -258,7 +260,6 @@ function recallMediaIdsByOcrFts({ userId, ftsQuery, whereConditions = [], whereP
     FROM media_search_fts fts
     JOIN media_search ms ON fts.rowid = ms.media_id
     JOIN media i ON ms.media_id = i.id
-    LEFT JOIN media_analysis ma ON ma.media_id = i.id
     WHERE i.user_id = ?
       AND i.deleted_at IS NULL
       AND media_search_fts MATCH ?
@@ -331,7 +332,6 @@ function recallMediaIdsByChineseTerms({
       i.captured_at
     FROM media_search_terms mst
     JOIN media i ON i.id = mst.media_id
-    LEFT JOIN media_analysis ma ON ma.media_id = i.id
     WHERE mst.user_id = ?
       AND i.deleted_at IS NULL
       AND mst.term IN (${placeholders})
@@ -388,7 +388,6 @@ function countMediaIdsByChineseTerms({ userId, terms = [], whereConditions = [],
     SELECT COUNT(DISTINCT mst.media_id) AS total
     FROM media_search_terms mst
     JOIN media i ON i.id = mst.media_id
-    LEFT JOIN media_analysis ma ON ma.media_id = i.id
     WHERE mst.user_id = ?
       AND i.deleted_at IS NULL
       AND mst.term IN (${placeholders})
@@ -432,13 +431,16 @@ function getMediasByIds({ userId, imageIds }) {
       i.aspect_ratio,
       i.layout_type,
       i.file_size_bytes,
-      COALESCE(ma.face_count, 0) AS face_count,
-      COALESCE(ma.person_count, 0) AS person_count,
+      COALESCE(i.face_count, 0) AS face_count,
+      COALESCE(i.person_count, 0) AS person_count,
+      i.ai_face_count,
+      i.ai_person_count,
+      i.ai_description,
+      i.ai_ocr,
       NULL AS age_tags,
-      ma.primary_expression AS expression_tags,
+      COALESCE(i.expression_tags, i.primary_expression) AS expression_tags,
       i.is_favorite
     FROM media i
-    LEFT JOIN media_analysis ma ON ma.media_id = i.id
     WHERE i.user_id = ?
       AND i.deleted_at IS NULL
       AND i.id IN (${placeholders})
@@ -464,13 +466,13 @@ function getFilterOptions(userId) {
       .prepare(
         `
       SELECT 
-        SUM(CASE WHEN COALESCE(ma.person_count, 0) > 0 THEN 1 ELSE 0 END) as has_person,
-        SUM(CASE WHEN COALESCE(ma.person_count, 0) = 0 THEN 1 ELSE 0 END) as no_person,
+        SUM(CASE WHEN COALESCE(i.person_count, 0) > 0 THEN 1 ELSE 0 END) as has_person,
+        SUM(CASE WHEN COALESCE(i.person_count, 0) = 0 THEN 1 ELSE 0 END) as no_person,
         
-        SUM(CASE WHEN COALESCE(ma.face_count, 0) = 0 THEN 1 ELSE 0 END) as face_zero,
-        SUM(CASE WHEN COALESCE(ma.face_count, 0) = 1 THEN 1 ELSE 0 END) as face_one,
-        SUM(CASE WHEN COALESCE(ma.face_count, 0) = 2 THEN 1 ELSE 0 END) as face_two,
-        SUM(CASE WHEN COALESCE(ma.face_count, 0) >= 3 THEN 1 ELSE 0 END) as face_three_plus,
+        SUM(CASE WHEN COALESCE(i.face_count, 0) = 0 THEN 1 ELSE 0 END) as face_zero,
+        SUM(CASE WHEN COALESCE(i.face_count, 0) = 1 THEN 1 ELSE 0 END) as face_one,
+        SUM(CASE WHEN COALESCE(i.face_count, 0) = 2 THEN 1 ELSE 0 END) as face_two,
+        SUM(CASE WHEN COALESCE(i.face_count, 0) >= 3 THEN 1 ELSE 0 END) as face_three_plus,
         
         -- 版式统计（使用 MAX 聚合函数配合 CASE 获取各类型数量）
         SUM(CASE WHEN layout_type = 'portrait' THEN 1 ELSE 0 END) as layout_portrait,
@@ -484,7 +486,6 @@ function getFilterOptions(userId) {
         SUM(CASE WHEN ((width_px >= 1920 AND height_px >= 1080) OR (width_px >= 1080 AND height_px >= 1920)) THEN 1 ELSE 0 END) as res_fhd,
         SUM(CASE WHEN (NOT ((width_px >= 1920 AND height_px >= 1080) OR (width_px >= 1080 AND height_px >= 1920))) THEN 1 ELSE 0 END) as res_hd
       FROM media i
-      LEFT JOIN media_analysis ma ON ma.media_id = i.id
       WHERE i.user_id = ?
     `,
       )
@@ -495,10 +496,9 @@ function getFilterOptions(userId) {
     const expressionRows = db
       .prepare(
         `
-      SELECT DISTINCT primary_expression
-      FROM media_analysis ma
-      JOIN media i ON i.id = ma.media_id
-      WHERE i.user_id = ? AND ma.primary_expression IS NOT NULL AND ma.primary_expression != ''
+      SELECT DISTINCT i.primary_expression
+      FROM media i
+      WHERE i.user_id = ? AND i.primary_expression IS NOT NULL AND i.primary_expression != ''
       LIMIT 100
     `,
       )

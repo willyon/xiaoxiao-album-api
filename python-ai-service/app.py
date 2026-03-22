@@ -18,7 +18,6 @@ def _setup_model_cache_env() -> None:
     在导入可能触发模型下载的库之前，统一将第三方缓存目录重定向到项目内 models/cache/*。
     使用强制覆盖（而非 setdefault），避免本机已配置的 ~/.cache 等生效，确保缓存落在项目目录。
     - HuggingFace 生态：HF_HOME / TRANSFORMERS_CACHE / HUGGINGFACE_HUB_CACHE → models/cache/huggingface
-    - PaddleOCR / PaddleX：PADDLE_PDX_CACHE_HOME 等 → models/cache/paddleocr
     - InsightFace：INSIGHTFACE_HOME → models/cache/insightface
     - EmotiEffLib：若从 HuggingFace 下载则用 HF 缓存；另建 models/cache/emotiefflib 以备库支持自定义路径
     """
@@ -27,11 +26,10 @@ def _setup_model_cache_env() -> None:
         models_dir = os.path.join(base_dir, "models")
 
         hf_cache = os.path.join(models_dir, "cache", "huggingface")
-        paddle_cache = os.path.join(models_dir, "cache", "paddleocr")
         insight_cache = os.path.join(models_dir, "cache", "insightface")
         emotiefflib_cache = os.path.join(models_dir, "cache", "emotiefflib")
 
-        for path in (hf_cache, paddle_cache, insight_cache, emotiefflib_cache):
+        for path in (hf_cache, insight_cache, emotiefflib_cache):
             try:
                 os.makedirs(path, exist_ok=True)
             except Exception:
@@ -42,10 +40,6 @@ def _setup_model_cache_env() -> None:
         os.environ["TRANSFORMERS_CACHE"] = hf_cache
         os.environ["HUGGINGFACE_HUB_CACHE"] = hf_cache
         os.environ["INSIGHTFACE_HOME"] = insight_cache
-
-        os.environ["PADDLE_PDX_CACHE_HOME"] = paddle_cache
-        os.environ["PADDLEOCR_HOME"] = paddle_cache
-        os.environ["PADDLEX"] = paddle_cache
 
         # EmotiEffLib 若从 HuggingFace 下载会走 HF_*；部分版本支持自定义路径时可设 EFFLIB_HOME
         if not os.environ.get("EFFLIB_HOME"):
@@ -68,7 +62,7 @@ from config import settings
 from logger import logger
 
 # 导入路由模块
-from routes import analyze_full, caption, quality, face_cluster, health, ocr, person
+from routes import analyze_full, caption, quality, face_cluster, health, person
 
 # 导入 ModelManager
 from services.model_manager import get_model_manager
@@ -110,9 +104,6 @@ async def _lifespan(app: FastAPI):
             if task == "face":
                 from loaders.model_loader import get_insightface_model
                 get_insightface_model()
-            elif task == "ocr":
-                from loaders.ocr_loader import get_ocr_model
-                get_ocr_model()
             elif task == "object":
                 manager.get_object_model(scope_profile if scope_profile != "shared" else "standard", settings.DEFAULT_DEVICE)
             elif task == "image_embedding":
@@ -169,7 +160,6 @@ def create_app():
     ANALYSIS_LOG_PATHS = {
         "/analyze_full",
         "/analyze_caption",
-        "/ocr",
         "/analyze_quality",
         "/analyze_person",
     }
@@ -192,12 +182,7 @@ def create_app():
             "resolved_provider": getattr(state, "_log_resolved_provider", None),
             "configured_vendor": getattr(state, "_log_configured_vendor", None),
             "resolved_vendor": getattr(state, "_log_resolved_vendor", None),
-            "ocr_trigger_mode": getattr(state, "_log_ocr_trigger_mode", None),
-            "ocr_triggered": getattr(state, "_log_ocr_triggered", None),
-            "ocr_signal_has_dense_text_like_regions": getattr(state, "_log_ocr_signal_has_dense_text_like_regions", None),
-            "ocr_signal_caption_hint_text_related": getattr(state, "_log_ocr_signal_caption_hint_text_related", None),
             "caption_status": getattr(state, "_log_caption_status", None),
-            "ocr_status": getattr(state, "_log_ocr_status", None),
             "top_status": getattr(state, "_log_top_status", None),
             "latency_ms": latency_ms,
             "result_count": getattr(state, "_log_result_count", None),
@@ -213,7 +198,6 @@ def create_app():
     app.include_router(analyze_full.router, tags=["全量分析"])
     app.include_router(caption.router, tags=["Caption"])
     app.include_router(person.router, tags=["人物分析"])
-    app.include_router(ocr.router, tags=["OCR识别"])
     app.include_router(face_cluster.router, tags=["人脸聚类"])
     app.include_router(quality.router, tags=["图片质量"])
     
@@ -234,7 +218,6 @@ def main():
         logger.info("  - POST /analyze_caption - 图片描述（caption）分析")
         logger.info("  - POST /analyze_person - 人物分析（人脸+人体检测）")
         logger.info("  - POST /analyze_quality - 图片质量指标")
-        logger.info("  - POST /ocr - OCR 文字识别")
         logger.info("  - POST /analyze_full - 全量图片分析（统一入口）")
         logger.info("  - POST /cluster_faces - 人脸聚类")
         

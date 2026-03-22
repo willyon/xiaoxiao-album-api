@@ -16,16 +16,14 @@ import cv2
 import numpy as np
 
 from constants.error_codes import AI_SERVICE_ERROR, IMAGE_DECODE_FAILED, MODULE_TIMEOUT
-from config import normalize_ocr_trigger_mode, normalize_provider, settings
+from config import normalize_provider, settings
 from logger import logger
-from providers import get_caption_provider, get_ocr_provider
+from providers import get_caption_provider
 from services.module_result import (
     MODULE_STATUS_DISABLED,
     MODULE_STATUS_FAILED,
-    MODULE_STATUS_SKIPPED,
     build_module_result,
 )
-from services.ocr_trigger_service import collect_ocr_trigger_signals, should_run_ocr
 
 # 智能分析全流程固定顺序：caption（VLM 描述/标签）为主语义，其他模块为辅助；profile 仅影响各节点内部模型/逻辑
 FULL_MODULE_ORDER = [
@@ -33,10 +31,20 @@ FULL_MODULE_ORDER = [
     "person",
     "quality",
     "caption",
-    "ocr",
 ]
 
 PIPELINE_VERSION = "image-analysis-v1"
+
+
+def _coerce_non_negative_int(value: Any) -> int:
+    """caption 的 face_count / person_count：缺省或非法时视为 0。"""
+    if value is None:
+        return 0
+    try:
+        n = int(round(float(value)))
+        return n if n >= 0 else 0
+    except (TypeError, ValueError):
+        return 0
 
 
 def _bgr_to_rgb_safe(image_bgr: np.ndarray) -> np.ndarray:
@@ -176,6 +184,9 @@ def _run_one_module(
                         "subject_tags": [],
                         "action_tags": [],
                         "scene_tags": [],
+                        "ocr": "",
+                        "face_count": 0,
+                        "person_count": 0,
                     },
                     reason="provider_off",
                     meta={
@@ -198,12 +209,16 @@ def _run_one_module(
             subject_tags = data.get("subject_tags")
             action_tags = data.get("action_tags")
             scene_tags = data.get("scene_tags")
+            ocr_text = str(data.get("ocr") or "").strip()
             out["data"] = {
                 "description": caption_text,
                 "keywords": keywords or [],
                 "subject_tags": subject_tags or [],
                 "action_tags": action_tags or [],
                 "scene_tags": scene_tags or [],
+                "ocr": ocr_text,
+                "face_count": _coerce_non_negative_int(data.get("face_count")),
+                "person_count": _coerce_non_negative_int(data.get("person_count")),
             }
             out.setdefault("meta", {})
             out["meta"]["configured_provider"] = configured_provider
@@ -213,83 +228,6 @@ def _run_one_module(
             from pipelines.person_pipeline import analyze_person
             data = analyze_person(image_bgr, profile, device, manager)
             return build_module_result(status="success", data=data, meta={})
-        if name == "ocr":
-            configured_provider = getattr(settings, "OCR_PROVIDER", "local")
-            resolved_provider = normalize_provider(configured_provider)
-            trigger_mode = normalize_ocr_trigger_mode(getattr(settings, "OCR_TRIGGER_MODE", "always"))
-            caption_module = (modules or {}).get("caption") if modules else None
-
-            if resolved_provider == "off":
-                out = build_module_result(
-                    status=MODULE_STATUS_DISABLED,
-                    data={"blocks": []},
-                    reason="provider_off",
-                    meta={
-                        "configured_provider": configured_provider,
-                        "resolved_provider": resolved_provider,
-                        "trigger_mode": trigger_mode,
-                        "trigger_signals": {},
-                    },
-                )
-            elif trigger_mode == "off":
-                out = build_module_result(
-                    status=MODULE_STATUS_SKIPPED,
-                    data={"blocks": []},
-                    reason="trigger_off",
-                    meta={
-                        "configured_provider": configured_provider,
-                        "resolved_provider": resolved_provider,
-                        "trigger_mode": trigger_mode,
-                        "trigger_signals": {},
-                    },
-                )
-            else:
-                trigger_signals = (
-                    collect_ocr_trigger_signals(
-                        image_bgr,
-                        caption_module=caption_module,
-                    )
-                    if trigger_mode == "smart"
-                    else {}
-                )
-                if trigger_mode == "smart" and not should_run_ocr(trigger_mode, trigger_signals):
-                    return build_module_result(
-                        status=MODULE_STATUS_SKIPPED,
-                        data={"blocks": []},
-                        reason="not_triggered",
-                        meta={
-                            "configured_provider": configured_provider,
-                            "resolved_provider": resolved_provider,
-                            "trigger_mode": trigger_mode,
-                            "trigger_signals": trigger_signals,
-                        },
-                    )
-                provider = get_ocr_provider(resolved_provider)
-                if provider is None:
-                    out = build_module_result(
-                        status=MODULE_STATUS_FAILED,
-                        data={"blocks": []},
-                        error={"code": AI_SERVICE_ERROR, "message": f"ocr provider unavailable: {resolved_provider}"},
-                        reason="provider_unavailable",
-                        meta={
-                            "configured_provider": configured_provider,
-                            "resolved_provider": resolved_provider,
-                            "trigger_mode": trigger_mode,
-                            "trigger_signals": trigger_signals,
-                        },
-                    )
-                else:
-                    out = provider.recognize(
-                        image_bgr,
-                        profile=profile,
-                        device=device,
-                        model_manager=manager,
-                        configured_provider=configured_provider,
-                        resolved_provider=resolved_provider,
-                        trigger_mode=trigger_mode,
-                        trigger_signals=trigger_signals,
-                    )
-            return out
         if name == "quality":
             from pipelines.quality_pipeline import analyze_cleanup
             embedding_data = None

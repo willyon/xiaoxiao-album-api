@@ -4,17 +4,8 @@
  * @Description: 搜索业务逻辑服务
  */
 const searchModel = require("../models/searchModel");
-const {
-  makeSearchRankCacheKey,
-  getSearchRankCache,
-  setSearchRankCache,
-} = require("../utils/searchRankCacheStore");
-const {
-  FTS_RANKING,
-  SEARCH_TERM_FIELD_WEIGHTS,
-  STRUCTURED_COMBO_BOOSTS,
-  STRUCTURED_ROLE_BOOSTS,
-} = require("../config/searchRankingWeights");
+const { makeSearchRankCacheKey, getSearchRankCache, setSearchRankCache } = require("../utils/searchRankCacheStore");
+const { FTS_RANKING, SEARCH_TERM_FIELD_WEIGHTS, STRUCTURED_COMBO_BOOSTS, STRUCTURED_ROLE_BOOSTS } = require("../config/searchRankingWeights");
 const { parseQueryIntent, mergeFilters } = require("../utils/queryIntentParser");
 const { buildSearchQueryParts } = require("../utils/buildSearchQueryParts");
 const { parseQuerySemanticSignals } = require("../utils/querySemanticParser");
@@ -209,14 +200,11 @@ function boostStructuredMatches(candidates, searchDocs, structuredSignals) {
     const sceneText = normalizeFieldText(doc?.scene_tags_text);
 
     const hasSubjectSignal =
-      candidate.matchedFields.has("subject_tags")
-      || structuredSignals.subjects.some((group) => fieldIncludesAny(subjectText, group.terms));
+      candidate.matchedFields.has("subject_tags") || structuredSignals.subjects.some((group) => fieldIncludesAny(subjectText, group.terms));
     const hasActionSignal =
-      candidate.matchedFields.has("action_tags")
-      || structuredSignals.actions.some((group) => fieldIncludesAny(actionText, group.terms));
+      candidate.matchedFields.has("action_tags") || structuredSignals.actions.some((group) => fieldIncludesAny(actionText, group.terms));
     const hasSceneSignal =
-      candidate.matchedFields.has("scene_tags")
-      || structuredSignals.scenes.some((group) => fieldIncludesAny(sceneText, group.terms));
+      candidate.matchedFields.has("scene_tags") || structuredSignals.scenes.some((group) => fieldIncludesAny(sceneText, group.terms));
 
     candidate.roleSignals.subject = hasSubjectSignal;
     candidate.roleSignals.action = hasActionSignal;
@@ -341,10 +329,7 @@ function mergeCandidateMapsInto(global, segMap) {
 /**
  * 仅 OCR：长度 <3（segmentLengthUnits）只查 media_search_terms（field_type=ocr），否则查 ocr_search_terms FTS。
  */
-function applyOcrRecallForSegment(
-  { segment, userId, whereConditions, whereParams },
-  segCands,
-) {
+function applyOcrRecallForSegment({ segment, userId, whereConditions, whereParams }, segCands) {
   const ocrLenUnits = segmentLengthUnits(segment);
 
   if (ocrLenUnits < 3) {
@@ -381,18 +366,7 @@ function applyOcrRecallForSegment(
 /**
  * 仅图片理解：筛选 / 视觉列 FTS / media_search_terms（不含 OCR 行）。
  */
-function applyVisualRecallForSegment(
-  {
-    segment,
-    residual,
-    hasStructured,
-    isLongBranch,
-    userId,
-    whereConditions,
-    whereParams,
-  },
-  segCands,
-) {
+function applyVisualRecallForSegment({ segment, residual, hasStructured, isLongBranch, userId, whereConditions, whereParams }, segCands) {
   let termRows = 0;
   let ftsRows = 0;
 
@@ -408,8 +382,32 @@ function applyVisualRecallForSegment(
       containsChinese(segment),
     );
     ftsRows += filterRows.length;
-    } else if (residual) {
-      if (isLongBranch) {
+  } else if (residual) {
+    if (isLongBranch) {
+      const inner = buildFtsQueryForToken(residual);
+      const wrapped = inner ? wrapFtsQueryForVisualColumnsOnly(inner) : null;
+      if (wrapped) {
+        const rows = searchModel.recallMediaIdsByFts({
+          userId,
+          ftsQuery: wrapped,
+          whereConditions,
+          whereParams,
+        });
+        mergeFtsScores(segCands, rows, containsChinese(residual));
+        ftsRows += rows.length;
+      }
+    } else {
+      const shortQueryTerms = buildChineseQueryTerms(residual);
+      if (shortQueryTerms.length > 0) {
+        const termRowsData = searchModel.recallMediaIdsByChineseTermsForVisual({
+          userId,
+          terms: shortQueryTerms.map((item) => item.term),
+          whereConditions,
+          whereParams,
+        });
+        mergeCandidateMapsInto(segCands, scoreChineseTermHits(termRowsData, shortQueryTerms));
+        termRows += termRowsData.length;
+      } else {
         const inner = buildFtsQueryForToken(residual);
         const wrapped = inner ? wrapFtsQueryForVisualColumnsOnly(inner) : null;
         if (wrapped) {
@@ -419,36 +417,12 @@ function applyVisualRecallForSegment(
             whereConditions,
             whereParams,
           });
-          mergeFtsScores(segCands, rows, containsChinese(residual));
+          mergeFtsScores(segCands, rows, false);
           ftsRows += rows.length;
-        }
-      } else {
-        const shortQueryTerms = buildChineseQueryTerms(residual);
-        if (shortQueryTerms.length > 0) {
-          const termRowsData = searchModel.recallMediaIdsByChineseTermsForVisual({
-            userId,
-            terms: shortQueryTerms.map((item) => item.term),
-            whereConditions,
-            whereParams,
-          });
-          mergeCandidateMapsInto(segCands, scoreChineseTermHits(termRowsData, shortQueryTerms));
-          termRows += termRowsData.length;
-        } else {
-          const inner = buildFtsQueryForToken(residual);
-          const wrapped = inner ? wrapFtsQueryForVisualColumnsOnly(inner) : null;
-          if (wrapped) {
-            const rows = searchModel.recallMediaIdsByFts({
-              userId,
-              ftsQuery: wrapped,
-              whereConditions,
-              whereParams,
-            });
-            mergeFtsScores(segCands, rows, false);
-            ftsRows += rows.length;
-          }
         }
       }
     }
+  }
 
   return { termRows, ftsRows };
 }
@@ -498,7 +472,10 @@ async function searchMediaResults({
     throw new Error("searchMediaResults: keyword search requires baseFilters and filterOptions");
   }
 
-  const segments = normalizedQuery.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+  const segments = normalizedQuery
+    .split(/\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
   if (segments.length === 0) {
     return {
       list: [],
@@ -542,9 +519,7 @@ async function searchMediaResults({
 
     const residual = (parsedIntent.residualQuery || "").trim();
     const hasStructured = Boolean(
-      parsedIntent.filters?.timeDimension
-      || parsedIntent.filters?.customDateRange
-      || parsedIntent.filters?.location?.length
+      parsedIntent.filters?.timeDimension || parsedIntent.filters?.customDateRange || parsedIntent.filters?.location?.length,
     );
 
     // 长短分支与 OCR 是否走 FTS：均按「去掉时间/地点后的 residual」计长度；residual 为空时长度为 0

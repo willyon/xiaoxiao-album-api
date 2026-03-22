@@ -1200,11 +1200,10 @@ function getFaceEmbeddingsByIds(faceEmbeddingIds) {
       fe.pose,
       fe.expression,
       fe.face_thumbnail_storage_key,
-      ma.sharpness_score,
+      m.sharpness_score,
       m.captured_at AS image_created_at
     FROM media_face_embeddings fe
     INNER JOIN media m ON fe.media_id = m.id
-    LEFT JOIN media_analysis ma ON ma.media_id = m.id
     WHERE fe.id IN (${placeholders})
       AND m.deleted_at IS NULL
   `;
@@ -1224,9 +1223,8 @@ function getMediasSharpnessByIds(imageIds) {
 
   const placeholders = imageIds.map(() => "?").join(", ");
   const imageSql = `
-    SELECT m.id, ma.sharpness_score
+    SELECT m.id, m.sharpness_score
     FROM media m
-    LEFT JOIN media_analysis ma ON ma.media_id = m.id
     WHERE m.id IN (${placeholders})
   `;
   const stmt = db.prepare(imageSql);

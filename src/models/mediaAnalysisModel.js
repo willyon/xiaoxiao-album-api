@@ -1,5 +1,5 @@
 /*
- * @Description: media_analysis 表相关操作（状态与汇总更新）
+ * @Description: 媒体智能分析状态与汇总字段（落在 media 表）
  */
 
 const { db } = require("../services/database");
@@ -7,15 +7,14 @@ const { db } = require("../services/database");
 function markMediaAnalysisRunning(mediaId, analysisVersion) {
   db.prepare(
     `
-    INSERT INTO media_analysis (media_id, analysis_status, analysis_version, analyzed_at, last_error, last_error_at)
-    VALUES (?, 'running', ?, NULL, NULL, NULL)
-    ON CONFLICT(media_id) DO UPDATE SET
+    UPDATE media SET
       analysis_status = 'running',
-      analysis_version = excluded.analysis_version,
+      analysis_version = ?,
       last_error = NULL,
       last_error_at = NULL
+    WHERE id = ?
   `,
-  ).run(mediaId, analysisVersion);
+  ).run(analysisVersion, mediaId);
 }
 
 function markMediaAnalysisFailed(mediaId, analysisVersion, error) {
@@ -26,15 +25,14 @@ function markMediaAnalysisFailed(mediaId, analysisVersion, error) {
   const now = Date.now();
   db.prepare(
     `
-    INSERT INTO media_analysis (media_id, analysis_status, analysis_version, analyzed_at, last_error, last_error_at)
-    VALUES (?, 'failed', ?, NULL, ?, ?)
-    ON CONFLICT(media_id) DO UPDATE SET
+    UPDATE media SET
       analysis_status = 'failed',
-      analysis_version = excluded.analysis_version,
-      last_error = excluded.last_error,
-      last_error_at = excluded.last_error_at
+      analysis_version = ?,
+      last_error = ?,
+      last_error_at = ?
+    WHERE id = ?
   `,
-  ).run(mediaId, analysisVersion, code, now);
+  ).run(analysisVersion, code, now, mediaId);
 }
 
 function finalizeMediaAnalysis({
@@ -43,56 +41,64 @@ function finalizeMediaAnalysis({
   faceData = {},
   cleanupData = {},
   descriptionData = {},
-  ocrData = {},
 }) {
   const faceCount = faceData.faceCount ?? null;
   const personCount = faceData.personCount ?? null;
   const primaryFaceQuality = faceData.primaryFaceQuality ?? null;
   const primaryExpression = faceData.primaryExpression ?? null;
   const primaryExpressionConfidence = faceData.primaryExpressionConfidence ?? null;
+  const rawExprTags = faceData.expressionTagsText;
+  const expressionTagsText =
+    rawExprTags != null && String(rawExprTags).trim() !== "" ? String(rawExprTags).trim() : null;
+  const rawAgeTags = faceData.ageTagsText;
+  const ageTagsText =
+    rawAgeTags != null && String(rawAgeTags).trim() !== "" ? String(rawAgeTags).trim() : null;
+  const rawGenderTags = faceData.genderTagsText;
+  const genderTagsText =
+    rawGenderTags != null && String(rawGenderTags).trim() !== "" ? String(rawGenderTags).trim() : null;
   const aestheticScore = cleanupData.aestheticScore ?? null;
   const sharpnessScore = cleanupData.sharpnessScore ?? null;
-  const hasDescription = typeof descriptionData.description === "string" ? 1 : null;
-  /** blocks 未传：本轮未带回 OCR 结果，不更新 has_ocr；[]：明确无字，写 0 */
-  const hasOcr = !Array.isArray(ocrData.blocks) ? null : ocrData.blocks.length > 0 ? 1 : 0;
+  const phash = cleanupData.phash ?? null;
+  const dhash = cleanupData.dhash ?? null;
 
   db.prepare(
     `
-    INSERT INTO media_analysis (
-      media_id, analysis_status, analysis_version, analyzed_at,
-      face_count, person_count, primary_face_quality, primary_expression, primary_expression_confidence,
-      aesthetic_score, sharpness_score, has_description, has_ocr, last_error, last_error_at
-    )
-    VALUES (?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
-    ON CONFLICT(media_id) DO UPDATE SET
+    UPDATE media SET
       analysis_status = 'done',
-      analysis_version = excluded.analysis_version,
-      analyzed_at = excluded.analyzed_at,
-      face_count = COALESCE(excluded.face_count, media_analysis.face_count),
-      person_count = COALESCE(excluded.person_count, media_analysis.person_count),
-      primary_face_quality = COALESCE(excluded.primary_face_quality, media_analysis.primary_face_quality),
-      primary_expression = COALESCE(excluded.primary_expression, media_analysis.primary_expression),
-      primary_expression_confidence = COALESCE(excluded.primary_expression_confidence, media_analysis.primary_expression_confidence),
-      aesthetic_score = COALESCE(excluded.aesthetic_score, media_analysis.aesthetic_score),
-      sharpness_score = COALESCE(excluded.sharpness_score, media_analysis.sharpness_score),
-      has_description = COALESCE(excluded.has_description, media_analysis.has_description),
-      has_ocr = COALESCE(excluded.has_ocr, media_analysis.has_ocr),
+      analysis_version = ?,
+      analyzed_at = ?,
+      phash = COALESCE(?, phash),
+      dhash = COALESCE(?, dhash),
+      face_count = COALESCE(?, face_count),
+      person_count = COALESCE(?, person_count),
+      primary_face_quality = COALESCE(?, primary_face_quality),
+      primary_expression = COALESCE(?, primary_expression),
+      primary_expression_confidence = COALESCE(?, primary_expression_confidence),
+      expression_tags = COALESCE(?, expression_tags),
+      age_tags = COALESCE(?, age_tags),
+      gender_tags = COALESCE(?, gender_tags),
+      aesthetic_score = COALESCE(?, aesthetic_score),
+      sharpness_score = COALESCE(?, sharpness_score),
       last_error = NULL,
       last_error_at = NULL
+    WHERE id = ?
   `,
   ).run(
-    mediaId,
     analysisVersion,
     Date.now(),
+    phash,
+    dhash,
     faceCount,
     personCount,
     primaryFaceQuality,
     primaryExpression,
     primaryExpressionConfidence,
+    expressionTagsText,
+    ageTagsText,
+    genderTagsText,
     aestheticScore,
     sharpnessScore,
-    hasDescription,
-    hasOcr,
+    mediaId,
   );
 }
 
@@ -101,4 +107,3 @@ module.exports = {
   markMediaAnalysisFailed,
   finalizeMediaAnalysis,
 };
-

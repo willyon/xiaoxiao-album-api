@@ -11,7 +11,7 @@ from pathlib import Path  # 路径操作，用于处理文件路径
 
 def main():
     """主启动函数"""
-    # 在启动子进程前设置所有模型缓存目录，子进程会继承；避免模型下到 ~/.cache / ~/.insightface / ~/.paddlex
+    # 在启动子进程前设置所有模型缓存目录，子进程会继承；避免模型下到 ~/.cache / ~/.insightface
     current_dir = Path(__file__).resolve().parent
     cache_base = current_dir / "models" / "cache"
     os.environ["HF_HOME"] = str(cache_base / "huggingface")
@@ -19,10 +19,6 @@ def main():
     os.environ["HUGGINGFACE_HUB_CACHE"] = str(cache_base / "huggingface")
     os.environ["INSIGHTFACE_HOME"] = str(cache_base / "insightface")
     os.environ["EFFLIB_HOME"] = str(cache_base / "emotiefflib")
-    paddle_cache = str(cache_base / "paddleocr")
-    os.environ["PADDLE_PDX_CACHE_HOME"] = paddle_cache
-    os.environ["PADDLEX"] = paddle_cache
-    os.environ["PADDLEOCR_HOME"] = paddle_cache
 
     # 获取当前脚本所在的目录路径（前面已用于设置缓存，此处仅作后续路径用）
     # __file__ 是当前脚本文件的完整路径

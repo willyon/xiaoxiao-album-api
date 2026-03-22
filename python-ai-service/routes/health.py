@@ -38,12 +38,10 @@ async def health_check():
     # 聚合字段：只反映配置态，不触发真实加载
     response.update(
         {
-            "models_loaded": any(bool((runtime.get(k) or {}).get("loaded", False)) for k in ("caption", "ocr")),
+            "models_loaded": bool((runtime.get("caption") or {}).get("loaded", False)),
             "face_loaded": False,
-            "ocr_loaded": bool((runtime.get("ocr") or {}).get("loaded", False)),
             "services": {
                 "face_recognition": False,
-                "ocr_recognition": bool((configured.get("ocr") or {}).get("available", False)),
             },
         }
     )
@@ -77,7 +75,6 @@ async def capabilities_view():
         "embedding_standard": _ver("embedding.standard.siglip2.base"),
         "embedding_enhanced": _ver("embedding.enhanced.siglip2.so400m"),
         "quality_head": _ver("quality.shared.aesthetic_head.musiq"),
-        "ocr": _ver("ocr.shared.paddleocr.ppocrv5"),
         "face_attribute": _ver("face.shared.fairface.age_gender"),
         "expression": _ver("face.shared.emotiefflib.default"),
     }
@@ -86,7 +83,6 @@ async def capabilities_view():
     models_meta = {}
     for mid in [
         "face.shared.insightface.buffalo_l",
-        "ocr.shared.paddleocr.ppocrv5",
         "face.shared.emotiefflib.default",
         "face.shared.fairface.age_gender",
         "quality.shared.aesthetic_head.musiq",

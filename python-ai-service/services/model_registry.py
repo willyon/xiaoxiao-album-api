@@ -24,7 +24,7 @@ class ModelConfig:
     task_type: str
     profile_scope: str  # standard | enhanced | shared
     local_path: str     # 相对 python-ai-service 根目录的路径
-    runtime: str        # onnxruntime | insightface | paddleocr | transformers | other
+    runtime: str        # onnxruntime | insightface | transformers | other
     device_support: str  # cpu|mps|cuda|mixed
     load_strategy: str   # preload | lazy_load | temporary
     is_primary: bool = True
@@ -33,7 +33,7 @@ class ModelConfig:
     notes: Optional[str] = None
     # 扩展：用于标记第三方自管权重等元数据（external_managed/local_managed 等）
     source_type: str = "local_managed"   # local_managed | external_managed
-    provider: Optional[str] = None       # 例如 insightface / paddleocr / emotiefflib
+    provider: Optional[str] = None       # 例如 insightface / emotiefflib
     is_optional: bool = False            # true 表示失败不阻塞主链路
 
 
@@ -70,21 +70,6 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         source_type="local_managed",
         provider="onnxruntime",
         is_optional=True,
-    ),
-    # OCR 主干（PaddleOCR）
-    "ocr.shared.paddleocr.ppocrv5": ModelConfig(
-        model_id="ocr.shared.paddleocr.ppocrv5",
-        task_type="ocr",
-        profile_scope="shared",
-        local_path="models/cache/paddleocr",
-        runtime="paddleocr",
-        device_support="cpu",
-        load_strategy="lazy_load",
-        is_primary=True,
-        notes="PaddleOCR PP-OCRv5，standard/enhanced 共用",
-        source_type="external_managed",
-        provider="paddleocr",
-        is_optional=False,
     ),
     # 物体检测 standard（YOLOv11x ONNX）
     "object.standard.yolo.11x": ModelConfig(

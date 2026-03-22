@@ -10,10 +10,11 @@ const similarService = require("../services/similarService");
 const CustomError = require("../errors/customError");
 const { ERROR_CODES, SUCCESS_CODES } = require("../constants/messageCodes");
 const { getRedisClient } = require("../services/redisClient");
-const { ensureUserSetReady, userSetKey } = require("../workers/userMediaHashset");
+const { userSetKey } = require("../workers/userMediaHashset");
 const { updateProgress } = require("../services/mediaProcessingProgressService");
 const logger = require("../utils/logger");
-const { getMediaDownloadInfo, rebuildMediaSearchDoc } = require("../models/mediaModel");
+const { getMediaDownloadInfo, rebuildMediaSearchDoc, selectMediaRowByHashForUser } = require("../models/mediaModel");
+const trashService = require("../services/trashService");
 const { mediaAnalysisQueue } = require("../queues/mediaAnalysisQueue");
 
 // 分页获取模糊图列表（is_blurry = 1），用于清理页模糊图 tab
@@ -55,7 +56,10 @@ async function handleGetSimilarGroups(req, res, next) {
  * POST /images/checkFileExists
  * Body: { hash }
  *
- * 作用：检查指定哈希的图片是否已存在，用于前端预检和秒传功能
+ * 以库内 (user_id, file_hash) 为准：
+ * - 无行：清理 Redis 陈旧 hash，返回不存在
+ * - 仅回收站有行：静默恢复后返回 exists:true（计 uploadedCount，不计「跳过」）
+ * - 正常库内：秒传，计 existingFiles
  */
 async function handleCheckFileExists(req, res, next) {
   try {
@@ -70,40 +74,65 @@ async function handleCheckFileExists(req, res, next) {
       });
     }
 
-    // 确保用户的 Redis hash 集合已初始化
-    await ensureUserSetReady(userId);
-
-    // 使用 Redis 检查文件是否已存在
     const redisClient = getRedisClient();
     const setKey = userSetKey(userId);
-    const exists = await redisClient.sismember(setKey, hash);
+    const row = selectMediaRowByHashForUser({ userId, imageHash: hash });
 
-    if (exists === 1) {
-      // 文件已存在
-      logger.info({
-        message: "File exists check: found existing file",
-        details: { userId, imageHash: hash },
-      });
-
-      // 如果有sessionId，更新已存在文件计数
-      if (sessionId) {
-        await updateProgress({
-          sessionId,
-          status: "existingFiles",
-        });
+    if (!row) {
+      try {
+        await redisClient.srem(setKey, hash);
+      } catch {
+        /* ignore */
       }
-
-      return res.sendResponse({
-        data: { exists: true },
-        messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-      });
-    } else {
-      // 文件不存在
       return res.sendResponse({
         data: { exists: false },
         messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
       });
     }
+
+    if (row.deleted_at != null) {
+      await trashService.restoreMedias({ userId, imageIds: [row.id] });
+      try {
+        await redisClient.sadd(setKey, hash);
+      } catch {
+        /* ignore */
+      }
+      if (sessionId) {
+        // 与正常入库后走 meta 流水线一致：媒体整理进度 = highResDone/uploadedCount
+        await updateProgress({ sessionId, status: "uploadedCount" });
+        await updateProgress({ sessionId, status: "highResDone" });
+      }
+      logger.info({
+        message: "checkFileExists: restored from trash on re-upload",
+        details: { userId, imageHash: hash, mediaId: row.id },
+      });
+      return res.sendResponse({
+        data: { exists: true, restoredFromTrash: true },
+        messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
+      });
+    }
+
+    logger.info({
+      message: "File exists check: found active media",
+      details: { userId, imageHash: hash },
+    });
+
+    if (sessionId) {
+      await updateProgress({
+        sessionId,
+        status: "existingFiles",
+      });
+    }
+    try {
+      await redisClient.sadd(setKey, hash);
+    } catch {
+      /* ignore */
+    }
+
+    return res.sendResponse({
+      data: { exists: true },
+      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
+    });
   } catch (error) {
     next(error);
   }

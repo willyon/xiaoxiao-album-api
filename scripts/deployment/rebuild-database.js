@@ -2,7 +2,7 @@
  * 数据库重建脚本：删除所有业务表，并按 initTableModel 中的 createTable* 按外键依赖顺序重建。
  * 使用方式：node scripts/deployment/rebuild-database.js
  *
- * 覆盖表：users, media, media_analysis（文案/OCR 在 media.ai_*）,
+ * 覆盖表：users, media（文案/OCR/分析状态与指标均在 media）,
  *        media_face_embeddings, media_embeddings, video_keyframes, video_transcripts,
  *        albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta,
  *        similar_groups, similar_group_members, media_search, media_search_fts, media_search_terms
@@ -19,7 +19,6 @@ const { db } = require(path.join(projectRoot, "src", "services", "database"));
 const {
   createTableUsers,
   createTableMedia,
-  createTableMediaAnalysis,
   createTableMediaFaceEmbeddings,
   createTableMediaEmbeddings,
   createTableVideoKeyframes,
@@ -89,7 +88,6 @@ async function rebuildDatabase() {
 
       createTableUsers();
       createTableMedia();
-      createTableMediaAnalysis();
       createTableMediaFaceEmbeddings();
       createTableMediaEmbeddings();
       createTableVideoKeyframes();
@@ -109,7 +107,7 @@ async function rebuildDatabase() {
 
       console.log("🎉 数据库重建完成！");
       console.log(
-        "📋 已创建表：users, media, media_analysis, media_face_embeddings, media_embeddings, video_keyframes, video_transcripts, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_search_fts, media_search_terms",
+        "📋 已创建表：users, media, media_face_embeddings, media_embeddings, video_keyframes, video_transcripts, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_search_fts, media_search_terms",
       );
     } catch (err) {
       db.prepare("ROLLBACK").run();

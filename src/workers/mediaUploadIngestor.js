@@ -7,6 +7,7 @@
 
 const logger = require("../utils/logger");
 const { saveNewMedia } = require("../services/mediaService");
+const trashService = require("../services/trashService");
 const { getRedisClient } = require("../services/redisClient");
 const { userSetKey } = require("./userMediaHashset");
 const { mediaMetaQueue } = require("../queues/mediaMetaQueue");
@@ -14,6 +15,23 @@ const storageService = require("../services/storageService");
 const videoProcessingService = require("../services/videoProcessingService");
 const timeIt = require("../utils/timeIt");
 const { updateProgress } = require("../services/mediaProcessingProgressService");
+
+/** Redis 命中但库内仅回收站记录时：静默恢复并计 uploadedCount，删除临时上传文件 */
+async function _restoreTrashIfApplicableAndSkipUpload(fileInfo) {
+  const { userId, imageHash } = fileInfo;
+  const { restored } = await trashService.restoreTrashMediaByHashIfApplicable({ userId, imageHash });
+  if (!restored) return false;
+  logger.info({
+    message: "Worker：Redis 命中但仅回收站有记录，已恢复并结束上传",
+    details: { imageHash, userId, fileName: fileInfo.fileName },
+  });
+  if (fileInfo.sessionId) {
+    await updateProgress({ sessionId: fileInfo.sessionId, status: "uploadedCount" });
+    await updateProgress({ sessionId: fileInfo.sessionId, status: "highResDone" });
+  }
+  await storageService.deleteFile(fileInfo);
+  return true;
+}
 
 // 原子化：先查集合 → 抢锁 → 失败则再查集合 → 再决定 busy/重复
 async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
@@ -23,6 +41,10 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
   // 1) 快路径：集合命中，立即按重复处理
   const already = await redisClient.sismember(setKey, imageHash);
   if (already === 1) {
+    if (await _restoreTrashIfApplicableAndSkipUpload(fileInfo)) {
+      return { proceed: false };
+    }
+
     logger.info({
       message: "Worker检测到重复图片，跳过处理",
       details: {
@@ -54,6 +76,10 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
     // 3) 抢锁失败：复查集合（可能另一 worker 已经完成并写入）
     const nowExists = await redisClient.sismember(setKey, imageHash);
     if (nowExists === 1) {
+      if (await _restoreTrashIfApplicableAndSkipUpload(fileInfo)) {
+        return { proceed: false };
+      }
+
       logger.info({
         message: "抢锁失败后检测到重复图片，跳过处理",
         details: {

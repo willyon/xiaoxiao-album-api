@@ -10,7 +10,7 @@
  *
  * 📋 判断标准：
  * • 有 high_res_storage_key 或 original_storage_key（媒体处理完成）
- * • media_analysis.analysis_status != 'done'
+ * • media.analysis_status != 'done'
  *
  * 使用场景：
  * • 批量补充AI分析数据
@@ -47,12 +47,11 @@ function findImagesNeedingAI() {
       m.created_at,
       m.captured_at
     FROM media m
-    LEFT JOIN media_analysis ma ON ma.media_id = m.id
     WHERE (
         m.high_res_storage_key IS NOT NULL 
         OR m.original_storage_key IS NOT NULL
       )
-      AND COALESCE(ma.analysis_status, 'pending') != 'done'
+      AND COALESCE(m.analysis_status, 'pending') != 'done'
       AND m.deleted_at IS NULL
     ORDER BY m.created_at DESC
   `;

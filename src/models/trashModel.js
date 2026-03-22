@@ -160,6 +160,7 @@ function selectMediasForFileDeletion(userId, imageIds) {
     SELECT 
       id,
       user_id,
+      file_hash,
       thumbnail_storage_key,
       high_res_storage_key,
       original_storage_key
@@ -181,6 +182,7 @@ function selectTrashMediasForFileDeletion(userId) {
     SELECT 
       id,
       user_id,
+      file_hash,
       thumbnail_storage_key,
       high_res_storage_key,
       original_storage_key

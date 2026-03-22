@@ -12,11 +12,10 @@ function selectMediaForCleanup(imageId) {
       m.original_storage_key,
       m.thumbnail_storage_key,
       m.file_size_bytes,
-      ma.aesthetic_score,
-      ma.sharpness_score,
-      ma.primary_face_quality
+      m.aesthetic_score,
+      m.sharpness_score,
+      m.primary_face_quality
     FROM media m
-    LEFT JOIN media_analysis ma ON ma.media_id = m.id
     WHERE m.id = ?
     LIMIT 1
   `);
@@ -32,12 +31,11 @@ function selectCleanupCandidatesByUser(userId) {
       m.file_hash AS image_hash,
       m.phash AS image_phash,
       m.dhash AS image_dhash,
-      ma.aesthetic_score,
-      ma.sharpness_score,
-      ma.primary_face_quality,
+      m.aesthetic_score,
+      m.sharpness_score,
+      m.primary_face_quality,
       m.captured_at AS image_created_at
     FROM media m
-    LEFT JOIN media_analysis ma ON ma.media_id = m.id
     WHERE m.user_id = ?
       AND (m.deleted_at IS NULL)
   `);
@@ -58,17 +56,16 @@ function selectUnanalyzedMediasByUser(userId) {
       m.original_storage_key,
       m.phash AS image_phash,
       m.dhash AS image_dhash,
-      ma.aesthetic_score,
-      ma.sharpness_score
+      m.aesthetic_score,
+      m.sharpness_score
     FROM media m
-    LEFT JOIN media_analysis ma ON ma.media_id = m.id
     WHERE m.user_id = ?
       AND (m.high_res_storage_key IS NOT NULL OR m.original_storage_key IS NOT NULL)
       AND (m.deleted_at IS NULL)
       AND (
         m.phash IS NULL
-        OR ma.aesthetic_score IS NULL
-        OR ma.sharpness_score IS NULL
+        OR m.aesthetic_score IS NULL
+        OR m.sharpness_score IS NULL
       )
     ORDER BY m.created_at DESC
   `);
@@ -76,37 +73,19 @@ function selectUnanalyzedMediasByUser(userId) {
 }
 
 function updateMediaCleanupMetrics(imageId, { imagePhash, imageDhash, aestheticScore, sharpnessScore }) {
-  const tx = db.transaction(() => {
-    db.prepare(
+  return db
+    .prepare(
       `
       UPDATE media
       SET
         phash = ?,
-        dhash = ?
-      WHERE id = ?
-    `,
-    ).run(imagePhash ?? null, imageDhash ?? null, imageId);
-
-    db.prepare(
-      `
-      INSERT OR IGNORE INTO media_analysis (media_id, analysis_status, analysis_version)
-      VALUES (?, 'pending', '1.0')
-    `,
-    ).run(imageId);
-
-    return db
-      .prepare(
-        `
-      UPDATE media_analysis
-      SET
+        dhash = ?,
         aesthetic_score = ?,
         sharpness_score = ?
-      WHERE media_id = ?
+      WHERE id = ?
     `,
-      )
-      .run(aestheticScore ?? null, sharpnessScore ?? null, imageId);
-  });
-  return tx();
+    )
+    .run(imagePhash ?? null, imageDhash ?? null, aestheticScore ?? null, sharpnessScore ?? null, imageId);
 }
 
 function deleteGroupsByType(userId, groupType) {
@@ -256,7 +235,7 @@ function selectMembersByGroupIds(groupIds) {
       i.thumbnail_storage_key,
       i.high_res_storage_key,
       i.file_size_bytes,
-      ma.aesthetic_score AS image_aesthetic_score,
+      i.aesthetic_score AS image_aesthetic_score,
       i.captured_at,
       i.is_favorite,
       i.day_key,
@@ -265,17 +244,16 @@ function selectMembersByGroupIds(groupIds) {
       i.height_px,
       i.aspect_ratio,
       i.layout_type,
-      COALESCE(ma.face_count, 0) AS face_count,
-      COALESCE(ma.person_count, 0) AS person_count,
+      COALESCE(i.face_count, 0) AS face_count,
+      COALESCE(i.person_count, 0) AS person_count,
       NULL AS age_tags,
-      ma.primary_expression AS expression_tags,
+      i.primary_expression AS expression_tags,
       NULL AS has_young,
       NULL AS has_adult,
-      ma.primary_face_quality,
-      ma.primary_expression_confidence
+      i.primary_face_quality,
+      i.primary_expression_confidence
     FROM similar_group_members cgm
     JOIN media i ON i.id = cgm.media_id
-    LEFT JOIN media_analysis ma ON ma.media_id = i.id
     WHERE cgm.group_id IN (${placeholders})
       AND i.deleted_at IS NULL
     ORDER BY cgm.group_id, cgm.rank_score DESC, i.captured_at DESC, cgm.media_id

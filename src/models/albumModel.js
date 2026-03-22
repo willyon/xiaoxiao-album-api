@@ -289,17 +289,18 @@ function getAlbumMedias({ albumId, pageNo, pageSize }) {
       i.aspect_ratio,
       i.layout_type,
       i.file_size_bytes,
-      COALESCE(ma.face_count, 0) AS face_count,
-      COALESCE(ma.person_count, 0) AS person_count,
+      COALESCE(i.face_count, 0) AS face_count,
+      COALESCE(i.person_count, 0) AS person_count,
+      i.ai_face_count,
+      i.ai_person_count,
       NULL AS age_tags,
-      ma.primary_expression AS expression_tags,
+      COALESCE(i.expression_tags, i.primary_expression) AS expression_tags,
       NULL AS has_young,
       NULL AS has_adult,
       i.is_favorite,
       ai.added_at
     FROM album_media ai
     INNER JOIN media i ON ai.media_id = i.id
-    LEFT JOIN media_analysis ma ON ma.media_id = i.id
     WHERE ai.album_id = ? AND i.deleted_at IS NULL
     ORDER BY ai.added_at DESC, i.id DESC
     LIMIT ? OFFSET ?

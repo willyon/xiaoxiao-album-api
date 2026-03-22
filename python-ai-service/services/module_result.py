@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 统一模块结果工具。
-用于 analyze_full 中 caption / ocr 等模块的状态语义构造与最小有效结果判断。
+用于 analyze_full 中 caption 等模块的状态语义构造与最小有效结果判断。
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def build_module_result(
 
 
 def is_caption_effective(data: Optional[Dict[str, Any]]) -> bool:
-    """只要 data['description']、keywords 或三类 tags 任一非空，即视为有效结果。"""
+    """description / keywords / tags / ocr（VLM 图中文字转写）任一非空即视为有效。"""
     if not isinstance(data, dict):
         return False
     main_text = str(data.get("description") or "").strip()
@@ -56,12 +56,12 @@ def is_caption_effective(data: Optional[Dict[str, Any]]) -> bool:
     subject_tags = data.get("subject_tags") or []
     action_tags = data.get("action_tags") or []
     scene_tags = data.get("scene_tags") or []
-    return bool(main_text) or bool(keywords) or bool(subject_tags) or bool(action_tags) or bool(scene_tags)
-
-
-def is_ocr_effective(data: Optional[Dict[str, Any]]) -> bool:
-    """OCR 无文字时须为 blocks: []（与 status=empty 搭配）；有有效块即 True。"""
-    if not isinstance(data, dict):
-        return False
-    blocks = data.get("blocks") or []
-    return isinstance(blocks, list) and len(blocks) > 0
+    vision_text = str(data.get("ocr") or "").strip()
+    return (
+        bool(main_text)
+        or bool(keywords)
+        or bool(subject_tags)
+        or bool(action_tags)
+        or bool(scene_tags)
+        or bool(vision_text)
+    )

@@ -1,9 +1,9 @@
 /*
- * @Description: 自动修复 media_analysis 中「未完成」的记录
+ * @Description: 自动修复 media 中「未完成」的分析记录
  *               （analysis_status IN ('failed','pending') 且 analyzed_at IS NULL）
  *               重置状态并重新入队 mediaAnalysisQueue
  * @Usage:
- *   node scripts/tmp-scripts/reenqueue-media-analysis.js
+ *   node scripts/development/reenqueue-media-analysis.js
  */
 
 const path = require("path");
@@ -20,10 +20,9 @@ function getFailedMedia() {
   const stmt = db.prepare(
     `
     SELECT m.id, m.user_id, m.high_res_storage_key, m.original_storage_key, m.media_type
-    FROM media_analysis ma
-    JOIN media m ON m.id = ma.media_id
-    WHERE ma.analysis_status IN ('failed','pending')
-      AND ma.analyzed_at IS NULL
+    FROM media m
+    WHERE m.analysis_status IN ('failed','pending')
+      AND m.analyzed_at IS NULL
       AND m.deleted_at IS NULL
   `,
   );
@@ -34,14 +33,14 @@ function resetMediaAnalysis(ids) {
   const tx = db.transaction(() => {
     const stmt = db.prepare(
       `
-      UPDATE media_analysis
+      UPDATE media
       SET
         analysis_status = 'pending',
         analysis_version = '1.0',
         analyzed_at = NULL,
         last_error = NULL,
         last_error_at = NULL
-      WHERE media_id = ?
+      WHERE id = ?
     `,
     );
     for (const id of ids) {
@@ -55,7 +54,7 @@ async function main() {
   const rows = getFailedMedia();
   if (!rows.length) {
     // eslint-disable-next-line no-console
-    console.log("没有找到 analysis_status='failed' 的 media 记录，无需处理。");
+    console.log("没有找到 analysis_status='failed'/'pending' 且未完成的 media 记录，无需处理。");
     process.exit(0);
   }
 
@@ -86,4 +85,3 @@ main().catch((err) => {
   console.error("执行失败:", err);
   process.exit(1);
 });
-
