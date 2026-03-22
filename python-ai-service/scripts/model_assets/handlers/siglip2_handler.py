@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from ..base import BaseModelAssetHandler
 from ..utils import (
@@ -11,7 +11,6 @@ from ..utils import (
     get_project_root,
     log_error,
     log_info,
-    log_suggest,
     verify_onnx_can_open,
     write_version_file,
 )
@@ -59,24 +58,18 @@ def _ensure_siglip2_tokenizer_and_metadata(
 class Siglip2Handler(BaseModelAssetHandler):
     family_name = "siglip2"
 
-    # 第一版先把默认 model_id 写死在常量里，后续可以抽到配置
-    # standard 与 enhanced 现均使用 so400m 384（1152 维，与 aesthetic_head 一致）
-    DEFAULT_MODELS: Dict[str, str] = {
-        # "standard": "google/siglip2-base-patch16-224",  # 原 base 224，已不用
-        "standard": "google/siglip2-so400m-patch14-384",
-        "enhanced": "google/siglip2-so400m-patch14-384",
-    }
+    # 与运行时 models/managed/siglip2 及注册表项 embedding.standard.siglip2.base 一致（model_id 为稳定标识符）
+    DEFAULT_MODEL_ID = "google/siglip2-so400m-patch14-384"
 
     def prepare(self, args: Any) -> int:
-        profile = (args.profile or "standard").strip().lower()
-        model_id = (args.model_id or self.DEFAULT_MODELS.get(profile) or self.DEFAULT_MODELS["standard"]).strip()
+        model_id = (args.model_id or self.DEFAULT_MODEL_ID).strip()
 
-        output_dir = Path(self.resolve_output_dir(args, profile=profile))
+        output_dir = Path(self.resolve_output_dir(args))
         force: bool = bool(getattr(args, "force", False))
         skip_verify: bool = bool(getattr(args, "skip_verify", False))
         cpu_only: bool = bool(getattr(args, "cpu_only", False))
 
-        log_info(f"准备 SigLIP2 资产: profile={profile}, model_id={model_id}")
+        log_info(f"准备 SigLIP2 资产: model_id={model_id}")
         log_info(f"输出目录: {output_dir}")
 
         ensure_dir(output_dir)
@@ -104,7 +97,6 @@ class Siglip2Handler(BaseModelAssetHandler):
         version_data = {
             "model_id": model_id,
             "family": self.family_name,
-            "profile": profile,
             "runtime": "onnx",
             "script": "prepare_model_assets.py",
             "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -114,20 +106,15 @@ class Siglip2Handler(BaseModelAssetHandler):
         if not skip_verify:
             self.verify(str(output_dir), args)
 
-        if profile == "enhanced":
-            # 目前 enhanced 仍存在导出不稳定的可能，给出回退建议
-            log_suggest("如遇 SigLIP2 enhanced 导出问题，可暂时回退到 profile=standard")
-
         return 0
 
-    def resolve_output_dir(self, args: Any, *, profile: str | None = None) -> str:  # type: ignore[override]
+    def resolve_output_dir(self, args: Any) -> str:
         explicit = getattr(args, "output_dir", None)
         if explicit:
             return str(Path(explicit))
 
-        profile = (profile or args.profile or "standard").strip().lower()
         root = get_project_root()
-        return str(root / "models" / "managed" / "siglip2" / profile)
+        return str(root / "models" / "managed" / "siglip2")
 
     def verify(self, output_dir: str, args: Any) -> None:  # type: ignore[override]
         out = Path(output_dir)

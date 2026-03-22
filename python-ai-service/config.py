@@ -163,25 +163,15 @@ class Settings:
 
     # 可选：外置模型注册表 JSON 路径（阶段 4：配置外置）
     MODEL_REGISTRY_PATH = os.getenv("MODEL_REGISTRY_PATH", "").strip()
-    
-    # 启动预热严格模式：为 true 时，关键 preload 模型加载失败将阻止服务启动
-    STRICT_PRELOAD = os.getenv("STRICT_PRELOAD", "false").lower() == "true"
-    # 可选：指定哪些 model_id 属于“必须成功”的 preload（逗号分隔）。为空则默认“所有 preload 均必须成功”
-    STRICT_PRELOAD_REQUIRED_MODEL_IDS = os.getenv("STRICT_PRELOAD_REQUIRED_MODEL_IDS", "").strip()
 
-    # ========== 重构：Profile / 设备 / 能力开关 ==========
+    # ========== 设备 / 能力开关 ==========
     
     # 默认设备：cpu | cuda | auto（与 utils.device 约定一致）
     DEFAULT_DEVICE = os.getenv("DEFAULT_DEVICE", "auto").strip().lower() or "auto"
-    
-    # 分析档位：standard / enhanced（已移除 basic）
-    SUPPORTED_PROFILES = ("standard", "enhanced")
 
-    # 图像 caption（VLM）provider：local | cloud | off
-    # - local：使用本地 caption 模型
-    # - cloud：使用云 caption provider
+    # 图像 caption（VLM）provider：cloud | off（已移除本地大模型，个人机难以承载）
+    # - cloud：千问 / OpenAI 兼容云 API
     # - off：关闭能力
-    # 当前默认使用 cloud，便于云模型联调
     CAPTION_PROVIDER = (os.getenv("CAPTION_PROVIDER") or "cloud").strip().lower() or "cloud"
 
     # Caption 云厂商：qwen | openai
@@ -261,19 +251,13 @@ class Settings:
 settings = Settings()
 
 
-def normalize_profile(profile: str) -> str:
-    """将 basic 或非法 profile 规范为 standard，保证下游只收到 standard/enhanced。"""
-    p = (profile or "standard").strip().lower()
-    if p == "basic" or p not in settings.SUPPORTED_PROFILES:
-        return "standard"
-    return p
-
-
 def normalize_provider(provider: str) -> str:
-    """规范 provider 值，仅允许 local/cloud/off。"""
+    """规范 provider 值，仅允许 cloud/off。"""
     p = (provider or "").strip().lower()
-    allowed = {"local", "cloud", "off"}
-    return p if p in allowed else "local"
+    if p == "local":
+        return "cloud"
+    allowed = {"cloud", "off"}
+    return p if p in allowed else "cloud"
 
 
 def normalize_cloud_vendor(vendor: str) -> str:

@@ -61,7 +61,7 @@ def load_all_models():
     在启动阶段尽力预加载主要模型能力：
     - 人物/表情：InsightFace / FairFace(可选) / EmotiEffLib
     - 人体：YOLOv11x
-    - 表征与审美：SigLIP2 standard + Aesthetic Head
+    - 表征与审美：SigLIP2 + Aesthetic Head
 
     任一模型加载失败不会阻止其它模型加载，实际可用性由各懒加载接口决定。
     """
@@ -118,8 +118,8 @@ def load_all_models():
     
     logger.info("✅ 人体检测模型组加载完成")
 
-    # 5. 加载 SigLIP2 模块（图像/文本向量，standard）
-    logger.info("📦 初始化 SigLIP2 模型组件（standard）...")
+    # 5. 加载 SigLIP2 模块（图像/文本向量）
+    logger.info("📦 初始化 SigLIP2 模型组件...")
     try:
         # 使用统一的 SigLIP2 懒加载入口，基于模型注册表选择目录
         get_siglip2_components()
@@ -234,7 +234,7 @@ def all_face_models_loaded():
 
 def get_siglip2_components():
     """
-    获取 SigLIP2 图像/文本编码器会话与分词器、元数据（standard 档）。
+    获取 SigLIP2 图像/文本编码器会话与分词器、元数据。
 
     懒加载：首次调用时才初始化 ONNX 会话与元数据。
     """
@@ -245,9 +245,9 @@ def get_siglip2_components():
 
     providers = settings.get_onnx_providers()
 
-    # 默认使用注册表中的 standard SigLIP2 配置；若配置缺失，则退回 models/managed/siglip2/standard
+    # 默认使用注册表中的 SigLIP2 配置；若配置缺失，则退回 models/managed/siglip2
     cfg = get_model_config("embedding.standard.siglip2.base")
-    base_dir = resolve_local_path(cfg.local_path) if cfg else "models/managed/siglip2/standard"
+    base_dir = resolve_local_path(cfg.local_path) if cfg else "models/managed/siglip2"
 
     image_sess, text_sess, tokenizer, metadata = get_siglip2_components_for_path(base_dir, providers=providers)
     siglip_image_session = image_sess
@@ -257,18 +257,17 @@ def get_siglip2_components():
     return siglip_image_session, siglip_text_session, siglip_tokenizer, siglip_metadata
 
 
-def get_siglip2_text_components_for_profile(profile: str):
+def get_siglip2_text_components():
     """
-    按 profile 获取 SigLIP2 文本编码组件（与 image 侧同源，保证图文 embedding 空间一致）。
+    获取 SigLIP2 文本编码组件（与 image 侧同源，保证图文 embedding 空间一致）。
 
-    职责：根据 profile 解析对应 SigLIP2 模型目录，加载并返回 (text_session, tokenizer, metadata)；
-    支持与 image 侧一致的 resolve_model_id + fallback 逻辑。缓存由 get_siglip2_components_for_path 按 path 承担。
+    职责：按模型注册表解析 SigLIP2 模型目录，加载并返回 (text_session, tokenizer, metadata)；
+    支持与 image 侧一致的 resolve_model_id("image_embedding") + fallback 逻辑。缓存由 get_siglip2_components_for_path 按 path 承担。
 
     Returns:
         tuple: (text_session, tokenizer, metadata)，加载失败时可为 (None, None, None)。
     """
-    profile = (profile or "standard").lower()
-    primary_id = resolve_model_id(profile, "image_embedding")
+    primary_id = resolve_model_id("image_embedding")
     candidate_ids = []
     if primary_id:
         candidate_ids.append(primary_id)
@@ -302,7 +301,7 @@ def get_siglip2_components_for_path(
     按模型目录加载 SigLIP2 组件（image/text encoder + tokenizer + metadata），并按目录缓存。
 
     Args:
-        model_dir: SigLIP2 模型所在目录（如 models/managed/siglip2/standard 或 enhanced）
+        model_dir: SigLIP2 模型所在目录（如 models/managed/siglip2）
         providers: ONNX Runtime providers；默认使用 settings.get_onnx_providers()
         raise_on_failure: 加载失败时是否抛异常
     """

@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 全量分析主入口：POST /analyze_full
-入参 image/profile/device/image_id/request_id；仅支持 image 二进制。
-返回统一结构（task_id, status, modules, errors, timing, created_at）。
+入参 image、device、image_id、request_id；仅支持 image 二进制。
+返回统一结构（image_id, status, modules, errors, timing）。
 """
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from typing import Optional
 
 from constants.error_codes import AI_DEVICE_NOT_SUPPORTED, IMAGE_DECODE_FAILED
-from config import normalize_profile, settings
+from config import normalize_cloud_vendor, normalize_provider, settings
 from logger import logger
 from schemas.error_schema import ErrorBody
 from services.analyze_full_orchestrator import run_analyze_full
@@ -29,18 +29,16 @@ router = APIRouter()
 async def analyze_full_route(
     request: Request,
     image: UploadFile = File(..., max_size=50 * 1024 * 1024),
-    profile: str = Form("standard"),
     device: str = Form("auto"),
     image_id: Optional[str] = Form(None),
     request_id: Optional[str] = Form(None),
 ):
     """
-    全量图片分析：按 profile 串行执行各模块（含 caption/person/quality/embedding 等），
+    全量图片分析：串行执行各模块（含 caption/person/quality/embedding 等），
     返回统一结构。Node 写库只读 response.modules。
     """
-    profile = normalize_profile(profile)
     resolved, err = normalize_device(device)
-    set_request_log_context(request, profile=profile, requested_device=device, resolved_device=resolved)
+    set_request_log_context(request, requested_device=device, resolved_device=resolved)
     if err:
         set_request_log_context(request, error_code=err or AI_DEVICE_NOT_SUPPORTED)
         raise HTTPException(
@@ -65,7 +63,6 @@ async def analyze_full_route(
     manager = get_model_manager()
     result = run_analyze_full(
         image_bgr=img_bgr,
-        profile=profile,
         device=resolved,
         manager=manager,
         image_id=image_id,
@@ -73,17 +70,20 @@ async def analyze_full_route(
     )
     modules = result.get("modules") or {}
     caption_module = modules.get("caption") or {}
-    caption_meta = caption_module.get("meta") or {}
     errs = result.get("errors") or []
     first_err = errs[0] if errs and isinstance(errs[0], dict) else None
+    _cfg_prov = str(getattr(settings, "CAPTION_PROVIDER", "") or "")
+    _resolved_prov = normalize_provider(_cfg_prov)
+    _cfg_vendor = str(getattr(settings, "CAPTION_CLOUD_VENDOR", "") or "")
+    _resolved_vendor = normalize_cloud_vendor(_cfg_vendor)
     set_request_log_context(
         request,
         result_count=len(modules),
         error_code=first_err.get("code") if first_err else None,
-        configured_provider=str(caption_meta.get("configured_provider") or ""),
-        resolved_provider=str(caption_meta.get("resolved_provider") or ""),
-        configured_vendor=str(caption_meta.get("configured_vendor") or ""),
-        resolved_vendor=str(caption_meta.get("resolved_vendor") or ""),
+        configured_provider=_cfg_prov,
+        resolved_provider=_resolved_prov,
+        configured_vendor=_cfg_vendor,
+        resolved_vendor=_resolved_vendor,
         caption_status=str(caption_module.get("status") or ""),
         top_status=str(result.get("status") or ""),
     )

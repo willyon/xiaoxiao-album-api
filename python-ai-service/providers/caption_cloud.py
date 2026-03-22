@@ -17,7 +17,6 @@ class CloudCaptionProvider(BaseCaptionProvider):
         self,
         image: Any,
         *,
-        profile: str,
         device: str,
         model_manager: Any,
         configured_provider: str,
@@ -32,7 +31,6 @@ class CloudCaptionProvider(BaseCaptionProvider):
         if provider is not None:
             return provider.analyze(
                 image,
-                profile=profile,
                 device=device,
                 model_manager=model_manager,
                 configured_provider=configured_provider,
@@ -42,11 +40,4 @@ class CloudCaptionProvider(BaseCaptionProvider):
             capability="caption",
             provider=f"{resolved_provider}:{resolved_vendor}",
             data={"description": "", "keywords": [], "subject_tags": [], "action_tags": [], "scene_tags": []},
-            meta={
-                "configured_provider": configured_provider,
-                "resolved_provider": resolved_provider,
-                "configured_vendor": configured_vendor,
-                "resolved_vendor": resolved_vendor,
-                "model": getattr(settings, "CAPTION_CLOUD_MODEL", "") or "",
-            },
         )

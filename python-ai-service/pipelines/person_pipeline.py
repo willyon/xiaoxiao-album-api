@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 人物分析 pipeline
-- 输入：统一解码后的 BGR 图像 + profile + device + ModelManager
+- 输入：统一解码后的 BGR 图像 + device + ModelManager
 - 目前复用 person_analysis_service 中的核心逻辑，后续可逐步迁移到 models/person_model.py
 """
 
@@ -15,7 +15,7 @@ import numpy as np
 from logger import logger
 
 
-def analyze_person(image_bgr: np.ndarray, profile: str, device: str, manager: Any) -> Dict[str, Any]:
+def analyze_person(image_bgr: np.ndarray, device: str, manager: Any) -> Dict[str, Any]:
     """
     人物分析入口。
 
@@ -33,7 +33,7 @@ def analyze_person(image_bgr: np.ndarray, profile: str, device: str, manager: An
         }
 
     try:
-        model = manager.get_face_model(profile, device) if manager else None
+        model = manager.get_face_model(device) if manager else None
         if model is None:
             logger.warning("analyze_person: 未获取到人物分析模型，返回空结果")
             return {
@@ -42,7 +42,7 @@ def analyze_person(image_bgr: np.ndarray, profile: str, device: str, manager: An
                 "faces": [],
                 "summary": {"expressions": [], "ages": [], "genders": []},
             }
-        return model.analyze(image_bgr, profile=profile, device=device)
+        return model.analyze(image_bgr, device=device)
     except Exception as exc:  # pragma: no cover
         logger.error("analyze_person 处理失败", details={"error": str(exc)})
         raise

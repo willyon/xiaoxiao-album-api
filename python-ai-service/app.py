@@ -6,42 +6,33 @@ AI图片分析服务
 功能：人物分析（人脸+人体检测）、人脸聚类、图片内容理解
 
 说明：
-- 早期版本采用「严格模式」：启动时一次性加载所有关键模型，任一失败即阻止启动
-- 当前版本改为：启动阶段不强制全量加载，由各能力按需懒加载并通过 ModelManager 与模型注册表管理
+- 本地模型均为懒加载：进程启动只初始化 ModelManager，首次请求对应能力时再加载 ONNX 等权重
 """
 
 import os
 
-# 必须在任何可能触发模型下载的 import 之前执行（routes → model_loader → insightface/huggingface 等会读环境变量）
+# 必须在任何可能触发模型下载的 import 之前执行（routes → model_loader → insightface 等会读环境变量）
 def _setup_model_cache_env() -> None:
     """
     在导入可能触发模型下载的库之前，统一将第三方缓存目录重定向到项目内 models/cache/*。
-    使用强制覆盖（而非 setdefault），避免本机已配置的 ~/.cache 等生效，确保缓存落在项目目录。
-    - HuggingFace 生态：HF_HOME / TRANSFORMERS_CACHE / HUGGINGFACE_HUB_CACHE → models/cache/huggingface
     - InsightFace：INSIGHTFACE_HOME → models/cache/insightface
-    - EmotiEffLib：若从 HuggingFace 下载则用 HF 缓存；另建 models/cache/emotiefflib 以备库支持自定义路径
+    - EmotiEffLib：EFFLIB_HOME → models/cache/emotiefflib
     """
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))  # python-ai-service 根目录
         models_dir = os.path.join(base_dir, "models")
 
-        hf_cache = os.path.join(models_dir, "cache", "huggingface")
         insight_cache = os.path.join(models_dir, "cache", "insightface")
         emotiefflib_cache = os.path.join(models_dir, "cache", "emotiefflib")
 
-        for path in (hf_cache, insight_cache, emotiefflib_cache):
+        for path in (insight_cache, emotiefflib_cache):
             try:
                 os.makedirs(path, exist_ok=True)
             except Exception:
                 pass
 
-        # 强制覆盖（不用 setdefault），确保即使用户本机有 HF_HOME/INSIGHTFACE_HOME 也使用项目目录
-        os.environ["HF_HOME"] = hf_cache
-        os.environ["TRANSFORMERS_CACHE"] = hf_cache
-        os.environ["HUGGINGFACE_HUB_CACHE"] = hf_cache
         os.environ["INSIGHTFACE_HOME"] = insight_cache
 
-        # EmotiEffLib 若从 HuggingFace 下载会走 HF_*；部分版本支持自定义路径时可设 EFFLIB_HOME
         if not os.environ.get("EFFLIB_HOME"):
             os.environ["EFFLIB_HOME"] = emotiefflib_cache
     except Exception:
@@ -66,66 +57,13 @@ from routes import analyze_full, caption, quality, face_cluster, health, person
 
 # 导入 ModelManager
 from services.model_manager import get_model_manager
-from services.model_registry import MODEL_CONFIGS, resolve_local_path
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """生命周期：启动时初始化 ModelManager 并预热 preload 模型；关闭时暂无逻辑。"""
-    # --- startup ---
-    manager = get_model_manager()
-    logger.info("✅ ModelManager 已初始化")
-
-    logger.info("🚀 启动预热：开始加载 preload 模型（注册表驱动）")
-    strict = bool(getattr(settings, "STRICT_PRELOAD", False))
-    required_raw = getattr(settings, "STRICT_PRELOAD_REQUIRED_MODEL_IDS", "") or ""
-    required_ids = {x.strip() for x in required_raw.split(",") if x.strip()}
-
-    def _is_required(model_id: str) -> bool:
-        if not strict:
-            return False
-        if required_ids:
-            return model_id in required_ids
-        return True
-
-    failures: list[dict] = []
-
-    def _record_fail(mid: str, exc: Exception):
-        failures.append({"model_id": mid, "error": str(exc)})
-        logger.error("preload 失败", details={"model_id": mid, "error": str(exc)})
-
-    for model_id, cfg in MODEL_CONFIGS.items():
-        if (cfg.load_strategy or "").lower() != "preload":
-            continue
-        try:
-            task = (cfg.task_type or "").lower()
-            scope_profile = (cfg.profile_scope or "standard").lower()
-
-            if task == "face":
-                from loaders.model_loader import get_insightface_model
-                get_insightface_model()
-            elif task == "object":
-                manager.get_object_model(scope_profile if scope_profile != "shared" else "standard", settings.DEFAULT_DEVICE)
-            elif task == "image_embedding":
-                from loaders.model_loader import get_siglip2_components_for_path
-                get_siglip2_components_for_path(resolve_local_path(cfg.local_path))
-            elif task == "quality":
-                from loaders.model_loader import get_aesthetic_head_session
-                get_aesthetic_head_session()
-            elif task == "expression":
-                from loaders.model_loader import get_expression_model
-                get_expression_model()
-            else:
-                logger.info("preload.skip: 未支持的 task_type=%s" % (task,), details={"model_id": model_id})
-        except Exception as e:
-            _record_fail(model_id, e)
-            if _is_required(model_id):
-                raise RuntimeError(f"preload required model failed: {model_id}: {e}") from e
-
-    logger.info(
-        "✅ 启动预热：preload 模型加载完成",
-        extra={"failures": failures, "strict": strict, "required_ids": list(required_ids)},
-    )
+    """生命周期：启动时仅创建 ModelManager；本地模型均在首次请求时懒加载。"""
+    get_model_manager()
+    logger.info("✅ ModelManager 已初始化（本地模型懒加载，无启动预热线程）")
 
     yield
     # --- shutdown (暂无) ---
@@ -174,7 +112,6 @@ def create_app():
         state = request.state
         log_payload = {
             "endpoint": request.url.path,
-            "profile": getattr(state, "_log_profile", None),
             "requested_device": getattr(state, "_log_requested_device", None),
             "resolved_device": getattr(state, "_log_resolved_device", None),
             "model_name": getattr(state, "_log_model_name", None),

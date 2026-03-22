@@ -4,7 +4,7 @@
 人体检测器 - 与物体检测共用同一 YOLO 实例
 
 功能：
-• 通过 ModelManager.get_object_model(profile, device) 获取 YoloObjectDetector
+• 通过 ModelManager.get_object_model(device) 获取 YoloObjectDetector
 • 复用同一 ONNX 会话做人体检测（仅保留 class_id=0 person）
 • 人体专用：尺寸过滤、NMS 参数与人物分析一致（YOLOV11X_CONF_THRESHOLD、PERSON_BOX_MIN_SIZE_RATIO、PERSON_NMS_IOU_THRESHOLD）
 """
@@ -22,22 +22,21 @@ class PersonDetector:
     再做人休专用的尺寸过滤与 NMS。
     """
 
-    def __init__(self, model_manager=None, profile: str = "standard", device: str = "cpu"):
+    def __init__(self, model_manager=None, device: str = "cpu"):
         """
-        profile/device 用于从 ModelManager 取与 object 一致的 YOLO 实例。
+        device 用于从 ModelManager 取与 object 一致的 YOLO 实例。
         不在此处加载模型，首次 detect() 时再按需获取并复用。
         """
         self._manager = model_manager  # 若为 None，detect() 内通过 get_model_manager() 获取
-        self._profile = profile or "standard"
         self._device = device or "cpu"
-        logger.info("✅ PersonDetector 初始化完成（与 object 共用 YOLO，profile=%s）" % (self._profile,))
+        logger.info("✅ PersonDetector 初始化完成（与 object 共用 YOLO）")
 
     def _get_object_detector(self):
         """获取与物体检测共用的 YOLO 检测器实例。"""
         if self._manager is not None:
-            return self._manager.get_object_model(self._profile, self._device)
+            return self._manager.get_object_model(self._device)
         from services.model_manager import get_model_manager
-        return get_model_manager().get_object_model(self._profile, self._device)
+        return get_model_manager().get_object_model(self._device)
 
     def detect(self, image):
         """

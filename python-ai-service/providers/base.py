@@ -17,7 +17,6 @@ class BaseCaptionProvider(ABC):
         self,
         image: Any,
         *,
-        profile: str,
         device: str,
         model_manager: Any,
         configured_provider: str,
@@ -30,13 +29,10 @@ def provider_not_implemented_result(
     *,
     capability: str,
     provider: str,
-    meta: Dict[str, Any],
     data: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     return build_module_result(
         status=MODULE_STATUS_FAILED,
         data=data or {},
         error={"code": AI_SERVICE_ERROR, "message": f"{capability} provider not implemented: {provider}"},
-        reason="provider_not_implemented",
-        meta=meta,
     )

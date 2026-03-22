@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 请求级日志上下文：供各推理接口在 request.state 上设置字段，由中间件统一打一行结构化日志。
-文档约定：endpoint, profile, requested_device, resolved_device, model_name, latency_ms, result_count, error_code
+文档约定：endpoint, requested_device, resolved_device, model_name, latency_ms, result_count, error_code
 """
 
 from typing import Any, Optional
@@ -25,7 +25,6 @@ def get_image_size(img: Any) -> Optional[str]:
 def set_request_log_context(
     request: Any,
     *,
-    profile: Optional[str] = None,
     requested_device: Optional[str] = None,
     resolved_device: Optional[str] = None,
     model_name: Optional[str] = None,
@@ -45,8 +44,6 @@ def set_request_log_context(
     """
     if not hasattr(request, "state"):
         return
-    if profile is not None:
-        request.state._log_profile = profile
     if requested_device is not None:
         request.state._log_requested_device = requested_device
     if resolved_device is not None:

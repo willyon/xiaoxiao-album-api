@@ -14,9 +14,6 @@ def main():
     # 在启动子进程前设置所有模型缓存目录，子进程会继承；避免模型下到 ~/.cache / ~/.insightface
     current_dir = Path(__file__).resolve().parent
     cache_base = current_dir / "models" / "cache"
-    os.environ["HF_HOME"] = str(cache_base / "huggingface")
-    os.environ["TRANSFORMERS_CACHE"] = str(cache_base / "huggingface")
-    os.environ["HUGGINGFACE_HUB_CACHE"] = str(cache_base / "huggingface")
     os.environ["INSIGHTFACE_HOME"] = str(cache_base / "insightface")
     os.environ["EFFLIB_HOME"] = str(cache_base / "emotiefflib")
 

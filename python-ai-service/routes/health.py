@@ -23,16 +23,11 @@ async def health_check():
     resolved = resolve_device(settings.DEFAULT_DEVICE)
     configured = manager.capabilities_configured()
     runtime = manager.capabilities_runtime_status(device=resolved)
-    profiles_capabilities = {
-        p: manager.capabilities_configured_for_profile(p) for p in settings.SUPPORTED_PROFILES
-    }
     response = {
         "status": "healthy",
         "cuda_available": cuda_available(),
         "resolved_device": resolved,
-        "profiles": list(settings.SUPPORTED_PROFILES),
         "capabilities": configured,
-        "profiles_capabilities": profiles_capabilities,
     }
 
     # 聚合字段：只反映配置态，不触发真实加载
@@ -55,25 +50,23 @@ async def capabilities_view():
     - model_versions：各能力使用的模型及版本
     - configured：配置态 provider / vendor / enabled / available
     - runtime：运行态 loaded / resolved provider / resolved vendor
-    - profiles：支持的分析档位
     - taxonomy_version：与 Node 侧约定的分类版本号
     """
     manager = get_model_manager()
     configured = manager.capabilities_configured()
     runtime = manager.capabilities_runtime_status(device="cpu")
-    profiles_runtime = {p: manager.capabilities_runtime_status_for_profile(p, device="cpu") for p in settings.SUPPORTED_PROFILES}
     runtime_models = manager.runtime_model_report(device="cpu")
 
     def _ver(model_id: str):
         return {"model_id": model_id, "version": get_model_version(model_id)}
 
     model_versions = {
-        "caption_standard": _ver("caption.standard.qwen2_5_vl.3b_lazy"),
-        "caption_enhanced": _ver("caption.enhanced.qwen2_5_vl.7b"),
-        "object_standard": _ver("object.standard.yolo.11x"),
-        "object_enhanced": _ver("object.enhanced.yolo.26l"),
-        "embedding_standard": _ver("embedding.standard.siglip2.base"),
-        "embedding_enhanced": _ver("embedding.enhanced.siglip2.so400m"),
+        "caption_cloud": {
+            "model_id": "cloud",
+            "version": (getattr(settings, "CAPTION_CLOUD_MODEL", "") or "").strip() or None,
+        },
+        "object": _ver("object.standard.yolo.11x"),
+        "embedding": _ver("embedding.standard.siglip2.base"),
         "quality_head": _ver("quality.shared.aesthetic_head.musiq"),
         "face_attribute": _ver("face.shared.fairface.age_gender"),
         "expression": _ver("face.shared.emotiefflib.default"),
@@ -92,20 +85,17 @@ async def capabilities_view():
             continue
         models_meta[mid] = {
             "task_type": cfg.task_type,
-            "profile_scope": cfg.profile_scope,
+            "registry_scope": cfg.registry_scope,
             "source_type": getattr(cfg, "source_type", "local_managed"),
             "provider": getattr(cfg, "provider", None),
             "is_optional": getattr(cfg, "is_optional", False),
         }
 
     return {
-        "profiles": list(settings.SUPPORTED_PROFILES),
         "configured": configured,
         "runtime": runtime,
-        "profiles_runtime": profiles_runtime,
         "runtime_models": runtime_models,
         "model_versions": model_versions,
         "models_meta": models_meta,
-        # 与 Node 约定的 taxonomy 版本；首版固定为 v1，后续可以通过环境变量或配置切换
         "taxonomy_version": "v1",
     }

@@ -211,7 +211,7 @@ function createTableMediaFaceEmbeddings() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_face_embeddings_ignored ON media_face_embeddings(ignored_for_clustering);").run();
 }
 
-/** 创建 media_embeddings：媒体级向量（非人脸），按 model_id/source_type 唯一 */
+/** 创建 media_embeddings：媒体级向量（非人脸），按 source_type 与 media 唯一一行 */
 function createTableMediaEmbeddings() {
   const sql = `
     CREATE TABLE IF NOT EXISTS media_embeddings (
@@ -220,11 +220,10 @@ function createTableMediaEmbeddings() {
       source_type TEXT NOT NULL,
       source_ref_id INTEGER,
       vector BLOB NOT NULL,
-      model_id TEXT NOT NULL,
       created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
       analysis_version TEXT,
       FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE,
-      UNIQUE (media_id, model_id, source_type)
+      UNIQUE (media_id, source_type)
     );
   `;
   db.prepare(sql).run();

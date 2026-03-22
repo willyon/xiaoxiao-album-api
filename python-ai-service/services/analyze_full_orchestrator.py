@@ -1,40 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-analyze_full 编排器：按 profile 串行执行各模块，聚合为统一返回结构。
-Node 只读 response.modules；顶层 status 为 success | partial_success | failed（全部失败才 failed）。
+analyze_full 编排器：串行执行各模块，聚合为统一返回结构。
+Node 只读 response.modules；模块 status 仅为 success | failed。顶层 status 为 success | partial_success | failed（全部失败才 failed）。
 """
 
 from __future__ import annotations
 
 import time
-import uuid
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import cv2
 import numpy as np
 
-from constants.error_codes import AI_SERVICE_ERROR, IMAGE_DECODE_FAILED, MODULE_TIMEOUT
+from constants.error_codes import AI_SERVICE_ERROR, IMAGE_DECODE_FAILED
 from config import normalize_provider, settings
 from logger import logger
 from providers import get_caption_provider
-from services.module_result import (
-    MODULE_STATUS_DISABLED,
-    MODULE_STATUS_FAILED,
-    build_module_result,
-)
+from services.module_result import MODULE_STATUS_FAILED, MODULE_STATUS_SUCCESS, build_module_result
 
-# 智能分析全流程固定顺序：caption（VLM 描述/标签）为主语义，其他模块为辅助；profile 仅影响各节点内部模型/逻辑
+# 智能分析全流程固定顺序：caption（VLM 描述/标签）为主语义，其他模块为辅助
 FULL_MODULE_ORDER = [
     "embedding",
     "person",
     "quality",
     "caption",
 ]
-
-PIPELINE_VERSION = "image-analysis-v1"
-
 
 def _coerce_non_negative_int(value: Any) -> int:
     """caption 的 face_count / person_count：缺省或非法时视为 0。"""
@@ -66,27 +57,21 @@ def _bgr_to_rgb_safe(image_bgr: np.ndarray) -> np.ndarray:
 
 def run_analyze_full(
     image_bgr: np.ndarray,
-    profile: str,
     device: str,
     manager: Any,
     image_id: Optional[str] = None,
     request_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    串行执行 profile 对应模块，聚合为统一结构。
-    返回含 task_id, image_id, status, profile, pipeline_version, modules, errors, timing, created_at。
+    串行执行各分析模块，聚合为统一结构。
+    返回含 image_id, status, modules, errors, timing。
     """
     if image_bgr is None or not isinstance(image_bgr, np.ndarray):
         return _fail_response(
             image_id=image_id,
             request_id=request_id,
-            profile=profile,
             errors=[{"code": IMAGE_DECODE_FAILED, "message": "无效的图片数据"}],
         )
-
-    profile = (profile or "standard").lower()
-    if profile not in ("standard", "enhanced"):
-        profile = "standard"
     module_names = FULL_MODULE_ORDER
     try:
         rgb_image = _bgr_to_rgb_safe(image_bgr)
@@ -94,11 +79,9 @@ def run_analyze_full(
         return _fail_response(
             image_id=image_id,
             request_id=request_id,
-            profile=profile,
             errors=[{"code": IMAGE_DECODE_FAILED, "message": str(exc)}],
         )
 
-    task_id = str(uuid.uuid4())
     started_at = time.perf_counter()
     modules: Dict[str, Dict[str, Any]] = {}
     errors: List[Dict[str, str]] = []
@@ -110,7 +93,6 @@ def run_analyze_full(
                 name,
                 image_bgr=image_bgr,
                 rgb_image=rgb_image,
-                profile=profile,
                 device=device,
                 manager=manager,
                 modules=modules,
@@ -127,14 +109,12 @@ def run_analyze_full(
                 "status": "failed",
                 "data": None,
                 "error": {"code": AI_SERVICE_ERROR, "message": str(exc)},
-                "reason": "module_exception",
-                "meta": {},
                 "duration_ms": duration_ms,
             }
             errors.append({"code": AI_SERVICE_ERROR, "message": str(exc)})
 
     # 顶层 status：
-    # - 只要没有 failed，就视为 success（允许 disabled/skipped/empty）
+    # - 只要没有 failed，就视为 success
     # - 全部 failed 才为 failed
     # - 其余混合场景为 partial_success
     statuses = [m["status"] for m in modules.values()]
@@ -147,15 +127,11 @@ def run_analyze_full(
 
     total_ms = round((time.perf_counter() - started_at) * 1000)
     return {
-        "task_id": task_id,
         "image_id": image_id,
         "status": top_status,
-        "profile": profile,
-        "pipeline_version": PIPELINE_VERSION,
         "modules": modules,
         "errors": errors,
         "timing": {"total_ms": total_ms},
-        "created_at": datetime.now(tz=timezone.utc).isoformat(),
     }
 
 
@@ -164,7 +140,6 @@ def _run_one_module(
     *,
     image_bgr: np.ndarray,
     rgb_image: np.ndarray,
-    profile: str,
     device: str,
     manager: Any,
     modules: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -177,7 +152,7 @@ def _run_one_module(
             provider = get_caption_provider(resolved_provider)
             if provider is None:
                 out = build_module_result(
-                    status=MODULE_STATUS_DISABLED,
+                    status=MODULE_STATUS_SUCCESS,
                     data={
                         "description": "",
                         "keywords": [],
@@ -188,16 +163,10 @@ def _run_one_module(
                         "face_count": 0,
                         "person_count": 0,
                     },
-                    reason="provider_off",
-                    meta={
-                        "configured_provider": configured_provider,
-                        "resolved_provider": resolved_provider,
-                    },
                 )
             else:
                 out = provider.analyze(
                     image_bgr,
-                    profile=profile,
                     device=device,
                     model_manager=manager,
                     configured_provider=configured_provider,
@@ -220,14 +189,11 @@ def _run_one_module(
                 "face_count": _coerce_non_negative_int(data.get("face_count")),
                 "person_count": _coerce_non_negative_int(data.get("person_count")),
             }
-            out.setdefault("meta", {})
-            out["meta"]["configured_provider"] = configured_provider
-            out["meta"]["resolved_provider"] = resolved_provider
             return out
         if name == "person":
             from pipelines.person_pipeline import analyze_person
-            data = analyze_person(image_bgr, profile, device, manager)
-            return build_module_result(status="success", data=data, meta={})
+            data = analyze_person(image_bgr, device, manager)
+            return build_module_result(status="success", data=data)
         if name == "quality":
             from pipelines.quality_pipeline import analyze_cleanup
             embedding_data = None
@@ -237,7 +203,6 @@ def _run_one_module(
                     embedding_data = embedding_module.get("data")
             out = analyze_cleanup(
                 image_bgr,
-                profile,
                 device,
                 manager,
                 precomputed_embedding=embedding_data,
@@ -247,34 +212,28 @@ def _run_one_module(
                 "aesthetic_score": out.get("aesthetic_score", 0.0),
                 "sharpness_score": out.get("sharpness_score", 0.0),
             }
-            return build_module_result(status="success", data=data, meta={})
+            return build_module_result(status="success", data=data)
         if name == "embedding":
             from services.siglip_embedding_service import compute_siglip_embedding
-            out = compute_siglip_embedding(rgb_image, profile=profile)
+            out = compute_siglip_embedding(rgb_image)
             if out and out.get("vector"):
-                data = {"vector": out["vector"], "model": out.get("model", "siglip2")}
-                return build_module_result(status="success", data=data, meta={})
+                data = {"vector": out["vector"]}
+                return build_module_result(status="success", data=data)
             return build_module_result(
                 status=MODULE_STATUS_FAILED,
                 data={},
                 error={"code": AI_SERVICE_ERROR, "message": "图像编码失败"},
-                reason="embedding_failed",
-                meta={},
             )
     except Exception as e:
         return build_module_result(
             status=MODULE_STATUS_FAILED,
             data={},
             error={"code": AI_SERVICE_ERROR, "message": str(e)},
-            reason="module_exception",
-            meta={},
         )
     return build_module_result(
         status=MODULE_STATUS_FAILED,
         data={},
         error={"code": AI_SERVICE_ERROR, "message": "未知模块"},
-        reason="unknown_module",
-        meta={},
     )
 
 
@@ -282,17 +241,12 @@ def _fail_response(
     *,
     image_id: Optional[str] = None,
     request_id: Optional[str] = None,
-    profile: str = "standard",
     errors: List[Dict[str, str]],
 ) -> Dict[str, Any]:
     return {
-        "task_id": str(uuid.uuid4()),
         "image_id": image_id,
         "status": "failed",
-        "profile": profile,
-        "pipeline_version": PIPELINE_VERSION,
         "modules": {},
         "errors": errors,
         "timing": {},
-        "created_at": datetime.now(tz=timezone.utc).isoformat(),
     }

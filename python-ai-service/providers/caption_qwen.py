@@ -8,7 +8,7 @@ from typing import Any, Dict
 
 from constants.error_codes import AI_SERVICE_ERROR, AI_TIMEOUT
 from logger import logger
-from services.module_result import MODULE_STATUS_EMPTY, MODULE_STATUS_FAILED, MODULE_STATUS_SUCCESS, build_module_result, is_caption_effective
+from services.module_result import MODULE_STATUS_FAILED, MODULE_STATUS_SUCCESS, build_module_result
 from config import settings
 from providers.base import BaseCaptionProvider
 from providers.qwen_common import (
@@ -28,7 +28,6 @@ class QwenCaptionProvider(BaseCaptionProvider):
         self,
         image: Any,
         *,
-        profile: str,
         device: str,
         model_manager: Any,
         configured_provider: str,
@@ -42,20 +41,6 @@ class QwenCaptionProvider(BaseCaptionProvider):
             "scene_tags": [],
             "ocr": "",
         }
-        configured_vendor = getattr(settings, "CAPTION_CLOUD_VENDOR", "qwen")
-        model = getattr(settings, "CAPTION_CLOUD_MODEL", "") or "qwen3-vl-plus"
-        endpoint = resolve_endpoint(
-            getattr(settings, "CAPTION_CLOUD_BASE_URL", "") or "",
-            DEFAULT_QWEN_COMPATIBLE_BASE_URL,
-            "chat/completions",
-        )
-        meta = {
-            "configured_provider": configured_provider,
-            "resolved_provider": resolved_provider,
-            "configured_vendor": configured_vendor,
-            "resolved_vendor": "qwen",
-            "model": model,
-        }
 
         api_key = (getattr(settings, "CAPTION_CLOUD_API_KEY", "") or "").strip()
         if not api_key:
@@ -63,8 +48,6 @@ class QwenCaptionProvider(BaseCaptionProvider):
                 status=MODULE_STATUS_FAILED,
                 data=base_data,
                 error={"code": AI_SERVICE_ERROR, "message": "caption cloud api key missing"},
-                reason="credentials_missing",
-                meta=meta,
             )
 
         json_shape = '{"description":"","keywords":[],"subject_tags":[],"action_tags":[],"scene_tags":[],"ocr":"","face_count":0,"person_count":0}'
@@ -76,6 +59,7 @@ class QwenCaptionProvider(BaseCaptionProvider):
             "【face_count】非负整数：图中可见、可辨认为「人脸」的个数（含侧脸、远景小脸；完全无法判断则填 0）。"
             "【person_count】非负整数：图中可见「人物」数量（含背影、远景人形、仅身体不露脸者；可与 face_count 不同；无法判断则填 0）。"
         )
+        model = getattr(settings, "CAPTION_CLOUD_MODEL", "") or "qwen3-vl-plus"
         prompt = (
             "请分析这张图片，并严格输出一个 JSON 对象，不要输出 Markdown 或额外解释。"
             f"JSON 结构必须为 {json_shape}。"
@@ -101,6 +85,11 @@ class QwenCaptionProvider(BaseCaptionProvider):
             max_tokens,
             int(getattr(settings, "CAPTION_CLOUD_VISION_OCR_MAX_TOKENS", 1024) or 1024),
         )
+        endpoint = resolve_endpoint(
+            getattr(settings, "CAPTION_CLOUD_BASE_URL", "") or "",
+            DEFAULT_QWEN_COMPATIBLE_BASE_URL,
+            "chat/completions",
+        )
         payload = {
             "model": model,
             "messages": [
@@ -119,22 +108,13 @@ class QwenCaptionProvider(BaseCaptionProvider):
             response = post_json(endpoint, payload, api_key, float(getattr(settings, "CAPTION_TIMEOUT_SECONDS", 30.0) or 30.0))
             raw_text = extract_openai_message_text(response)
             data = _coerce_caption_response(raw_text)
-            if is_caption_effective(data):
-                return build_module_result(status=MODULE_STATUS_SUCCESS, data=data, meta=meta)
-            return build_module_result(
-                status=MODULE_STATUS_EMPTY,
-                data=data,
-                reason="no_caption_generated",
-                meta=meta,
-            )
+            return build_module_result(status=MODULE_STATUS_SUCCESS, data=data)
         except AiTimeoutError as exc:
             logger.warning("qwen caption timeout: %s" % exc)
             return build_module_result(
                 status=MODULE_STATUS_FAILED,
                 data=base_data,
                 error={"code": AI_TIMEOUT, "message": str(exc)},
-                reason="provider_timeout",
-                meta=meta,
             )
         except AiServiceError as exc:
             logger.warning("qwen caption failed: %s" % exc)
@@ -142,8 +122,6 @@ class QwenCaptionProvider(BaseCaptionProvider):
                 status=MODULE_STATUS_FAILED,
                 data=base_data,
                 error={"code": AI_SERVICE_ERROR, "message": str(exc)},
-                reason="provider_exception",
-                meta=meta,
             )
         except Exception as exc:
             logger.warning("qwen caption unexpected error: %s" % exc)
@@ -151,8 +129,6 @@ class QwenCaptionProvider(BaseCaptionProvider):
                 status=MODULE_STATUS_FAILED,
                 data=base_data,
                 error={"code": AI_SERVICE_ERROR, "message": str(exc)},
-                reason="provider_exception",
-                meta=meta,
             )
 
 
@@ -167,34 +143,21 @@ def _coerce_int_for_count(value: Any) -> int:
         return 0
 
 
-def _coerce_caption_response(raw_text: str) -> Dict[str, Any]:
-    obj = parse_json_object_from_text(raw_text)
-    if isinstance(obj, dict):
-        main_text = str(obj.get("description") or "").strip()
-        keywords = normalize_keywords(obj.get("keywords") or [])
-        subject_tags = normalize_keywords(obj.get("subject_tags") or [])
-        action_tags = normalize_keywords(obj.get("action_tags") or [])
-        scene_tags = normalize_keywords(obj.get("scene_tags") or [])
-        vision = str(obj.get("ocr") or "").strip()
-        out = {
-            "description": main_text,
-            "keywords": list(keywords),
-            "subject_tags": list(subject_tags),
-            "action_tags": list(action_tags),
-            "scene_tags": list(scene_tags),
-            "ocr": vision,
-            "face_count": _coerce_int_for_count(obj.get("face_count")),
-            "person_count": _coerce_int_for_count(obj.get("person_count")),
-        }
-        return out
-    main_text = str(raw_text or "").strip()
+def _coerce_caption_response(raw: str) -> Dict[str, Any]:
+    obj = parse_json_object_from_text(raw) or {}
     return {
-        "description": main_text,
-        "keywords": [],
-        "subject_tags": [],
-        "action_tags": [],
-        "scene_tags": [],
-        "ocr": "",
-        "face_count": 0,
-        "person_count": 0,
+        "description": str(obj.get("description") or "").strip(),
+        "keywords": _coerce_str_list(obj.get("keywords")),
+        "subject_tags": normalize_keywords(_coerce_str_list(obj.get("subject_tags"))),
+        "action_tags": normalize_keywords(_coerce_str_list(obj.get("action_tags"))),
+        "scene_tags": normalize_keywords(_coerce_str_list(obj.get("scene_tags"))),
+        "ocr": str(obj.get("ocr") or "").strip(),
+        "face_count": _coerce_int_for_count(obj.get("face_count")),
+        "person_count": _coerce_int_for_count(obj.get("person_count")),
     }
+
+
+def _coerce_str_list(value: Any) -> list:
+    if not isinstance(value, list):
+        return []
+    return [str(x).strip() for x in value if str(x).strip()]

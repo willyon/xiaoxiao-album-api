@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 图片质量指标 pipeline
-- 输入：统一解码后的 BGR 图像 + profile + device + ModelManager
+- 输入：统一解码后的 BGR 图像 + device + ModelManager
 - 通过 ModelManager 获取 QualityAnalyzer，由 quality_analysis_service 提供具体实现
 """
 
@@ -17,7 +17,6 @@ from logger import logger
 
 def analyze_cleanup(
     image_bgr: np.ndarray,
-    profile: str,
     device: str,
     manager: Any,
     precomputed_embedding: Optional[Dict[str, Any]] = None,
@@ -35,7 +34,7 @@ def analyze_cleanup(
         }
 
     try:
-        model = manager.get_quality_model(profile, device) if manager else None
+        model = manager.get_quality_model(device) if manager else None
         if model is None:
             logger.warning("analyze_cleanup: 未获取到 QualityAnalyzer，返回空结果")
             return {
@@ -45,7 +44,6 @@ def analyze_cleanup(
             }
         return model.analyze(
             image_bgr=image_bgr,
-            profile=profile,
             device=device,
             precomputed_embedding=precomputed_embedding,
         )

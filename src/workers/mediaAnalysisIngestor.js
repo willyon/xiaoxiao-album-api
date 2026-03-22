@@ -11,6 +11,7 @@ const {
   insertFaceEmbeddings,
   rebuildMediaSearchDoc,
   upsertMediaAiFieldsForAnalysis,
+  normalizeTextArray,
 } = require("../models/mediaModel");
 const { updateProgressOnce } = require("../services/mediaProcessingProgressService");
 const axios = require("axios");
@@ -157,9 +158,7 @@ async function _runAnalyzeFull({ imageId, userId, imageData, analysisVersion, st
   const formData = new FormData();
   const blob = imageData instanceof Blob ? imageData : new Blob([imageData], { type: "application/octet-stream" });
   formData.append("image", blob, `image-${imageId}.bin`);
-  const profile = process.env.AI_ANALYSIS_PROFILE || "full";
   const device = process.env.AI_DEVICE || "auto";
-  formData.append("profile", profile);
   formData.append("device", device);
   formData.append("image_id", String(imageId));
   const response = await withAiSlot(() =>
@@ -187,27 +186,15 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
   const capData = captionModule?.data;
 
   let captionForDb = null;
-  if ((capStatus === "success" || capStatus === "empty") && capData) {
-    const d = capData;
-    const descriptionText = typeof d.description === "string" ? d.description : "";
-    const keywords = Array.isArray(d.keywords) ? d.keywords : [];
-    const subjectTags = Array.isArray(d.subject_tags) ? d.subject_tags : [];
-    const actionTags = Array.isArray(d.action_tags) ? d.action_tags : [];
-    const sceneTags = Array.isArray(d.scene_tags) ? d.scene_tags : [];
-    const ocr = typeof d.ocr === "string" ? d.ocr : "";
-    const aiFc = typeof d.face_count === "number" ? d.face_count : undefined;
-    const aiPc = typeof d.person_count === "number" ? d.person_count : undefined;
-    captionForDb = {
-      description: descriptionText,
-      keywords,
-      subjectTags,
-      actionTags,
-      sceneTags,
-      ocr,
-      aiFaceCount: aiFc,
-      aiPersonCount: aiPc,
-    };
-    if (capStatus === "success") {
+  if (capStatus === "success" && capData) {
+    captionForDb = _pickCaptionFieldsForDb(capData);
+    if (captionForDb) {
+      const d = capData;
+      const descriptionText = typeof d.description === "string" ? d.description : "";
+      const keywords = Array.isArray(d.keywords) ? d.keywords : [];
+      const subjectTags = Array.isArray(d.subject_tags) ? d.subject_tags : [];
+      const actionTags = Array.isArray(d.action_tags) ? d.action_tags : [];
+      const sceneTags = Array.isArray(d.scene_tags) ? d.scene_tags : [];
       stepResults.description = {
         status: "completed",
         errorCode: null,
@@ -249,7 +236,7 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
 
   if (modules.embedding?.status === "success" && modules.embedding.data?.vector) {
     try {
-      upsertMediaEmbedding({ imageId, vector: modules.embedding.data.vector, modelId: modules.embedding.data.model || "siglip2" });
+      upsertMediaEmbedding({ imageId, vector: modules.embedding.data.vector });
     } catch (e) {
       logger.warn({ message: "analyze_full adapter: upsertMediaEmbedding failed", details: { imageId, error: e.message } });
     }
@@ -305,6 +292,31 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
   } else {
     stepResults.face = { status: modules.person?.status || "failed", errorCode: modules.person?.error?.code || null, data: {} };
   }
+}
+
+/** Python caption.data 中非空字段才落库（与 upsertMediaAiFieldsForAnalysis 一致） */
+function _pickCaptionFieldsForDb(capData) {
+  if (!capData || typeof capData !== "object") return null;
+  const out = {};
+  const desc = typeof capData.description === "string" ? capData.description.trim() : "";
+  if (desc) out.description = desc;
+  const kw = normalizeTextArray(capData.keywords);
+  if (kw.length > 0) out.keywords = kw;
+  const st = normalizeTextArray(capData.subject_tags);
+  if (st.length > 0) out.subjectTags = st;
+  const at = normalizeTextArray(capData.action_tags);
+  if (at.length > 0) out.actionTags = at;
+  const sc = normalizeTextArray(capData.scene_tags);
+  if (sc.length > 0) out.sceneTags = sc;
+  const ocr = typeof capData.ocr === "string" ? capData.ocr.trim() : "";
+  if (ocr) out.ocr = ocr;
+  if (typeof capData.face_count === "number" && Number.isFinite(capData.face_count)) {
+    out.aiFaceCount = Math.max(0, Math.floor(capData.face_count));
+  }
+  if (typeof capData.person_count === "number" && Number.isFinite(capData.person_count)) {
+    out.aiPersonCount = Math.max(0, Math.floor(capData.person_count));
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 async function finalizeMediaAnalysis({ imageId, analysisVersion, stepResults }) {

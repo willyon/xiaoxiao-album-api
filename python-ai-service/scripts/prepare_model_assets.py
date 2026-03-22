@@ -29,10 +29,6 @@ def parse_args() -> argparse.Namespace:
         help="模型家族，例如: siglip2 / yolo",
     )
     parser.add_argument(
-        "--profile",
-        help="模型规格或配置档位，例如: standard / enhanced（主要用于 siglip2）",
-    )
-    parser.add_argument(
         "--variant",
         help="模型变体，例如: yolo11x / yolo11m（主要用于 yolo）",
     )

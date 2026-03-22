@@ -1779,55 +1779,68 @@ function getMediasDownloadInfo({ userId, imageIds }) {
 /**
  * 媒体分析链路：写入 caption / VLM 结果（Python modules.caption.data.ocr → ai_ocr）。
  */
+/**
+ * 仅更新传入的非空字段（caption 为 success 但全空时不写库）。
+ * caption 形状：{ description?, keywords?, subjectTags?, actionTags?, sceneTags?, ocr?, aiFaceCount?, aiPersonCount? }
+ */
 function upsertMediaAiFieldsForAnalysis({ mediaId, caption }) {
   if (caption == null) return;
 
-  const {
-    description,
-    keywords,
-    subjectTags,
-    actionTags,
-    sceneTags,
-    ocr,
-    aiFaceCount,
-    aiPersonCount,
-  } = caption;
-  const normalizedKeywords = normalizeTextArray(keywords);
-  const normalizedSubjectTags = normalizeTextArray(subjectTags);
-  const normalizedActionTags = normalizeTextArray(actionTags);
-  const normalizedSceneTags = normalizeTextArray(sceneTags);
-  const ocrText = typeof ocr === "string" ? ocr : "";
-  const fc =
-    typeof aiFaceCount === "number" && Number.isFinite(aiFaceCount) ? Math.max(0, Math.floor(aiFaceCount)) : null;
-  const pc =
-    typeof aiPersonCount === "number" && Number.isFinite(aiPersonCount) ? Math.max(0, Math.floor(aiPersonCount)) : null;
-  db.prepare(
-    `
-    UPDATE media SET
-      ai_description = ?,
-      ai_keywords_json = ?,
-      ai_subject_tags_json = ?,
-      ai_action_tags_json = ?,
-      ai_scene_tags_json = ?,
-      ai_ocr = ?,
-      ai_face_count = ?,
-      ai_person_count = ?
-    WHERE id = ?
-  `,
-  ).run(
-    description || "",
-    JSON.stringify(normalizedKeywords),
-    JSON.stringify(normalizedSubjectTags),
-    JSON.stringify(normalizedActionTags),
-    JSON.stringify(normalizedSceneTags),
-    ocrText,
-    fc,
-    pc,
-    mediaId,
-  );
+  const assignments = [];
+  const params = [];
+
+  if (caption.description !== undefined) {
+    assignments.push("ai_description = ?");
+    params.push(caption.description);
+  }
+  if (caption.keywords !== undefined) {
+    assignments.push("ai_keywords_json = ?");
+    params.push(JSON.stringify(normalizeTextArray(caption.keywords)));
+  }
+  if (caption.subjectTags !== undefined) {
+    assignments.push("ai_subject_tags_json = ?");
+    params.push(JSON.stringify(normalizeTextArray(caption.subjectTags)));
+  }
+  if (caption.actionTags !== undefined) {
+    assignments.push("ai_action_tags_json = ?");
+    params.push(JSON.stringify(normalizeTextArray(caption.actionTags)));
+  }
+  if (caption.sceneTags !== undefined) {
+    assignments.push("ai_scene_tags_json = ?");
+    params.push(JSON.stringify(normalizeTextArray(caption.sceneTags)));
+  }
+  if (caption.ocr !== undefined) {
+    assignments.push("ai_ocr = ?");
+    params.push(caption.ocr);
+  }
+  if (caption.aiFaceCount !== undefined && caption.aiFaceCount !== null) {
+    const fc =
+      typeof caption.aiFaceCount === "number" && Number.isFinite(caption.aiFaceCount)
+        ? Math.max(0, Math.floor(caption.aiFaceCount))
+        : null;
+    if (fc !== null) {
+      assignments.push("ai_face_count = ?");
+      params.push(fc);
+    }
+  }
+  if (caption.aiPersonCount !== undefined && caption.aiPersonCount !== null) {
+    const pc =
+      typeof caption.aiPersonCount === "number" && Number.isFinite(caption.aiPersonCount)
+        ? Math.max(0, Math.floor(caption.aiPersonCount))
+        : null;
+    if (pc !== null) {
+      assignments.push("ai_person_count = ?");
+      params.push(pc);
+    }
+  }
+
+  if (assignments.length === 0) return;
+  params.push(mediaId);
+  db.prepare(`UPDATE media SET ${assignments.join(", ")} WHERE id = ?`).run(...params);
 }
 
 module.exports = {
+  normalizeTextArray,
   checkFileExists,
   selectMediaRowByHashForUser,
   insertMedia,

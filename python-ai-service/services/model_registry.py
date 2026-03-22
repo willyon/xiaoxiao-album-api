@@ -3,9 +3,8 @@
 """
 模型注册表（model_registry）
 ---------------------------
-- 统一维护各任务的模型信息：model_id / task_type / profile_scope / local_path / runtime / load_strategy / fallback 等
-- 目前仅作为只读配置层，不改变现有加载行为
-- 后续由 ModelManager 与 loaders 基于此做 profile 路由与懒加载
+- 统一维护各任务的模型信息：model_id / task_type / registry_scope / local_path / runtime / load_strategy / fallback 等
+- 只读配置层；ModelManager 与 loaders 按 task_type 解析主模型
 """
 
 from __future__ import annotations
@@ -22,11 +21,11 @@ from config import settings
 class ModelConfig:
     model_id: str
     task_type: str
-    profile_scope: str  # standard | enhanced | shared
+    registry_scope: str  # primary：任务主模型；shared：多任务共用权重
     local_path: str     # 相对 python-ai-service 根目录的路径
-    runtime: str        # onnxruntime | insightface | transformers | other
+    runtime: str        # onnxruntime | insightface | other
     device_support: str  # cpu|mps|cuda|mixed
-    load_strategy: str   # preload | lazy_load | temporary
+    load_strategy: str   # lazy_load | temporary（启动不预加载，均为按需加载）
     is_primary: bool = True
     fallback_model_id: Optional[str] = None
     version: Optional[str] = None
@@ -45,22 +44,22 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
     "face.shared.insightface.buffalo_l": ModelConfig(
         model_id="face.shared.insightface.buffalo_l",
         task_type="face",
-        profile_scope="shared",
+        registry_scope="shared",
         local_path="models/cache/insightface",
         runtime="insightface",
         device_support="mixed",
-        load_strategy="preload",
+        load_strategy="lazy_load",
         is_primary=True,
-        notes="人脸检测 + 特征提取，所有 profile 共用",
+        notes="人脸检测 + 特征提取",
         source_type="external_managed",
         provider="insightface",
         is_optional=False,
     ),
-    # 人脸属性（FairFace，可选，standard/enhanced 共用，仅 age/gender）
+    # 人脸属性（FairFace，可选，仅 age/gender）
     "face.shared.fairface.age_gender": ModelConfig(
         model_id="face.shared.fairface.age_gender",
         task_type="face_attribute",
-        profile_scope="shared",
+        registry_scope="shared",
         local_path="models/managed/face/fairface.onnx",
         runtime="onnxruntime",
         device_support="cpu",
@@ -71,103 +70,40 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
         provider="onnxruntime",
         is_optional=True,
     ),
-    # 物体检测 standard（YOLOv11x ONNX）
+    # 物体检测（YOLOv11x ONNX，权重位于 models/managed/object/）
     "object.standard.yolo.11x": ModelConfig(
         model_id="object.standard.yolo.11x",
         task_type="object",
-        profile_scope="standard",
-        local_path="models/managed/object/standard/yolo11x.onnx",
-        runtime="onnxruntime",
-        device_support="cpu",
-        load_strategy="preload",
-        is_primary=True,
-        fallback_model_id=None,
-        notes="物体检测 standard 档，YOLO11x；更在意速度可改用 YOLO11m",
-    ),
-    # 物体检测 enhanced（YOLO26l，失败回退 11x；benchmark 无明显胜出时可继续用 11x）
-    "object.enhanced.yolo.26l": ModelConfig(
-        model_id="object.enhanced.yolo.26l",
-        task_type="object",
-        profile_scope="enhanced",
-        local_path="models/managed/object/enhanced/yolo26l.onnx",
+        registry_scope="primary",
+        local_path="models/managed/object/yolo11x.onnx",
         runtime="onnxruntime",
         device_support="cpu",
         load_strategy="lazy_load",
         is_primary=True,
-        fallback_model_id="object.standard.yolo.11x",
-        notes="物体检测 enhanced 档，YOLO26l；失败回退 standard 11x",
+        fallback_model_id=None,
+        notes="物体检测YOLOv11x；更在意速度可改用 YOLO11m",
     ),
-    # 跨模态 embedding standard（SigLIP2 so400m 384，输出 1152 维，与 aesthetic_head 一致）
+    # 跨模态 embedding（SigLIP2 so400m 384，输出 1152 维，与 aesthetic_head 一致）
     "embedding.standard.siglip2.base": ModelConfig(
         model_id="embedding.standard.siglip2.base",
         task_type="image_embedding",
-        profile_scope="standard",
-        local_path="models/managed/siglip2/standard",
-        runtime="onnxruntime",
-        device_support="cpu",
-        load_strategy="preload",
-        is_primary=True,
-        notes="SigLIP2 standard（so400m 384，1152 维），与 aesthetic_head 一致",
-    ),
-    # 跨模态 embedding enhanced（SigLIP2 enhanced）
-    "embedding.enhanced.siglip2.so400m": ModelConfig(
-        model_id="embedding.enhanced.siglip2.so400m",
-        task_type="image_embedding",
-        profile_scope="enhanced",
-        local_path="models/managed/siglip2/enhanced",
+        registry_scope="primary",
+        local_path="models/managed/siglip2",
         runtime="onnxruntime",
         device_support="cpu",
         load_strategy="lazy_load",
         is_primary=True,
-        fallback_model_id="embedding.standard.siglip2.base",
-        notes="SigLIP2 enhanced 导出物，失败回退 standard",
-    ),
-    # 文本 embedding（BGE-M3）
-    "text.shared.bge.m3": ModelConfig(
-        model_id="text.shared.bge.m3",
-        task_type="text_embedding",
-        profile_scope="shared",
-        local_path="huggingface://BAAI/bge-m3",
-        runtime="transformers",
-        device_support="cpu",
-        load_strategy="lazy_load",
-        is_primary=True,
-        notes="BGE-M3 文本向量，仅作为文本语义能力",
-    ),
-    # 图像 caption / VLM（standard 按需）
-    "caption.standard.qwen2_5_vl.3b_lazy": ModelConfig(
-        model_id="caption.standard.qwen2_5_vl.3b_lazy",
-        task_type="caption",
-        profile_scope="standard",
-        local_path="huggingface://Qwen/Qwen2.5-VL-3B-Instruct",
-        runtime="transformers",
-        device_support="cpu",
-        load_strategy="lazy_load",
-        is_primary=True,
-        notes="standard 档按需使用 Qwen2.5-VL-3B 生成 caption",
-    ),
-    # 图像 caption / VLM（enhanced 核心：7B 主力，失败回退 3B）
-    "caption.enhanced.qwen2_5_vl.7b": ModelConfig(
-        model_id="caption.enhanced.qwen2_5_vl.7b",
-        task_type="caption",
-        profile_scope="enhanced",
-        local_path="huggingface://Qwen/Qwen2.5-VL-7B-Instruct",
-        runtime="transformers",
-        device_support="cpu",
-        load_strategy="lazy_load",
-        is_primary=True,
-        fallback_model_id="caption.standard.qwen2_5_vl.3b_lazy",
-        notes="enhanced 档以 Qwen2.5-VL-7B 为主，失败回退 standard 3B 懒加载模型；本地资源不足时可依赖 fallback",
+        notes="SigLIP2（so400m 384，1152 维），与 aesthetic_head 一致",
     ),
     # 质量/美学评分头（原 cleanup 能力）；两 key 同源，便于 health/前端用 quality 命名
     "quality.shared.aesthetic_head.musiq": ModelConfig(
         model_id="quality.shared.aesthetic_head.musiq",
         task_type="quality",
-        profile_scope="shared",
+        registry_scope="shared",
         local_path="models/managed/aesthetic_head_musiq/siglip_aesthetic_head.onnx",
         runtime="onnxruntime",
         device_support="cpu",
-        load_strategy="preload",
+        load_strategy="lazy_load",
         is_primary=True,
         notes="SigLIP embedding → 审美分的 ONNX 小头",
         source_type="local_managed",
@@ -177,11 +113,11 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
     "cleanup.shared.aesthetic_head.musiq": ModelConfig(
         model_id="quality.shared.aesthetic_head.musiq",
         task_type="quality",
-        profile_scope="shared",
+        registry_scope="shared",
         local_path="models/managed/aesthetic_head_musiq/siglip_aesthetic_head.onnx",
         runtime="onnxruntime",
         device_support="cpu",
-        load_strategy="preload",
+        load_strategy="lazy_load",
         is_primary=True,
         notes="SigLIP embedding → 审美分的 ONNX 小头（兼容旧 key）",
         source_type="local_managed",
@@ -192,11 +128,11 @@ MODEL_CONFIGS: Dict[str, ModelConfig] = {
     "face.shared.emotiefflib.default": ModelConfig(
         model_id="face.shared.emotiefflib.default",
         task_type="expression",
-        profile_scope="shared",
+        registry_scope="shared",
         local_path="external://emotiefflib/enet_b0_8_best_afew",
         runtime="other",
         device_support="cpu",
-        load_strategy="preload",
+        load_strategy="lazy_load",
         is_primary=True,
         notes="表情识别能力，由 EmotiEffLib 自行管理模型与缓存，可选能力",
         source_type="external_managed",
@@ -216,7 +152,7 @@ def resolve_local_path(local_path: str) -> str:
     将注册表中的 local_path 解析为可用于文件系统访问的路径。
 
     规则：
-    - huggingface://...、~ 开头、以及包含 scheme（如 http://）的路径原样返回
+    - ~ 开头、以及包含 scheme（如 http://）的路径原样返回
     - 绝对路径原样返回
     - 相对路径：优先使用 settings.MODELS_BASE_DIR 拼接
       - 若 local_path 以 "models/" 开头，则去掉前缀后再与 MODELS_BASE_DIR 拼接
@@ -224,7 +160,7 @@ def resolve_local_path(local_path: str) -> str:
     """
     if not local_path:
         return local_path
-    if local_path.startswith("huggingface://") or local_path.startswith("~"):
+    if local_path.startswith("~"):
         return local_path
     if "://" in local_path:
         return local_path
@@ -259,7 +195,7 @@ def get_model_version(model_id: str) -> Optional[str]:
         return str(cfg.version)
     try:
         p = resolve_local_path(cfg.local_path)
-        if not p or p.startswith("huggingface://") or "://" in p or p.startswith("~"):
+        if not p or "://" in p or p.startswith("~"):
             return None
         fs = os.path.expanduser(p)
         if os.path.isdir(fs):
@@ -281,11 +217,11 @@ def _apply_external_registry_overrides() -> None:
     {
       "object.standard.yolo.11x": {
         "task_type": "object",
-        "profile_scope": "standard",
+        "registry_scope": "primary",
         "local_path": "models/managed/object/yolo11x.onnx",
         "runtime": "onnxruntime",
         "device_support": "cpu",
-        "load_strategy": "preload",
+        "load_strategy": "lazy_load",
         "fallback_model_id": null,
         "notes": "..."
       }
@@ -309,7 +245,7 @@ def _apply_external_registry_overrides() -> None:
                 MODEL_CONFIGS[model_id] = ModelConfig(
                     model_id=model_id,
                     task_type=str(raw.get("task_type", "")),
-                    profile_scope=str(raw.get("profile_scope", "shared")),
+                    registry_scope=str(raw.get("registry_scope", "shared")),
                     local_path=str(raw.get("local_path", "")),
                     runtime=str(raw.get("runtime", "other")),
                     device_support=str(raw.get("device_support", "cpu")),
@@ -335,30 +271,29 @@ def list_models_by_task(task_type: str) -> List[ModelConfig]:
     return [cfg for cfg in MODEL_CONFIGS.values() if cfg.task_type == task_type]
 
 
-def resolve_model_id(profile: str, task_type: str) -> Optional[str]:
+def resolve_model_id(task_type: str) -> Optional[str]:
     """
-    根据 profile 与 task_type 解析首选 model_id。
+    按 task_type 解析首选 model_id。
 
     规则：
-    - 先优先匹配 profile_scope == profile 的主模型（standard / enhanced）
-    - 若仍无，退化到 profile_scope == 'shared'
+    - 先匹配 registry_scope == primary 的主模型
+    - 若无，再匹配 registry_scope == shared
     """
-    profile = (profile or "standard").lower()
-    # 1) 精确 profile 匹配
+    tt = (task_type or "").strip().lower()
+    if not tt:
+        return None
     for cfg in MODEL_CONFIGS.values():
-        if cfg.task_type == task_type and cfg.profile_scope == profile and cfg.is_primary:
+        if cfg.task_type == tt and cfg.registry_scope == "primary" and cfg.is_primary:
             return cfg.model_id
-    # 2) 退化 shared
     for cfg in MODEL_CONFIGS.values():
-        if cfg.task_type == task_type and cfg.profile_scope == "shared" and cfg.is_primary:
+        if cfg.task_type == tt and cfg.registry_scope == "shared" and cfg.is_primary:
             return cfg.model_id
     return None
 
 
 def get_fallback_model_id(model_id: str) -> Optional[str]:
     """获取指定模型的 fallback model_id（若有）。"""
-    cfg = MODEL_CONFIGS.get(model_id)
+    cfg = get_model_config(model_id)
     if not cfg:
         return None
     return cfg.fallback_model_id
-

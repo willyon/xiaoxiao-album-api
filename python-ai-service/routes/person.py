@@ -12,7 +12,6 @@ from constants.error_codes import AI_DEVICE_NOT_SUPPORTED, AI_SERVICE_ERROR, AI_
 from logger import logger
 from pipelines.person_pipeline import analyze_person as analyze_person_pipeline
 from schemas.error_schema import ErrorBody
-from config import normalize_profile
 from services.model_manager import get_model_manager
 from utils.device import normalize_device
 from utils.errors import AiTimeoutError, AiServiceError
@@ -27,18 +26,16 @@ router = APIRouter()
 async def analyze_person_route(
     request: Request,
     image: UploadFile = File(..., max_size=50 * 1024 * 1024),
-    profile: str = Form("standard"),
     device: str = Form("auto"),
 ):
     """
     分析图片中的人物（包括人脸和人体检测）。
-    - 输入：multipart/form-data: image, profile?, device?
+    - 输入：multipart/form-data: image, device?
     - 输出：与原 person_analysis_service 一致的结果结构
     """
     try:
-        profile = normalize_profile(profile)
         resolved, err = normalize_device(device)
-        set_request_log_context(request, profile=profile, requested_device=device, resolved_device=resolved)
+        set_request_log_context(request, requested_device=device, resolved_device=resolved)
         if err:
             set_request_log_context(request, error_code=err or AI_DEVICE_NOT_SUPPORTED)
             raise HTTPException(
@@ -73,7 +70,7 @@ async def analyze_person_route(
 
         set_request_log_context(request, image_size=get_image_size(img))
         manager = get_model_manager()
-        result = analyze_person_pipeline(img, profile, resolved, manager)
+        result = analyze_person_pipeline(img, resolved, manager)
         set_request_log_context(request, result_count=1)
         return result
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ModelManager：按 capability + profile + resolved_device 管理模型实例
-- 懒加载、并发锁、缓存复用（首版缓存 key 简化为 capability + profile + device）
+ModelManager：按 capability + resolved_device 管理模型实例（注册表见 model_registry.registry_scope）
+- 懒加载、并发锁、缓存复用（缓存 key：model_id 或 capability 相关元组 + device）
 - 各 get_* 方法：能力关闭时返回 None；未实现的能力返回 None，由 pipeline 返回空结构
 """
 
@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 from config import normalize_cloud_vendor, normalize_provider, settings
 from logger import logger
-from models.embedding_model import BgeM3TextEmbeddingModel, EmbeddingBundle, SiglipImageEmbeddingModel
+from models.embedding_model import EmbeddingBundle, SiglipImageEmbeddingModel
 from services.model_registry import (
     get_fallback_model_id,
     get_model_config,
@@ -23,17 +23,17 @@ from services.model_registry import (
 )
 from utils.device import resolve_device
 
+_EMBEDDING_DEFAULT_MODEL_ID = "embedding.standard.siglip2.base"
+
 
 class ModelManager:
     """
-    统一模型管理：按能力提供 get_*_model(profile, device)。
-    首版：已有能力（face/quality）委托现有 loader；caption/object/scene 占位返回 None。
+    统一模型管理：按能力提供 get_*_model(device)。
     """
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
         # LRU 缓存：key -> model instance（超过 MODEL_CACHE_LIMIT 会逐出最久未使用项）
-        self._caption_models: "OrderedDict[tuple, Any]" = OrderedDict()
         self._object_models: "OrderedDict[tuple, Any]" = OrderedDict()
         self._scene_models: "OrderedDict[tuple, Any]" = OrderedDict()
         self._face_models: "OrderedDict[tuple, Any]" = OrderedDict()
@@ -62,14 +62,11 @@ class ModelManager:
             evicted_key, _ = cache.popitem(last=False)
             logger.info("LRU evict model", extra={"cache": id(cache), "key": str(evicted_key)})
 
-    def _capability_enabled(self, profile: str, capability: str) -> bool:
+    def _capability_enabled(self, capability: str) -> bool:
         return True
 
     def _resolve_device(self, device: str) -> str:
         return resolve_device(device or settings.DEFAULT_DEVICE)
-
-    def _profile_ok(self, profile: str) -> bool:
-        return profile in settings.SUPPORTED_PROFILES if profile else True
 
     def _cloud_api_key(self, capability: str) -> str:
         if capability == "caption":
@@ -100,94 +97,31 @@ class ModelManager:
         provider = (resolved_provider or "").strip().lower()
         if provider == "off":
             return False
-        if provider == "local":
-            return True
         if provider == "cloud":
             return bool(self._cloud_api_key(capability)) and bool(self._cloud_vendor(capability))
         return False
 
-    def _caption_loaded_for_profile(self, profile: str, device: str = "cpu") -> bool:
-        resolved_profile = profile or "standard"
-        resolved_device = self._resolve_device(device)
-        primary_id = resolve_model_id(resolved_profile, "caption")
-        candidates = [x for x in [primary_id, get_fallback_model_id(primary_id) if primary_id else None] if x]
-        return any((mid, resolved_device) in self._caption_models for mid in candidates)
+    def _caption_runtime_ready(self) -> bool:
+        """Caption 是否可用（仅云 API：密钥 + vendor）。"""
+        p = normalize_provider(getattr(settings, "CAPTION_PROVIDER", "cloud"))
+        if p == "off":
+            return False
+        return self._provider_available("caption", "cloud")
 
-    def get_caption_model(self, profile: str, device: str) -> Optional[Any]:
+    def get_object_model(self, device: str) -> Optional[Any]:
         """
-        本地 Caption（VLM）模型；能力关闭时返回 None。
+        物体检测模型。与人体检测共用 YOLO。
 
-        规则：
-        - 按 (profile, task_type='caption') 通过模型注册表解析首选 model_id；
-        - 若该模型加载失败且存在 fallback_model_id，则自动回退；
-        - 所有实例按 (model_id, resolved_device) 维度缓存。
+        基于模型注册表解析 object 模型；同一 (model_id, device) 只加载一次并缓存。
         """
-        if not self._capability_enabled(profile, "caption"):
+        if not self._capability_enabled("object"):
             return None
         with self._lock:
-            resolved_profile = profile or "standard"
             resolved_device = self._resolve_device(device)
 
-            primary_id = resolve_model_id(resolved_profile, "caption")
+            primary_id = resolve_model_id("object")
             if not primary_id:
-                logger.warning("get_caption_model: 未找到 profile=%s 的 caption 模型配置" % resolved_profile)
-                return None
-
-            candidate_ids = [primary_id]
-            fb = get_fallback_model_id(primary_id)
-            if fb and fb not in candidate_ids:
-                candidate_ids.append(fb)
-
-            from models.caption_model import QwenCaptionModel
-
-            last_error: Optional[Exception] = None
-            for model_id in candidate_ids:
-                cache_key = (model_id, resolved_device)
-                if cache_key in self._caption_models:
-                    self._touch(self._caption_models, cache_key)
-                    return self._caption_models[cache_key]
-
-                cfg = get_model_config(model_id)
-                if not cfg:
-                    continue
-                try:
-                    model = QwenCaptionModel(model_id=cfg.local_path)
-                    self._put(self._caption_models, cache_key, model)
-                    logger.info(
-                        "get_caption_model: 已加载 caption 模型",
-                        extra={"model_id": model_id, "profile": resolved_profile, "path": cfg.local_path},
-                    )
-                    return model
-                except Exception as e:  # pragma: no cover
-                    last_error = e
-                    logger.warning(
-                        "get_caption_model: 加载模型失败，将尝试 fallback（若有）",
-                        extra={"model_id": model_id, "profile": resolved_profile, "error": str(e)},
-                    )
-
-            if last_error:
-                logger.warning("get_caption_model: 所有候选 caption 模型加载失败: %s" % last_error)
-            return None
-
-    def get_object_model(self, profile: str, device: str) -> Optional[Any]:
-        """
-        物体检测模型。与人体检测共用 YOLO，不再提供 ENABLE_OBJECT_DETECTION 开关。
-
-        首版实现（仍然有效）：
-        - 基于模型注册表按 profile 解析 object 模型的 model_id
-        - 优先使用当前 profile 对应模型（如 standard: yolo11m.onnx，enhanced: yolo26l.onnx）
-        - 若 enhanced 模型加载失败，则回退到其 fallback（通常是 standard）
-        - 同一 (model_id, device) 只加载一次并缓存
-        """
-        if not self._capability_enabled(profile, "object"):
-            return None
-        with self._lock:
-            resolved_profile = profile or "standard"
-            resolved_device = self._resolve_device(device)
-
-            primary_id = resolve_model_id(resolved_profile, "object")
-            if not primary_id:
-                logger.warning("get_object_model: 未找到 profile=%s 的 object 模型配置" % resolved_profile)
+                logger.warning("get_object_model: 未找到 task_type=object 的模型配置")
                 return None
 
             # 按 primary → fallback 顺序尝试加载
@@ -216,34 +150,34 @@ class ModelManager:
                     self._put(self._object_models, cache_key, detector)
                     logger.info(
                         "get_object_model: 已加载 object 模型",
-                        extra={"model_id": model_id, "profile": resolved_profile, "path": cfg.local_path},
+                        extra={"model_id": model_id, "path": cfg.local_path},
                     )
                     return detector
                 except Exception as e:  # pragma: no cover
                     last_error = e
                     logger.warning(
                         "get_object_model: 加载模型失败，将尝试 fallback（若有）",
-                        extra={"model_id": model_id, "profile": resolved_profile, "error": str(e)},
+                        extra={"model_id": model_id, "error": str(e)},
                     )
 
             if last_error:
                 logger.warning("get_object_model: 所有候选 object 模型加载失败: %s" % last_error)
             return None
 
-    def get_scene_model(self, profile: str, device: str) -> Optional[Any]:
+    def get_scene_model(self, device: str) -> Optional[Any]:
         """
         场景分类能力已从主链路中移除。
-        为保持接口兼容性，继续保留空实现，始终返回 None，避免旧代码误用时触发 ImportError。
+        保留空实现，始终返回 None，避免旧代码误用时触发 ImportError。
         """
         logger.info("get_scene_model: scene capability has been deprecated, always returning None")
         return None
 
-    def get_face_model(self, profile: str, device: str) -> Optional[Any]:
+    def get_face_model(self, device: str) -> Optional[Any]:
         """人物分析模型（人脸 + 人体）；由 PersonAnalyzer 封装。"""
-        if not self._capability_enabled(profile, "face"):
+        if not self._capability_enabled("face"):
             return None
         with self._lock:
-            key = (profile or "standard", self._resolve_device(device))
+            key = ("face", self._resolve_device(device))
             if key in self._face_models:
                 self._touch(self._face_models, key)
                 return self._face_models.get(key)
@@ -257,13 +191,12 @@ class ModelManager:
                     return None
             return self._face_models.get(key)
 
-    def get_quality_model(self, profile: str, device: str) -> Optional[Any]:
+    def get_quality_model(self, device: str) -> Optional[Any]:
         """质量/审美模型（SigLIP + Aesthetic Head）；由 QualityAnalyzer 封装。"""
-        if not self._capability_enabled(profile, "quality"):
+        if not self._capability_enabled("quality"):
             return None
         with self._lock:
-            resolved_profile = profile or "standard"
-            emb_id = resolve_model_id(resolved_profile, "image_embedding") or resolved_profile
+            emb_id = resolve_model_id("image_embedding") or _EMBEDDING_DEFAULT_MODEL_ID
             key = (emb_id, self._resolve_device(device))
             if key in self._quality_models:
                 self._touch(self._quality_models, key)
@@ -278,33 +211,23 @@ class ModelManager:
                     return None
             return self._quality_models.get(key)
 
-    def get_embedding_model(self, profile: str, device: str) -> Optional[Any]:
+    def get_embedding_model(self, device: str) -> Optional[Any]:
         """
-        Image/Text embedding 模型聚合：
-        - image_model: SigLIP2 图像向量（与现有 1152 维向量兼容）
-        - text_model: BGE-M3 文本向量（骨架，当前未接入搜索链路）
+        Image embedding：SigLIP2 图像向量（与现有 1152 维向量兼容）。
         """
-        if not self._capability_enabled(profile, "embedding"):
+        if not self._capability_enabled("embedding"):
             return None
         with self._lock:
-            resolved_profile = profile or "standard"
             resolved_device = self._resolve_device(device)
-            emb_id = resolve_model_id(resolved_profile, "image_embedding") or resolved_profile
+            emb_id = resolve_model_id("image_embedding") or _EMBEDDING_DEFAULT_MODEL_ID
             key = (emb_id, resolved_device)
             if key in self._embedding_models:
                 self._touch(self._embedding_models, key)
                 return self._embedding_models.get(key)
             if key not in self._embedding_models:
                 try:
-                    image_model = SiglipImageEmbeddingModel(profile=resolved_profile)
-                    # BGE-M3 作为可选能力，加载失败时仍可使用 image_model
-                    text_model: Optional[BgeM3TextEmbeddingModel]
-                    try:
-                        text_model = BgeM3TextEmbeddingModel()
-                    except Exception as inner_exc:  # pragma: no cover
-                        logger.warning("初始化 BGE-M3 文本模型失败，将仅提供图像向量: %s" % inner_exc)
-                        text_model = None
-                    self._put(self._embedding_models, key, EmbeddingBundle(image_model=image_model, text_model=text_model))
+                    image_model = SiglipImageEmbeddingModel()
+                    self._put(self._embedding_models, key, EmbeddingBundle(image_model=image_model))
                 except Exception as e:
                     logger.warning("get_embedding_model: 初始化失败 %s" % e)
                     return None
@@ -317,32 +240,14 @@ class ModelManager:
         except Exception:
             return False
 
-    def capabilities_loaded_for_profile(self, profile: str) -> dict[str, bool]:
-        """按指定 profile 计算能力是否可用（供 /health 展示 profile 可用性与降级）。"""
-        resolved_profile = profile or "standard"
-        face = self._safe_capability(self.get_face_model, resolved_profile, "cpu")
-        quality = self._safe_capability(self.get_quality_model, resolved_profile, "cpu")
-        caption = self._safe_capability(self.get_caption_model, resolved_profile, "cpu")
-        object_ = self._safe_capability(self.get_object_model, resolved_profile, "cpu")
-        scene = self._safe_capability(self.get_scene_model, resolved_profile, "cpu")
-        embedding = self._safe_capability(self.get_embedding_model, resolved_profile, "cpu")
-        return {
-            "caption": bool(caption),
-            "object": object_,
-            "scene": scene,
-            "face": face,
-            "quality": quality,
-            "embedding": embedding,
-        }
-
     def capabilities_loaded(self) -> dict[str, bool]:
         """各能力是否已有可用模型（供 /health）。单能力加载失败仅记为未加载，不抛异常。"""
-        face = self._safe_capability(self.get_face_model, "standard", "cpu")
-        quality = self._safe_capability(self.get_quality_model, "standard", "cpu")
-        caption = self._safe_capability(self.get_caption_model, "standard", "cpu")
-        object_ = self._safe_capability(self.get_object_model, "standard", "cpu")
-        scene = self._safe_capability(self.get_scene_model, "standard", "cpu")
-        embedding = self._safe_capability(self.get_embedding_model, "standard", "cpu")
+        face = self._safe_capability(self.get_face_model, "cpu")
+        quality = self._safe_capability(self.get_quality_model, "cpu")
+        caption = self._caption_runtime_ready()
+        object_ = self._safe_capability(self.get_object_model, "cpu")
+        scene = self._safe_capability(self.get_scene_model, "cpu")
+        embedding = self._safe_capability(self.get_embedding_model, "cpu")
         return {
             "caption": caption,
             "object": object_,
@@ -352,11 +257,9 @@ class ModelManager:
             "embedding": embedding,
         }
 
-    def capabilities_configured_for_profile(self, profile: str) -> dict[str, Any]:
+    def _caption_config(self) -> dict[str, Any]:
         """返回 caption 的配置态信息，不触发模型加载。"""
-        resolved_profile = profile or "standard"
-
-        caption_configured = getattr(settings, "CAPTION_PROVIDER", "local")
+        caption_configured = getattr(settings, "CAPTION_PROVIDER", "cloud")
         caption_resolved = normalize_provider(caption_configured)
         caption_configured_vendor = self._configured_cloud_vendor("caption") if caption_resolved == "cloud" else None
         caption_resolved_vendor = self._cloud_vendor("caption") if caption_resolved == "cloud" else None
@@ -372,35 +275,29 @@ class ModelManager:
                 "cloud_model": self._cloud_model("caption") if caption_resolved == "cloud" else None,
                 "cloud_base_url": self._cloud_base_url("caption") if caption_resolved == "cloud" else None,
             },
-            "profile": resolved_profile,
         }
 
     def capabilities_configured(self) -> dict[str, Any]:
-        """返回默认 profile 的配置态能力信息，不触发模型加载。"""
-        return self.capabilities_configured_for_profile("standard")
+        """返回配置态能力信息，不触发模型加载。"""
+        return self._caption_config()
 
-    def capabilities_runtime_status_for_profile(self, profile: str, device: str = "cpu") -> dict[str, Any]:
-        """返回 caption 的运行态信息，不触发模型加载。"""
-        configured = self.capabilities_configured_for_profile(profile)
+    def capabilities_runtime_status(self, device: str = "cpu") -> dict[str, Any]:
+        """返回运行态能力信息，不触发模型加载。"""
+        configured = self._caption_config()
         return {
             "caption": {
                 **configured["caption"],
-                "loaded": self._caption_loaded_for_profile(profile, device=device),
+                "loaded": self._caption_runtime_ready(),
             },
-            "profile": configured["profile"],
             "device": self._resolve_device(device),
         }
-
-    def capabilities_runtime_status(self, device: str = "cpu") -> dict[str, Any]:
-        """返回默认 profile 的运行态能力信息，不触发模型加载。"""
-        return self.capabilities_runtime_status_for_profile("standard", device=device)
 
     def runtime_model_report(self, device: str = "cpu") -> dict[str, Any]:
         """
         运行时模型命中报告（只读，不强制触发大模型下载/加载）。
 
         返回：
-        - profiles: 每个 profile 下，各任务的 primary/fallback、当前缓存是否已加载、以及“实际命中”模型（若已加载）
+        - models：各任务的 primary/fallback、缓存命中与 caption 云就绪情况
         """
         resolved_device = self._resolve_device(device)
 
@@ -414,25 +311,20 @@ class ModelManager:
                     return mid
             return None
 
-        out: dict[str, Any] = {"device": resolved_device, "profiles": {}}
-        for p in settings.SUPPORTED_PROFILES:
-            prof = p
-            object_primary = resolve_model_id(prof, "object")
-            embed_primary = resolve_model_id(prof, "image_embedding")
-            caption_primary = resolve_model_id(prof, "caption")
+        object_primary = resolve_model_id("object")
+        embed_primary = resolve_model_id("image_embedding")
+        object_candidates = [x for x in [object_primary, get_fallback_model_id(object_primary) if object_primary else None] if x]
+        embed_candidates = [x for x in [embed_primary, get_fallback_model_id(embed_primary) if embed_primary else None] if x]
 
-            object_candidates = [x for x in [object_primary, get_fallback_model_id(object_primary) if object_primary else None] if x]
-            embed_candidates = [x for x in [embed_primary, get_fallback_model_id(embed_primary) if embed_primary else None] if x]
-            caption_candidates = [x for x in [caption_primary, get_fallback_model_id(caption_primary) if caption_primary else None] if x]
+        object_eff = _effective(object_candidates, self._object_models)
+        embed_eff = _effective(embed_candidates, self._embedding_models)
+        scene_eff = _effective(embed_candidates, self._scene_models)
+        quality_eff = _effective(embed_candidates, self._quality_models)
+        caption_ready = self._caption_runtime_ready()
 
-            object_eff = _effective(object_candidates, self._object_models)
-            embed_eff = _effective(embed_candidates, self._embedding_models)
-            scene_eff = _effective(embed_candidates, self._scene_models)  # scene 与 embedding 同源
-            quality_eff = _effective(embed_candidates, self._quality_models)  # quality 与 embedding 同源
-            # caption 不强制加载：仅看缓存命中（若之前请求过）
-            caption_eff = _effective(caption_candidates, self._caption_models)
-
-            out["profiles"][prof] = {
+        return {
+            "device": resolved_device,
+            "models": {
                 "object": {
                     **_task(object_primary),
                     "effective_model_id": object_eff,
@@ -452,13 +344,15 @@ class ModelManager:
                     "loaded": quality_eff is not None,
                 },
                 "caption": {
-                    **_task(caption_primary),
-                    "effective_model_id": caption_eff,
-                    "loaded": caption_eff is not None,
-                    "cache_hit": caption_eff is not None,
+                    "primary_model_id": None,
+                    "fallback_model_id": None,
+                    "effective_model_id": "cloud" if caption_ready else None,
+                    "loaded": caption_ready,
+                    "cache_hit": False,
+                    "mode": "cloud",
                 },
-            }
-        return out
+            },
+        }
 
 
 # 全局单例，由 app 在 startup 时创建

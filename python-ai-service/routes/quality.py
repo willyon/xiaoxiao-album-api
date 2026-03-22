@@ -29,7 +29,7 @@ async def analyze_quality(
     """
     生成图片质量指标（哈希、清晰度、美学分），供智能清理/筛选使用。
     """
-    set_request_log_context(request, profile="standard", requested_device="cpu", resolved_device="cpu")
+    set_request_log_context(request, requested_device="cpu", resolved_device="cpu")
     try:
         t0 = time.perf_counter()
         image_bytes = await image.read()
@@ -52,7 +52,6 @@ async def analyze_quality(
         manager = get_model_manager()
         result = analyze_quality_pipeline(
             img,
-            profile="standard",
             device="cpu",
             manager=manager,
         )

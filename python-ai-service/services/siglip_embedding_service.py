@@ -3,8 +3,8 @@
 """
 SigLIP2 图像向量服务
 --------------------
-- 提供 compute_siglip_embedding(rgb_image, profile)，供 embedding_model、scene_model、quality_analysis_service 使用
-- 通过模型注册表按 (profile, task_type='image_embedding') 解析 model_id，支持 fallback
+- 提供 compute_siglip_embedding(rgb_image)，供 embedding_model、scene_model、quality_analysis_service 使用
+- 通过模型注册表按 task_type='image_embedding' 解析 model_id，支持 fallback
 """
 
 from __future__ import annotations
@@ -20,19 +20,17 @@ from loaders.model_loader import get_siglip2_components_for_path
 from services.model_registry import get_fallback_model_id, get_model_config, resolve_local_path, resolve_model_id
 
 
-def compute_siglip_embedding(rgb_image: np.ndarray, profile: str = "standard") -> Optional[Dict[str, object]]:
+def compute_siglip_embedding(rgb_image: np.ndarray) -> Optional[Dict[str, object]]:
     """
-    计算 SigLIP 图像向量，返回向量及维度/模型信息等元数据。
+    计算 SigLIP 图像向量，成功时返回 {"vector": [...]}。
 
     逻辑：
-    - 通过模型注册表按 (profile, task_type='image_embedding') 解析出首选 model_id；
+    - 通过模型注册表按 task_type='image_embedding' 解析出首选 model_id；
     - 若对应目录加载失败且存在 fallback_model_id，则自动回退；
     - SigLIP2 目录结构：{local_path}/siglip2_image_encoder.onnx 等。
     """
-    profile = profile or "standard"
-
     # 1. 解析主模型与 fallback
-    primary_id = resolve_model_id(profile, "image_embedding")
+    primary_id = resolve_model_id("image_embedding")
     candidate_ids = []
     if primary_id:
         candidate_ids.append(primary_id)
@@ -40,7 +38,7 @@ def compute_siglip_embedding(rgb_image: np.ndarray, profile: str = "standard") -
         if fb and fb not in candidate_ids:
             candidate_ids.append(fb)
 
-    # 兜底：若注册表未配置 profile 对应模型，退回 standard
+    # 兜底：若注册表未配置 image_embedding 主模型
     if not candidate_ids:
         candidate_ids = ["embedding.standard.siglip2.base"]
 
@@ -69,7 +67,7 @@ def compute_siglip_embedding(rgb_image: np.ndarray, profile: str = "standard") -
             if not outputs:
                 continue
 
-            # standard/enhanced 均为 1152 维输出；编码器可能有两路输出（patch 特征 + select_2），取展平后长度为 1152 的那一路。
+            # 输出 1152 维；编码器可能有两路输出（patch 特征 + select_2），取展平后长度为 1152 的那一路。
             EXPECTED_EMBED_DIM = 1152
             vector = None
             for out in outputs:
@@ -88,18 +86,18 @@ def compute_siglip_embedding(rgb_image: np.ndarray, profile: str = "standard") -
             if norm > 0:
                 vector = vector / norm
 
-            return {"vector": vector.tolist(), "model": metadata.get("model_id", model_id)}
+            return {"vector": vector.tolist()}
         except Exception as exc:  # pragma: no cover
             last_error = exc
             logger.warning(
                 "SigLIP2 向量计算失败，将尝试 fallback（若有）",
-                details={"error": str(exc), "model_id": model_id, "profile": profile},
+                details={"error": str(exc), "model_id": model_id},
             )
 
     if last_error:
         logger.error(
             "SigLIP2 向量计算所有候选模型均失败",
-            details={"error": str(last_error), "profile": profile, "candidates": candidate_ids},
+            details={"error": str(last_error), "candidates": candidate_ids},
         )
     return None
 

@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from config import settings
 from providers.base import BaseCaptionProvider, provider_not_implemented_result
 
 
@@ -15,7 +14,6 @@ class OpenAICaptionProvider(BaseCaptionProvider):
         self,
         image: Any,
         *,
-        profile: str,
         device: str,
         model_manager: Any,
         configured_provider: str,
@@ -31,13 +29,5 @@ class OpenAICaptionProvider(BaseCaptionProvider):
                 "action_tags": [],
                 "scene_tags": [],
                 "ocr": "",
-            },
-            meta={
-                "configured_provider": configured_provider,
-                "resolved_provider": resolved_provider,
-                "configured_vendor": getattr(settings, "CAPTION_CLOUD_VENDOR", "qwen"),
-                "resolved_vendor": "openai",
-                "model": getattr(settings, "CAPTION_CLOUD_MODEL", "") or "",
-                "base_url": getattr(settings, "CAPTION_CLOUD_BASE_URL", "") or "",
             },
         )

@@ -30,7 +30,6 @@ from services.siglip_embedding_service import compute_siglip_embedding
 
 def analyze_image_from_bytes(
     image_bytes: bytes,
-    profile: str = "standard",
     precomputed_embedding: Optional[Dict[str, object]] = None,
 ) -> Dict[str, object]:
     """
@@ -43,7 +42,7 @@ def analyze_image_from_bytes(
     if error or image_bgr is None:
         raise ValueError(error or "图片解码失败")
     try:
-        result = analyze_image(image_bgr, profile=profile, precomputed_embedding=precomputed_embedding)
+        result = analyze_image(image_bgr, precomputed_embedding=precomputed_embedding)
         return result
     except Exception as exc:
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
@@ -53,7 +52,6 @@ def analyze_image_from_bytes(
 
 def analyze_image(
     image_bgr: np.ndarray,
-    profile: str = "standard",
     precomputed_embedding: Optional[Dict[str, object]] = None,
 ) -> Dict[str, object]:
     """
@@ -69,7 +67,7 @@ def analyze_image(
     if precomputed_embedding and precomputed_embedding.get("vector"):
         embedding_payload = precomputed_embedding
     else:
-        embedding_payload = compute_siglip_embedding(rgb_image, profile=profile)
+        embedding_payload = compute_siglip_embedding(rgb_image)
     embedding_vector = np.asarray(embedding_payload["vector"], dtype=np.float32) if embedding_payload and embedding_payload.get("vector") else None
 
     aesthetic_score = _compute_aesthetic_score(embedding_vector)

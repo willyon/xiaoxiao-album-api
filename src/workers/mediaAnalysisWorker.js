@@ -15,9 +15,6 @@ const QUEUE_NAME = process.env.MEDIA_ANALYSIS_QUEUE_NAME || "mediaAnalysisQueue"
 function resolveWorkerConcurrency() {
   const envValue = Number(process.env.MEDIA_ANALYSIS_WORKER_CONCURRENCY);
   if (!Number.isNaN(envValue) && envValue > 0) return envValue;
-  const profile = (process.env.AI_ANALYSIS_PROFILE || "standard").toLowerCase();
-  if (profile === "standard") return 2;
-  if (profile === "enhanced") return 4;
   return 2;
 }
 

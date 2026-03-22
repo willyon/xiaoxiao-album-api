@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 图片描述（caption）分析路由：POST /analyze_caption
-Form: image, profile, device；统一 decode_image + normalize_device + pipeline
+Form: image, device；统一 decode_image + normalize_device + pipeline
 """
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
@@ -12,7 +12,6 @@ from logger import logger
 from pipelines.caption_pipeline import analyze_caption
 from schemas.caption_schema import CaptionResponse
 from schemas.error_schema import ErrorBody
-from config import normalize_profile
 from services.model_manager import get_model_manager
 from utils.device import normalize_device
 from utils.image_decode import decode_image
@@ -33,14 +32,12 @@ router = APIRouter()
 async def analyze_caption_route(
     request: Request,
     image: UploadFile = File(..., max_size=50 * 1024 * 1024),
-    profile: str = Form("standard"),
     device: str = Form("auto"),
 ):
     """分析图片生成 description、keywords 与 subject/action/scene 标签（若模型支持）。无模型时各字段为空。"""
     try:
-        profile = normalize_profile(profile)
         resolved, err = normalize_device(device)
-        set_request_log_context(request, profile=profile, requested_device=device, resolved_device=resolved)
+        set_request_log_context(request, requested_device=device, resolved_device=resolved)
         if err:
             set_request_log_context(request, error_code=err or AI_DEVICE_NOT_SUPPORTED)
             raise HTTPException(
@@ -63,7 +60,7 @@ async def analyze_caption_route(
             )
         set_request_log_context(request, image_size=get_image_size(img))
         manager = get_model_manager()
-        result = analyze_caption(img, profile, resolved, manager)
+        result = analyze_caption(img, resolved, manager)
         set_request_log_context(request, result_count=1)
         return CaptionResponse(
             description=result["description"],
