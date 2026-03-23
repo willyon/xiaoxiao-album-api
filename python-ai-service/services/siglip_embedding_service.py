@@ -3,7 +3,7 @@
 """
 SigLIP2 图像向量服务
 --------------------
-- 提供 compute_siglip_embedding(rgb_image)，供 embedding_model、scene_model、quality_analysis_service 使用
+- 提供 compute_siglip_embedding(rgb_image)，供 embedding 模块、scene_model 等使用（美学分由 analyze_image 编排传入向量，不在此重复计算）
 - 通过模型注册表按 task_type='image_embedding' 解析 model_id，支持 fallback
 """
 

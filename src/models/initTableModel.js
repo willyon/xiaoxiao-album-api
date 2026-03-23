@@ -105,13 +105,7 @@ function createTableMedia() {
       ai_action_tags_json TEXT,
       ai_scene_tags_json TEXT,
       ai_ocr TEXT,
-      ai_face_count INTEGER,
-      ai_person_count INTEGER,
       analysis_status TEXT DEFAULT 'pending' CHECK (analysis_status IN ('pending','running','done','failed')),
-      analysis_version TEXT NOT NULL DEFAULT '1.0',
-      analyzed_at INTEGER,
-      last_error TEXT,
-      last_error_at INTEGER,
       aesthetic_score REAL,
       sharpness_score REAL,
       is_blurry INTEGER DEFAULT 0 NOT NULL,
@@ -150,7 +144,6 @@ function createTableVideoKeyframes() {
       width_px INTEGER,
       height_px INTEGER,
       created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
-      analysis_version TEXT,
       FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
     );
   `;
@@ -168,14 +161,12 @@ function createTableVideoTranscripts() {
       transcript_text TEXT,
       words_json TEXT,
       created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
-      analysis_version TEXT,
       model_id TEXT,
       FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
     );
   `;
   db.prepare(sql).run();
   db.prepare("CREATE INDEX IF NOT EXISTS idx_transcript_video ON video_transcripts(media_id);").run();
-  db.prepare("CREATE INDEX IF NOT EXISTS idx_transcript_version ON video_transcripts(analysis_version);").run();
 }
 
 /** 创建 media_face_embeddings：单条人脸向量，关联 media，用于人脸聚类与检索 */
@@ -198,7 +189,6 @@ function createTableMediaFaceEmbeddings() {
       ignored_for_clustering BOOLEAN DEFAULT FALSE,
       face_thumbnail_storage_key TEXT,
       created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
-      analysis_version TEXT,
       FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE,
       UNIQUE (media_id, source_type, source_ref_id, face_index)
     );
@@ -221,7 +211,6 @@ function createTableMediaEmbeddings() {
       source_ref_id INTEGER,
       vector BLOB NOT NULL,
       created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
-      analysis_version TEXT,
       FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE,
       UNIQUE (media_id, source_type)
     );

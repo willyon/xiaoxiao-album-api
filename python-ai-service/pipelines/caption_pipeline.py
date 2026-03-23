@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 import numpy as np
 
 from config import normalize_provider, settings
-from constants.error_codes import AI_SERVICE_ERROR, AI_TIMEOUT
+from constants.error_codes import AI_SERVICE_ERROR, AI_TIMEOUT, MODULE_DISABLED
 from logger import logger
 from providers import get_caption_provider
 from services.module_result import MODULE_STATUS_FAILED, MODULE_STATUS_SUCCESS, build_module_result
@@ -27,7 +27,7 @@ def analyze_caption(
 ) -> Dict[str, Any]:
     """
     执行 caption 分析，统一返回 description / keywords / subject_tags / action_tags / scene_tags / ocr。
-    与 analyze_full 一致：仅云 provider。
+    与 analyze_image 编排一致：仅云 provider。
     """
     detailed = analyze_caption_detailed(
         image,
@@ -56,23 +56,21 @@ def analyze_caption_detailed(
     resolved_provider: str | None = None,
 ) -> Dict[str, Any]:
     """
-    提供给 analyze_full 的详细 caption 模块结果。
+    提供给 analyze_image 编排的详细 caption 模块结果。
     返回统一模块结果结构：{status, data, error}。
     """
     configured_provider = getattr(settings, "CAPTION_PROVIDER", "cloud")
     resolved = normalize_provider(resolved_provider if resolved_provider is not None else configured_provider)
-    base_data = _structured_caption_payload()
     if resolved == "off":
         return build_module_result(
-            status=MODULE_STATUS_SUCCESS,
-            data=base_data,
+            status=MODULE_STATUS_FAILED,
+            error={"code": MODULE_DISABLED, "message": "caption module disabled"},
         )
 
     provider = get_caption_provider(resolved)
     if provider is None:
         return build_module_result(
             status=MODULE_STATUS_FAILED,
-            data=base_data,
             error={"code": AI_SERVICE_ERROR, "message": f"caption provider unavailable: {resolved}"},
         )
 
@@ -89,14 +87,12 @@ def analyze_caption_detailed(
         logger.warning("caption_pipeline 超时: %s" % e)
         return build_module_result(
             status=MODULE_STATUS_FAILED,
-            data=base_data,
             error={"code": AI_TIMEOUT, "message": str(e)},
         )
     except Exception as e:
         logger.warning("caption_pipeline 推理失败: %s" % e)
         return build_module_result(
             status=MODULE_STATUS_FAILED,
-            data=base_data,
             error={"code": AI_SERVICE_ERROR, "message": str(e)},
         )
 

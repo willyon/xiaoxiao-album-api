@@ -41,7 +41,6 @@ def _setup_model_cache_env() -> None:
 
 _setup_model_cache_env()
 
-import time
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -53,7 +52,7 @@ from config import settings
 from logger import logger
 
 # 导入路由模块
-from routes import analyze_full, caption, quality, face_cluster, health, person
+from routes import analyze_image, face_cluster, health
 
 # 导入 ModelManager
 from services.model_manager import get_model_manager
@@ -93,50 +92,10 @@ def create_app():
         allow_headers=["*"],
     )
 
-    # 统一结构化接口日志：在路由 handler **返回响应对象之后**执行（故晚于 analyze_full_return_preview），
-    # 只含 endpoint/latency/状态摘要，不含 modules 全文
-    ANALYSIS_LOG_PATHS = {
-        "/analyze_full",
-        "/analyze_caption",
-        "/analyze_quality",
-        "/analyze_person",
-    }
-
-    @app.middleware("http")
-    async def request_log_middleware(request: Request, call_next):
-        request.state._log_start = time.perf_counter()
-        response = await call_next(request)
-        if request.url.path not in ANALYSIS_LOG_PATHS:
-            return response
-        latency_ms = round((time.perf_counter() - getattr(request.state, "_log_start", 0)) * 1000)
-        state = request.state
-        log_payload = {
-            "endpoint": request.url.path,
-            "requested_device": getattr(state, "_log_requested_device", None),
-            "resolved_device": getattr(state, "_log_resolved_device", None),
-            "model_name": getattr(state, "_log_model_name", None),
-            "configured_provider": getattr(state, "_log_configured_provider", None),
-            "resolved_provider": getattr(state, "_log_resolved_provider", None),
-            "configured_vendor": getattr(state, "_log_configured_vendor", None),
-            "resolved_vendor": getattr(state, "_log_resolved_vendor", None),
-            "caption_status": getattr(state, "_log_caption_status", None),
-            "top_status": getattr(state, "_log_top_status", None),
-            "latency_ms": latency_ms,
-            "result_count": getattr(state, "_log_result_count", None),
-            "error_code": getattr(state, "_log_error_code", None),
-            "status_code": response.status_code,
-        }
-        if getattr(state, "_log_image_size", None):
-            log_payload["image_size"] = state._log_image_size
-        logger.info("request_end", details=log_payload)
-        return response
     # 注册路由
     app.include_router(health.router, tags=["健康检查"])
-    app.include_router(analyze_full.router, tags=["全量分析"])
-    app.include_router(caption.router, tags=["Caption"])
-    app.include_router(person.router, tags=["人物分析"])
+    app.include_router(analyze_image.router, tags=["图片分析"])
     app.include_router(face_cluster.router, tags=["人脸聚类"])
-    app.include_router(quality.router, tags=["图片质量"])
     
     return app
 
@@ -152,11 +111,9 @@ def main():
         logger.info(f"📡 服务地址: http://{settings.HOST}:{settings.PORT}")
         logger.info("🔍 可用接口:")
         logger.info("  - GET  /health - 健康检查")
-        logger.info("  - POST /analyze_caption - 图片描述（caption）分析")
-        logger.info("  - POST /analyze_person - 人物分析（人脸+人体检测）")
-        logger.info("  - POST /analyze_quality - 图片质量指标")
-        logger.info("  - POST /analyze_full - 全量图片分析（统一入口）")
-        logger.info("  - POST /cluster_faces - 人脸聚类")
+        logger.info("  - POST /analyze_image - 全量图片分析")
+        logger.info("  - POST /cluster_face_embeddings - 人脸 embedding 聚类")
+        logger.info("  - POST /crop_face_thumbnail - 人脸缩略图裁剪")
         
         # 启动服务器
         uvicorn.run(

@@ -7,7 +7,7 @@
 - 感知哈希：用于重复图/相似图的初筛
 - 清晰度指标：用于模糊图筛查
 - 美学评分：用于推荐保留图片
-- 通用视觉向量：来自 siglip_embedding_service，用于相似度检索与审美头输入
+- 美学评分：若调用方传入与 embedding 模块同结构的 `vector`，则用审美头推理；不传则不计算美学分
 
 设计要点：
 - 统一使用 decode_image（含 EXIF 校正）
@@ -25,16 +25,15 @@ from logger import logger
 import time
 from utils.image_decode import decode_image
 from loaders.model_loader import get_aesthetic_head_session
-from services.siglip_embedding_service import compute_siglip_embedding
 
 
 def analyze_image_from_bytes(
     image_bytes: bytes,
-    precomputed_embedding: Optional[Dict[str, object]] = None,
+    embedding: Optional[Dict[str, object]] = None,
 ) -> Dict[str, object]:
     """
     路由层入口：从上传的原始字节解析图片并生成清理指标。
-    - 输入：原始图片字节（任意常见格式）
+    - 输入：原始图片字节（任意常见格式）；可选传入 embedding.data 同结构（含 vector）以计算美学分
     - 输出：见 analyze_image 的返回结构（不含 embedding）
     """
     t0 = time.perf_counter()
@@ -42,7 +41,7 @@ def analyze_image_from_bytes(
     if error or image_bgr is None:
         raise ValueError(error or "图片解码失败")
     try:
-        result = analyze_image(image_bgr, precomputed_embedding=precomputed_embedding)
+        result = analyze_image(image_bgr, embedding=embedding)
         return result
     except Exception as exc:
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
@@ -52,25 +51,22 @@ def analyze_image_from_bytes(
 
 def analyze_image(
     image_bgr: np.ndarray,
-    precomputed_embedding: Optional[Dict[str, object]] = None,
+    embedding: Optional[Dict[str, object]] = None,
 ) -> Dict[str, object]:
     """
     针对 OpenCV BGR 图片生成清理指标。
     返回字段：hashes、aesthetic_score、sharpness_score（不含 embedding）。
-    内部仍计算 SigLIP 向量用于 aesthetic_score，但不返回。
+    - embedding：可选，与 analyze_image 编排里 embedding 模块的 data 同结构（含 vector）；传入则计算美学分，不传则 aesthetic_score 为 0，且不在此函数内计算 SigLIP。
     """
     if image_bgr is None or not isinstance(image_bgr, np.ndarray):
         raise ValueError("无效的图片数据")
 
     gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-    rgb_image = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-    if precomputed_embedding and precomputed_embedding.get("vector"):
-        embedding_payload = precomputed_embedding
-    else:
-        embedding_payload = compute_siglip_embedding(rgb_image)
-    embedding_vector = np.asarray(embedding_payload["vector"], dtype=np.float32) if embedding_payload and embedding_payload.get("vector") else None
 
-    aesthetic_score = _compute_aesthetic_score(embedding_vector)
+    aesthetic_score = 0.0
+    if embedding and embedding.get("vector"):
+        embedding_vector = np.asarray(embedding["vector"], dtype=np.float32)
+        aesthetic_score = _compute_aesthetic_score(embedding_vector)
 
     sharpness_metrics = _compute_sharpness_metrics(gray)
     sharpness_score = float(sharpness_metrics["score"])

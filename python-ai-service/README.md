@@ -89,9 +89,9 @@ python3 scripts/prepare_model_assets.py --family yolo --variant yolo11x
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/health` | 健康检查 |
-| POST | `/analyze_person` | 人物分析（人脸+人体检测） |
-| POST | `/analyze_quality` | 图片质量指标 |
-| POST | `/cluster_faces` | 人脸聚类 |
+| POST | `/analyze_image` | 全量分析（caption / person / quality / embedding 统一入口） |
+| POST | `/cluster_face_embeddings` | 人脸 embedding 聚类 |
+| POST | `/crop_face_thumbnail` | 按 bbox 裁剪人脸缩略图 |
 
 ---
 
@@ -103,4 +103,4 @@ python3 scripts/prepare_model_assets.py --family yolo --variant yolo11x
 - `AI_SERVICE_PORT`：端口，默认 `5001`
 - `USE_GPU`：是否使用 GPU，默认 `false`
 
-更多配置见 `config.py`。
+更多配置见 `config.py`（如 `NODE_ENV=development` 时会开启 `LOG_ANALYZE_IMAGE_RESULT`，打印 `/analyze_image` 响应预览日志）。

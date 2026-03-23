@@ -28,8 +28,8 @@ from utils.image_decode import decode_image
 router = APIRouter()
 
 
-@router.post('/cluster_faces')
-async def cluster_faces(
+@router.post("/cluster_face_embeddings")
+async def cluster_face_embeddings(
     # embeddings: 人脸特征向量列表（必需参数）
     # List[List[float]]: 二维数组，外层List包含多个人脸，内层List包含每个特征向量的数值
     # Body(...): 表示这个参数来自请求体，...表示必需参数（客户端必须提供）
@@ -119,15 +119,15 @@ async def cluster_faces(
         )
 
 
-@router.post("/generate_face_thumbnail")
-async def generate_face_thumbnail(
+@router.post("/crop_face_thumbnail")
+async def crop_face_thumbnail(
     image: UploadFile = File(..., description="图片文件"),
     bbox: str = Form(..., description="人脸边界框坐标，JSON格式: [x1, y1, x2, y2]")
 ):
     """
-    生成人脸缩略图（用于聚类封面）
+    按 bbox 从原图裁剪人脸缩略图（用于聚类封面）
     
-    优化（2025-12-XX）：只为聚类后的最佳人脸生成缩略图，减少99.5%的存储和CPU开销
+    优化（2025-12-XX）：只为聚类后的最佳人脸裁剪缩略图，减少99.5%的存储和CPU开销
     
     参数:
     - image: 图片文件（必需）

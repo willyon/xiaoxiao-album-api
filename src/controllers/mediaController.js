@@ -199,13 +199,11 @@ async function handleDeleteMedias(req, res, next) {
 /**
  * 单图重新分析：将指定媒体重新入队 mediaAnalysisQueue（手动强制重算，使用新 jobId 绕过去重）
  * POST /api/media/:mediaId/reanalyze
- * Body 可选: { analysisVersion: "2.0" }
  */
 async function handleReanalyzeMedia(req, res, next) {
   try {
     const userId = req?.user?.userId;
     const mediaId = parseInt(req.params.mediaId, 10);
-    const { analysisVersion } = req.body || {};
 
     if (!mediaId || Number.isNaN(mediaId)) {
       throw new CustomError({
@@ -235,7 +233,6 @@ async function handleReanalyzeMedia(req, res, next) {
         mediaType: media.mediaType || "image",
         fileName: "",
         forceReanalyze: true,
-        ...(analysisVersion ? { analysisVersion } : {}),
       },
       { jobId },
     );

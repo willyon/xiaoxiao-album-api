@@ -317,6 +317,53 @@ class StorageService {
   }
 
   /**
+   * 对内存中的图片 Buffer 做与 processAndStoreImage 相同的旋正、缩放、编码（不落盘）
+   * 供视频封面等场景复用，与 MEDIA_THUMBNAIL_EXTENSION 等配置一致。
+   * @param {Buffer} options.buffer - 图片字节（如 FFmpeg 抽帧）
+   * @param {string} options.extension - 目标扩展名，与 processAndStoreImage 一致
+   * @param {number} [options.quality=80]
+   * @param {number} [options.resizeWidth]
+   * @param {boolean} [options.withoutEnlargement=true]
+   * @param {string} [options.fit="inside"]
+   * @param {boolean} [options.fastShrinkOnLoad=true]
+   * @param {Object} [options.optimizationOptions={}]
+   * @returns {Promise<{ data: Buffer, width: number, height: number }>}
+   */
+  async processImageBuffer({
+    buffer,
+    extension,
+    quality = 80,
+    resizeWidth,
+    withoutEnlargement = true,
+    fit = "inside",
+    fastShrinkOnLoad = true,
+    optimizationOptions = {},
+  }) {
+    const fileSize = buffer.length;
+    let pipeline = sharp(buffer, SHARP_CONFIG).rotate();
+
+    if (resizeWidth) {
+      pipeline = pipeline.resize({
+        width: resizeWidth,
+        fit,
+        withoutEnlargement,
+        fastShrinkOnLoad,
+      });
+    }
+
+    const defaultOptions = { enableAdaptiveQuality: false, enableDynamicEffort: false };
+    const finalOptions = { ...defaultOptions, ...optimizationOptions };
+    pipeline = _applyEncoderByExt(pipeline, extension, quality, fileSize, finalOptions);
+
+    const { data, info } = await pipeline.toBuffer({ resolveWithObject: true });
+    return {
+      data,
+      width: info.width,
+      height: info.height,
+    };
+  }
+
+  /**
    * 删除文件并记录日志
    * @param {Object} fileInfo - 文件信息
    * @param {string} fileInfo.fileName - 文件名

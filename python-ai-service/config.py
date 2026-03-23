@@ -13,8 +13,8 @@ class Settings:
     
     # ========== 服务配置 ==========
     NODE_ENV = (os.getenv("NODE_ENV", "development") or "development").strip().lower()
-    # /analyze_full 返回 Node 前是否打印 analyze_full_return_preview（仅开发环境，见 routes/analyze_full.py）
-    LOG_ANALYZE_FULL_RESULT = NODE_ENV == "development"
+    # /analyze_image 返回 Node 前是否打印 analyze_image_return_preview（仅开发环境，见 routes/analyze_image.py）
+    LOG_ANALYZE_IMAGE_RESULT = NODE_ENV == "development"
 
     # 服务端口号配置
     # os.getenv("环境变量名", "默认值") - 从环境变量读取值，如果不存在则使用默认值

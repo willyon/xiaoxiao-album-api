@@ -6,8 +6,8 @@ const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const sharp = require("sharp");
 const logger = require("../utils/logger");
+const storageService = require("./storageService");
 
 const FFMPEG_PATH = process.env.FFMPEG_PATH || "ffmpeg";
 const FFPROBE_PATH = process.env.FFPROBE_PATH || "ffprobe";
@@ -238,30 +238,34 @@ function _parseGpsLocation(str) {
 }
 
 /**
- * 从视频抽首帧并转为 webp Buffer，写入存储
+ * 从视频抽首帧并按 extension 编码（与图片缩略图一致，默认 MEDIA_THUMBNAIL_EXTENSION / webp），写入存储
  * @param {string} videoPath - 视频路径
- * @param {string} targetStorageKey - 目标存储键（如 localStorage/processed/thumbnails/xxx.webp）
+ * @param {string} targetStorageKey - 目标存储键
  * @param {Object} storageAdapter - 存储适配器（需有 storeFile 方法）
+ * @param {Object} [options]
+ * @param {string} [options.extension] - 目标扩展名；未传则使用 process.env.MEDIA_THUMBNAIL_EXTENSION || "webp"
  * @returns {Promise<{ width: number, height: number }>}
  */
-async function storeVideoThumbnail(videoPath, targetStorageKey, storageAdapter) {
+async function storeVideoThumbnail(videoPath, targetStorageKey, storageAdapter, options = {}) {
+  const extension = options.extension ?? (process.env.MEDIA_THUMBNAIL_EXTENSION || "webp");
+
   const frameBuffer = await extractFirstFrame(videoPath);
   if (!frameBuffer || frameBuffer.length === 0) {
     throw new Error("extractFirstFrame returned empty buffer");
   }
 
-  const webpBuffer = await sharp(frameBuffer)
-    .rotate() // 自动旋转
-    .resize({ width: 600, fit: "inside", withoutEnlargement: true })
-    .webp({ quality: 65 })
-    .toBuffer();
+  const { data, width, height } = await storageService.processImageBuffer({
+    buffer: frameBuffer,
+    extension,
+    quality: 65,
+    resizeWidth: 600,
+  });
 
-  await storageAdapter.storeFile(webpBuffer, targetStorageKey);
+  await storageAdapter.storeFile(data, targetStorageKey);
 
-  const metadata = await sharp(frameBuffer).metadata();
   return {
-    width: metadata.width || 0,
-    height: metadata.height || 0,
+    width,
+    height,
   };
 }
 

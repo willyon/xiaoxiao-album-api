@@ -279,8 +279,6 @@ function selectMediasByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
         i.file_size_bytes,
         i.face_count,
         i.person_count,
-        i.ai_face_count,
-        i.ai_person_count,
         i.age_tags,
         i.expression_tags,
         i.is_favorite,
@@ -338,8 +336,6 @@ function selectMediasByYear({ pageNo, pageSize, albumId, userId, clusterId = nul
         file_size_bytes,
         face_count,
         person_count,
-        ai_face_count,
-        ai_person_count,
         age_tags,
         expression_tags,
         is_favorite
@@ -400,8 +396,6 @@ function selectMediasByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
         i.file_size_bytes,
         i.face_count,
         i.person_count,
-        i.ai_face_count,
-        i.ai_person_count,
         i.age_tags,
         i.expression_tags,
         i.is_favorite,
@@ -459,8 +453,6 @@ function selectMediasByMonth({ pageNo, pageSize, albumId, userId, clusterId = nu
         file_size_bytes,
         face_count,
         person_count,
-        ai_face_count,
-        ai_person_count,
         age_tags,
         expression_tags,
         is_favorite
@@ -517,8 +509,6 @@ function selectMediasByDate({ pageNo, pageSize, albumId, userId }) {
         file_size_bytes,
       face_count,
       person_count,
-      ai_face_count,
-      ai_person_count,
       age_tags,
       expression_tags,
       is_favorite
@@ -572,8 +562,6 @@ function getMediasByBlurry({ userId, pageNo, pageSize }) {
         file_size_bytes,
       face_count,
       person_count,
-      ai_face_count,
-      ai_person_count,
       age_tags,
       expression_tags,
       is_favorite
@@ -1288,8 +1276,6 @@ function selectMediasByCity({ pageNo, pageSize, albumId, userId }) {
         file_size_bytes,
       face_count,
       person_count,
-      ai_face_count,
-      ai_person_count,
       age_tags,
       expression_tags,
       is_favorite
@@ -1452,7 +1438,6 @@ function selectMediaRowByHashForUser({ userId, imageHash }) {
  * @param {string} [params.genderTags] - 性别标签（逗号分隔）如："female,male"
  * @param {number} [params.primaryExpressionConfidence] - 主要人物表情置信度 (0-1)
  * @param {number} [params.primaryFaceQuality] - 主要人脸质量 (0-1)
- * @param {string} [params.analysisVersion='1.0'] - 分析版本号，默认'1.0'
  *
  * @returns {Object} 返回对象 { affectedRows: 更新的行数 }
  *
@@ -1464,7 +1449,6 @@ function selectMediaRowByHashForUser({ userId, imageHash }) {
  * ⚠️ 注意事项:
  * • 传入null不会更新该字段（使用COALESCE保护）
  * • 传入undefined会被转为null
- * • analysisVersion默认为'1.0'，可传入其他版本如'2.0'
  */
 function updateMediaSearchMetadata({
   imageId,
@@ -1477,7 +1461,6 @@ function updateMediaSearchMetadata({
   genderTags,
   primaryExpressionConfidence,
   primaryFaceQuality,
-  analysisVersion = "1.0",
   rebuildSearchArtifacts = true,
 }) {
   const tx = db.transaction(() => {
@@ -1498,9 +1481,7 @@ function updateMediaSearchMetadata({
         expression_tags = COALESCE(?, expression_tags),
         age_tags = COALESCE(?, age_tags),
         gender_tags = COALESCE(?, gender_tags),
-        analysis_version = COALESCE(?, analysis_version),
-        analysis_status = 'done',
-        analyzed_at = ?
+        analysis_status = 'done'
       WHERE id = ?
     `);
     const result = analysisUpdate.run(
@@ -1512,8 +1493,6 @@ function updateMediaSearchMetadata({
       exprTagsStr,
       ageStr,
       genderStr,
-      analysisVersion ?? null,
-      Date.now(),
       imageId,
     );
 
@@ -1584,7 +1563,6 @@ function updateIngestStatusByHash({ userId, imageHash, ingestStatus }) {
  * @function insertFaceEmbeddings
  * @param {number} imageId - 图片ID
  * @param {Array<Object>} faceData - 人脸数据数组
- * @param {string} [analysisVersion] - 分析版本，写入 media_face_embeddings.analysis_version；不传时默认 '1.0'
  * @param {number} faceData[].face_index - 人脸序号（同一张图片中的第几个人脸）
  * @param {Array<number>} faceData[].embedding - 512维特征向量（InsightFace提取）
  * @param {number} faceData[].age - 年龄段中间值（用于数值计算）如：25代表20-29岁段
@@ -1629,8 +1607,7 @@ function updateIngestStatusByHash({ userId, imageHash, ingestStatus }) {
  * await insertFaceEmbeddings(imageId, faces);
  * ```
  */
-async function insertFaceEmbeddings(imageId, faceData, analysisVersion) {
-  const version = analysisVersion != null && analysisVersion !== "" ? String(analysisVersion) : "1.0";
+async function insertFaceEmbeddings(imageId, faceData) {
   try {
     const deleteSql = `DELETE FROM media_face_embeddings WHERE media_id = ? AND source_type = 'image'`;
     const deleteStmt = db.prepare(deleteSql);
@@ -1645,8 +1622,8 @@ async function insertFaceEmbeddings(imageId, faceData, analysisVersion) {
     // 缩略图将在聚类后，只为最佳人脸生成
     const insertSql = `
       INSERT INTO media_face_embeddings (
-        media_id, source_type, source_ref_id, face_index, embedding, age, gender, expression, confidence, quality_score, bbox, pose, analysis_version
-      ) VALUES (?, 'image', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        media_id, source_type, source_ref_id, face_index, embedding, age, gender, expression, confidence, quality_score, bbox, pose
+      ) VALUES (?, 'image', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const insertStmt = db.prepare(insertSql);
 
@@ -1669,7 +1646,6 @@ async function insertFaceEmbeddings(imageId, faceData, analysisVersion) {
         face.quality_score || null,
         JSON.stringify(face.bbox || []), // bbox存储为JSON字符串
         JSON.stringify(face.pose || {}), // pose存储为JSON字符串
-        version,
       );
       totalAffected += result.changes;
     }
@@ -1777,11 +1753,9 @@ function getMediasDownloadInfo({ userId, imageIds }) {
 
 
 /**
- * 媒体分析链路：写入 caption / VLM 结果（Python modules.caption.data.ocr → ai_ocr）。
- */
-/**
+ * 媒体分析链路：写入 caption / VLM 结果（含 Python modules.caption → ai_* 文本字段；人脸/人数写入 face_count / person_count）。
  * 仅更新传入的非空字段（caption 为 success 但全空时不写库）。
- * caption 形状：{ description?, keywords?, subjectTags?, actionTags?, sceneTags?, ocr?, aiFaceCount?, aiPersonCount? }
+ * caption 形状：{ description?, keywords?, subjectTags?, actionTags?, sceneTags?, ocr?, faceCount?, personCount? }
  */
 function upsertMediaAiFieldsForAnalysis({ mediaId, caption }) {
   if (caption == null) return;
@@ -1813,23 +1787,23 @@ function upsertMediaAiFieldsForAnalysis({ mediaId, caption }) {
     assignments.push("ai_ocr = ?");
     params.push(caption.ocr);
   }
-  if (caption.aiFaceCount !== undefined && caption.aiFaceCount !== null) {
+  if (caption.faceCount !== undefined && caption.faceCount !== null) {
     const fc =
-      typeof caption.aiFaceCount === "number" && Number.isFinite(caption.aiFaceCount)
-        ? Math.max(0, Math.floor(caption.aiFaceCount))
+      typeof caption.faceCount === "number" && Number.isFinite(caption.faceCount)
+        ? Math.max(0, Math.floor(caption.faceCount))
         : null;
     if (fc !== null) {
-      assignments.push("ai_face_count = ?");
+      assignments.push("face_count = ?");
       params.push(fc);
     }
   }
-  if (caption.aiPersonCount !== undefined && caption.aiPersonCount !== null) {
+  if (caption.personCount !== undefined && caption.personCount !== null) {
     const pc =
-      typeof caption.aiPersonCount === "number" && Number.isFinite(caption.aiPersonCount)
-        ? Math.max(0, Math.floor(caption.aiPersonCount))
+      typeof caption.personCount === "number" && Number.isFinite(caption.personCount)
+        ? Math.max(0, Math.floor(caption.personCount))
         : null;
     if (pc !== null) {
-      assignments.push("ai_person_count = ?");
+      assignments.push("person_count = ?");
       params.push(pc);
     }
   }

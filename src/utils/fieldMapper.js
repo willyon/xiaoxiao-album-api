@@ -111,8 +111,6 @@ const FIELD_MAPPING = {
     gender_tags: "genderTags",
     is_blurry: "isBlurry",
     analysis_status: "analysisStatus",
-    analysis_version: "analysisVersion",
-    analyzed_at: "analyzedAt",
     aesthetic_score: "aestheticScore",
     sharpness_score: "sharpnessScore",
     primary_face_quality: "primaryFaceQuality",
@@ -124,8 +122,6 @@ const FIELD_MAPPING = {
     ai_action_tags_json: "aiActionTagsJson",
     ai_scene_tags_json: "aiSceneTagsJson",
     ai_ocr: "aiOcr",
-    ai_face_count: "aiFaceCount",
-    ai_person_count: "aiPersonCount",
   },
 };
 

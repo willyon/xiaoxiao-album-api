@@ -1,6 +1,6 @@
 /*
  * @Description: 自动修复 media 中「未完成」的分析记录
- *               （analysis_status IN ('failed','pending') 且 analyzed_at IS NULL）
+ *               （analysis_status IN ('failed','pending')）
  *               重置状态并重新入队 mediaAnalysisQueue
  * @Usage:
  *   node scripts/development/reenqueue-media-analysis.js
@@ -22,7 +22,6 @@ function getFailedMedia() {
     SELECT m.id, m.user_id, m.high_res_storage_key, m.original_storage_key, m.media_type
     FROM media m
     WHERE m.analysis_status IN ('failed','pending')
-      AND m.analyzed_at IS NULL
       AND m.deleted_at IS NULL
   `,
   );
@@ -35,11 +34,7 @@ function resetMediaAnalysis(ids) {
       `
       UPDATE media
       SET
-        analysis_status = 'pending',
-        analysis_version = '1.0',
-        analyzed_at = NULL,
-        last_error = NULL,
-        last_error_at = NULL
+        analysis_status = 'pending'
       WHERE id = ?
     `,
     );

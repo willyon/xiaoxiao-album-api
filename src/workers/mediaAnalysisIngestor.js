@@ -21,12 +21,13 @@ const { upsertMediaEmbedding } = require("../models/mediaEmbeddingModel");
 const { scheduleUserRebuild } = require("../services/cleanupGroupingScheduler");
 const { scheduleUserClustering } = require("../services/faceClusterScheduler");
 const PYTHON_SERVICE_URL = process.env.PYTHON_CLEANUP_SERVICE_URL || process.env.PYTHON_FACE_SERVICE_URL || "http://localhost:5001";
-const ANALYZE_FULL_TIMEOUT_MS = Number(process.env.ANALYZE_FULL_TIMEOUT_MS || 120000);
-
-const ANALYSIS_VERSION = process.env.ANALYSIS_VERSION || "1.0";
+// 优先 ANALYZE_IMAGE_TIMEOUT_MS；仍认 ANALYZE_FULL_TIMEOUT_MS 以兼容旧部署
+const ANALYZE_IMAGE_TIMEOUT_MS = Number(
+  process.env.ANALYZE_IMAGE_TIMEOUT_MS || process.env.ANALYZE_FULL_TIMEOUT_MS || 120000
+);
 
 // 最新设计：Node 侧不再决定「开启哪些能力」，一律视为参与分析；是否真正可用由 Python 端模型加载结果与降级逻辑决定
-// 图中可读文字由 Python caption.data.ocr 写入 media.ai_ocr；不再存在独立的 modules.ocr 区块写入链路
+// 图中可读文字由 Python body.data.caption.data.ocr 写入 media.ai_ocr
 
 async function processMediaAnalysis(job) {
   const { imageId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType = "image", fileName } = job.data || {};
@@ -39,14 +40,12 @@ async function processMediaAnalysis(job) {
     return;
   }
 
-  const analysisVersion = job.data.analysisVersion || ANALYSIS_VERSION;
-
   try {
     if (mediaType === "video") {
-      await _markVideoAnalysisDone(imageId, sessionId, analysisVersion);
+      await _markVideoAnalysisDone(imageId, sessionId);
       logger.info({
         message: "mediaAnalysis.video.completed",
-        details: { imageId, userId, sessionId, analysisVersion },
+        details: { imageId, userId, sessionId },
       });
       return;
     }
@@ -54,11 +53,11 @@ async function processMediaAnalysis(job) {
     const { imageData, storageKey } = await _loadMediaBuffer({ highResStorageKey, originalStorageKey, imageId, userId, fileName });
     if (!imageData) {
       const err = new Error("MEDIA_FILE_NOT_FOUND");
-      await _markMediaAnalysisFailed(imageId, analysisVersion, err);
+      await _markMediaAnalysisFailed(imageId, err);
       throw err;
     }
 
-    await _markMediaAnalysisRunning(imageId, analysisVersion);
+    await _markMediaAnalysisRunning(imageId);
 
     const stepResults = {
       face: { status: "pending", errorCode: null, data: {} },
@@ -66,9 +65,9 @@ async function processMediaAnalysis(job) {
       description: { status: "pending", errorCode: null, data: {} },
     };
 
-    await _runAnalyzeFull({ imageId, userId, imageData, analysisVersion, stepResults });
+    await _runAnalyzeFull({ imageId, userId, imageData, stepResults });
 
-    await finalizeMediaAnalysis({ imageId, userId, analysisVersion, stepResults });
+    await finalizeMediaAnalysis({ imageId, stepResults });
     if (sessionId) {
       await updateProgressOnce({ sessionId, status: "aiDoneCount", dedupeKey: imageId });
       logger.info({
@@ -84,7 +83,7 @@ async function processMediaAnalysis(job) {
 
     logger.info({
       message: "mediaAnalysis.image.completed",
-      details: { imageId, userId, analysisVersion, stepResults },
+      details: { imageId, userId, stepResults },
     });
   } catch (error) {
     logger.error({
@@ -92,7 +91,7 @@ async function processMediaAnalysis(job) {
       details: { imageId, userId, error: error.message },
     });
     try {
-      await _markMediaAnalysisFailed(imageId, analysisVersion, error);
+      await _markMediaAnalysisFailed(imageId, error);
     } catch (e) {
       logger.warn({
         message: "markMediaAnalysisFailed error (swallowed)",
@@ -127,33 +126,33 @@ async function _loadMediaBuffer({ highResStorageKey, originalStorageKey, imageId
   return { imageData, storageKey };
 }
 
-async function _markVideoAnalysisDone(imageId, sessionId, analysisVersion) {
-  await updateMediaSearchMetadata({ imageId, analysisVersion });
+async function _markVideoAnalysisDone(imageId, sessionId) {
+  await updateMediaSearchMetadata({ imageId });
   if (sessionId) {
     await updateProgressOnce({ sessionId, status: "aiDoneCount", dedupeKey: imageId });
   }
 }
 
-async function _markMediaAnalysisRunning(imageId, analysisVersion) {
-  markMediaAnalysisRunning(imageId, analysisVersion);
+async function _markMediaAnalysisRunning(imageId) {
+  markMediaAnalysisRunning(imageId);
 }
 
-async function _markMediaAnalysisFailed(imageId, analysisVersion, error) {
+async function _markMediaAnalysisFailed(imageId, error) {
   if (!imageId) {
     logger.error({
       message: "markMediaAnalysisFailed called without imageId",
-      details: { analysisVersion, error: error?.message },
+      details: { error: error?.message },
     });
     return;
   }
-  markMediaAnalysisFailed(imageId, analysisVersion, error);
+  markMediaAnalysisFailed(imageId, error);
 }
 
-async function _runAnalyzeFull({ imageId, userId, imageData, analysisVersion, stepResults }) {
+async function _runAnalyzeFull({ imageId, userId, imageData, stepResults }) {
   const { FormData, Blob } = globalThis;
   if (!imageData) {
-    stepResults.cleanup = { status: "failed", errorCode: "ANALYZE_FULL_IMAGE_BUFFER_MISSING", data: {} };
-    throw new Error("ANALYZE_FULL_IMAGE_BUFFER_MISSING");
+    stepResults.cleanup = { status: "failed", errorCode: "ANALYZE_IMAGE_BUFFER_MISSING", data: {} };
+    throw new Error("ANALYZE_IMAGE_BUFFER_MISSING");
   }
   const formData = new FormData();
   const blob = imageData instanceof Blob ? imageData : new Blob([imageData], { type: "application/octet-stream" });
@@ -162,23 +161,18 @@ async function _runAnalyzeFull({ imageId, userId, imageData, analysisVersion, st
   formData.append("device", device);
   formData.append("image_id", String(imageId));
   const response = await withAiSlot(() =>
-    axios.post(`${PYTHON_SERVICE_URL}/analyze_full`, formData, {
-      timeout: ANALYZE_FULL_TIMEOUT_MS,
+    axios.post(`${PYTHON_SERVICE_URL}/analyze_image`, formData, {
+      timeout: ANALYZE_IMAGE_TIMEOUT_MS,
       maxBodyLength: Infinity,
       headers: typeof formData.getHeaders === "function" ? formData.getHeaders() : undefined,
     }),
   );
   const body = response.data || {};
-  if (body.status === "failed") {
-    const err = new Error(body.errors?.[0]?.message || "ANALYZE_FULL_FAILED");
-    err.code = body.errors?.[0]?.code || "ANALYZE_FULL_FAILED";
-    throw err;
-  }
-  _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepResults);
+  _applyAdapterFromModules(imageId, userId, body, stepResults);
 }
 
-function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepResults) {
-  const modules = body.modules || {};
+function _applyAdapterFromModules(imageId, userId, body, stepResults) {
+  const modules = body.data || {};
   const round2 = (v) => (typeof v === "number" ? Number(v.toFixed(2)) : null);
 
   const captionModule = modules.caption;
@@ -186,26 +180,30 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
   const capData = captionModule?.data;
 
   let captionForDb = null;
-  if (capStatus === "success" && capData) {
-    captionForDb = _pickCaptionFieldsForDb(capData);
-    if (captionForDb) {
-      const d = capData;
-      const descriptionText = typeof d.description === "string" ? d.description : "";
-      const keywords = Array.isArray(d.keywords) ? d.keywords : [];
-      const subjectTags = Array.isArray(d.subject_tags) ? d.subject_tags : [];
-      const actionTags = Array.isArray(d.action_tags) ? d.action_tags : [];
-      const sceneTags = Array.isArray(d.scene_tags) ? d.scene_tags : [];
-      stepResults.description = {
-        status: "completed",
-        errorCode: null,
-        data: {
-          description: descriptionText,
-          keywords,
-          subjectTags,
-          actionTags,
-          sceneTags,
-        },
-      };
+  if (capStatus === "success") {
+    if (capData) {
+      captionForDb = _pickCaptionFieldsForDb(capData);
+      if (captionForDb) {
+        const d = capData;
+        const descriptionText = typeof d.description === "string" ? d.description : "";
+        const keywords = Array.isArray(d.keywords) ? d.keywords : [];
+        const subjectTags = Array.isArray(d.subject_tags) ? d.subject_tags : [];
+        const actionTags = Array.isArray(d.action_tags) ? d.action_tags : [];
+        const sceneTags = Array.isArray(d.scene_tags) ? d.scene_tags : [];
+        stepResults.description = {
+          status: "completed",
+          errorCode: null,
+          data: {
+            description: descriptionText,
+            keywords,
+            subjectTags,
+            actionTags,
+            sceneTags,
+          },
+        };
+      } else {
+        stepResults.description = { status: "empty", errorCode: null, data: {} };
+      }
     } else {
       stepResults.description = { status: "empty", errorCode: null, data: {} };
     }
@@ -218,18 +216,22 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
     caption: captionForDb,
   });
 
-  if (modules.quality?.status === "success" && modules.quality.data) {
-    const d = modules.quality.data;
-    stepResults.cleanup = {
-      status: "completed",
-      errorCode: null,
-      data: {
-        phash: d.hashes?.phash ?? null,
-        dhash: d.hashes?.dhash ?? null,
-        aestheticScore: round2(d.aesthetic_score),
-        sharpnessScore: round2(d.sharpness_score),
-      },
-    };
+  if (modules.quality?.status === "success") {
+    if (modules.quality.data) {
+      const d = modules.quality.data;
+      stepResults.cleanup = {
+        status: "completed",
+        errorCode: null,
+        data: {
+          phash: d.hashes?.phash ?? null,
+          dhash: d.hashes?.dhash ?? null,
+          aestheticScore: round2(d.aesthetic_score),
+          sharpnessScore: round2(d.sharpness_score),
+        },
+      };
+    } else {
+      stepResults.cleanup = { status: "completed", errorCode: null, data: {} };
+    }
   } else {
     stepResults.cleanup = { status: modules.quality?.status || "failed", errorCode: modules.quality?.error?.code || null, data: {} };
   }
@@ -238,59 +240,81 @@ function _applyAdapterFromModules(imageId, userId, analysisVersion, body, stepRe
     try {
       upsertMediaEmbedding({ imageId, vector: modules.embedding.data.vector });
     } catch (e) {
-      logger.warn({ message: "analyze_full adapter: upsertMediaEmbedding failed", details: { imageId, error: e.message } });
+      logger.warn({ message: "analyze_image adapter: upsertMediaEmbedding failed", details: { imageId, error: e.message } });
     }
   }
   if ((modules.quality?.status === "success" || modules.embedding?.status === "success") && userId) {
     scheduleUserRebuild(userId);
   }
 
-  if (modules.person?.status === "success" && modules.person.data) {
-    const d = modules.person.data;
-    const faceCount = d.face_count ?? 0;
-    const personCount = d.person_count ?? 0;
-    const faces = Array.isArray(d.faces) ? d.faces : [];
-    const summary = d.summary || {};
-    const expressions = summary.expressions || [];
-    const expressionTagsText = expressions.length > 0 ? expressions.join(",") : null;
-    const ages = summary.ages || [];
-    const genders = summary.genders || [];
-    const primaryFace = faces[0];
-    const ageTagsText = ages.length > 0 ? ages.join(",") : null;
-    const genderTagsText = genders.length > 0 ? genders.join(",") : null;
-    const highQualityFaces = faces.filter((f) => f.is_high_quality);
-    if (highQualityFaces.length > 0) {
-      const toInsert = highQualityFaces.map((f) => ({
-        face_index: f.face_index,
-        embedding: f.embedding,
-        age: f.age,
-        gender: f.gender,
-        expression: f.expression,
-        confidence: f.expression_confidence ?? f.confidence,
-        quality_score: f.quality_score,
-        bbox: f.bbox || [],
-        pose: f.pose || {},
-      }));
-      insertFaceEmbeddings(imageId, toInsert, analysisVersion);
+  if (modules.person?.status === "success") {
+    if (!modules.person.data) {
+      stepResults.face = { status: "completed", errorCode: null, data: {} };
+    } else {
+      const d = modules.person.data;
+      const faceCount = d.face_count ?? 0;
+      const personCount = d.person_count ?? 0;
+      const faces = Array.isArray(d.faces) ? d.faces : [];
+      const summary = d.summary || {};
+      const expressions = summary.expressions || [];
+      const expressionTagsText = expressions.length > 0 ? expressions.join(",") : null;
+      const ages = summary.ages || [];
+      const genders = summary.genders || [];
+      const primaryFace = faces[0];
+      const ageTagsText = ages.length > 0 ? ages.join(",") : null;
+      const genderTagsText = genders.length > 0 ? genders.join(",") : null;
+      const highQualityFaces = faces.filter((f) => f.is_high_quality);
+      if (highQualityFaces.length > 0) {
+        const toInsert = highQualityFaces.map((f) => ({
+          face_index: f.face_index,
+          embedding: f.embedding,
+          age: f.age,
+          gender: f.gender,
+          expression: f.expression,
+          confidence: f.expression_confidence ?? f.confidence,
+          quality_score: f.quality_score,
+          bbox: f.bbox || [],
+          pose: f.pose || {},
+        }));
+        insertFaceEmbeddings(imageId, toInsert);
+      }
+      stepResults.face = {
+        status: "completed",
+        errorCode: null,
+        data: {
+          faceCount,
+          personCount,
+          primaryFaceQuality: primaryFace?.quality_score ?? null,
+          primaryExpression: expressions[0] ?? null,
+          primaryExpressionConfidence: primaryFace?.expression_confidence ?? null,
+          expressionTagsText,
+          ageTagsText,
+          genderTagsText,
+          hasClusterableFace: highQualityFaces.length > 0,
+        },
+      };
+      if (userId) scheduleUserClustering(userId);
     }
-    stepResults.face = {
-      status: "completed",
-      errorCode: null,
-      data: {
-        faceCount,
-        personCount,
-        primaryFaceQuality: primaryFace?.quality_score ?? null,
-        primaryExpression: expressions[0] ?? null,
-        primaryExpressionConfidence: primaryFace?.expression_confidence ?? null,
-        expressionTagsText,
-        ageTagsText,
-        genderTagsText,
-        hasClusterableFace: highQualityFaces.length > 0,
-      },
-    };
-    if (userId) scheduleUserClustering(userId);
   } else {
     stepResults.face = { status: modules.person?.status || "failed", errorCode: modules.person?.error?.code || null, data: {} };
+  }
+
+  // caption 成功时：media 表 face_count / person_count 以云侧为准（覆盖上面 person 写入的统计值）
+  if (capStatus === "success" && capData && typeof capData === "object") {
+    const fc =
+      typeof capData.face_count === "number" && Number.isFinite(capData.face_count)
+        ? Math.max(0, Math.floor(capData.face_count))
+        : null;
+    const pc =
+      typeof capData.person_count === "number" && Number.isFinite(capData.person_count)
+        ? Math.max(0, Math.floor(capData.person_count))
+        : null;
+    if (fc !== null || pc !== null) {
+      if (!stepResults.face) stepResults.face = { status: "completed", errorCode: null, data: {} };
+      if (!stepResults.face.data) stepResults.face.data = {};
+      if (fc !== null) stepResults.face.data.faceCount = fc;
+      if (pc !== null) stepResults.face.data.personCount = pc;
+    }
   }
 }
 
@@ -311,22 +335,21 @@ function _pickCaptionFieldsForDb(capData) {
   const ocr = typeof capData.ocr === "string" ? capData.ocr.trim() : "";
   if (ocr) out.ocr = ocr;
   if (typeof capData.face_count === "number" && Number.isFinite(capData.face_count)) {
-    out.aiFaceCount = Math.max(0, Math.floor(capData.face_count));
+    out.faceCount = Math.max(0, Math.floor(capData.face_count));
   }
   if (typeof capData.person_count === "number" && Number.isFinite(capData.person_count)) {
-    out.aiPersonCount = Math.max(0, Math.floor(capData.person_count));
+    out.personCount = Math.max(0, Math.floor(capData.person_count));
   }
   return Object.keys(out).length > 0 ? out : null;
 }
 
-async function finalizeMediaAnalysis({ imageId, analysisVersion, stepResults }) {
+async function finalizeMediaAnalysis({ imageId, stepResults }) {
   const faceData = stepResults.face?.data || {};
   const cleanupData = stepResults.cleanup?.data || {};
   const descriptionData = stepResults.description?.data || {};
 
   finalizeMediaAnalysisInModel({
     mediaId: imageId,
-    analysisVersion,
     faceData,
     cleanupData,
     descriptionData,

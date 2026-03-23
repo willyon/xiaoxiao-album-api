@@ -14,12 +14,11 @@ function upsertMediaEmbedding({ imageId, vector, createdAt }) {
   const sourceType = "image";
 
   const stmt = db.prepare(`
-    INSERT INTO media_embeddings (media_id, source_type, source_ref_id, vector, created_at, analysis_version)
-    VALUES (?, ?, NULL, ?, ?, '1.0')
+    INSERT INTO media_embeddings (media_id, source_type, source_ref_id, vector, created_at)
+    VALUES (?, ?, NULL, ?, ?)
     ON CONFLICT(media_id, source_type) DO UPDATE SET
       vector = excluded.vector,
-      created_at = excluded.created_at,
-      analysis_version = excluded.analysis_version
+      created_at = excluded.created_at
   `);
 
   return stmt.run(imageId, sourceType, blob, now);

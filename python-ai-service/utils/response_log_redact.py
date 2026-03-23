@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-供 analyze_full 等接口在写响应日志时使用：递归去掉 embedding / 高维向量，避免控制台被数千维浮点撑爆。
+供 POST /analyze_image 等接口在写响应日志时使用：递归去掉 embedding / 高维向量，避免控制台被数千维浮点撑爆。
 不影响实际返回给 Node 的 JSON。
 """
 

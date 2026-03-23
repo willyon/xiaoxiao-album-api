@@ -250,6 +250,7 @@ async function processAndSaveSingleMedia(job) {
               storageKey,
               thumbnailStorageKey,
               storageService.storage,
+              { extension },
             );
           },
           imageHash,

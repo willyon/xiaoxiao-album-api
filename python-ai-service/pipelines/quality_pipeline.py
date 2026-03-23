@@ -15,18 +15,18 @@ import numpy as np
 from logger import logger
 
 
-def analyze_cleanup(
+def analyze_quality(
     image_bgr: np.ndarray,
     device: str,
     manager: Any,
-    precomputed_embedding: Optional[Dict[str, Any]] = None,
+    embedding: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    质量分析入口（对外 API：POST /analyze_quality）。
-    仅返回 hashes、aesthetic_score、sharpness_score。
+    质量分析入口（由 analyze_image 编排的 quality 模块调用）。
+    返回 hashes、sharpness_score；美学分仅当传入与 embedding 模块同结构的 vector 时计算。
     """
     if image_bgr is None:
-        logger.warning("analyze_cleanup: 收到空图像，返回空结果")
+        logger.warning("analyze_quality: 收到空图像，返回空结果")
         return {
             "hashes": {},
             "aesthetic_score": 0.0,
@@ -36,7 +36,7 @@ def analyze_cleanup(
     try:
         model = manager.get_quality_model(device) if manager else None
         if model is None:
-            logger.warning("analyze_cleanup: 未获取到 QualityAnalyzer，返回空结果")
+            logger.warning("analyze_quality: 未获取到 QualityAnalyzer，返回空结果")
             return {
                 "hashes": {},
                 "aesthetic_score": 0.0,
@@ -45,9 +45,9 @@ def analyze_cleanup(
         return model.analyze(
             image_bgr=image_bgr,
             device=device,
-            precomputed_embedding=precomputed_embedding,
+            embedding=embedding,
         )
     except Exception as exc:  # pragma: no cover
-        logger.error("analyze_cleanup 处理失败", details={"error": str(exc)})
+        logger.error("analyze_quality 处理失败", details={"error": str(exc)})
         raise
 

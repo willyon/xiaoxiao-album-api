@@ -4,40 +4,31 @@
 
 const { db } = require("../services/database");
 
-function markMediaAnalysisRunning(mediaId, analysisVersion) {
+function markMediaAnalysisRunning(mediaId) {
   db.prepare(
     `
     UPDATE media SET
-      analysis_status = 'running',
-      analysis_version = ?,
-      last_error = NULL,
-      last_error_at = NULL
+      analysis_status = 'running'
     WHERE id = ?
   `,
-  ).run(analysisVersion, mediaId);
+  ).run(mediaId);
 }
 
-function markMediaAnalysisFailed(mediaId, analysisVersion, error) {
+function markMediaAnalysisFailed(mediaId, _error) {
   if (!mediaId) {
     return;
   }
-  const code = (error && (error.code || error.message || "") || "UNKNOWN_ERROR").slice(0, 255);
-  const now = Date.now();
   db.prepare(
     `
     UPDATE media SET
-      analysis_status = 'failed',
-      analysis_version = ?,
-      last_error = ?,
-      last_error_at = ?
+      analysis_status = 'failed'
     WHERE id = ?
   `,
-  ).run(analysisVersion, code, now, mediaId);
+  ).run(mediaId);
 }
 
 function finalizeMediaAnalysis({
   mediaId,
-  analysisVersion,
   faceData = {},
   cleanupData = {},
   descriptionData = {},
@@ -65,8 +56,6 @@ function finalizeMediaAnalysis({
     `
     UPDATE media SET
       analysis_status = 'done',
-      analysis_version = ?,
-      analyzed_at = ?,
       phash = COALESCE(?, phash),
       dhash = COALESCE(?, dhash),
       face_count = COALESCE(?, face_count),
@@ -78,14 +67,10 @@ function finalizeMediaAnalysis({
       age_tags = COALESCE(?, age_tags),
       gender_tags = COALESCE(?, gender_tags),
       aesthetic_score = COALESCE(?, aesthetic_score),
-      sharpness_score = COALESCE(?, sharpness_score),
-      last_error = NULL,
-      last_error_at = NULL
+      sharpness_score = COALESCE(?, sharpness_score)
     WHERE id = ?
   `,
   ).run(
-    analysisVersion,
-    Date.now(),
     phash,
     dhash,
     faceCount,

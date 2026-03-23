@@ -5,13 +5,13 @@
  *
  * 📋 核心功能:
  * • 从数据库获取用户的所有人脸 embedding
- * • 调用 Python 服务的 /cluster_faces API 进行聚类
+ * • 调用 Python 服务的 /cluster_face_embeddings API 进行聚类
  * • 将聚类结果存储到 face_clusters 表
  * • 支持重新聚类（先删除旧数据）
  *
  * 🔄 处理流程:
  * 1. 从 face_embeddings 表获取用户的所有 embedding
- * 2. 调用 Python 服务的 /cluster_faces API
+ * 2. 调用 Python 服务的 /cluster_face_embeddings API
  * 3. 解析聚类结果，建立 face_embedding_id 与 cluster_id 的映射
  * 4. 删除旧的聚类数据（如果重新聚类）
  * 5. 批量插入新的聚类结果
@@ -202,7 +202,7 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
 
     // 4. 调用 Python 服务的聚类 API
     logger.info({
-      message: `调用 Python 聚类服务: ${PYTHON_SERVICE_URL}/cluster_faces`,
+      message: `调用 Python 聚类服务: ${PYTHON_SERVICE_URL}/cluster_face_embeddings`,
       details: {
         embeddingCount: embeddings.length,
         threshold: threshold !== undefined && threshold !== null ? threshold : "使用配置文件默认值",
@@ -211,7 +211,7 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
 
     let response;
     try {
-      response = await axios.post(`${PYTHON_SERVICE_URL}/cluster_faces`, requestBody, {
+      response = await axios.post(`${PYTHON_SERVICE_URL}/cluster_face_embeddings`, requestBody, {
         timeout: 300000, // 5分钟超时（大量数据可能需要较长时间）
         headers: {
           "Content-Type": "application/json",
@@ -661,7 +661,7 @@ async function _generateThumbnailsForClusters(userId, clusters, faceEmbeddings) 
 
       let response;
       try {
-        response = await axios.post(`${PYTHON_SERVICE_URL}/generate_face_thumbnail`, formData, {
+        response = await axios.post(`${PYTHON_SERVICE_URL}/crop_face_thumbnail`, formData, {
           headers: formData.getHeaders(),
           timeout: 30000, // 30秒超时
         });
@@ -1065,7 +1065,7 @@ async function generateThumbnailForFaceEmbedding(faceEmbeddingId, forceRegenerat
 
     let response;
     try {
-      response = await axios.post(`${PYTHON_SERVICE_URL}/generate_face_thumbnail`, formData, {
+      response = await axios.post(`${PYTHON_SERVICE_URL}/crop_face_thumbnail`, formData, {
         headers: formData.getHeaders(),
         timeout: 30000, // 30秒超时
       });

@@ -52,16 +52,6 @@ class FaceDetector:
             # 使用InsightFace检测所有人脸
             faces = self.face_app.get(image)
             
-            # 输出原始检测数据（调试用）
-            logger.info(f'InsightFace原始检测: 共 {len(faces)} 张人脸候选')
-            for i, face in enumerate(faces, 1):
-                bbox = face.bbox.astype(int)
-                det_score = float(face.det_score)
-                face_w = bbox[2] - bbox[0]
-                face_h = bbox[3] - bbox[1]
-                face_size = int(min(face_w, face_h))
-                logger.info(f'  原始候选{i}: det_score={det_score:.3f}, size={face_size}px, bbox={bbox.tolist()}')
-            
             if not faces:
                 return {
                     'all_faces': [],
@@ -79,14 +69,6 @@ class FaceDetector:
             all_faces.sort(key=lambda x: x['quality_score'], reverse=True)
             
             high_quality_count = sum(1 for f in all_faces if f['passed_quality'])
-            
-            # 输出每张人脸的详细信息（调试用）
-            for i, face_info in enumerate(all_faces, 1):
-                logger.info(f'  人脸{i}: size={face_info["face_size"]}px, '
-                          f'quality={face_info["quality_score"]:.2f}, '
-                          f'yaw={face_info["pose"]["yaw"]:.1f}°, '
-                          f'pitch={face_info["pose"]["pitch"]:.1f}°, '
-                          f'passed={face_info["passed_quality"]}')
             
             logger.info(f'检测到 {len(faces)} 张人脸，高质量: {high_quality_count}张，全部返回进行分析')
             

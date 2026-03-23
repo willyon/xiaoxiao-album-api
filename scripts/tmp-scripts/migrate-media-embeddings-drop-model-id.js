@@ -53,15 +53,14 @@ function migrate() {
         source_ref_id INTEGER,
         vector BLOB NOT NULL,
         created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
-        analysis_version TEXT,
         FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE,
         UNIQUE (media_id, source_type)
       );
     `).run();
 
     db.prepare(`
-      INSERT INTO media_embeddings_new (media_id, source_type, source_ref_id, vector, created_at, analysis_version)
-      SELECT media_id, source_type, source_ref_id, vector, created_at, analysis_version
+      INSERT INTO media_embeddings_new (media_id, source_type, source_ref_id, vector, created_at)
+      SELECT media_id, source_type, source_ref_id, vector, created_at
       FROM media_embeddings
       WHERE id IN (
         SELECT MAX(id) FROM media_embeddings GROUP BY media_id, source_type

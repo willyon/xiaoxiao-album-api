@@ -1,6 +1,7 @@
 /*
- * 一次性迁移：为 media 表增加 ai_face_count / ai_person_count（云 caption VLM 估算）
- * 新库由 initTableModel.createTableMedia 直接包含这两列，无需运行本脚本。
+ * 【历史】一次性迁移：为 media 表增加 ai_face_count / ai_person_count。
+ * 现已被 migrate-media-drop-ai-face-person-counts.js 合并进 face_count/person_count 并删列；新库无 ai_* 列。
+ * 新库由 initTableModel.createTableMedia 创建，无需运行本脚本。
  *
  * @Usage: node scripts/tmp-scripts/migrate-media-add-ai-face-person-counts.js
  */
