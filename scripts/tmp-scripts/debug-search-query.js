@@ -1,6 +1,6 @@
 /**
  * 模拟前端 POST /search/media 的关键词搜索（与 handleSearchMedias 全局搜索路径一致），
- * 逐步打印：分段、意图解析、长短分支、jieba 归一化后的 FTS 字符串、OCR/视觉 FTS 召回行数、最终 total。
+ * 逐步打印：整句查询（与线上一致：不按空格拆段）、意图解析、长短分支、jieba 归一化后的 FTS 字符串、OCR/视觉 FTS 召回行数、最终 total。
  *
  * @Usage:
  *   node scripts/tmp-scripts/debug-search-query.js
@@ -26,6 +26,7 @@ const {
 const searchModel = require(path.join(projectRoot, "src", "models", "searchModel"));
 const searchService = require(path.join(projectRoot, "src", "services", "searchService"));
 const { db } = require(path.join(projectRoot, "src", "services", "database"));
+const { getCoreTokensOnlyForResidual } = require(path.join(projectRoot, "src", "utils", "embeddingLexicalGate"));
 
 // 与 searchService.js 保持一致（用于打印与直连 FTS 校验）
 function sanitizeFtsToken(token) {
@@ -105,12 +106,12 @@ async function main() {
   const baseFilters = {};
 
   const normalizedQuery = query.trim();
-  const segments = normalizedQuery.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+  const segments = normalizedQuery ? [normalizedQuery] : [];
 
-  console.log("\n========== 2. 分段（按空格拆成多个 segment；无空格则整句为一段）==========");
+  console.log("\n========== 2. 查询段（与 searchService 一致：整句一段，空格为句内多线索）==========");
   console.log("segments:", segments);
 
-  console.log("\n========== 3. 每个 segment 的解析与 FTS 子串 ==========");
+  console.log("\n========== 3. 每段的解析与 FTS 子串（通常仅一段）==========");
 
   for (let si = 0; si < segments.length; si++) {
     const segment = segments[si];
@@ -129,7 +130,11 @@ async function main() {
     const isLongBranch = residualLenUnits >= 3;
     const ocrLenUnits = segmentLengthUnits(segment);
 
-    const innerVisual = buildFtsQueryForToken(residual);
+    const coreVisualTokens = residual && residualLenUnits >= 3 ? getCoreTokensOnlyForResidual(residual) : [];
+    const innerVisual =
+      coreVisualTokens.length > 0
+        ? coreVisualTokens.map(sanitizeFtsToken).filter(Boolean).join(" ") || null
+        : null;
     const wrappedVisual = innerVisual ? wrapFtsQueryForVisualColumnsOnly(innerVisual) : null;
     const innerOcr = buildFtsQueryForToken(segment);
     const wrappedOcr = innerOcr ? wrapFtsQueryForOcrColumnOnly(innerOcr) : null;
@@ -137,7 +142,12 @@ async function main() {
     console.log(`\n--- segment[${si}] = ${JSON.stringify(segment)} ---`);
     console.log("parseQueryIntent.residualQuery:", JSON.stringify(residual));
     console.log("hasStructured (时间/地点等):", hasStructured);
-    console.log("residualLenUnits:", residualLenUnits, "→ isLongBranch (≥3 走视觉 FTS):", isLongBranch);
+    console.log(
+      "residualLenUnits:",
+      residualLenUnits,
+      "→ 视觉：≤2 仅 term+同义词；≥3 内容词 FTS+向量（旧 isLongBranch）:",
+      isLongBranch,
+    );
     console.log("ocrLenUnits (整段 segment):", ocrLenUnits, "→ <3 走 OCR term 表，否则走 OCR FTS");
 
     console.log("\nbuildSearchQueryParts 产生的 WHERE 条件数:", wc.length);
@@ -146,8 +156,9 @@ async function main() {
       console.log("whereParams:", wp);
     }
 
-    console.log("\n[jieba 归一化后] normalizeQueryForFts(residual):", JSON.stringify(normalizeQueryForFts(residual)));
-    console.log("buildFtsQueryForToken(residual) → inner (视觉 FTS 括号内):", JSON.stringify(innerVisual));
+    console.log("\n[jieba 归一化后] normalizeQueryForFts(residual)（参考，长句视觉 FTS 已改用内容词）:", JSON.stringify(normalizeQueryForFts(residual)));
+    console.log("getCoreTokensOnlyForResidual(residual) →", coreVisualTokens);
+    console.log("视觉 FTS 括号内 inner（sanitize 后拼接）:", JSON.stringify(innerVisual));
     console.log("wrap 后完整视觉 MATCH 串:", wrappedVisual);
 
     console.log("\nbuildFtsQueryForToken(segment) → inner (OCR FTS 括号内):", JSON.stringify(innerOcr));
@@ -155,7 +166,7 @@ async function main() {
 
     const termsResidual = buildChineseQueryTerms(residual);
     console.log(
-      "\nbuildChineseQueryTerms(residual)（短分支会用的 term 列表；长分支主路不走它）:",
+      "\nbuildChineseQueryTerms(residual)（OCR 短句仍用；视觉 ≤2：中文仅用整段 trim+expandTermsWithSynonyms，不 jieba；非中文仍分词）:",
       termsResidual.map((t) => t.term),
     );
 

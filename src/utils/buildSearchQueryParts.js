@@ -1,5 +1,5 @@
 /*
- * @Description: 由筛选条件 + 可选关键词构建 FTS 与 WHERE（供列表与分段搜索共用）
+ * @Description: 由筛选条件 + 可选关键词构建 FTS 与 WHERE（供列表与关键词搜索共用）
  */
 const { AGE_GROUP_FRONTEND_TO_BACKEND } = require("../constants/filterMappings");
 const { containsChinese, normalizeQueryForFts } = require("./searchTermUtils");

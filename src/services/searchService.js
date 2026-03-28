@@ -4,13 +4,26 @@
  * @Description: 搜索业务逻辑服务
  */
 const searchModel = require("../models/searchModel");
+const { listVisualTextEmbeddingRowsForRecall } = require("../models/mediaEmbeddingModel");
 const { makeSearchRankCacheKey, getSearchRankCache, setSearchRankCache } = require("../utils/searchRankCacheStore");
-const { FTS_RANKING, SEARCH_TERM_FIELD_WEIGHTS, STRUCTURED_COMBO_BOOSTS, STRUCTURED_ROLE_BOOSTS } = require("../config/searchRankingWeights");
+const { FTS_RANKING, SEARCH_TERM_FIELD_WEIGHTS, CHINESE_QUERY_TERM_BOOST } = require("../config/searchRankingWeights");
 const { parseQueryIntent, mergeFilters } = require("../utils/queryIntentParser");
 const { buildSearchQueryParts } = require("../utils/buildSearchQueryParts");
-const { parseQuerySemanticSignals } = require("../utils/querySemanticParser");
-const { normalizeSemanticText } = require("../utils/querySemanticMatcher");
 const { buildChineseQueryTerms, containsChinese, normalizeQueryForFts } = require("../utils/searchTermUtils");
+const { generateTextEmbeddingForQuery } = require("./embeddingProvider");
+const { segmentFieldForSearchTerms } = require("../utils/chineseSegmenter");
+const { buildFinalLexicalTokensForResidual, passLexicalGate, getCoreTokensOnlyForResidual } = require("../utils/embeddingLexicalGate");
+const { expandTermsWithSynonyms } = require("../utils/searchSynonymExpansion");
+
+const _minSimParsed = parseFloat(process.env.VISUAL_EMBEDDING_MIN_SIMILARITY);
+/** 与 query 向量点积（已归一化即余弦），低于则不进候选；默认 0.82，`.env` 的 VISUAL_EMBEDDING_MIN_SIMILARITY 覆盖 */
+const VISUAL_EMBEDDING_MIN_SIMILARITY = Math.min(1, Math.max(0, Number.isFinite(_minSimParsed) ? _minSimParsed : 0.82));
+
+const _topKParsed = parseInt(process.env.VISUAL_EMBEDDING_RECALL_TOP_K, 10);
+/** 语义召回最多前 K 条；未设或无效则 null（不截断），`.env` 的 VISUAL_EMBEDDING_RECALL_TOP_K 设正整数可限制 */
+const VISUAL_EMBEDDING_RECALL_TOP_K = Number.isFinite(_topKParsed) && _topKParsed > 0 ? _topKParsed : null;
+
+const VISUAL_EMBEDDING_SCORE_SCALE = 120;
 
 function sanitizeFtsToken(token) {
   const value = String(token || "").trim();
@@ -27,6 +40,12 @@ function buildFtsQueryForToken(token) {
   const preprocessed = containsChinese(raw) ? normalizeQueryForFts(raw) : raw;
   const tokens = preprocessed.split(/\s+/).map(sanitizeFtsToken).filter(Boolean);
   return tokens.length > 0 ? tokens.join(" ") : null;
+}
+
+/** 长句视觉 FTS：已分好内容词时直接 sanitize 拼接，避免对整句再 jieba 一遍 */
+function buildVisualFtsInnerFromCoreTokens(coreTokens) {
+  const parts = (coreTokens || []).map((t) => sanitizeFtsToken(t)).filter(Boolean);
+  return parts.length > 0 ? parts.join(" ") : null;
 }
 
 /** 图片理解 FTS：caption_search_terms 为 description/标签/转写等 jieba，不含 OCR；OCR 见 ocr_search_terms 列。 */
@@ -87,20 +106,6 @@ function fetchMediasByIdsChunked(userId, imageIds) {
   return rows;
 }
 
-function fetchSearchDocsByMediaIdsChunked(userId, imageIds) {
-  if (!imageIds.length) return [];
-  const rows = [];
-  for (let i = 0; i < imageIds.length; i += SQLITE_IN_CLAUSE_CHUNK) {
-    rows.push(
-      ...searchModel.getSearchDocsByMediaIds({
-        userId,
-        imageIds: imageIds.slice(i, i + SQLITE_IN_CLAUSE_CHUNK),
-      }),
-    );
-  }
-  return rows;
-}
-
 function ensureCandidate(candidates, mediaId) {
   if (!candidates.has(mediaId)) {
     candidates.set(mediaId, {
@@ -111,6 +116,7 @@ function ensureCandidate(candidates, mediaId) {
       hasOcrMatch: false,
       /** 图片理解侧召回或结构化标签命中（非 OCR term/FTS） */
       hasVisualMatch: false,
+      visualSemanticScore: 0,
       matchedFields: new Set(),
       matchedTermsByField: new Map(),
       roleSignals: {
@@ -166,6 +172,65 @@ function mergeFtsScores(candidates, ftsRows, hasChineseQuery) {
   }
 }
 
+function dotProduct(a = [], b = []) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length === 0 || a.length !== b.length) {
+    return 0;
+  }
+  let score = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    score += (Number(a[i]) || 0) * (Number(b[i]) || 0);
+  }
+  return score;
+}
+
+function recallMediaIdsByVisualEmbedding({ userId, queryText, whereConditions, whereParams, topK } = {}) {
+  const limit = topK !== undefined ? topK : VISUAL_EMBEDDING_RECALL_TOP_K;
+  const text = String(queryText || "").trim();
+  if (!text) {
+    return [];
+  }
+  return generateTextEmbeddingForQuery(text).then((queryVector) => {
+    if (!Array.isArray(queryVector) || queryVector.length === 0) {
+      return [];
+    }
+    const rows = listVisualTextEmbeddingRowsForRecall({
+      userId,
+      whereConditions,
+      whereParams,
+    });
+    const scored = [];
+    for (const row of rows) {
+      const mediaId = Number(row.media_id);
+      if (!Number.isFinite(mediaId)) continue;
+      const similarity = dotProduct(queryVector, row.vector || []);
+      if (!Number.isFinite(similarity) || similarity < VISUAL_EMBEDDING_MIN_SIMILARITY) continue;
+      scored.push({
+        media_id: mediaId,
+        similarity,
+        description_text: row.description_text,
+      });
+    }
+    scored.sort((a, b) => b.similarity - a.similarity || b.media_id - a.media_id);
+    if (Number.isFinite(limit) && limit > 0) {
+      return scored.slice(0, limit);
+    }
+    return scored;
+  });
+}
+
+function mergeVisualSemanticScores(candidates, embeddingRows) {
+  for (const row of embeddingRows || []) {
+    const mediaId = Number(row.media_id);
+    if (!Number.isFinite(mediaId)) continue;
+    const similarity = Number(row.similarity);
+    if (!Number.isFinite(similarity)) continue;
+    const candidate = ensureCandidate(candidates, mediaId);
+    candidate.visualSemanticScore = Math.max(candidate.visualSemanticScore || 0, similarity);
+    candidate.score += similarity * VISUAL_EMBEDDING_SCORE_SCALE;
+    candidate.hasVisualMatch = true;
+  }
+}
+
 function scoreOcrSubstringHits(candidates, ocrRows) {
   for (const row of ocrRows || []) {
     const mediaId = Number(row.media_id);
@@ -173,58 +238,6 @@ function scoreOcrSubstringHits(candidates, ocrRows) {
     const candidate = ensureCandidate(candidates, mediaId);
     candidate.hasOcrMatch = true;
     candidate.score += SEARCH_TERM_FIELD_WEIGHTS.ocr;
-  }
-}
-
-function normalizeFieldText(value) {
-  return typeof value === "string" ? normalizeSemanticText(value) : "";
-}
-
-function fieldIncludesAny(text, terms = []) {
-  if (!text || !Array.isArray(terms) || terms.length === 0) {
-    return false;
-  }
-  return terms.some((term) => text.includes(term));
-}
-
-function boostStructuredMatches(candidates, searchDocs, structuredSignals) {
-  if (!structuredSignals?.hasRoleSignals) {
-    return;
-  }
-
-  const searchDocMap = new Map((searchDocs || []).map((doc) => [Number(doc.media_id), doc]));
-  for (const candidate of candidates.values()) {
-    const doc = searchDocMap.get(candidate.mediaId);
-    const subjectText = normalizeFieldText(doc?.subject_tags_text);
-    const actionText = normalizeFieldText(doc?.action_tags_text);
-    const sceneText = normalizeFieldText(doc?.scene_tags_text);
-
-    const hasSubjectSignal =
-      candidate.matchedFields.has("subject_tags") || structuredSignals.subjects.some((group) => fieldIncludesAny(subjectText, group.terms));
-    const hasActionSignal =
-      candidate.matchedFields.has("action_tags") || structuredSignals.actions.some((group) => fieldIncludesAny(actionText, group.terms));
-    const hasSceneSignal =
-      candidate.matchedFields.has("scene_tags") || structuredSignals.scenes.some((group) => fieldIncludesAny(sceneText, group.terms));
-
-    candidate.roleSignals.subject = hasSubjectSignal;
-    candidate.roleSignals.action = hasActionSignal;
-    candidate.roleSignals.scene = hasSceneSignal;
-
-    if (hasSubjectSignal) candidate.score += STRUCTURED_ROLE_BOOSTS.subject;
-    if (hasActionSignal) candidate.score += STRUCTURED_ROLE_BOOSTS.action;
-    if (hasSceneSignal) candidate.score += STRUCTURED_ROLE_BOOSTS.scene;
-
-    if (hasSubjectSignal && hasActionSignal && hasSceneSignal) {
-      candidate.score += STRUCTURED_COMBO_BOOSTS.subjectActionScene;
-    } else {
-      if (hasSubjectSignal && hasActionSignal) candidate.score += STRUCTURED_COMBO_BOOSTS.subjectAction;
-      if (hasSubjectSignal && hasSceneSignal) candidate.score += STRUCTURED_COMBO_BOOSTS.subjectScene;
-      if (hasActionSignal && hasSceneSignal) candidate.score += STRUCTURED_COMBO_BOOSTS.actionScene;
-    }
-
-    if (hasSubjectSignal || hasActionSignal || hasSceneSignal) {
-      candidate.hasVisualMatch = true;
-    }
   }
 }
 
@@ -245,11 +258,6 @@ function sortCandidates(candidates, mediaMap) {
     }
     if (b.score !== a.score) {
       return b.score - a.score;
-    }
-    const roleCountA = Number(a.roleSignals.subject) + Number(a.roleSignals.action) + Number(a.roleSignals.scene);
-    const roleCountB = Number(b.roleSignals.subject) + Number(b.roleSignals.action) + Number(b.roleSignals.scene);
-    if (roleCountB !== roleCountA) {
-      return roleCountB - roleCountA;
     }
     const mediaA = mediaMap.get(a.mediaId);
     const mediaB = mediaMap.get(b.mediaId);
@@ -274,6 +282,38 @@ function segmentLengthUnits(segment) {
   return cjkCount + wordCount;
 }
 
+/**
+ * 视觉列 FTS 用 token：优先内容词；无核心词且 residual 很短时退回整段，避免短查询无法 MATCH。
+ */
+function getVisualFtsCoreTokensForResidual(residual) {
+  const core = getCoreTokensOnlyForResidual(residual);
+  if (core.length > 0) return core;
+  const trimmed = String(residual || "").trim();
+  if (!trimmed) return [];
+  if (segmentLengthUnits(trimmed) <= 2) {
+    return [trimmed];
+  }
+  return [];
+}
+
+/**
+ * 向量字面护栏用词：与 buildFinalLexicalTokensForResidual 一致；为空时用短句种子+同义词（与 term 路径对齐），否则 1～2 单位查询 embedding 全被挡掉。
+ */
+function resolveLexicalTokensForEmbeddingGate(residual) {
+  const fromCore = buildFinalLexicalTokensForResidual(residual);
+  if (fromCore.length > 0) return fromCore;
+  const trimmed = String(residual || "").trim();
+  if (!trimmed) return [];
+  const seeds = new Set();
+  seeds.add(trimmed);
+  if (!containsChinese(trimmed)) {
+    for (const t of segmentFieldForSearchTerms(trimmed)) {
+      if (t) seeds.add(t);
+    }
+  }
+  return expandTermsWithSynonyms([...seeds]);
+}
+
 function mergeScopeWhere(scopeConditions, scopeParams, built) {
   return {
     whereConditions: [...(scopeConditions || []), ...built.whereConditions],
@@ -296,6 +336,7 @@ function cloneCandidate(c) {
     matchedFields: new Set(c.matchedFields),
     matchedTermsByField: m,
     roleSignals: { ...c.roleSignals },
+    visualSemanticScore: c.visualSemanticScore || 0,
   };
 }
 
@@ -312,6 +353,7 @@ function mergeCandidateInto(target, src) {
   target.roleSignals.subject = target.roleSignals.subject || src.roleSignals.subject;
   target.roleSignals.action = target.roleSignals.action || src.roleSignals.action;
   target.roleSignals.scene = target.roleSignals.scene || src.roleSignals.scene;
+  target.visualSemanticScore = Math.max(target.visualSemanticScore || 0, src.visualSemanticScore || 0);
 }
 
 function mergeCandidateMapsInto(global, segMap) {
@@ -327,13 +369,13 @@ function mergeCandidateMapsInto(global, segMap) {
 }
 
 /**
- * 仅 OCR：长度 <3（segmentLengthUnits）只查 media_search_terms（field_type=ocr），否则查 ocr_search_terms FTS。
+ * OCR：任意长度都走 ocr_search_terms FTS；长度 <3 额外查 media_search_terms（field_type=ocr）精确命中。
  */
 function applyOcrRecallForSegment({ segment, userId, whereConditions, whereParams }, segCands) {
   const ocrLenUnits = segmentLengthUnits(segment);
+  let termRows = 0;
 
   if (ocrLenUnits < 3) {
-    let termRows = 0;
     const shortQueryTerms = buildChineseQueryTerms(segment);
     if (shortQueryTerms.length > 0) {
       const termRowsData = searchModel.recallMediaIdsByChineseTerms({
@@ -346,7 +388,6 @@ function applyOcrRecallForSegment({ segment, userId, whereConditions, whereParam
       mergeCandidateMapsInto(segCands, scoreChineseTermHits(termRowsData, shortQueryTerms));
       termRows = termRowsData.length;
     }
-    return { ftsRows: 0, termRows };
   }
 
   const ocrInner = buildFtsQueryForToken(segment);
@@ -360,15 +401,16 @@ function applyOcrRecallForSegment({ segment, userId, whereConditions, whereParam
       })
     : [];
   scoreOcrSubstringHits(segCands, ocrRows);
-  return { ftsRows: ocrRows.length, termRows: 0 };
+  return { ftsRows: ocrRows.length, termRows };
 }
 
 /**
- * 仅图片理解：筛选 / 视觉列 FTS / media_search_terms（不含 OCR 行）。
+ * 仅图片理解：筛选 / 视觉列 FTS / 向量（任意 residual 长度都走 FTS + embedding）；短句额外走 term + 同义词。
  */
-function applyVisualRecallForSegment({ segment, residual, hasStructured, isLongBranch, userId, whereConditions, whereParams }, segCands) {
+async function applyVisualRecallForSegment({ segment, residual, hasStructured, userId, whereConditions, whereParams }, segCands) {
   let termRows = 0;
   let ftsRows = 0;
+  let semanticRows = 0;
 
   if (!residual && hasStructured) {
     const filterRows = searchModel.recallMediaIdsByFiltersOnly({
@@ -383,48 +425,80 @@ function applyVisualRecallForSegment({ segment, residual, hasStructured, isLongB
     );
     ftsRows += filterRows.length;
   } else if (residual) {
-    if (isLongBranch) {
-      const inner = buildFtsQueryForToken(residual);
-      const wrapped = inner ? wrapFtsQueryForVisualColumnsOnly(inner) : null;
-      if (wrapped) {
-        const rows = searchModel.recallMediaIdsByFts({
-          userId,
-          ftsQuery: wrapped,
-          whereConditions,
-          whereParams,
-        });
-        mergeFtsScores(segCands, rows, containsChinese(residual));
-        ftsRows += rows.length;
-      }
-    } else {
-      const shortQueryTerms = buildChineseQueryTerms(residual);
-      if (shortQueryTerms.length > 0) {
-        const termRowsData = searchModel.recallMediaIdsByChineseTermsForVisual({
-          userId,
-          terms: shortQueryTerms.map((item) => item.term),
-          whereConditions,
-          whereParams,
-        });
-        mergeCandidateMapsInto(segCands, scoreChineseTermHits(termRowsData, shortQueryTerms));
-        termRows += termRowsData.length;
-      } else {
-        const inner = buildFtsQueryForToken(residual);
-        const wrapped = inner ? wrapFtsQueryForVisualColumnsOnly(inner) : null;
-        if (wrapped) {
-          const rows = searchModel.recallMediaIdsByFts({
-            userId,
-            ftsQuery: wrapped,
-            whereConditions,
-            whereParams,
-          });
-          mergeFtsScores(segCands, rows, false);
-          ftsRows += rows.length;
+    const residualUnits = segmentLengthUnits(residual);
+
+    if (residualUnits <= 2) {
+      const seeds = new Set();
+      const trimmed = residual.trim();
+      if (trimmed) seeds.add(trimmed);
+      // 中文短句（单位数≤2）：整段即检索意图，不再走 jieba；英文/数字仍分词以便多词如 "cat dog"
+      if (trimmed && !containsChinese(trimmed)) {
+        for (const t of segmentFieldForSearchTerms(trimmed)) {
+          if (t) seeds.add(t);
         }
       }
+      const expanded = expandTermsWithSynonyms([...seeds]);
+      const queryTerms = [...new Set(expanded)]
+        .map((term) => {
+          const termLen = Array.from(term).length;
+          const boost = termLen >= 2 ? CHINESE_QUERY_TERM_BOOST.multiChar : CHINESE_QUERY_TERM_BOOST.singleChar;
+          return { term, termLen, boost };
+        })
+        .sort((a, b) => b.termLen - a.termLen || a.term.localeCompare(b.term, "zh-Hans-CN"));
+
+      if (queryTerms.length > 0) {
+        const termRowsData = searchModel.recallMediaIdsByChineseTermsForVisual({
+          userId,
+          terms: queryTerms.map((item) => item.term),
+          whereConditions,
+          whereParams,
+        });
+        mergeCandidateMapsInto(segCands, scoreChineseTermHits(termRowsData, queryTerms));
+        termRows += termRowsData.length;
+      }
+    }
+
+    const ftsCoreTokens = getVisualFtsCoreTokensForResidual(residual);
+    const inner = buildVisualFtsInnerFromCoreTokens(ftsCoreTokens);
+    const wrapped = inner ? wrapFtsQueryForVisualColumnsOnly(inner) : null;
+    const visualFtsIds = new Set();
+    if (wrapped) {
+      const rows = searchModel.recallMediaIdsByFts({
+        userId,
+        ftsQuery: wrapped,
+        whereConditions,
+        whereParams,
+      });
+      for (const r of rows) {
+        const id = Number(r.media_id);
+        if (Number.isFinite(id)) visualFtsIds.add(id);
+      }
+      mergeFtsScores(segCands, rows, containsChinese(residual));
+      ftsRows += rows.length;
+    }
+    const lexicalTokens = resolveLexicalTokensForEmbeddingGate(residual);
+    const embeddingRowsRaw = await recallMediaIdsByVisualEmbedding({
+      userId,
+      queryText: residual,
+      whereConditions,
+      whereParams,
+    });
+    const embeddingRows = embeddingRowsRaw.filter((row) => {
+      const id = Number(row.media_id);
+      if (!Number.isFinite(id)) return false;
+      if (visualFtsIds.has(id)) return true;
+      return passLexicalGate(row.description_text, lexicalTokens);
+    });
+    if (embeddingRows.length > 0) {
+      mergeVisualSemanticScores(
+        segCands,
+        embeddingRows.map((r) => ({ media_id: r.media_id, similarity: r.similarity })),
+      );
+      semanticRows += embeddingRows.length;
     }
   }
 
-  return { termRows, ftsRows };
+  return { termRows, ftsRows, semanticRows };
 }
 
 async function searchMediaResults({
@@ -464,7 +538,7 @@ async function searchMediaResults({
     return {
       list,
       total,
-      stats: { termCount: 0, ftsCount: list.length, ocrCount: 0 },
+      stats: { termCount: 0, ftsCount: list.length, ocrCount: 0, semanticCount: 0 },
     };
   }
 
@@ -472,17 +546,8 @@ async function searchMediaResults({
     throw new Error("searchMediaResults: keyword search requires baseFilters and filterOptions");
   }
 
-  const segments = normalizedQuery
-    .split(/\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (segments.length === 0) {
-    return {
-      list: [],
-      total: 0,
-      stats: { termCount: 0, ftsCount: 0, ocrCount: 0 },
-    };
-  }
+  // 整句一次召回：空格仅作句内多线索，不再拆成多段循环
+  const segment = normalizedQuery;
 
   const rankCacheKey = makeSearchRankCacheKey({
     userId,
@@ -507,63 +572,44 @@ async function searchMediaResults({
   }
 
   const globalCandidates = new Map();
-  let totalTermRows = 0;
-  let totalFtsRows = 0;
-  let totalOcrRows = 0;
 
-  for (const segment of segments) {
-    const parsedIntent = parseQueryIntent(segment);
-    const mergedFilters = mergeFilters(baseFilters, parsedIntent);
-    const built = buildSearchQueryParts("*", mergedFilters, filterOptions);
-    const { whereConditions: wc, whereParams: wp } = mergeScopeWhere(scopeConditions, scopeParams, built);
+  const parsedIntent = parseQueryIntent(segment);
+  const mergedFilters = mergeFilters(baseFilters, parsedIntent);
+  const built = buildSearchQueryParts("*", mergedFilters, filterOptions);
+  const { whereConditions: wc, whereParams: wp } = mergeScopeWhere(scopeConditions, scopeParams, built);
 
-    const residual = (parsedIntent.residualQuery || "").trim();
-    const hasStructured = Boolean(
-      parsedIntent.filters?.timeDimension || parsedIntent.filters?.customDateRange || parsedIntent.filters?.location?.length,
-    );
+  const residual = (parsedIntent.residualQuery || "").trim();
+  const hasStructured = Boolean(
+    parsedIntent.filters?.timeDimension || parsedIntent.filters?.customDateRange || parsedIntent.filters?.location?.length,
+  );
 
-    // 长短分支与 OCR 是否走 FTS：均按「去掉时间/地点后的 residual」计长度；residual 为空时长度为 0
-    const residualLenUnits = segmentLengthUnits(residual);
-    const isLongBranch = residualLenUnits >= 3;
+  // OCR 用整句 segment 计长度：<3 额外 term 表；任意长度均 OCR FTS。视觉用 residual；有 residual 则任意长度均视觉 FTS + 向量，≤2 单位另加 term+同义词。
+  // 1) OCR 与 2) 图片理解分离：先 OCR，再视觉（视觉侧不查 OCR term / 不走 OCR FTS）
+  const ocrStats = applyOcrRecallForSegment(
+    {
+      segment,
+      userId,
+      whereConditions: wc,
+      whereParams: wp,
+    },
+    globalCandidates,
+  );
+  const totalOcrRows = ocrStats.ftsRows + ocrStats.termRows;
 
-    let segCands = new Map();
-
-    // 1) OCR 与 2) 图片理解分离：先 OCR，再视觉（视觉侧不查 OCR term / 不走 OCR FTS）
-    const ocrStats = applyOcrRecallForSegment(
-      {
-        segment,
-        userId,
-        whereConditions: wc,
-        whereParams: wp,
-      },
-      segCands,
-    );
-    totalOcrRows += ocrStats.ftsRows + ocrStats.termRows;
-
-    const visualStats = applyVisualRecallForSegment(
-      {
-        segment,
-        residual,
-        hasStructured,
-        isLongBranch,
-        userId,
-        whereConditions: wc,
-        whereParams: wp,
-      },
-      segCands,
-    );
-    totalTermRows += visualStats.termRows;
-    totalFtsRows += visualStats.ftsRows;
-
-    if (segCands.size > 0) {
-      const segmentStructuredSignals = parseQuerySemanticSignals(segment);
-      const segIds = Array.from(segCands.keys());
-      const segDocs = fetchSearchDocsByMediaIdsChunked(userId, segIds);
-      boostStructuredMatches(segCands, segDocs, segmentStructuredSignals);
-    }
-
-    mergeCandidateMapsInto(globalCandidates, segCands);
-  }
+  const visualStats = await applyVisualRecallForSegment(
+    {
+      segment,
+      residual,
+      hasStructured,
+      userId,
+      whereConditions: wc,
+      whereParams: wp,
+    },
+    globalCandidates,
+  );
+  const totalTermRows = visualStats.termRows;
+  const totalFtsRows = visualStats.ftsRows;
+  const totalSemanticRows = visualStats.semanticRows;
 
   const mergedIds = Array.from(globalCandidates.keys());
   if (mergedIds.length === 0) {
@@ -574,6 +620,7 @@ async function searchMediaResults({
         termCount: totalTermRows,
         ftsCount: totalFtsRows,
         ocrCount: totalOcrRows,
+        semanticCount: totalSemanticRows,
       },
     };
   }
@@ -588,6 +635,7 @@ async function searchMediaResults({
     termCount: totalTermRows,
     ftsCount: totalFtsRows,
     ocrCount: totalOcrRows,
+    semanticCount: totalSemanticRows,
   };
 
   if (rankCacheKey && ranked.length > 0) {

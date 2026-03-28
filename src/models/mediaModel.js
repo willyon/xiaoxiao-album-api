@@ -9,6 +9,8 @@ const { db } = require("../services/database");
 const { mapFields } = require("../utils/fieldMapper");
 const { buildMediaSearchTermRows, buildSearchTermsFromFields, buildOcrSearchTermsFromRaw } = require("../utils/searchTermUtils");
 const { clearSearchRankCache } = require("../utils/searchRankCacheStore");
+const { rebuildMediaEmbeddingDoc } = require("../services/mediaEmbeddingRebuildService");
+const { deleteMediaEmbeddingBySourceType, MEDIA_EMBEDDING_SOURCE_TYPES } = require("./mediaEmbeddingModel");
 
 function parseCommaTags(input) {
   if (!input || typeof input !== "string") return [];
@@ -161,6 +163,10 @@ function rebuildMediaSearchDoc(mediaId) {
     db.prepare("DELETE FROM media_search_fts WHERE rowid = ?").run(mediaId);
     const deleted = db.prepare("DELETE FROM media_search WHERE media_id = ?").run(mediaId);
     db.prepare("DELETE FROM media_search_terms WHERE media_id = ?").run(mediaId);
+    deleteMediaEmbeddingBySourceType({
+      mediaId,
+      sourceType: MEDIA_EMBEDDING_SOURCE_TYPES.VISUAL_TEXT,
+    });
     clearSearchRankCache();
     return { affectedRows: deleted.changes, termRows: 0 };
   }
@@ -210,6 +216,9 @@ function rebuildMediaSearchDoc(mediaId) {
   });
 
   syncMediaSearchFtsRow(media.id);
+  Promise.resolve(rebuildMediaEmbeddingDoc(media.id)).catch((error) => {
+    console.warn("[rebuildMediaSearchDoc] rebuildMediaEmbeddingDoc failed:", error?.message || error);
+  });
 
   clearSearchRankCache();
   return { affectedRows: result.changes, termRows };

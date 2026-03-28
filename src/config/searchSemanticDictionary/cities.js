@@ -1,5 +1,5 @@
 /*
- * @Description: 城市检索词典（结构与 scenes.js 一致：label + aliases）
+ * @Description: 城市检索词典（label + aliases）
  * 请直接维护此文件（本项目只保留这一份城市词典）。
  */
 module.exports = [

@@ -278,33 +278,6 @@ function recallMediaIdsByOcrFts({ userId, ftsQuery, whereConditions = [], whereP
   return db.prepare(sql).all(...params);
 }
 
-function getSearchDocsByMediaIds({ userId, imageIds }) {
-  if (!Array.isArray(imageIds) || imageIds.length === 0) {
-    return [];
-  }
-
-  const placeholders = imageIds.map(() => "?").join(",");
-  const sql = `
-    SELECT
-      ms.media_id,
-      ms.description_text,
-      ms.keywords_text,
-      ms.subject_tags_text,
-      ms.action_tags_text,
-      ms.scene_tags_text,
-      ms.ocr_text,
-      ms.ocr_search_terms,
-      ms.transcript_text
-    FROM media_search ms
-    JOIN media i ON i.id = ms.media_id
-    WHERE i.user_id = ?
-      AND i.deleted_at IS NULL
-      AND ms.media_id IN (${placeholders})
-  `;
-
-  return db.prepare(sql).all(userId, ...imageIds);
-}
-
 function recallMediaIdsByChineseTerms({
   userId,
   terms = [],
@@ -738,5 +711,4 @@ module.exports = {
   countMediaIdsByChineseTerms,
   getFilterOptionsPaginated,
   getMediasByIds,
-  getSearchDocsByMediaIds,
 };

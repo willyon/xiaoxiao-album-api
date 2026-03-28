@@ -216,6 +216,8 @@ function createTableMediaEmbeddings() {
     );
   `;
   db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_embeddings_source_type ON media_embeddings(source_type);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_embeddings_media_source ON media_embeddings(media_id, source_type);").run();
 }
 
 /** 创建 album_media：相册与媒体的多对多关联 */

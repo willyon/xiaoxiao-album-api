@@ -2,37 +2,33 @@
  * @Author: zhangshouchang
  * @Date: 2025-01-28
  * @Description: 查询意图解析器
- * 从自然语言查询中提取必须走字段过滤的结构化信息（时间、地点）；residual 仅去掉上述片段，主体/动作/场景仍保留给 FTS。
+ * 从自然语言查询中提取必须走字段过滤的结构化信息（时间、地点）；residual 仅去掉上述片段。
  */
 const { parseQuerySemanticSignals } = require("./querySemanticParser");
 
 /**
  * 解析查询意图，提取时间、地点等结构化信息
  * @param {string} query - 用户输入的查询文本
- * @returns {Object} 解析后的筛选条件对象，格式与 filters 一致
+ * @returns {{ filters: Object, residualQuery: string }} 结构化筛选 + 去掉时间/地点后的剩余查询文本
  */
 function parseQueryIntent(query) {
   if (!query || !query.trim()) {
     return {
       filters: {},
       residualQuery: "",
-      semantic: null,
-      hasStructuredSignals: false,
     };
   }
 
   const normalizedQuery = query.trim();
-  const semantic = parseQuerySemanticSignals(normalizedQuery);
+  const parsed = parseQuerySemanticSignals(normalizedQuery);
   const filters = {
-    ...(semantic?.primaryTimeFilter || {}),
-    ...(semantic?.primaryLocationFilter || {}),
+    ...(parsed?.primaryTimeFilter || {}),
+    ...(parsed?.primaryLocationFilter || {}),
   };
 
   return {
     filters,
-    residualQuery: semantic?.residualQuery || "",
-    semantic,
-    hasStructuredSignals: Boolean(semantic?.hasStructuredSignals),
+    residualQuery: parsed?.residualQuery || "",
   };
 }
 

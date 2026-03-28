@@ -167,7 +167,7 @@ async function handleSearchMedias(req, res, next) {
       });
     }
 
-    // 全局搜索：有关键词时在 searchService 内按空格分段独立解析；无关键词时仅筛选列表
+    // 全局搜索：有关键词时整句在 searchService 内解析（空格视为同一句内多线索，不拆成多次搜索）；无关键词时仅筛选列表
     if (hasQuery) {
       searchResult = await searchService.searchMediaResults({
         userId,
