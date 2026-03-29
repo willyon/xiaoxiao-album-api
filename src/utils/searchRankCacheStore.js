@@ -20,7 +20,6 @@ function pruneSearchRankCache(now = Date.now()) {
 function makeSearchRankCacheKey({
   userId,
   normalizedQuery,
-  ftsQuery,
   whereConditions,
   whereParams,
   baseFilters,
@@ -30,7 +29,6 @@ function makeSearchRankCacheKey({
   const payload = JSON.stringify({
     u: userId,
     q: normalizedQuery,
-    f: ftsQuery ?? null,
     wc: whereConditions,
     wp: whereParams,
     bf: baseFilters ?? null,

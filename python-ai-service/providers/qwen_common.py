@@ -145,6 +145,35 @@ def normalize_keywords(raw_keywords: Any) -> List[str]:
     return []
 
 
+def dedupe_keywords_against_tags(
+    keywords: Any,
+    subject_tags: Any,
+    action_tags: Any,
+    scene_tags: Any,
+) -> List[str]:
+    """
+    从 keywords 中剔除与 subject/action/scene 任一标签完全相同的项（去重后顺序不变）。
+    用于避免检索字段与结构化标签字面重复。
+    """
+    tag_set: set[str] = set()
+    for group in (subject_tags, action_tags, scene_tags):
+        if not isinstance(group, Iterable) or isinstance(group, (str, bytes)):
+            continue
+        for item in group:
+            t = str(item or "").strip()
+            if t:
+                tag_set.add(t)
+    raw_kw = normalize_keywords(keywords)
+    out: List[str] = []
+    seen_kw: set[str] = set()
+    for k in raw_kw:
+        if k in tag_set or k in seen_kw:
+            continue
+        seen_kw.add(k)
+        out.append(k)
+    return out
+
+
 def polygon_to_bbox(location: Any) -> List[float]:
     """将四点坐标或 bbox 转成 [x1, y1, x2, y2]。"""
     if isinstance(location, list) and len(location) == 8:

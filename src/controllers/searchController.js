@@ -137,11 +137,10 @@ async function handleSearchMedias(req, res, next) {
           pageSize: parseInt(pageSize, 10),
         });
       } else {
-        const filterBuilt = buildSearchQueryParts("*", filters, filterOptions);
+        const filterBuilt = buildSearchQueryParts(filters, filterOptions);
         searchResult = await searchService.searchMediaResults({
           userId,
           query: "",
-          ftsQuery: filterBuilt.ftsQuery,
           whereConditions: [...scopeConditions, ...filterBuilt.whereConditions],
           whereParams: [...scopeParams, ...filterBuilt.whereParams],
           pageNo: parseInt(pageNo, 10),
@@ -180,11 +179,10 @@ async function handleSearchMedias(req, res, next) {
         pageSize: parseInt(pageSize, 10),
       });
     } else {
-      const built = buildSearchQueryParts("*", filters, filterOptions);
+      const built = buildSearchQueryParts(filters, filterOptions);
       searchResult = await searchService.searchMediaResults({
         userId,
         query: "",
-        ftsQuery: built.ftsQuery,
         whereConditions: built.whereConditions,
         whereParams: built.whereParams,
         pageNo: parseInt(pageNo, 10),

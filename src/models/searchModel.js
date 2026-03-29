@@ -183,7 +183,7 @@ function recallMediaIdsByFts({ userId, ftsQuery, whereConditions = [], wherePara
   let sql = `
     SELECT
       i.id AS media_id,
-      bm25(media_search_fts, 6.0, 7.0, 11.0, 12.0, 9.0, 8.0, 3.0, 14.0) AS fts_score,
+      bm25(media_search_fts, 6.0, 7.0, 11.0, 12.0, 9.0, 3.0, 14.0) AS fts_score,
       i.captured_at
     FROM media_search_fts fts
     JOIN media_search ms ON fts.rowid = ms.media_id
@@ -241,24 +241,24 @@ function recallMediaIdsByFiltersOnly({ userId, whereConditions = [], whereParams
 }
 
 /**
- * 仅对 media_search_fts.ocr_search_terms 列做 MATCH（与图片理解列组分离；列为 OCR 的 jieba 空格串）。
+ * OCR：整句子串匹配 media_search.ocr_text（LOWER + LIKE，pattern 已含 % 且对 %_\\ 做过 ESCAPE）。
  */
-function recallMediaIdsByOcrFts({ userId, ftsQuery, whereConditions = [], whereParams = [], limit } = {}) {
-  if (!ftsQuery) {
+function recallMediaIdsByOcrTextLike({ userId, likePattern, whereConditions = [], whereParams = [], limit } = {}) {
+  if (!likePattern || typeof likePattern !== "string") {
     return [];
   }
 
   let sql = `
     SELECT
       i.id AS media_id,
-      bm25(media_search_fts, 6.0, 7.0, 11.0, 12.0, 9.0, 8.0, 3.0, 14.0) AS fts_score,
       i.captured_at
-    FROM media_search_fts fts
-    JOIN media_search ms ON fts.rowid = ms.media_id
+    FROM media_search ms
     JOIN media i ON ms.media_id = i.id
     WHERE i.user_id = ?
       AND i.deleted_at IS NULL
-      AND media_search_fts MATCH ?
+      AND ms.ocr_text IS NOT NULL
+      AND TRIM(ms.ocr_text) != ''
+      AND LOWER(ms.ocr_text) LIKE ? ESCAPE '\\'
   `;
 
   if (whereConditions.length > 0) {
@@ -266,10 +266,10 @@ function recallMediaIdsByOcrFts({ userId, ftsQuery, whereConditions = [], whereP
   }
 
   sql += `
-    ORDER BY fts_score ASC, i.captured_at DESC
+    ORDER BY i.captured_at DESC
   `;
 
-  const params = [userId, ftsQuery, ...whereParams];
+  const params = [userId, likePattern, ...whereParams];
   if (limit != null && Number.isFinite(limit) && limit > 0) {
     sql += " LIMIT ?";
     params.push(limit);
@@ -285,7 +285,6 @@ function recallMediaIdsByChineseTerms({
   whereParams = [],
   limit,
   fieldTypes,
-  excludeFieldTypes,
 } = {}) {
   if (!Array.isArray(terms) || terms.length === 0) {
     return [];
@@ -310,10 +309,6 @@ function recallMediaIdsByChineseTerms({
     const ftPh = fieldTypes.map(() => "?").join(",");
     sql += ` AND mst.field_type IN (${ftPh})`;
   }
-  if (Array.isArray(excludeFieldTypes) && excludeFieldTypes.length > 0) {
-    const exPh = excludeFieldTypes.map(() => "?").join(",");
-    sql += ` AND mst.field_type NOT IN (${exPh})`;
-  }
 
   if (whereConditions.length > 0) {
     sql += " AND " + whereConditions.join(" AND ");
@@ -327,9 +322,6 @@ function recallMediaIdsByChineseTerms({
   if (Array.isArray(fieldTypes) && fieldTypes.length > 0) {
     params.push(...fieldTypes);
   }
-  if (Array.isArray(excludeFieldTypes) && excludeFieldTypes.length > 0) {
-    params.push(...excludeFieldTypes);
-  }
   params.push(...whereParams);
   if (limit != null && Number.isFinite(limit) && limit > 0) {
     sql += " LIMIT ?";
@@ -337,14 +329,6 @@ function recallMediaIdsByChineseTerms({
   }
 
   return db.prepare(sql).all(...params);
-}
-
-/** 仅图片理解：media_search_terms 中排除 OCR 行，与 OCR 召回分离。 */
-function recallMediaIdsByChineseTermsForVisual(params) {
-  return recallMediaIdsByChineseTerms({
-    ...params,
-    excludeFieldTypes: ["ocr"],
-  });
 }
 
 function countMediaIdsByChineseTerms({ userId, terms = [], whereConditions = [], whereParams = [] }) {
@@ -705,9 +689,8 @@ module.exports = {
   countMediaSearchResults,
   recallMediaIdsByFts,
   recallMediaIdsByFiltersOnly,
-  recallMediaIdsByOcrFts,
+  recallMediaIdsByOcrTextLike,
   recallMediaIdsByChineseTerms,
-  recallMediaIdsByChineseTermsForVisual,
   countMediaIdsByChineseTerms,
   getFilterOptionsPaginated,
   getMediasByIds,

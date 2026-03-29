@@ -17,7 +17,7 @@ from logger import logger
 from providers import get_caption_provider
 from services.module_result import MODULE_STATUS_FAILED, MODULE_STATUS_SUCCESS, build_module_result
 from utils.errors import AiTimeoutError
-from providers.qwen_common import normalize_keywords
+from providers.qwen_common import dedupe_keywords_against_tags, normalize_keywords
 
 
 def analyze_caption(
@@ -82,6 +82,22 @@ def analyze_caption_detailed(
             configured_provider=configured_provider,
             resolved_provider=resolved,
         )
+        if out.get("status") == MODULE_STATUS_SUCCESS and isinstance(out.get("data"), dict):
+            d = out["data"]
+            st = normalize_keywords(d.get("subject_tags") or [])
+            at = normalize_keywords(d.get("action_tags") or [])
+            sc = normalize_keywords(d.get("scene_tags") or [])
+            kw = dedupe_keywords_against_tags(d.get("keywords"), st, at, sc)
+            out = {
+                **out,
+                "data": {
+                    **d,
+                    "subject_tags": st,
+                    "action_tags": at,
+                    "scene_tags": sc,
+                    "keywords": kw,
+                },
+            }
         return out
     except AiTimeoutError as e:
         logger.warning("caption_pipeline 超时: %s" % e)

@@ -13,6 +13,7 @@ from config import settings
 from providers.base import BaseCaptionProvider
 from providers.qwen_common import (
     DEFAULT_QWEN_COMPATIBLE_BASE_URL,
+    dedupe_keywords_against_tags,
     encode_image_to_data_url,
     extract_openai_message_text,
     normalize_keywords,
@@ -64,15 +65,16 @@ class QwenCaptionProvider(BaseCaptionProvider):
             "请分析这张图片，并严格输出一个 JSON 对象，不要输出 Markdown 或额外解释。"
             f"JSON 结构必须为 {json_shape}。"
             "【description】用一到两句简体中文客观描述画面主要内容，可写清主体、动作与场景；允许稍完整，但不要用华丽长句。"
-            "【keywords】输出 4 到 10 个「检索用」短词：优先口语化、用户会搜的说法（如 宝宝、吃饭、客厅、户外）；"
-            "若 description 里出现较长称呼或地名，可在此给出更短的同义说法（如 宝宝、公园）；"
-            "不要与下面三类 tags 逐字重复堆砌，可少量同义补全。"
             "【subject_tags】1 到 4 个主体：谁/什么（人物/宠物/人群），每条优先 2～6 个汉字，尽量 2～4 字；"
             "如「宝宝」「妈妈」「爸爸」「多人」「宠物」。"
             "【action_tags】1 到 4 个动作或状态：每条优先 2～6 个汉字，尽量 2～4 字；"
             "如「吃饭」「睡觉」「玩耍」「抱着」「看电视」。"
             "【scene_tags】1 到 6 个场景或典型物件/地点：每条优先 2～8 个汉字；"
             "如「餐椅」「卧室」「客厅」「户外」「婴儿车」。"
+            "【keywords】在上述 subject_tags、action_tags、scene_tags 填好之后，再补充 4～10 个「检索用」短词："
+            "仅填口语化、用户会搜但尚未被上述三类 tags 覆盖的说法，或 description 里长称呼/地名的更短同义说法；"
+            "严禁把三类 tags 里已出现的词再写进 keywords（字面完全相同即算重复，"
+            "例如 tags 已有「吃饭」则 keywords 不要再写「吃饭」，可写「用餐」「辅食」等同义补充）。"
             + vision_text_rules
             + count_rules
             + "keywords 与 subject_tags、action_tags、scene_tags 四个数组中的每一项均须为简短名词或动宾短语，不要输出完整句子；"
@@ -145,12 +147,21 @@ def _coerce_int_for_count(value: Any) -> int:
 
 def _coerce_caption_response(raw: str) -> Dict[str, Any]:
     obj = parse_json_object_from_text(raw) or {}
+    subject_tags = normalize_keywords(_coerce_str_list(obj.get("subject_tags")))
+    action_tags = normalize_keywords(_coerce_str_list(obj.get("action_tags")))
+    scene_tags = normalize_keywords(_coerce_str_list(obj.get("scene_tags")))
+    keywords = dedupe_keywords_against_tags(
+        obj.get("keywords"),
+        subject_tags,
+        action_tags,
+        scene_tags,
+    )
     return {
         "description": str(obj.get("description") or "").strip(),
-        "keywords": _coerce_str_list(obj.get("keywords")),
-        "subject_tags": normalize_keywords(_coerce_str_list(obj.get("subject_tags"))),
-        "action_tags": normalize_keywords(_coerce_str_list(obj.get("action_tags"))),
-        "scene_tags": normalize_keywords(_coerce_str_list(obj.get("scene_tags"))),
+        "keywords": keywords,
+        "subject_tags": subject_tags,
+        "action_tags": action_tags,
+        "scene_tags": scene_tags,
         "ocr": str(obj.get("ocr") or "").strip(),
         "face_count": _coerce_int_for_count(obj.get("face_count")),
         "person_count": _coerce_int_for_count(obj.get("person_count")),

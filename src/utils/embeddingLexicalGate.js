@@ -1,20 +1,20 @@
 /*
- * @Description: 对 residual 分词后的 token 做「内容词」提取：命中 STOP_WORDS / WEAK_VERBS 的词从列表里剔除，不参与后续检索相关逻辑。
+ * @Description: 对 residual 分词后的 token 做过滤：
+ * - 全词命中 STOP_WORDS / WEAK_VERBS → 剔除
+ * - 整个 token 仅为一个 U+3400–U+9FFF 码点（CJK 统一表意文字常用区单字）→ 剔除，避免 FTS 多词 AND 被单字噪声拖累；英文/数字单字符保留
  *
  * 作用范围（剔除 = 不进入核心词，也就不参与）：
- * - 长句视觉 FTS：`getCoreTokensOnlyForResidual` 拼 MATCH 内容词
- * - 向量字面护栏：`buildFinalLexicalTokensForResidual` → 核心词经 `searchSynonymExpansion.expandTermsWithSynonyms`（正向+反向索引）展开，再 `passLexicalGate`
+ * - 长句视觉 FTS：`getCoreTokensOnlyForResidual` 拼 MATCH
+ * - 向量字面护栏：`buildFinalLexicalTokensForResidual` → 经 `expandTermsWithSynonyms` 展开，再 `passLexicalGate`
  *
- * 判定顺序（重要）：先查 STOP_WORDS / WEAK_VERBS（含单字「的」「了」「在」等），再「其余长度不足 2 的 token」一律剔除。
- * 这样表里显式列出单字虚词才有意义；若把 length<2 放在最前，单字永远不会命中集合。
- * 英文词未列停用表；纯 ASCII token 仍先 lowerCase 再比对，最后由 length<2 去掉单字母等。
+ * 英文纯 ASCII token 先 lowerCase 再与两表比对。
  */
 const { segmentFieldForSearchTerms } = require("./chineseSegmenter");
 const { expandTermsWithSynonyms } = require("./searchSynonymExpansion");
 
 /** 中文：单字虚词 + 二字及以上功能词；与分词结果全词匹配则剔除 */
 const STOP_WORDS = new Set([
-  // --- 单字虚词 / 介助 / 代词（显式列出，与 extractCoreTokens 判定顺序配合）
+  // --- 单字虚词 / 介助 / 代词（显式列出）
   "的",
   "了",
   "着",
@@ -276,20 +276,10 @@ const WEAK_VERBS = new Set([
   "走走",
   "跑跑",
   "玩玩",
-  "吃吃",
-  "喝喝",
   "睡睡",
   "说说",
   "坐坐",
   "躺躺",
-  "笑笑",
-  "哭哭",
-  "抱抱",
-  "亲亲",
-  "拍拍",
-  "游玩",
-  "玩耍",
-  "玩闹",
   "进行",
   "开始",
   "继续",
@@ -307,6 +297,19 @@ const WEAK_VERBS = new Set([
   "讨厌",
 ]);
 
+const CJK_UNIFIED_IDEOGRAPH_MIN = 0x3400;
+const CJK_UNIFIED_IDEOGRAPH_MAX = 0x9fff;
+
+/** 整个 token 仅为一个码点且落在 CJK 统一表意文字 U+3400–U+9FFF（不用 length，避免误伤英文/数字） */
+function isSingleCjkUnifiedIdeographOnly(s) {
+  const t = String(s).trim();
+  if (!t) return false;
+  const chars = Array.from(t);
+  if (chars.length !== 1) return false;
+  const cp = chars[0].codePointAt(0);
+  return cp >= CJK_UNIFIED_IDEOGRAPH_MIN && cp <= CJK_UNIFIED_IDEOGRAPH_MAX;
+}
+
 function extractCoreTokens(tokens) {
   return (tokens || []).filter((t) => {
     if (!t) return false;
@@ -315,8 +318,7 @@ function extractCoreTokens(tokens) {
     const key = /^[\x00-\x7f]+$/.test(s) ? s.toLowerCase() : s;
     if (STOP_WORDS.has(key)) return false;
     if (WEAK_VERBS.has(key)) return false;
-    // 未列入上两表的其余单字仍剔除（如罕见单字名、标点误切等）
-    if (s.length < 2) return false;
+    if (isSingleCjkUnifiedIdeographOnly(s)) return false;
     return true;
   });
 }
@@ -326,7 +328,7 @@ function expandCoreTokens(coreTokens) {
   return expandTermsWithSynonyms(coreTokens || []);
 }
 
-/** residual → 分词 → 剔除 STOP/WEAK（含显式单字）→ 再剔除其余单字 → 供长句视觉 FTS 拼串（不含同义词） */
+/** residual → 分词 → 剔除 STOP/WEAK + CJK 单字（U+3400–U+9FFF）→ 供长句视觉 FTS 拼串（不含同义词） */
 function getCoreTokensOnlyForResidual(residual) {
   const raw = String(residual || "").trim();
   if (!raw) {

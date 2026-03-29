@@ -91,7 +91,7 @@ async function main() {
 
   const parsedIntent = parseQueryIntent(segment);
   const mergedFilters = mergeFilters({}, parsedIntent);
-  const built = buildSearchQueryParts("*", mergedFilters, { userId, clusterId: null });
+  const built = buildSearchQueryParts(mergedFilters, { userId, clusterId: null });
   const { whereConditions: wc, whereParams: wp } = mergeScopeWhere([], [], built);
   const residual = String(parsedIntent.residualQuery || "").trim();
 

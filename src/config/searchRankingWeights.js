@@ -15,7 +15,8 @@ const SEARCH_TERM_FIELD_WEIGHTS = {
   scene_tags: 170,
   keywords: 120,
   description: 100,
-  ocr: 85,
+  /** ocr_text 子串 LIKE 命中加分（不经 media_search_terms） */
+  ocrLikeHit: 85,
   transcript: 65,
 };
 
@@ -29,7 +30,7 @@ const CHINESE_QUERY_TERM_BOOST = {
 
 // FTS 排名融合分。
 // 非中文查询主要依赖 FTS，因此基础分更高。
-// 如果英文/OCR 搜索结果偏弱，可优先提升 nonChineseBaseScore。
+// 如果英文或视觉 FTS 结果偏弱，可优先提升 nonChineseBaseScore。
 const FTS_RANKING = {
   chineseBaseScore: 28,
   nonChineseBaseScore: 90,

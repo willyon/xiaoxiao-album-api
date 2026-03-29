@@ -89,7 +89,7 @@ function buildMediaSearchTermRows({ mediaId, userId, fields, updatedAt = Date.no
   return rows;
 }
 
-// 合并进 media_search.caption_search_terms（jieba）的字段：仅图片理解相关 + 转写；OCR 的 jieba 单独写入 media_search.ocr_search_terms
+// 合并进 media_search.caption_search_terms（jieba）的字段：仅图片理解相关 + 转写（OCR 仅存 ocr_text，检索走 LIKE）
 const FIELD_KEYS_FOR_SEARCH_TERMS = [
   "description",
   "keywords",
@@ -100,23 +100,7 @@ const FIELD_KEYS_FOR_SEARCH_TERMS = [
 ];
 
 /**
- * OCR 原文 → jieba 检索 token 空格拼接，写入 media_search.ocr_search_terms / FTS ocr_search_terms（与查询 normalizeQueryForFts 对齐）
- */
-function buildOcrSearchTermsFromRaw(rawOcr) {
-  if (!rawOcr || typeof rawOcr !== "string" || !rawOcr.trim()) return null;
-  const tokens = [];
-  const seen = new Set();
-  for (const tok of segmentFieldForSearchTerms(rawOcr)) {
-    if (!tok) continue;
-    if (seen.has(tok)) continue;
-    seen.add(tok);
-    tokens.push(tok);
-  }
-  return tokens.length > 0 ? tokens.join(" ") : null;
-}
-
-/**
- * 合并多字段 → jieba 搜索模式分词后写入 caption_search_terms（不含 OCR；OCR 见 buildOcrSearchTermsFromRaw）
+ * 合并多字段 → jieba 搜索模式分词后写入 caption_search_terms（不含 OCR）
  */
 function buildSearchTermsFromFields(fields) {
   const seen = new Set();
@@ -187,9 +171,6 @@ module.exports = {
   SEARCH_TERM_FIELD_WEIGHTS,
   buildChineseQueryTerms,
   buildMediaSearchTermRows,
-  buildOcrSearchTermsFromRaw,
-  /** @deprecated 使用 buildOcrSearchTermsFromRaw */
-  buildOcrTextForSearchFts: buildOcrSearchTermsFromRaw,
   buildSearchTermsFromFields,
   containsChinese,
   extractChineseRuns,

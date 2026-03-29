@@ -55,10 +55,12 @@ function wrapFtsQueryForVisualColumnsOnly(innerQuery) {
   return `${VISUAL_FTS5_COLUMN_GROUP} : (${inner})`;
 }
 
-function wrapFtsQueryForOcrColumnOnly(innerQuery) {
-  const inner = String(innerQuery || "").trim();
-  if (!inner) return null;
-  return `{ocr_search_terms} : (${inner})`;
+function buildOcrTextLikePattern(segment) {
+  const raw = String(segment || "").trim();
+  if (!raw) return null;
+  const lower = raw.toLowerCase();
+  const escaped = lower.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+  return `%${escaped}%`;
 }
 
 function segmentLengthUnits(segment) {
@@ -117,7 +119,7 @@ async function main() {
     const segment = segments[si];
     const parsedIntent = parseQueryIntent(segment);
     const mergedFilters = mergeFilters(baseFilters, parsedIntent);
-    const built = buildSearchQueryParts("*", mergedFilters, filterOptions);
+    const built = buildSearchQueryParts(mergedFilters, filterOptions);
     const { whereConditions: wc, whereParams: wp } = mergeScopeWhere([], [], built);
 
     const residual = (parsedIntent.residualQuery || "").trim();
@@ -128,16 +130,13 @@ async function main() {
     );
     const residualLenUnits = segmentLengthUnits(residual);
     const isLongBranch = residualLenUnits >= 3;
-    const ocrLenUnits = segmentLengthUnits(segment);
-
     const coreVisualTokens = residual && residualLenUnits >= 3 ? getCoreTokensOnlyForResidual(residual) : [];
     const innerVisual =
       coreVisualTokens.length > 0
         ? coreVisualTokens.map(sanitizeFtsToken).filter(Boolean).join(" ") || null
         : null;
     const wrappedVisual = innerVisual ? wrapFtsQueryForVisualColumnsOnly(innerVisual) : null;
-    const innerOcr = buildFtsQueryForToken(segment);
-    const wrappedOcr = innerOcr ? wrapFtsQueryForOcrColumnOnly(innerOcr) : null;
+    const ocrLikePattern = buildOcrTextLikePattern(segment);
 
     console.log(`\n--- segment[${si}] = ${JSON.stringify(segment)} ---`);
     console.log("parseQueryIntent.residualQuery:", JSON.stringify(residual));
@@ -148,7 +147,7 @@ async function main() {
       "→ 视觉：≤2 仅 term+同义词；≥3 内容词 FTS+向量（旧 isLongBranch）:",
       isLongBranch,
     );
-    console.log("ocrLenUnits (整段 segment):", ocrLenUnits, "→ <3 走 OCR term 表，否则走 OCR FTS");
+    console.log("OCR LIKE pattern（LOWER+转义后）:", JSON.stringify(ocrLikePattern));
 
     console.log("\nbuildSearchQueryParts 产生的 WHERE 条件数:", wc.length);
     if (wc.length > 0) {
@@ -160,9 +159,6 @@ async function main() {
     console.log("getCoreTokensOnlyForResidual(residual) →", coreVisualTokens);
     console.log("视觉 FTS 括号内 inner（sanitize 后拼接）:", JSON.stringify(innerVisual));
     console.log("wrap 后完整视觉 MATCH 串:", wrappedVisual);
-
-    console.log("\nbuildFtsQueryForToken(segment) → inner (OCR FTS 括号内):", JSON.stringify(innerOcr));
-    console.log("wrap 后完整 OCR MATCH 串:", wrappedOcr);
 
     const termsResidual = buildChineseQueryTerms(residual);
     console.log(
@@ -185,19 +181,19 @@ async function main() {
       console.log("\n>>> 视觉 FTS inner 为空，跳过 recallMediaIdsByFts");
     }
 
-    if (wrappedOcr) {
-      const ocrRows = searchModel.recallMediaIdsByOcrFts({
+    if (ocrLikePattern) {
+      const ocrRows = searchModel.recallMediaIdsByOcrTextLike({
         userId,
-        ftsQuery: wrappedOcr,
+        likePattern: ocrLikePattern,
         whereConditions: wc,
         whereParams: wp,
       });
-      console.log(">>> recallMediaIdsByOcrFts(OCR 列) 行数:", ocrRows.length);
+      console.log(">>> recallMediaIdsByOcrTextLike(ocr_text) 行数:", ocrRows.length);
       if (ocrRows.length > 0) {
         console.log("    前 10 个 media_id:", ocrRows.slice(0, 10).map((r) => r.media_id));
       }
     } else {
-      console.log(">>> OCR FTS inner 为空，跳过 recallMediaIdsByOcrFts");
+      console.log(">>> segment 为空，跳过 OCR LIKE");
     }
   }
 
@@ -306,7 +302,7 @@ async function main() {
   console.log(
     "- 若第 3 步视觉 FTS 行数=0 但第 4 步 COUNT>0：先看第 6 步；若第 6 步 MATCH 仍=0，多为 FTS 索引未 rebuild，与 jieba/caption_search_terms 内容无关。",
   );
-  console.log("- OCR 路径只看 ocr_search_terms；关键词在 caption_search_terms 时，应依赖「视觉 FTS」这一路。");
+  console.log("- OCR 路径：LOWER(ocr_text) LIKE 整句子串；caption 关键词依赖「视觉 FTS」。");
 }
 
 main().catch((err) => {

@@ -1,36 +1,15 @@
 /*
- * @Description: 由筛选条件 + 可选关键词构建 FTS 与 WHERE（供列表与关键词搜索共用）
+ * @Description: 由筛选条件构建 WHERE（供无关键词列表与自然搜索里筛选合并共用）。有关键词时的全文检索在 searchService 内单独构造 MATCH 串，不经本函数。
  */
 const { AGE_GROUP_FRONTEND_TO_BACKEND } = require("../constants/filterMappings");
-const { containsChinese, normalizeQueryForFts } = require("./searchTermUtils");
 
 const ALLOWED_EXPRESSION_FILTERS = new Set(["happy", "sad", "anger", "surprise", "neutral"]);
 
-function sanitizeFtsToken(token) {
-  const value = String(token || "").trim();
-  if (!value) return "";
-  if (/^[\p{L}\p{N}_\u3400-\u9fff*]+$/u.test(value)) {
-    return value;
-  }
-  return `"${value.replace(/"/g, '""')}"`;
-}
-
-function buildSafeFtsQuery(query) {
-  const raw = String(query || "").trim();
-  if (!raw || raw === "*") {
-    return raw || null;
-  }
-  const preprocessed = containsChinese(raw) ? normalizeQueryForFts(raw) : raw;
-  const tokens = preprocessed.split(/\s+/).map(sanitizeFtsToken).filter(Boolean);
-  return tokens.length > 0 ? tokens.join(" ") : null;
-}
-
 /**
- * @param {string} query - 用户搜索关键词
  * @param {Object} filters - 筛选条件
  * @param {Object} [options] - { userId, clusterId }
  */
-function buildSearchQueryParts(query, filters, options = {}) {
+function buildSearchQueryParts(filters, options = {}) {
   const convertedFilters = { ...filters };
 
   if (convertedFilters.ageGroup && Array.isArray(convertedFilters.ageGroup) && convertedFilters.ageGroup.length > 0) {
@@ -47,9 +26,6 @@ function buildSearchQueryParts(query, filters, options = {}) {
   }
 
   filters = convertedFilters;
-
-  const ftsConditions = [];
-  const isWildcardQuery = !query || query.trim() === "" || query.trim() === "*";
 
   const whereConditions = [];
   const whereParams = [];
@@ -86,21 +62,6 @@ function buildSearchQueryParts(query, filters, options = {}) {
     const placeholders = filters.imageOrientation.map(() => "?").join(",");
     whereConditions.push(`i.layout_type IN (${placeholders})`);
     whereParams.push(...filters.imageOrientation);
-  }
-
-  let ftsQuery;
-
-  if (isWildcardQuery) {
-    if (ftsConditions.length > 0) {
-      ftsQuery = ftsConditions.join(" AND ");
-    } else {
-      ftsQuery = null;
-    }
-  } else {
-    ftsQuery = buildSafeFtsQuery(query);
-    if (ftsConditions.length > 0) {
-      ftsQuery = ftsQuery ? `${ftsQuery} AND ${ftsConditions.join(" AND ")}` : ftsConditions.join(" AND ");
-    }
   }
 
   if (filters.mediaType && ["image", "video"].includes(filters.mediaType)) {
@@ -306,7 +267,6 @@ function buildSearchQueryParts(query, filters, options = {}) {
   }
 
   return {
-    ftsQuery,
     whereConditions,
     whereParams,
   };

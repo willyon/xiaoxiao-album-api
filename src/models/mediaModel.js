@@ -7,7 +7,7 @@
  */
 const { db } = require("../services/database");
 const { mapFields } = require("../utils/fieldMapper");
-const { buildMediaSearchTermRows, buildSearchTermsFromFields, buildOcrSearchTermsFromRaw } = require("../utils/searchTermUtils");
+const { buildMediaSearchTermRows, buildSearchTermsFromFields } = require("../utils/searchTermUtils");
 const { clearSearchRankCache } = require("../utils/searchRankCacheStore");
 const { rebuildMediaEmbeddingDoc } = require("../services/mediaEmbeddingRebuildService");
 const { deleteMediaEmbeddingBySourceType, MEDIA_EMBEDDING_SOURCE_TYPES } = require("./mediaEmbeddingModel");
@@ -126,7 +126,7 @@ function syncMediaSearchFtsRow(mediaId) {
     .prepare(
       `
       SELECT media_id, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text,
-             ocr_search_terms, transcript_text, caption_search_terms
+             transcript_text, caption_search_terms
       FROM media_search WHERE media_id = ?
     `,
     )
@@ -137,8 +137,8 @@ function syncMediaSearchFtsRow(mediaId) {
     `
     INSERT INTO media_search_fts(
       rowid, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text,
-      ocr_search_terms, transcript_text, caption_search_terms
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      transcript_text, caption_search_terms
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     row.media_id,
@@ -147,7 +147,6 @@ function syncMediaSearchFtsRow(mediaId) {
     row.subject_tags_text,
     row.action_tags_text,
     row.scene_tags_text,
-    row.ocr_search_terms,
     row.transcript_text,
     row.caption_search_terms,
   );
@@ -172,13 +171,12 @@ function rebuildMediaSearchDoc(mediaId) {
   }
 
   const searchTermsText = buildSearchTermsFromFields(fields);
-  const ocrSearchTermsText = buildOcrSearchTermsFromRaw(fields.ocr);
 
   const upsert = db.prepare(`
     INSERT INTO media_search (
       media_id, user_id, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text,
-      ocr_text, ocr_search_terms, transcript_text, caption_search_terms, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ocr_text, transcript_text, caption_search_terms, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(media_id) DO UPDATE SET
       user_id = excluded.user_id,
       description_text = excluded.description_text,
@@ -187,7 +185,6 @@ function rebuildMediaSearchDoc(mediaId) {
       action_tags_text = excluded.action_tags_text,
       scene_tags_text = excluded.scene_tags_text,
       ocr_text = excluded.ocr_text,
-      ocr_search_terms = excluded.ocr_search_terms,
       transcript_text = excluded.transcript_text,
       caption_search_terms = excluded.caption_search_terms,
       updated_at = excluded.updated_at
@@ -202,16 +199,16 @@ function rebuildMediaSearchDoc(mediaId) {
     fields.action_tags,
     fields.scene_tags,
     fields.ocr,
-    ocrSearchTermsText,
     fields.transcript,
     searchTermsText,
     updatedAt,
   );
 
+  const { ocr: _ocrSkipTerms, ...fieldsWithoutOcrForTerms } = fields;
   const termRows = replaceMediaSearchTermsForDocument({
     mediaId: media.id,
     userId: media.user_id,
-    fields,
+    fields: fieldsWithoutOcrForTerms,
     updatedAt,
   });
 

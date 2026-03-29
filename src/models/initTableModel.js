@@ -237,7 +237,7 @@ function createTableAlbumMedia() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_album_media_media_id ON album_media(media_id);").run();
 }
 
-/** 创建 media_search：汇总 caption/OCR/转写等，供搜索与 FTS 同步（ocr_text 为 OCR 原文；ocr_search_terms 为 OCR 的 jieba；caption_search_terms 为图片理解 jieba） */
+/** 创建 media_search：汇总 caption/OCR/转写等，供搜索与 FTS 同步（ocr_text 为 OCR 原文，检索走 LIKE；caption_search_terms 为图片理解 jieba） */
 function createTableMediaSearch() {
   const sql = `
     CREATE TABLE IF NOT EXISTS media_search (
@@ -249,7 +249,6 @@ function createTableMediaSearch() {
       action_tags_text TEXT,
       scene_tags_text TEXT,
       ocr_text TEXT,
-      ocr_search_terms TEXT,
       transcript_text TEXT,
       caption_search_terms TEXT,
       updated_at INTEGER,
@@ -277,7 +276,6 @@ function createTableMediaSearchFts() {
       subject_tags_text,
       action_tags_text,
       scene_tags_text,
-      ocr_search_terms,
       transcript_text,
       caption_search_terms
     );
