@@ -26,7 +26,7 @@ async function createSession(userId) {
   await redisClient.hset(`upload:session:${sessionId}`, {
     uploadedCount: 0,
     thumbDone: 0,
-    highResDone: 0,
+    mediaDone: 0,
     thumbErrors: 0,
     highResErrors: 0,
     duplicateCount: 0, // Controller层检测的重复（不加入队列）
@@ -49,7 +49,7 @@ async function createSession(userId) {
     sessionId,
     uploadedCount: 0,
     thumbDone: 0,
-    highResDone: 0,
+    mediaDone: 0,
     thumbErrors: 0,
     highResErrors: 0,
     duplicateCount: 0,

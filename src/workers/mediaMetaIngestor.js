@@ -155,6 +155,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
     meta.width && meta.height && meta.height > 0 ? Math.round((meta.width / meta.height) * 1000) / 1000 : null;
 
   let imageId = null;
+  let effectiveOriginalStorageKey = originalStorageKey;
   try {
     const result = await saveProcessedMediaMetadata({
       userId,
@@ -184,6 +185,13 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
       message: "Video metadata database update failed",
       details: { imageHash, userId, err: e.message },
     });
+    await _handleMetaRetryFailure({
+      job,
+      reason: "database_update_failed",
+      fileName,
+      imageHash,
+      userId,
+    });
     throw e;
   }
 
@@ -196,17 +204,33 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
   try {
     await storageService.storage.moveFile(storageKey, originalStorageKey);
   } catch (e) {
+    // 与图片链路保持一致：移动失败不阻断主流程，但要保证 DB 中 original_storage_key 可用
+    // 否则会出现 DB 指向 original 路径、实际文件仍在临时路径，导致下载失败
     logger.warn({
       message: "Video original file move failed",
       details: { imageHash, userId, sourceStorageKey: storageKey, targetStorageKey: originalStorageKey, error: e.message },
     });
+    effectiveOriginalStorageKey = storageKey;
+    try {
+      await saveProcessedMediaMetadata({
+        userId,
+        imageHash,
+        originalStorageKey: storageKey,
+        mediaType: "video",
+      });
+    } catch (fallbackErr) {
+      logger.warn({
+        message: "Video fallback original_storage_key sync failed",
+        details: { imageHash, userId, fallbackStorageKey: storageKey, error: fallbackErr.message },
+      });
+    }
   }
 
   await _enqueueAiAndCleanup({
     imageId,
     userId,
     highResStorageKey: null,
-    originalStorageKey,
+    originalStorageKey: effectiveOriginalStorageKey,
     sessionId,
     mediaType: "video",
     fileName,
@@ -216,7 +240,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
   // 将 media 完成计数后移到 AI 入队之后，避免单图场景出现 completed 的短暂竞态窗口
   if (sessionId) {
     try {
-      await updateProgress({ sessionId, status: "highResDone" });
+      await updateProgress({ sessionId, status: "mediaDone" });
     } catch (err) {}
   }
 }
@@ -285,7 +309,7 @@ async function processMediaMeta(job) {
   const originalType = process.env.MEDIA_STORAGE_KEY_ORIGINAL || "original";
   const originalStorageKey = storageService.storage.generateStorageKey(originalType, fileName);
 
-  // ========== 视频分支：ffprobe 元数据，不生成 highres，不入队 AI ==========
+  // ========== 视频分支：ffprobe 元数据，不生成 highres；会入队 AI worker 做 analysis 完成态收敛 ==========
   if (mediaType === "video") {
     return processVideoMeta(job, {
       userId,
@@ -470,7 +494,7 @@ async function processMediaMeta(job) {
     if (sessionId) {
       await updateProgress({
         sessionId,
-        status: "highResDone",
+        status: "mediaDone",
       });
     }
   } catch (err) {}

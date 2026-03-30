@@ -27,7 +27,7 @@ async function _restoreTrashIfApplicableAndSkipUpload(fileInfo) {
   });
   if (fileInfo.sessionId) {
     await updateProgress({ sessionId: fileInfo.sessionId, status: "uploadedCount" });
-    await updateProgress({ sessionId: fileInfo.sessionId, status: "highResDone" });
+    await updateProgress({ sessionId: fileInfo.sessionId, status: "mediaDone" });
   }
   await storageService.deleteFile(fileInfo);
   return true;

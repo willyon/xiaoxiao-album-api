@@ -1,10 +1,10 @@
 /*
  * @Description: 修复 Redis 中 upload:session:{sessionId} 的「媒体整理」进度与 uploadedCount 不一致问题。
- * 典型场景：回收站静默恢复后只写了 uploadedCount、未写 highResDone，导致媒体处理页一直 0/N。
+ * 典型场景：回收站静默恢复后只写了 uploadedCount、未写 mediaDone，导致媒体处理页一直 0/N。
  *
  * 规则（与 uploadProgressSnapshot.computeMediaStageDone 一致）：
- *   mediaDone = highResDone + highResErrors + workerSkippedCount
- *   若 uploadedCount > mediaDone，则将差额补到 highResDone（视为应已完成流水线但未计数）。
+ *   mediaProcessed = mediaDone + highResErrors + workerSkippedCount
+ *   若 uploadedCount > mediaProcessed，则将差额补到 mediaDone（视为应已完成流水线但未计数）。
  *
  * 用法:
  *   node scripts/development/repair-upload-session-progress-redis.js           # 仅打印将修复项（dry-run）
@@ -65,12 +65,12 @@ async function repairOneSession(redis, sessionKey, apply) {
   if (!data || Object.keys(data).length === 0) return null;
 
   const uploadedCount = toInt(data.uploadedCount);
-  const highResDone = toInt(data.highResDone);
+  const mediaDone = toInt(data.mediaDone || data.highResDone);
   const highResErrors = toInt(data.highResErrors);
   const workerSkippedCount = toInt(data.workerSkippedCount);
 
-  const mediaDone = highResDone + highResErrors + workerSkippedCount;
-  const deficit = uploadedCount - mediaDone;
+  const mediaProcessed = mediaDone + highResErrors + workerSkippedCount;
+  const deficit = uploadedCount - mediaProcessed;
 
   if (deficit <= 0) {
     return { sessionId, skipped: true, reason: "already aligned" };
@@ -82,13 +82,13 @@ async function repairOneSession(redis, sessionKey, apply) {
       skipped: false,
       dryRun: true,
       uploadedCount,
-      mediaDone,
+      mediaDone: mediaProcessed,
       deficit,
-      wouldAddToHighResDone: deficit,
+      wouldAddToMediaDone: deficit,
     };
   }
 
-  await redis.hincrby(sessionKey, "highResDone", deficit);
+  await redis.hincrby(sessionKey, "mediaDone", deficit);
   await publishProgress(redis, sessionId);
 
   return {
@@ -108,8 +108,8 @@ function printHelp() {
   node scripts/development/repair-upload-session-progress-redis.js --apply --session-id=<会话ID>
 
 说明:
-  扫描 upload:session:* 主 Hash，若 uploadedCount > highResDone+highResErrors+workerSkippedCount，
-  则把差额补到 highResDone（与前端「媒体整理」= actualHighResDone / uploadedCount 一致）。
+  扫描 upload:session:* 主 Hash，若 uploadedCount > mediaDone+highResErrors+workerSkippedCount，
+  则把差额补到 mediaDone（与前端「媒体整理」进度一致）。
 
 选项:
   --apply              默认仅 dry-run；加此参数才执行 hincrby 并 publish
@@ -163,11 +163,11 @@ async function main() {
     }
     if (result.dryRun) {
       console.log(
-        `  [dry-run] ${result.sessionId}  uploaded=${result.uploadedCount} mediaDone=${result.mediaDone}  → 将 highResDone += ${result.deficit}`,
+        `  [dry-run] ${result.sessionId}  uploaded=${result.uploadedCount} mediaDone=${result.mediaDone}  → 将 mediaDone += ${result.deficit}`,
       );
       fixed++;
     } else {
-      console.log(`  [done]  ${result.sessionId}  highResDone += ${result.deficitApplied}`);
+      console.log(`  [done]  ${result.sessionId}  mediaDone += ${result.deficitApplied}`);
       fixed++;
     }
   }

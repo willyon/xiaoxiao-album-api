@@ -7,19 +7,19 @@ function hasMediaSignal(progressData) {
     uploadedCount,
     thumbDone,
     thumbErrors,
-    highResDone,
+    mediaDone,
     highResErrors,
     duplicateCount,
     workerSkippedCount,
     existingFiles,
   } = progressData;
 
-  return uploadedCount + thumbDone + thumbErrors + highResDone + highResErrors + duplicateCount + workerSkippedCount + existingFiles > 0;
+  return uploadedCount + thumbDone + thumbErrors + mediaDone + highResErrors + duplicateCount + workerSkippedCount + existingFiles > 0;
 }
 
 function computeMediaStageDone(progressData) {
-  const { uploadedCount, highResDone, highResErrors, workerSkippedCount } = progressData;
-  return uploadedCount === 0 || highResDone + highResErrors + workerSkippedCount >= uploadedCount;
+  const { uploadedCount, mediaDone, highResErrors, workerSkippedCount } = progressData;
+  return uploadedCount === 0 || mediaDone + highResErrors + workerSkippedCount >= uploadedCount;
 }
 
 function computeAiStageDone(progressData) {
@@ -50,11 +50,15 @@ function computePhase(progressData) {
 }
 
 function normalizeProgressData(sessionId, redisData = {}) {
+  // 兼容历史会话：若只有 highResDone，则回退使用该字段
+  const mediaDone = toInt(redisData.mediaDone || redisData.highResDone);
   const normalized = {
     sessionId,
     uploadedCount: toInt(redisData.uploadedCount),
     thumbDone: toInt(redisData.thumbDone),
-    highResDone: toInt(redisData.highResDone),
+    mediaDone,
+    // 保留旧字段，避免老版本前端/脚本读取失败
+    highResDone: mediaDone,
     thumbErrors: toInt(redisData.thumbErrors),
     highResErrors: toInt(redisData.highResErrors),
     duplicateCount: toInt(redisData.duplicateCount),
@@ -77,7 +81,7 @@ function hasAnyProgressData(progressData) {
   return (
     progressData.uploadedCount +
       progressData.thumbDone +
-      progressData.highResDone +
+      progressData.mediaDone +
       progressData.thumbErrors +
       progressData.highResErrors +
       progressData.duplicateCount +
