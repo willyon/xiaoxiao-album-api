@@ -9,15 +9,22 @@ const { makeSearchRankCacheKey, getSearchRankCache, setSearchRankCache } = requi
 const { FTS_RANKING, SEARCH_TERM_FIELD_WEIGHTS, CHINESE_QUERY_TERM_BOOST } = require("../config/searchRankingWeights");
 const { parseQueryIntent, mergeFilters } = require("../utils/queryIntentParser");
 const { buildSearchQueryParts } = require("../utils/buildSearchQueryParts");
-const { containsChinese } = require("../utils/searchTermUtils");
+const { containsChinese, segmentLengthUnits } = require("../utils/searchTermUtils");
 const { generateTextEmbeddingForQuery } = require("./embeddingProvider");
-const { segmentFieldForSearchTerms } = require("../utils/chineseSegmenter");
-const { buildFinalLexicalTokensForResidual, passLexicalGate, getCoreTokensOnlyForResidual } = require("../utils/embeddingLexicalGate");
+const { SEARCH_TERMS_SPLIT_REGEX } = require("../utils/chineseSegmenter");
+const {
+  passLexicalGate,
+  getCoreTokensOnlyForResidual,
+  isStopWordWholeSegment,
+  extractActionGroups,
+  calcRequiredGroupHits,
+} = require("../utils/embeddingLexicalGate");
 const { expandTermsWithSynonyms } = require("../utils/searchSynonymExpansion");
+const { buildVisualEmbeddingGateLexicalSpec } = require("../utils/visualEmbeddingLexicalGate");
 
 const _minSimParsed = parseFloat(process.env.VISUAL_EMBEDDING_MIN_SIMILARITY);
-/** 与 query 向量点积（已归一化即余弦），低于则不进候选；默认 0.82，`.env` 的 VISUAL_EMBEDDING_MIN_SIMILARITY 覆盖 */
-const VISUAL_EMBEDDING_MIN_SIMILARITY = Math.min(1, Math.max(0, Number.isFinite(_minSimParsed) ? _minSimParsed : 0.82));
+/** 与 query 向量点积（已归一化即余弦），低于则不进候选；默认 0.88，`.env` 的 VISUAL_EMBEDDING_MIN_SIMILARITY 覆盖 */
+const VISUAL_EMBEDDING_MIN_SIMILARITY = Math.min(1, Math.max(0, Number.isFinite(_minSimParsed) ? _minSimParsed : 0.88));
 
 const _topKParsed = parseInt(process.env.VISUAL_EMBEDDING_RECALL_TOP_K, 10);
 /** 语义召回最多前 K 条；未设或无效则 null（不截断），`.env` 的 VISUAL_EMBEDDING_RECALL_TOP_K 设正整数可限制 */
@@ -37,6 +44,12 @@ function sanitizeFtsToken(token) {
 /** 长句视觉 FTS：已分好内容词时直接 sanitize 拼接，避免对整句再 jieba 一遍 */
 function buildVisualFtsInnerFromCoreTokens(coreTokens) {
   const parts = (coreTokens || []).map((t) => sanitizeFtsToken(t)).filter(Boolean);
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
+/** 向量查询文本：仅使用 core tokens，空则不查向量。 */
+function buildEmbeddingQueryFromCoreTokens(coreTokens) {
+  const parts = (coreTokens || []).map((t) => String(t || "").trim()).filter(Boolean);
   return parts.length > 0 ? parts.join(" ") : null;
 }
 
@@ -260,48 +273,39 @@ function sortCandidates(candidates, mediaMap) {
   });
 }
 
-/** 中文按字计、英文按词计，用于 ≥3 / ≤2 分支 */
-function segmentLengthUnits(segment) {
-  const s = String(segment || "").trim();
-  if (!s) return 0;
-  const cjk = s.match(/[\u3400-\u9fff]/g);
-  const cjkCount = cjk ? cjk.length : 0;
-  const rest = s.replace(/[\u3400-\u9fff]/g, " ");
-  const words = rest.trim().match(/[a-zA-Z0-9]+/g);
-  const wordCount = words ? words.length : 0;
-  return cjkCount + wordCount;
+/** 短句 terms：与 `chineseSegmenter` 分隔符一致，切段后多词 AND（每段内中文才做同义词扩展）。 */
+function splitResidualSegmentsForShortTerms(residual) {
+  const raw = String(residual || "").trim();
+  if (!raw) return [];
+  return raw
+    .split(SEARCH_TERMS_SPLIT_REGEX)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
-/**
- * 视觉列 FTS 用 token：分词后去掉 STOP_WORDS/WEAK_VERBS，及 U+3400–U+9FFF 的 CJK 单字码点；若删光且 residual 很短则退回整段，避免短查询无法 MATCH。
- */
-function getVisualFtsCoreTokensForResidual(residual) {
-  const core = getCoreTokensOnlyForResidual(residual);
-  if (core.length > 0) return core;
-  const trimmed = String(residual || "").trim();
-  if (!trimmed) return [];
-  if (segmentLengthUnits(trimmed) <= 2) {
-    return [trimmed];
-  }
-  return [];
+function filterStopWordSegmentsForTerms(segments) {
+  return (segments || []).filter((s) => s && !isStopWordWholeSegment(s));
 }
 
-/**
- * 向量字面护栏用词：与 buildFinalLexicalTokensForResidual 一致；为空时用短句种子+同义词（与 term 路径对齐），否则 1～2 单位查询 embedding 全被挡掉。
- */
-function resolveLexicalTokensForEmbeddingGate(residual) {
-  const fromCore = buildFinalLexicalTokensForResidual(residual);
-  if (fromCore.length > 0) return fromCore;
-  const trimmed = String(residual || "").trim();
-  if (!trimmed) return [];
-  const seeds = new Set();
-  seeds.add(trimmed);
-  if (!containsChinese(trimmed)) {
-    for (const t of segmentFieldForSearchTerms(trimmed)) {
-      if (t) seeds.add(t);
-    }
+/** 单段 → 同义词扩展后的 term 列表；仅中文扩展，英文/数字为小写单 token。 */
+function expandSegmentTermsForChineseTermsAnd(residualSegment) {
+  const seg = String(residualSegment || "").trim();
+  if (!seg) return [];
+  if (containsChinese(seg)) {
+    return expandTermsWithSynonyms([seg]);
   }
-  return expandTermsWithSynonyms([...seeds]);
+  if (/^[\x00-\x7f]+$/.test(seg)) {
+    return [seg.toLowerCase()];
+  }
+  return [seg];
+}
+
+function intersectMediaIdSets(a, b) {
+  const out = new Set();
+  for (const id of a) {
+    if (b.has(id)) out.add(id);
+  }
+  return out;
 }
 
 function mergeScopeWhere(scopeConditions, scopeParams, built) {
@@ -359,19 +363,34 @@ function mergeCandidateMapsInto(global, segMap) {
 }
 
 /**
- * OCR：整句 segment 对 media_search.ocr_text 做 LOWER + LIKE 子串匹配（空格保留；英文不区分大小写）。
+ * OCR：`segment` 按空白切分为多段，每段各自对 `ocr_text` 做 LOWER + LIKE；结果按 media_id **并集去重**（任一一段命中即纳入）。
+ * 无空白时等价于整句一次 LIKE。英文不区分大小写。
  */
 function applyOcrRecallForSegment({ segment, userId, whereConditions, whereParams }, segCands) {
-  const likePattern = buildOcrTextLikePattern(segment);
-  if (!likePattern) {
+  const trimmed = String(segment || "").trim();
+  if (!trimmed) {
     return { likeRows: 0 };
   }
-  const ocrRows = searchModel.recallMediaIdsByOcrTextLike({
-    userId,
-    likePattern,
-    whereConditions,
-    whereParams,
-  });
+  const chunks = trimmed.split(/\s+/).filter(Boolean);
+  const byId = new Map();
+  for (const chunk of chunks) {
+    const likePattern = buildOcrTextLikePattern(chunk);
+    if (!likePattern) continue;
+    const rows = searchModel.recallMediaIdsByOcrTextLike({
+      userId,
+      likePattern,
+      whereConditions,
+      whereParams,
+    });
+    for (const row of rows) {
+      const mediaId = Number(row.media_id);
+      if (!Number.isFinite(mediaId)) continue;
+      if (!byId.has(mediaId)) {
+        byId.set(mediaId, row);
+      }
+    }
+  }
+  const ocrRows = Array.from(byId.values());
   scoreOcrTextLikeHits(segCands, ocrRows);
   return { likeRows: ocrRows.length };
 }
@@ -400,37 +419,51 @@ async function applyVisualRecallForSegment({ segment, residual, hasStructured, u
     const residualUnits = segmentLengthUnits(residual);
 
     if (residualUnits <= 2) {
-      const seeds = new Set();
-      const trimmed = residual.trim();
-      if (trimmed) seeds.add(trimmed);
-      // 中文短句（单位数≤2）：整段即检索意图，不再走 jieba；英文/数字仍分词以便多词如 "cat dog"
-      if (trimmed && !containsChinese(trimmed)) {
-        for (const t of segmentFieldForSearchTerms(trimmed)) {
-          if (t) seeds.add(t);
-        }
-      }
-      const expanded = expandTermsWithSynonyms([...seeds]);
-      const queryTerms = [...new Set(expanded)]
-        .map((term) => {
-          const termLen = Array.from(term).length;
-          const boost = termLen >= 2 ? CHINESE_QUERY_TERM_BOOST.multiChar : CHINESE_QUERY_TERM_BOOST.singleChar;
-          return { term, termLen, boost };
-        })
-        .sort((a, b) => b.termLen - a.termLen || a.term.localeCompare(b.term, "zh-Hans-CN"));
+      const segments = filterStopWordSegmentsForTerms(splitResidualSegmentsForShortTerms(residual));
+      const groups = segments.map((s) => expandSegmentTermsForChineseTermsAnd(s)).filter((g) => g.length > 0);
 
-      if (queryTerms.length > 0) {
-        const termRowsData = searchModel.recallMediaIdsByChineseTerms({
-          userId,
-          terms: queryTerms.map((item) => item.term),
-          whereConditions,
-          whereParams,
-        });
-        mergeCandidateMapsInto(segCands, scoreChineseTermHits(termRowsData, queryTerms));
-        termRows += termRowsData.length;
+      if (groups.length > 0) {
+        let allowedIds = null;
+        for (const terms of groups) {
+          const rows = searchModel.recallMediaIdsByChineseTerms({
+            userId,
+            terms,
+            whereConditions,
+            whereParams,
+          });
+          const ids = new Set();
+          for (const r of rows) {
+            const mid = Number(r.media_id);
+            if (Number.isFinite(mid)) ids.add(mid);
+          }
+          allowedIds = allowedIds === null ? ids : intersectMediaIdSets(allowedIds, ids);
+          if (allowedIds.size === 0) break;
+        }
+
+        const allTermsFlat = [...new Set(groups.flat())];
+        const queryTerms = allTermsFlat
+          .map((term) => {
+            const termLen = Array.from(term).length;
+            const boost = termLen >= 2 ? CHINESE_QUERY_TERM_BOOST.multiChar : CHINESE_QUERY_TERM_BOOST.singleChar;
+            return { term, termLen, boost };
+          })
+          .sort((a, b) => b.termLen - a.termLen || a.term.localeCompare(b.term, "zh-Hans-CN"));
+
+        if (queryTerms.length > 0 && allowedIds && allowedIds.size > 0) {
+          const termRowsDataAll = searchModel.recallMediaIdsByChineseTerms({
+            userId,
+            terms: queryTerms.map((item) => item.term),
+            whereConditions,
+            whereParams,
+          });
+          const termRowsData = termRowsDataAll.filter((r) => allowedIds.has(Number(r.media_id)));
+          mergeCandidateMapsInto(segCands, scoreChineseTermHits(termRowsData, queryTerms));
+          termRows += termRowsData.length;
+        }
       }
     }
 
-    const ftsCoreTokens = getVisualFtsCoreTokensForResidual(residual);
+    const ftsCoreTokens = getCoreTokensOnlyForResidual(residual);
     const inner = buildVisualFtsInnerFromCoreTokens(ftsCoreTokens);
     const wrapped = inner ? wrapFtsQueryForVisualColumnsOnly(inner) : null;
     const visualFtsIds = new Set();
@@ -448,18 +481,29 @@ async function applyVisualRecallForSegment({ segment, residual, hasStructured, u
       mergeFtsScores(segCands, rows, containsChinese(residual));
       ftsRows += rows.length;
     }
-    const lexicalTokens = resolveLexicalTokensForEmbeddingGate(residual);
-    const embeddingRowsRaw = await recallMediaIdsByVisualEmbedding({
-      userId,
-      queryText: residual,
-      whereConditions,
-      whereParams,
-    });
+    const lexicalSpec = buildVisualEmbeddingGateLexicalSpec(residual);
+    const lexicalTokens = lexicalSpec.tokens;
+    const actionGroups = extractActionGroups(lexicalSpec.groups);
+    const requiredGroupHits = calcRequiredGroupHits(lexicalSpec.groups.length);
+    const embeddingQueryText = buildEmbeddingQueryFromCoreTokens(ftsCoreTokens);
+    const embeddingRowsRaw = embeddingQueryText
+      ? await recallMediaIdsByVisualEmbedding({
+          userId,
+          queryText: embeddingQueryText,
+          whereConditions,
+          whereParams,
+        })
+      : [];
     const embeddingRows = embeddingRowsRaw.filter((row) => {
       const id = Number(row.media_id);
       if (!Number.isFinite(id)) return false;
       if (visualFtsIds.has(id)) return true;
-      return passLexicalGate(row.description_text, lexicalTokens);
+      return passLexicalGate(row.description_text, lexicalTokens, {
+        minHits: 1,
+        synonymGroups: lexicalSpec.groups,
+        requiredGroupHits,
+        actionGroups,
+      });
     });
     if (embeddingRows.length > 0) {
       mergeVisualSemanticScores(
@@ -526,6 +570,7 @@ async function searchMediaResults({
     whereConditions: [],
     whereParams: [],
     baseFilters,
+    filterOptions,
     scopeConditions,
     scopeParams,
   });
@@ -553,7 +598,7 @@ async function searchMediaResults({
     parsedIntent.filters?.timeDimension || parsedIntent.filters?.customDateRange || parsedIntent.filters?.location?.length,
   );
 
-  // 先整句 ocr_text LIKE，再以 residual 做视觉 FTS + 向量；≤2 单位另加 term+同义词。
+  // 先 segment 按空白拆段各自 ocr_text LIKE（并集去重），再以 residual 做视觉 FTS + 向量；≤2 单位另加 term+同义词。
   const ocrStats = applyOcrRecallForSegment(
     {
       segment,

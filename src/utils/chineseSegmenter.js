@@ -140,4 +140,6 @@ module.exports = {
   tryCreateJieba,
   segmentFieldForSearchTerms,
   normalizeChineseQueryForFts,
+  /** 与 `segmentFieldForSearchTerms` 无中文分支一致，供视觉向量字面门闩等复用 */
+  SEARCH_TERMS_SPLIT_REGEX,
 };

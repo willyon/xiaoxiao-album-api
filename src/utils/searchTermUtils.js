@@ -167,6 +167,18 @@ function normalizeQueryForFts(query) {
   return normalizeChineseQueryForFts(query);
 }
 
+/** 中文按字计、英文按词计，用于搜索 residual 长短分支（如 ≤2 / ≥3 单位） */
+function segmentLengthUnits(segment) {
+  const s = String(segment || "").trim();
+  if (!s) return 0;
+  const cjk = s.match(/[\u3400-\u9fff]/g);
+  const cjkCount = cjk ? cjk.length : 0;
+  const rest = s.replace(/[\u3400-\u9fff]/g, " ");
+  const words = rest.trim().match(/[a-zA-Z0-9]+/g);
+  const wordCount = words ? words.length : 0;
+  return cjkCount + wordCount;
+}
+
 module.exports = {
   SEARCH_TERM_FIELD_WEIGHTS,
   buildChineseQueryTerms,
@@ -179,4 +191,5 @@ module.exports = {
   generateMediaSearchTerms,
   normalizeQueryForFts,
   normalizeSearchText,
+  segmentLengthUnits,
 };

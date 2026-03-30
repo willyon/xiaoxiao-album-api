@@ -1,8 +1,6 @@
 const path = require("path");
 const fs = require("fs");
 
-const REMOTE_MODEL_ID = "Xenova/multilingual-e5-small";
-
 /** 默认：项目根下 models/multilingual-e5-small（config + tokenizer + onnx/） */
 const DEFAULT_LOCAL_MODEL_DIR = path.join(__dirname, "..", "..", "models", "multilingual-e5-small");
 
@@ -31,19 +29,27 @@ function isLocalModelDirReady(dir) {
   return fs.existsSync(onnxFile);
 }
 
+function assertLocalModelReady(dir) {
+  if (isLocalModelDirReady(dir)) return;
+  const onnxRel = path.join("onnx", `${LOCAL_ONNX_MODEL_BASENAME}.onnx`);
+  throw new Error(
+    `[embeddingProvider] 本地文本向量模型不可用：${dir}\n` +
+      `需要存在 config.json 与 ${onnxRel}。请放置 multilingual-e5-small（或等价 ONNX 布局），或设置 TEXT_EMBEDDING_LOCAL_PATH / TEXT_EMBEDDING_LOCAL_MODEL。`,
+  );
+}
+
+/** 当前配置的模型目录（不校验是否已就绪；就绪性在首次加载 pipeline 时检查） */
 function getEmbeddingModelId() {
-  const localDir = resolveModelDir();
-  if (isLocalModelDirReady(localDir)) return localDir;
-  return process.env.EMBEDDING_MODEL || REMOTE_MODEL_ID;
+  return resolveModelDir();
 }
 
 let extractorPromise = null;
 
-function getPipelineOptions(useLocal) {
+function getPipelineOptions() {
   return {
     subfolder: "onnx",
     model_file_name: LOCAL_ONNX_MODEL_BASENAME,
-    local_files_only: useLocal,
+    local_files_only: true,
   };
 }
 
@@ -51,11 +57,10 @@ async function getExtractor() {
   if (!extractorPromise) {
     extractorPromise = import("@huggingface/transformers").then(async ({ pipeline, env }) => {
       const localDir = resolveModelDir();
-      const useLocal = isLocalModelDirReady(localDir);
-      const modelId = useLocal ? localDir : process.env.EMBEDDING_MODEL || REMOTE_MODEL_ID;
-      env.allowRemoteModels = !useLocal;
+      assertLocalModelReady(localDir);
+      env.allowRemoteModels = false;
       env.useBrowserCache = false;
-      return pipeline("feature-extraction", modelId, getPipelineOptions(useLocal));
+      return pipeline("feature-extraction", localDir, getPipelineOptions());
     });
   }
   return extractorPromise;
@@ -77,7 +82,7 @@ async function generateTextEmbedding(kind, text) {
   });
   const vector = Array.from(output?.data || []);
   if (!Array.isArray(vector) || vector.length === 0) {
-    throw new Error("local embedding inference returned empty vector");
+    throw new Error("embedding inference returned empty vector");
   }
   return vector.map((v) => Number(v) || 0);
 }
@@ -91,7 +96,6 @@ async function generateTextEmbeddingForDocument(text) {
 }
 
 module.exports = {
-  REMOTE_MODEL_ID,
   DEFAULT_LOCAL_MODEL_DIR,
   LOCAL_ONNX_MODEL_BASENAME,
   resolveModelDir,
@@ -100,8 +104,3 @@ module.exports = {
   generateTextEmbeddingForQuery,
   generateTextEmbeddingForDocument,
 };
-
-Object.defineProperty(module.exports, "EMBEDDING_MODEL", {
-  enumerable: true,
-  get: getEmbeddingModelId,
-});

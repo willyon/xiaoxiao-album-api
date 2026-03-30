@@ -1,6 +1,6 @@
 /**
  * 模拟前端 POST /search/media 的关键词搜索（与 handleSearchMedias 全局搜索路径一致），
- * 逐步打印：整句查询（与线上一致：不按空格拆段）、意图解析、长短分支、jieba 归一化后的 FTS 字符串、OCR/视觉 FTS 召回行数、最终 total。
+ * 逐步打印：整句查询、意图解析、长短分支、jieba 归一化后的 FTS 字符串、OCR（按空白拆段 LIKE 合并）/视觉 FTS 召回、最终 total。
  *
  * @Usage:
  *   node scripts/tmp-scripts/debug-search-query.js
@@ -22,6 +22,7 @@ const {
   buildChineseQueryTerms,
   containsChinese,
   normalizeQueryForFts,
+  segmentLengthUnits,
 } = require(path.join(projectRoot, "src", "utils", "searchTermUtils"));
 const searchModel = require(path.join(projectRoot, "src", "models", "searchModel"));
 const searchService = require(path.join(projectRoot, "src", "services", "searchService"));
@@ -61,17 +62,6 @@ function buildOcrTextLikePattern(segment) {
   const lower = raw.toLowerCase();
   const escaped = lower.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
   return `%${escaped}%`;
-}
-
-function segmentLengthUnits(segment) {
-  const s = String(segment || "").trim();
-  if (!s) return 0;
-  const cjk = s.match(/[\u3400-\u9fff]/g);
-  const cjkCount = cjk ? cjk.length : 0;
-  const rest = s.replace(/[\u3400-\u9fff]/g, " ");
-  const words = rest.trim().match(/[a-zA-Z0-9]+/g);
-  const wordCount = words ? words.length : 0;
-  return cjkCount + wordCount;
 }
 
 function mergeScopeWhere(scopeConditions, scopeParams, built) {
@@ -136,7 +126,10 @@ async function main() {
         ? coreVisualTokens.map(sanitizeFtsToken).filter(Boolean).join(" ") || null
         : null;
     const wrappedVisual = innerVisual ? wrapFtsQueryForVisualColumnsOnly(innerVisual) : null;
-    const ocrLikePattern = buildOcrTextLikePattern(segment);
+    const ocrChunks = String(segment || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
 
     console.log(`\n--- segment[${si}] = ${JSON.stringify(segment)} ---`);
     console.log("parseQueryIntent.residualQuery:", JSON.stringify(residual));
@@ -147,7 +140,10 @@ async function main() {
       "→ 视觉：≤2 仅 term+同义词；≥3 内容词 FTS+向量（旧 isLongBranch）:",
       isLongBranch,
     );
-    console.log("OCR LIKE pattern（LOWER+转义后）:", JSON.stringify(ocrLikePattern));
+    console.log("OCR 按空白拆段:", ocrChunks);
+    ocrChunks.forEach((ch, i) => {
+      console.log(`  OCR 段[${i}] LIKE pattern:`, JSON.stringify(buildOcrTextLikePattern(ch)));
+    });
 
     console.log("\nbuildSearchQueryParts 产生的 WHERE 条件数:", wc.length);
     if (wc.length > 0) {
@@ -181,14 +177,24 @@ async function main() {
       console.log("\n>>> 视觉 FTS inner 为空，跳过 recallMediaIdsByFts");
     }
 
-    if (ocrLikePattern) {
-      const ocrRows = searchModel.recallMediaIdsByOcrTextLike({
-        userId,
-        likePattern: ocrLikePattern,
-        whereConditions: wc,
-        whereParams: wp,
-      });
-      console.log(">>> recallMediaIdsByOcrTextLike(ocr_text) 行数:", ocrRows.length);
+    if (ocrChunks.length > 0) {
+      const byId = new Map();
+      for (const ch of ocrChunks) {
+        const pat = buildOcrTextLikePattern(ch);
+        if (!pat) continue;
+        const partRows = searchModel.recallMediaIdsByOcrTextLike({
+          userId,
+          likePattern: pat,
+          whereConditions: wc,
+          whereParams: wp,
+        });
+        for (const row of partRows) {
+          const id = Number(row.media_id);
+          if (Number.isFinite(id) && !byId.has(id)) byId.set(id, row);
+        }
+      }
+      const ocrRows = Array.from(byId.values());
+      console.log(">>> recallMediaIdsByOcrTextLike 合并去重后行数:", ocrRows.length);
       if (ocrRows.length > 0) {
         console.log("    前 10 个 media_id:", ocrRows.slice(0, 10).map((r) => r.media_id));
       }
@@ -302,7 +308,7 @@ async function main() {
   console.log(
     "- 若第 3 步视觉 FTS 行数=0 但第 4 步 COUNT>0：先看第 6 步；若第 6 步 MATCH 仍=0，多为 FTS 索引未 rebuild，与 jieba/caption_search_terms 内容无关。",
   );
-  console.log("- OCR 路径：LOWER(ocr_text) LIKE 整句子串；caption 关键词依赖「视觉 FTS」。");
+  console.log("- OCR 路径：按空白拆段，每段 LOWER(ocr_text) LIKE，media_id 并集去重；caption 关键词依赖「视觉 FTS」。");
 }
 
 main().catch((err) => {

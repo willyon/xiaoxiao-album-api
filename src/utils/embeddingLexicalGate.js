@@ -1,24 +1,19 @@
 /*
- * @Description: 对 residual 分词后的 token 做过滤：
- * - 全词命中 STOP_WORDS / WEAK_VERBS → 剔除
- * - 整个 token 仅为一个 U+3400–U+9FFF 码点（CJK 统一表意文字常用区单字）→ 剔除，避免 FTS 多词 AND 被单字噪声拖累；英文/数字单字符保留
+ * @Description: `getCoreTokensOnlyForResidual`（视觉 FTS）：对 residual jieba 分词后仅剔除全词 SEARCH_NOISE_TERMS；core 为空则不做 FTS。不含同义词扩展（同义词见短句 terms、`visualEmbeddingLexicalGate`）。
  *
- * 作用范围（剔除 = 不进入核心词，也就不参与）：
- * - 长句视觉 FTS：`getCoreTokensOnlyForResidual` 拼 MATCH
- * - 向量字面护栏：`buildFinalLexicalTokensForResidual` → 经 `expandTermsWithSynonyms` 展开，再 `passLexicalGate`
+ * `passLexicalGate` 用于向量补召回的字面校验；词表由 `visualEmbeddingLexicalGate.buildVisualEmbeddingGateLexicalTokens` 传入。
  *
- * 英文纯 ASCII token 先 lowerCase 再与两表比对。
+ * 英文纯 ASCII token 先 lowerCase 再与 SEARCH_NOISE_TERMS 比对。
  */
 const { segmentFieldForSearchTerms } = require("./chineseSegmenter");
-const { expandTermsWithSynonyms } = require("./searchSynonymExpansion");
+const { SEARCH_ACTION_TERMS } = require("../config/searchActionTerms");
 
 /** 中文：单字虚词 + 二字及以上功能词；与分词结果全词匹配则剔除 */
-const STOP_WORDS = new Set([
+const SEARCH_NOISE_TERMS = new Set([
   // --- 单字虚词 / 介助 / 代词（显式列出）
   "的",
   "了",
   "着",
-  "过",
   "在",
   "和",
   "与",
@@ -229,141 +224,138 @@ const STOP_WORDS = new Set([
   "之一",
   "似的",
   "与否",
+  // 媒体形态泛词（弱语义，作为查询噪声处理）
+  "照片",
+  "视频",
 ]);
 
-/** 中文：单字泛化动/能愿 + 二字及以上弱动词短语；全词匹配则剔除 */
-const WEAK_VERBS = new Set([
-  "玩",
-  "看",
-  "吃",
-  "走",
-  "跑",
-  "拿",
-  "做",
-  "去",
-  "来",
-  "说",
-  "想",
-  "要",
-  "会",
-  "能",
-  "打",
-  "坐",
-  "站",
-  "躺",
-  "睡",
-  "穿",
-  "洗",
-  "喝",
-  "听",
-  "讲",
-  "谈",
-  "笑",
-  "哭",
-  "抱",
-  "亲",
-  "拍",
-  "买",
-  "卖",
-  "开",
-  "关",
-  "用",
-  "弄",
-  "搞",
-  "看看",
-  "瞧瞧",
-  "望望",
-  "走走",
-  "跑跑",
-  "玩玩",
-  "睡睡",
-  "说说",
-  "坐坐",
-  "躺躺",
-  "进行",
-  "开始",
-  "继续",
-  "准备",
-  "尝试",
-  "打算",
-  "觉得",
-  "认为",
-  "知道",
-  "明白",
-  "记得",
-  "忘记",
-  "希望",
-  "喜欢",
-  "讨厌",
-]);
+const ACTION_TERMS = new Set(
+  (SEARCH_ACTION_TERMS || [])
+    .map((t) => normalizeStopWordLookupKey(t))
+    .filter(Boolean),
+);
 
-const CJK_UNIFIED_IDEOGRAPH_MIN = 0x3400;
-const CJK_UNIFIED_IDEOGRAPH_MAX = 0x9fff;
-
-/** 整个 token 仅为一个码点且落在 CJK 统一表意文字 U+3400–U+9FFF（不用 length，避免误伤英文/数字） */
-function isSingleCjkUnifiedIdeographOnly(s) {
-  const t = String(s).trim();
-  if (!t) return false;
-  const chars = Array.from(t);
-  if (chars.length !== 1) return false;
-  const cp = chars[0].codePointAt(0);
-  return cp >= CJK_UNIFIED_IDEOGRAPH_MIN && cp <= CJK_UNIFIED_IDEOGRAPH_MAX;
+/** 与 SEARCH_NOISE_TERMS 比对用的 key：纯 ASCII 整段则小写，否则原样（trim 后）。 */
+function normalizeStopWordLookupKey(s) {
+  const t = String(s || "").trim();
+  if (!t) return "";
+  return /^[\x00-\x7f]+$/.test(t) ? t.toLowerCase() : t;
 }
 
-function extractCoreTokens(tokens) {
+/** 整段是否应视为噪声词：空/空白视为是；否则按 key 命中 SEARCH_NOISE_TERMS（短句 terms 切段丢弃、向量门闩 CJK 种子等可复用）。 */
+function isStopWordWholeSegment(segment) {
+  const t = String(segment || "").trim();
+  if (!t) return true;
+  return SEARCH_NOISE_TERMS.has(normalizeStopWordLookupKey(t));
+}
+
+/** 仅剔除 SEARCH_NOISE_TERMS；供视觉 FTS MATCH 拼串 */
+function filterStopWordsFromTokens(tokens) {
   return (tokens || []).filter((t) => {
     if (!t) return false;
     const s = String(t).trim();
     if (!s) return false;
-    const key = /^[\x00-\x7f]+$/.test(s) ? s.toLowerCase() : s;
-    if (STOP_WORDS.has(key)) return false;
-    if (WEAK_VERBS.has(key)) return false;
-    if (isSingleCjkUnifiedIdeographOnly(s)) return false;
-    return true;
+    return !SEARCH_NOISE_TERMS.has(normalizeStopWordLookupKey(s));
   });
 }
 
-/** 与短句 term 路径一致：正向 key→values + 反向 value→keys 及整组同义词；反向索引在 searchSynonymExpansion 内懒构建一次 */
-function expandCoreTokens(coreTokens) {
-  return expandTermsWithSynonyms(coreTokens || []);
-}
-
-/** residual → 分词 → 剔除 STOP/WEAK + CJK 单字（U+3400–U+9FFF）→ 供长句视觉 FTS 拼串（不含同义词） */
+/** residual → 分词 → 仅剔除 SEARCH_NOISE_TERMS → 供视觉 FTS 拼串（不含同义词）；若为空则不做 FTS */
 function getCoreTokensOnlyForResidual(residual) {
   const raw = String(residual || "").trim();
   if (!raw) {
     return [];
   }
-  return extractCoreTokens(segmentFieldForSearchTerms(raw));
+  return filterStopWordsFromTokens(segmentFieldForSearchTerms(raw));
 }
 
-/** 在核心词上叠合同义词，供向量字面护栏 passLexicalGate */
-function buildFinalLexicalTokensForResidual(residual) {
-  const core = getCoreTokensOnlyForResidual(residual);
-  return expandCoreTokens(core);
+function extractActionGroups(groups) {
+  const out = [];
+  for (const group of groups || []) {
+    const list = Array.isArray(group) ? group : [];
+    const normalized = list
+      .map((t) => String(t || "").trim())
+      .filter(Boolean);
+    if (normalized.length === 0) continue;
+    const hasAction = normalized.some((token) => ACTION_TERMS.has(normalizeStopWordLookupKey(token)));
+    if (hasAction) out.push(normalized);
+  }
+  return out;
+}
+
+function calcRequiredGroupHits(groupCount) {
+  const n = Number(groupCount) || 0;
+  if (n <= 0) return 0;
+  if (n <= 2) return 1;
+  return Math.min(n - 1, 3);
+}
+
+function groupMatched(text, group) {
+  for (const token of group || []) {
+    const t = String(token || "").toLowerCase();
+    if (!t) continue;
+    if (text.includes(t)) return true;
+  }
+  return false;
 }
 
 /**
  * @param {string} descriptionText - media_search.description_text
- * @param {string[]} tokens - buildFinalLexicalTokensForResidual 的输出
+ * @param {string[]} tokens - 扩展后的字面词表（如 `visualEmbeddingLexicalGate.buildVisualEmbeddingGateLexicalTokens`）
  * @returns {boolean}
  */
-function passLexicalGate(descriptionText, tokens) {
+function passLexicalGate(descriptionText, tokens, options = {}) {
+  const {
+    minHits = 1,
+    actionTokens = [],
+    synonymGroups = [],
+    requiredGroupHits = null,
+    actionGroups = [],
+  } = options || {};
   if (!tokens || tokens.length === 0) {
     // 无可校验词则纯向量补召回一律不通过（避免仅剩虚词/弱动词时无边界放行）
     return false;
   }
   const text = String(descriptionText || "").toLowerCase();
-  return tokens.some((token) => {
-    if (!token) return false;
-    return text.includes(String(token).toLowerCase());
-  });
+  const matched = new Set();
+  for (const token of tokens) {
+    if (!token) continue;
+    const t = String(token).toLowerCase();
+    if (!t) continue;
+    if (text.includes(t)) matched.add(t);
+  }
+  if (matched.size < Math.max(1, Number(minHits) || 1)) {
+    return false;
+  }
+  if (Array.isArray(synonymGroups) && synonymGroups.length > 0) {
+    const required = Number.isFinite(requiredGroupHits)
+      ? Math.max(1, Number(requiredGroupHits))
+      : calcRequiredGroupHits(synonymGroups.length);
+    let hitGroups = 0;
+    for (const group of synonymGroups) {
+      if (groupMatched(text, group)) hitGroups += 1;
+    }
+    if (hitGroups < required) return false;
+  }
+  if (Array.isArray(actionGroups) && actionGroups.length > 0) {
+    const hasActionGroupHit = actionGroups.some((group) => groupMatched(text, group));
+    if (!hasActionGroupHit) return false;
+  } else if (Array.isArray(actionTokens) && actionTokens.length > 0) {
+    const hasActionHit = actionTokens.some((token) => {
+      if (!token) return false;
+      return matched.has(String(token).toLowerCase());
+    });
+    if (!hasActionHit) return false;
+  }
+  return true;
 }
 
 module.exports = {
-  extractCoreTokens,
-  expandCoreTokens,
   getCoreTokensOnlyForResidual,
-  buildFinalLexicalTokensForResidual,
+  normalizeStopWordLookupKey,
+  isStopWordWholeSegment,
+  extractActionGroups,
+  calcRequiredGroupHits,
   passLexicalGate,
+  /** 检索噪声词（含传统停用词与业务噪声词），供外部复用。 */
+  SEARCH_NOISE_TERMS,
 };

@@ -23,6 +23,7 @@ function makeSearchRankCacheKey({
   whereConditions,
   whereParams,
   baseFilters,
+  filterOptions,
   scopeConditions,
   scopeParams,
 } = {}) {
@@ -32,6 +33,8 @@ function makeSearchRankCacheKey({
     wc: whereConditions,
     wp: whereParams,
     bf: baseFilters ?? null,
+    /** 与 `buildSearchQueryParts(_, filterOptions)` 一致：含 clusterId 等，避免与 bf 重复遗漏 */
+    fo: filterOptions ?? null,
     sc: scopeConditions ?? null,
     sp: scopeParams ?? null,
   });
