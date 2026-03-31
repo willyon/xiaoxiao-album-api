@@ -292,7 +292,7 @@ function getAlbumMedias({ albumId, pageNo, pageSize }) {
       COALESCE(i.face_count, 0) AS face_count,
       COALESCE(i.person_count, 0) AS person_count,
       NULL AS age_tags,
-      COALESCE(i.expression_tags, i.primary_expression) AS expression_tags,
+      i.expression_tags AS expression_tags,
       NULL AS has_young,
       NULL AS has_adult,
       i.is_favorite,

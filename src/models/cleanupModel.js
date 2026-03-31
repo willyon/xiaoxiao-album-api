@@ -13,8 +13,7 @@ function selectMediaForCleanup(imageId) {
       m.thumbnail_storage_key,
       m.file_size_bytes,
       m.aesthetic_score,
-      m.sharpness_score,
-      m.primary_face_quality
+      m.sharpness_score
     FROM media m
     WHERE m.id = ?
     LIMIT 1
@@ -33,7 +32,6 @@ function selectCleanupCandidatesByUser(userId) {
       m.dhash AS image_dhash,
       m.aesthetic_score,
       m.sharpness_score,
-      m.primary_face_quality,
       m.captured_at AS image_created_at
     FROM media m
     WHERE m.user_id = ?
@@ -88,29 +86,26 @@ function updateMediaCleanupMetrics(imageId, { imagePhash, imageDhash, aestheticS
     .run(imagePhash ?? null, imageDhash ?? null, aestheticScore ?? null, sharpnessScore ?? null, imageId);
 }
 
-function deleteGroupsByType(userId, groupType) {
+function deleteGroupsByUser(userId) {
   const stmt = db.prepare(`
     DELETE FROM similar_groups
     WHERE user_id = ?
-      AND group_type = ?
   `);
-  stmt.run(userId, groupType);
+  stmt.run(userId);
 }
 
-function insertSimilarGroup({ userId, groupType, primaryImageId, score, memberCount, totalSizeBytes, createdAt, updatedAt }) {
+function insertSimilarGroup({ userId, primaryImageId, score, memberCount, createdAt, updatedAt }) {
   const stmt = db.prepare(`
     INSERT INTO similar_groups (
       user_id,
-      group_type,
       primary_media_id,
       member_count,
-      total_size_bytes,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?)
   `);
   const now = Date.now();
-  const result = stmt.run(userId, groupType, primaryImageId ?? null, memberCount ?? 0, totalSizeBytes ?? 0, createdAt ?? now, updatedAt ?? now);
+  const result = stmt.run(userId, primaryImageId ?? null, memberCount ?? 0, createdAt ?? now, updatedAt ?? now);
   return result.lastInsertRowid;
 }
 
@@ -133,35 +128,31 @@ function insertSimilarGroupMember(groupId, { imageId, rankScore, similarity, aes
 /**
  * 查询指定类型的清理分组
  */
-function selectGroupsByType({ userId, groupType, limit, offset }) {
+function selectGroupsByType({ userId, limit, offset }) {
   const stmt = db.prepare(`
     SELECT
       id,
       user_id,
-      group_type,
       primary_media_id,
       member_count,
-      total_size_bytes,
       created_at,
       updated_at
     FROM similar_groups
     WHERE user_id = ?
-      AND group_type = ?
     ORDER BY updated_at DESC, id DESC
     LIMIT ? OFFSET ?
   `);
 
-  return stmt.all(userId, groupType, limit, offset);
+  return stmt.all(userId, limit, offset);
 }
 
-function countGroupsByType({ userId, groupType }) {
+function countGroupsByType({ userId }) {
   const stmt = db.prepare(`
     SELECT COUNT(*) AS total
     FROM similar_groups
     WHERE user_id = ?
-      AND group_type = ?
   `);
-  const result = stmt.get(userId, groupType);
+  const result = stmt.get(userId);
   return result?.total || 0;
 }
 
@@ -173,7 +164,6 @@ function countDisplayableSimilarGroups(userId) {
     SELECT COUNT(*) AS total
     FROM similar_groups sg
     WHERE sg.user_id = ?
-      AND sg.group_type = 'similar'
       AND (
         SELECT COUNT(*)
         FROM similar_group_members cgm
@@ -193,7 +183,6 @@ function selectDisplayableSimilarGroups({ userId, limit, offset }) {
     SELECT
       sg.id,
       sg.user_id,
-      sg.group_type,
       sg.primary_media_id,
       sg.member_count,
       sg.total_size_bytes,
@@ -201,7 +190,6 @@ function selectDisplayableSimilarGroups({ userId, limit, offset }) {
       sg.updated_at
     FROM similar_groups sg
     WHERE sg.user_id = ?
-      AND sg.group_type = 'similar'
       AND (
         SELECT COUNT(*)
         FROM similar_group_members cgm
@@ -247,11 +235,9 @@ function selectMembersByGroupIds(groupIds) {
       COALESCE(i.face_count, 0) AS face_count,
       COALESCE(i.person_count, 0) AS person_count,
       NULL AS age_tags,
-      i.primary_expression AS expression_tags,
+      i.expression_tags AS expression_tags,
       NULL AS has_young,
-      NULL AS has_adult,
-      i.primary_face_quality,
-      i.primary_expression_confidence
+      NULL AS has_adult
     FROM similar_group_members cgm
     JOIN media i ON i.id = cgm.media_id
     WHERE cgm.group_id IN (${placeholders})
@@ -306,11 +292,6 @@ function deleteGroup(groupId) {
  * member_count 统计所有未删除的成员（包含推荐图片）
  */
 function refreshGroupStats(groupId, { updatedAt }) {
-  // 先获取分组类型，用于判断是否需要删除只有1张图片的分组
-  const groupInfoStmt = db.prepare(`SELECT group_type FROM similar_groups WHERE id = ?`);
-  const groupInfo = groupInfoStmt.get(groupId);
-  const groupType = groupInfo?.group_type;
-
   // 统计所有未删除的成员（包含推荐图片）
   const statsStmt = db.prepare(`
     SELECT
@@ -328,8 +309,8 @@ function refreshGroupStats(groupId, { updatedAt }) {
     return { deleted: true };
   }
 
-  // 对于相似图和重复图，如果只剩1张图片，也应该删除分组（因为无法构成"相似"或"重复"）
-  if ((groupType === "similar" || groupType === "duplicate") && stats.member_count <= 1) {
+  // 相似图分组如果只剩 1 张图片，不满足展示条件，直接删除分组
+  if (stats.member_count <= 1) {
     deleteGroup(groupId);
     return { deleted: true };
   }
@@ -489,7 +470,7 @@ module.exports = {
   selectCleanupCandidatesByUser,
   selectUnanalyzedMediasByUser,
   updateMediaCleanupMetrics,
-  deleteGroupsByType,
+  deleteGroupsByUser,
   insertSimilarGroup,
   insertSimilarGroupMember,
 };

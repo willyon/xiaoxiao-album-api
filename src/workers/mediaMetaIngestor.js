@@ -14,6 +14,7 @@ const { updateProgress, updateProgressOnce } = require("../services/mediaProcess
 const { mediaAnalysisQueue } = require("../queues/mediaAnalysisQueue");
 const mediaMetadataService = require("../services/mediaMetadataService");
 const { addMediaToSession } = require("../services/uploadSessionService");
+const { getVideoMimeTypeFromFileName } = require("../utils/fileUtils");
 
 /**
  * 处理重试失败后的清理工作（用于imageMetaIngestor）
@@ -151,8 +152,13 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
     }
   }
 
-  const aspectRatio =
-    meta.width && meta.height && meta.height > 0 ? Math.round((meta.width / meta.height) * 1000) / 1000 : null;
+  // 视频：width/height 已为 ffprobe 按 rotation 换算后的「观感」尺寸；layout_type / aspect_ratio 与图片同源（calculateOrientationInfo，orientation=1 表示不再按 EXIF 交换）
+  // raw_orientation 仅用于图片 EXIF 1–8，视频不传，库中保持 NULL（旋转信息已体现在宽高中）
+  const videoOrientationInfo = mediaMetadataService.calculateOrientationInfo(meta.width, meta.height, 1);
+  const aspectRatio = videoOrientationInfo.aspectRatio;
+  const layoutType = videoOrientationInfo.layoutType;
+  const mime = getVideoMimeTypeFromFileName(fileName) || "application/octet-stream";
+  const durationSec = typeof meta.duration === "number" ? Math.round(meta.duration) : null;
 
   let imageId = null;
   let effectiveOriginalStorageKey = originalStorageKey;
@@ -175,7 +181,10 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
       widthPx: meta.width,
       heightPx: meta.height,
       aspectRatio,
-      durationSec: meta.duration,
+      layoutType,
+      // 不传 rawOrientation → updateMediaMetadata 中 COALESCE 不覆盖，新建行保持 raw_orientation 为 NULL
+      mime,
+      durationSec,
       videoCodec: meta.codec,
       mediaType: "video",
     });

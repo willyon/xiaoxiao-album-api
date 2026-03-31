@@ -35,9 +35,7 @@ function finalizeMediaAnalysis({
 }) {
   const faceCount = faceData.faceCount ?? null;
   const personCount = faceData.personCount ?? null;
-  const primaryFaceQuality = faceData.primaryFaceQuality ?? null;
-  const primaryExpression = faceData.primaryExpression ?? null;
-  const primaryExpressionConfidence = faceData.primaryExpressionConfidence ?? null;
+  const preferredFaceQuality = faceData.preferredFaceQuality ?? null;
   const rawExprTags = faceData.expressionTagsText;
   const expressionTagsText =
     rawExprTags != null && String(rawExprTags).trim() !== "" ? String(rawExprTags).trim() : null;
@@ -60,9 +58,7 @@ function finalizeMediaAnalysis({
       dhash = COALESCE(?, dhash),
       face_count = COALESCE(?, face_count),
       person_count = COALESCE(?, person_count),
-      primary_face_quality = COALESCE(?, primary_face_quality),
-      primary_expression = COALESCE(?, primary_expression),
-      primary_expression_confidence = COALESCE(?, primary_expression_confidence),
+      preferred_face_quality = COALESCE(?, preferred_face_quality),
       expression_tags = COALESCE(?, expression_tags),
       age_tags = COALESCE(?, age_tags),
       gender_tags = COALESCE(?, gender_tags),
@@ -75,9 +71,7 @@ function finalizeMediaAnalysis({
     dhash,
     faceCount,
     personCount,
-    primaryFaceQuality,
-    primaryExpression,
-    primaryExpressionConfidence,
+    preferredFaceQuality,
     expressionTagsText,
     ageTagsText,
     genderTagsText,

@@ -394,7 +394,7 @@ async function permanentlyDeleteMedias({ userId, imageIds }) {
     });
   }
 
-  // 更新 cleanup 分组统计（member_count、primary_image_id、total_size_bytes）
+  // 更新 cleanup 分组统计（member_count、primary_image_id）
   // 注意：similar_group_members 已被 CASCADE 删除，所以需要更新分组统计
   if (groupIds.length > 0) {
     const now = Date.now();

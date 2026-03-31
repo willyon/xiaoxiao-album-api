@@ -103,4 +103,4 @@ python3 scripts/prepare_model_assets.py --family yolo --variant yolo11x
 - `AI_SERVICE_PORT`：端口，默认 `5001`
 - `USE_GPU`：是否使用 GPU，默认 `false`
 
-更多配置见 `config.py`（如 `NODE_ENV=development` 时会开启 `LOG_ANALYZE_IMAGE_RESULT`，打印 `/analyze_image` 响应预览日志）。
+更多配置见 `config.py`（`NODE_ENV=development` 时 `/analyze_image`、`/analyze_video` 会在返回前打印响应预览日志）。

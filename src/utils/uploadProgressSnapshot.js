@@ -50,15 +50,12 @@ function computePhase(progressData) {
 }
 
 function normalizeProgressData(sessionId, redisData = {}) {
-  // 兼容历史会话：若只有 highResDone，则回退使用该字段
-  const mediaDone = toInt(redisData.mediaDone || redisData.highResDone);
+  const mediaDone = toInt(redisData.mediaDone);
   const normalized = {
     sessionId,
     uploadedCount: toInt(redisData.uploadedCount),
     thumbDone: toInt(redisData.thumbDone),
     mediaDone,
-    // 保留旧字段，避免老版本前端/脚本读取失败
-    highResDone: mediaDone,
     thumbErrors: toInt(redisData.thumbErrors),
     highResErrors: toInt(redisData.highResErrors),
     duplicateCount: toInt(redisData.duplicateCount),

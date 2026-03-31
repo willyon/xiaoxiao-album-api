@@ -111,9 +111,7 @@ function createTableMedia() {
       is_blurry INTEGER DEFAULT 0 NOT NULL,
       face_count INTEGER DEFAULT 0,
       person_count INTEGER DEFAULT 0,
-      primary_face_quality REAL,
-      primary_expression TEXT,
-      primary_expression_confidence REAL,
+      preferred_face_quality REAL,
       expression_tags TEXT,
       age_tags TEXT,
       gender_tags TEXT,
@@ -176,7 +174,6 @@ function createTableMediaFaceEmbeddings() {
       id INTEGER PRIMARY KEY,
       media_id INTEGER NOT NULL,
       source_type TEXT NOT NULL DEFAULT 'image',
-      source_ref_id INTEGER,
       face_index INTEGER NOT NULL,
       embedding BLOB NOT NULL,
       age INTEGER,
@@ -190,7 +187,7 @@ function createTableMediaFaceEmbeddings() {
       face_thumbnail_storage_key TEXT,
       created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
       FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE,
-      UNIQUE (media_id, source_type, source_ref_id, face_index)
+      UNIQUE (media_id, source_type, face_index)
     );
   `;
   db.prepare(sql).run();
@@ -361,10 +358,8 @@ function createTableSimilarGroupsMediaVersion() {
     CREATE TABLE IF NOT EXISTS similar_groups (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
-      group_type TEXT NOT NULL,
       primary_media_id INTEGER,
       member_count INTEGER DEFAULT 0,
-      total_size_bytes INTEGER DEFAULT 0,
       created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
       updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -372,7 +367,7 @@ function createTableSimilarGroupsMediaVersion() {
     );
   `;
   db.prepare(sql).run();
-  db.prepare("CREATE INDEX IF NOT EXISTS idx_similar_groups_user_type ON similar_groups(user_id, group_type);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_similar_groups_user_id ON similar_groups(user_id);").run();
   db.prepare("CREATE INDEX IF NOT EXISTS idx_similar_groups_user_updated ON similar_groups(user_id, updated_at DESC);").run();
 }
 

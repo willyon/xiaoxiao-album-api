@@ -13,13 +13,16 @@ class Settings:
     
     # ========== 服务配置 ==========
     NODE_ENV = (os.getenv("NODE_ENV", "development") or "development").strip().lower()
-    # /analyze_image 返回 Node 前是否打印 analyze_image_return_preview（仅开发环境，见 routes/analyze_image.py）
-    LOG_ANALYZE_IMAGE_RESULT = NODE_ENV == "development"
 
     # 服务端口号配置
     # os.getenv("环境变量名", "默认值") - 从环境变量读取值，如果不存在则使用默认值
     # int() - 将字符串转换为整数类型
     PORT = int(os.getenv("AI_SERVICE_PORT", "5001"))
+
+    # /analyze_image 使用 image_path 时：realpath 后必须落在该目录下（与 Node 本地存储根一致）；空则仅校验文件存在
+    ANALYZE_IMAGE_PATH_ALLOW_PREFIX = (os.getenv("ANALYZE_IMAGE_PATH_ALLOW_PREFIX") or "").strip()
+    # 图片分析会整文件读入内存（见 utils.analyze_image_path.read_image_bytes_from_path）；并发时注意内存
+    ANALYZE_IMAGE_MAX_FILE_BYTES = int(os.getenv("ANALYZE_IMAGE_MAX_FILE_BYTES", str(1024 * 1024 * 1024)))
     
     # 服务主机地址配置
     # 字符串类型，不需要转换
@@ -208,6 +211,22 @@ class Settings:
     CAPTION_TIMEOUT_SECONDS = float(os.getenv("CAPTION_TIMEOUT_SECONDS") or "30")
 
     OBJECT_TIMEOUT_SECONDS = float(os.getenv("OBJECT_TIMEOUT_SECONDS", "10"))
+
+    # ========== 视频分析 /analyze_video（Phase 1）==========
+    # 均匀抽帧上限（与设计方案 §6.1 一致，默认 12～20 档取 16）
+    VIDEO_MAX_FRAMES = int(os.getenv("VIDEO_MAX_FRAMES", "16"))
+    # 视频路径校验最大字节（仅 stat；解码为 OpenCV 逐帧读，不整段视频 bytes 进 Python）
+    ANALYZE_VIDEO_MAX_FILE_BYTES = int(os.getenv("ANALYZE_VIDEO_MAX_FILE_BYTES", str(5 * 1024 * 1024 * 1024)))
+    # 多帧描述合并为视频摘要：纯文本模型（OpenAI 兼容 chat/completions）
+    VIDEO_MERGE_TEXT_MODEL = (os.getenv("VIDEO_MERGE_TEXT_MODEL") or "qwen-flash").strip()
+    VIDEO_MERGE_TEXT_ENABLE = (os.getenv("VIDEO_MERGE_TEXT_ENABLE", "true") or "").lower() == "true"
+    VIDEO_MERGE_TIMEOUT_SECONDS = float(os.getenv("VIDEO_MERGE_TIMEOUT_SECONDS", "60"))
+    # 视频人脸去重（视频内）：默认与 FACE_CLUSTERING_THRESHOLD 对齐（similarity = 1 - distance），
+    # 但允许通过 VIDEO_PERSON_DEDUP_SIMILARITY 单独覆盖，便于与最终聚类阈值解耦调参。
+    VIDEO_PERSON_DEDUP_SIMILARITY = float(
+        os.getenv("VIDEO_PERSON_DEDUP_SIMILARITY", str(1.0 - FACE_CLUSTERING_THRESHOLD))
+    )
+    VIDEO_PERSON_MAX_FACES = int(os.getenv("VIDEO_PERSON_MAX_FACES", "24"))
     
     # ========== ONNX Runtime 配置 ==========
     

@@ -1,6 +1,5 @@
 const CustomError = require("../errors/customError");
 const { ERROR_CODES } = require("../constants/messageCodes");
-const { CLEANUP_TYPES } = require("../constants/cleanupTypes");
 const cleanupModel = require("../models/cleanupModel");
 const mediaService = require("./mediaService");
 const storageService = require("./storageService");
@@ -35,8 +34,6 @@ function _normalizeIdList(ids) {
  * 获取相似图分组列表（清理页相似图 tab，模糊图请使用 GET /api/images/blurry）
  */
 async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
-  const groupType = CLEANUP_TYPES.SIMILAR;
-
   const safePageSize = Math.max(Number(pageSize) || 12, 1);
   const safePageNo = Math.max(Number(pageNo) || 1, 1);
   const offset = (safePageNo - 1) * safePageSize;
@@ -113,7 +110,7 @@ async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
       const members = membersByGroup.get(group.id) || [];
 
       // 对于相似图，如果只有1张图片，过滤掉这个分组
-      if (groupType === CLEANUP_TYPES.SIMILAR && members.length <= 1) {
+      if (members.length <= 1) {
         return null;
       }
 
@@ -121,7 +118,6 @@ async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
       // 前端直接使用后端返回的顺序，第一个成员就是推荐图片
       return {
         id: group.id,
-        groupType: group.group_type,
         updatedAt: _formatTimestamp(group.updated_at),
         members,
       };
@@ -207,8 +203,6 @@ function _mapMemberRow(row) {
     personCount: row.person_count,
     ageTags: row.age_tags,
     expressionTags: row.expression_tags,
-    primaryFaceQuality: row.primary_face_quality,
-    primaryExpressionConfidence: row.primary_expression_confidence,
   };
 }
 

@@ -25,11 +25,6 @@ function toJsonArrayString(input) {
   return arr.length > 0 ? JSON.stringify(arr) : null;
 }
 
-function pickPrimaryTag(input) {
-  const arr = parseCommaTags(input);
-  return arr.length > 0 ? arr[0] : null;
-}
-
 function normalizeTextArray(input) {
   if (!Array.isArray(input)) return [];
   const seen = new Set();
@@ -82,9 +77,7 @@ function collectMediaSearchDocument(mediaId) {
   };
   const ocrValue = pickNonEmpty(media.ai_ocr);
 
-  const transcriptTextRow = db
-    .prepare("SELECT GROUP_CONCAT(transcript_text, ' ') AS value FROM video_transcripts WHERE media_id = ?")
-    .get(mediaId);
+  const transcriptTextRow = db.prepare("SELECT GROUP_CONCAT(transcript_text, ' ') AS value FROM video_transcripts WHERE media_id = ?").get(mediaId);
 
   return {
     media,
@@ -236,14 +229,7 @@ function insertMedia({ userId, imageHash, thumbnailStorageKey, fileSizeBytes, me
       ingest_status
     ) VALUES (?, ?, ?, ?, ?, ?, 'pending')
   `);
-  const result = stmt.run(
-    userId,
-    imageHash,
-    now,
-    thumbnailStorageKey || null,
-    fileSizeBytes || null,
-    normalizedType,
-  );
+  const result = stmt.run(userId, imageHash, now, thumbnailStorageKey || null, fileSizeBytes || null, normalizedType);
 
   return { affectedRows: result.changes };
 }
@@ -648,46 +634,40 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
       -- 为所有图片按月份分组并排序，使用窗口函数避免N+1查询
       SELECT 
         month_key,
+        expression_tags,
+        face_count,
+        person_count,
+        preferred_face_quality,
         thumbnail_storage_key,
         captured_at,
         id,
         ROW_NUMBER() OVER (
           PARTITION BY month_key 
           ORDER BY 
-            -- 🥰 封面选择策略：综合考虑表情和清晰度
-            -- 注意：expression_tags/face_count/person_count为NULL时表示未分析
-            -- SQLite中NULL与任何值比较都返回NULL，在CASE WHEN中被视为FALSE
-            -- 因此未分析的图片会自动落入最低优先级（兜底策略）
+            -- 🥰 封面选择策略：情绪优先 + 清晰度优先
+            -- 1. happy 且有人脸
+            -- 2. neutral 且有人脸（但没有 happy）
+            -- 3. 其他有人脸
+            -- 4. 有人物但无人脸
+            -- 5. 其余兜底（未分析/无人）
             CASE 
-              -- 🏆 第一优先级：开心且清晰（综合最优，有人脸）
-              WHEN expression_tags LIKE 'happy%' 
-                   AND primary_expression_confidence > 0.7 
-                   AND primary_face_quality > 0.7 
-                   AND face_count > 0 
+              WHEN face_count > 0
+                   AND ((',' || REPLACE(COALESCE(expression_tags,''),' ','') || ',') LIKE '%,happy,%')
                    THEN 1
-              -- 😊 第二优先级：主要是开心（有人脸即可）
-              WHEN expression_tags LIKE 'happy%' 
-                   AND primary_expression_confidence > 0.7 
-                   AND face_count > 0 
+              WHEN face_count > 0
+                   AND ((',' || REPLACE(COALESCE(expression_tags,''),' ','') || ',') NOT LIKE '%,happy,%')
+                   AND ((',' || REPLACE(COALESCE(expression_tags,''),' ','') || ',') LIKE '%,neutral,%')
                    THEN 2
-              -- 📸 第三优先级：清晰度高（有人脸，不限表情）
-              WHEN primary_face_quality > 0.8 
-                   AND face_count > 0 
-                   THEN 3
-              -- 👤 第四优先级：有人脸的图片（不限表情和质量）
-              WHEN face_count > 0 THEN 4
-              -- 🚶 第五优先级：有人物但无人脸（背影、远景）
-              WHEN person_count > 0 THEN 5
-              -- ⏰ 第六优先级：其他所有图片（包括未分析的图片，兜底策略）
-              ELSE 6
+              WHEN face_count > 0 THEN 3
+              WHEN person_count > 0 THEN 4
+              ELSE 5
             END,
             -- 🔢 同优先级内的精细排序：
-            COALESCE(primary_expression_confidence, 0) DESC,  -- 表情置信度高的优先
-            COALESCE(primary_face_quality, 0) DESC,           -- 人脸质量好的优先
-            COALESCE(face_count, 0) DESC,                     -- 人脸数量多的优先（更热闹）
-            COALESCE(person_count, 0) DESC,                   -- 人物数量多的优先
-            COALESCE(captured_at, 0) DESC,             -- 时间最新的优先
-            id DESC                                          -- ID最大的优先（保证排序稳定）
+            COALESCE(preferred_face_quality, 0) DESC,
+            COALESCE(face_count, 0) DESC,
+            COALESCE(person_count, 0) DESC,
+            COALESCE(captured_at, 0) DESC,
+            id DESC
         ) AS rn
       FROM media
       WHERE user_id = ?
@@ -752,39 +732,30 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
       -- 为所有图片按年份分组并排序，使用窗口函数避免N+1查询
       SELECT 
         year_key,
+        expression_tags,
+        face_count,
+        person_count,
+        preferred_face_quality,
         thumbnail_storage_key,
         captured_at,
         id,
         ROW_NUMBER() OVER (
           PARTITION BY year_key 
           ORDER BY 
-            -- 🥰 封面选择策略：综合考虑表情和清晰度
-            -- 注意：AI字段为NULL时表示未分析，会自动落入最低优先级
+            -- 🥰 封面选择策略：情绪优先 + 清晰度优先
             CASE 
-              -- 🏆 第一优先级：开心且清晰（综合最优，有人脸）
-              WHEN expression_tags LIKE 'happy%' 
-                   AND primary_expression_confidence > 0.7 
-                   AND primary_face_quality > 0.7 
-                   AND face_count > 0 
+              WHEN face_count > 0
+                   AND ((',' || REPLACE(COALESCE(expression_tags,''),' ','') || ',') LIKE '%,happy,%')
                    THEN 1
-              -- 😊 第二优先级：主要是开心（有人脸即可）
-              WHEN expression_tags LIKE 'happy%' 
-                   AND primary_expression_confidence > 0.7 
-                   AND face_count > 0 
+              WHEN face_count > 0
+                   AND ((',' || REPLACE(COALESCE(expression_tags,''),' ','') || ',') NOT LIKE '%,happy,%')
+                   AND ((',' || REPLACE(COALESCE(expression_tags,''),' ','') || ',') LIKE '%,neutral,%')
                    THEN 2
-              -- 📸 第三优先级：清晰度高（有人脸，不限表情）
-              WHEN primary_face_quality > 0.8 
-                   AND face_count > 0 
-                   THEN 3
-              -- 👤 第四优先级：有人脸的图片（不限表情和质量）
-              WHEN face_count > 0 THEN 4
-              -- 🚶 第五优先级：有人物但无人脸（背影、远景）
-              WHEN person_count > 0 THEN 5
-              -- ⏰ 第六优先级：其他所有图片（包括未分析的图片，兜底策略）
-              ELSE 6
+              WHEN face_count > 0 THEN 3
+              WHEN person_count > 0 THEN 4
+              ELSE 5
             END,
-            COALESCE(primary_expression_confidence, 0) DESC,
-            COALESCE(primary_face_quality, 0) DESC,
+            COALESCE(preferred_face_quality, 0) DESC,
             COALESCE(face_count, 0) DESC,
             COALESCE(person_count, 0) DESC,
             COALESCE(captured_at, 0) DESC,
@@ -844,54 +815,6 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
   }
 }
 
-// 获取「未知时间」相册（year_key='unknown' 的单个分组）
-function selectUnknownGroup({ userId }) {
-  const dataQuery = db.prepare(`
-    WITH ranked AS (
-      SELECT 
-        year_key,
-        thumbnail_storage_key,
-        captured_at,
-        id,
-        ROW_NUMBER() OVER (
-          ORDER BY COALESCE(captured_at, 0) DESC, id DESC
-        ) AS rn
-      FROM media
-      WHERE user_id = ? AND deleted_at IS NULL AND year_key = 'unknown'
-        AND (COALESCE(media_type, 'image') IN ('image', 'video', 'audio'))
-    ),
-    cover AS (
-      SELECT year_key, thumbnail_storage_key, captured_at
-      FROM ranked WHERE rn = 1
-    ),
-    cnt AS (
-      SELECT COUNT(*) AS imageCount FROM media
-      WHERE user_id = ? AND deleted_at IS NULL AND year_key = 'unknown'
-    )
-    SELECT
-      'unknown' AS album_id,
-      cover.thumbnail_storage_key AS latestImagekey,
-      cover.captured_at,
-      cnt.imageCount
-    FROM cover CROSS JOIN cnt;
-  `);
-  const countQuery = db.prepare(`
-    SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END AS groupCount
-    FROM media
-    WHERE user_id = ? AND deleted_at IS NULL AND year_key = 'unknown';
-  `);
-  try {
-    const data = dataQuery.all(userId, userId);
-    const { groupCount: total } = countQuery.get(userId);
-    if (!data || data.length === 0) {
-      return { data: [], total: 0 };
-    }
-    return { data: mapFields("media", data), total };
-  } catch (error) {
-    throw error;
-  }
-}
-
 // 分页获取指定人物（clusterId）按年份分组的数据
 function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
   const offset = (pageNo - 1) * pageSize;
@@ -901,6 +824,10 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
       -- 为指定人物的图片按年份分组并排序
       SELECT 
         i.year_key,
+        i.expression_tags,
+        i.face_count,
+        i.person_count,
+        i.preferred_face_quality,
         i.thumbnail_storage_key,
         i.captured_at,
         i.id,
@@ -908,24 +835,18 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
           PARTITION BY i.year_key 
           ORDER BY 
             CASE 
-              WHEN i.expression_tags LIKE 'happy%' 
-                   AND i.primary_expression_confidence > 0.7 
-                   AND i.primary_face_quality > 0.7 
-                   AND i.face_count > 0 
+              WHEN i.face_count > 0
+                   AND ((',' || REPLACE(COALESCE(i.expression_tags,''),' ','') || ',') LIKE '%,happy,%')
                    THEN 1
-              WHEN i.expression_tags LIKE 'happy%' 
-                   AND i.primary_expression_confidence > 0.7 
-                   AND i.face_count > 0 
+              WHEN i.face_count > 0
+                   AND ((',' || REPLACE(COALESCE(i.expression_tags,''),' ','') || ',') NOT LIKE '%,happy,%')
+                   AND ((',' || REPLACE(COALESCE(i.expression_tags,''),' ','') || ',') LIKE '%,neutral,%')
                    THEN 2
-              WHEN i.primary_face_quality > 0.8 
-                   AND i.face_count > 0 
-                   THEN 3
-              WHEN i.face_count > 0 THEN 4
-              WHEN i.person_count > 0 THEN 5
-              ELSE 6
+              WHEN i.face_count > 0 THEN 3
+              WHEN i.person_count > 0 THEN 4
+              ELSE 5
             END,
-            COALESCE(i.primary_expression_confidence, 0) DESC,
-            COALESCE(i.primary_face_quality, 0) DESC,
+            COALESCE(i.preferred_face_quality, 0) DESC,
             COALESCE(i.face_count, 0) DESC,
             COALESCE(i.person_count, 0) DESC,
             COALESCE(i.captured_at, 0) DESC,
@@ -999,6 +920,10 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
       -- 为指定人物的图片按月份分组并排序
       SELECT 
         i.month_key,
+        i.expression_tags,
+        i.face_count,
+        i.person_count,
+        i.preferred_face_quality,
         i.thumbnail_storage_key,
         i.captured_at,
         i.id,
@@ -1006,24 +931,18 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
           PARTITION BY i.month_key 
           ORDER BY 
             CASE 
-              WHEN i.expression_tags LIKE 'happy%' 
-                   AND i.primary_expression_confidence > 0.7 
-                   AND i.primary_face_quality > 0.7 
-                   AND i.face_count > 0 
+              WHEN i.face_count > 0
+                   AND ((',' || REPLACE(COALESCE(i.expression_tags,''),' ','') || ',') LIKE '%,happy,%')
                    THEN 1
-              WHEN i.expression_tags LIKE 'happy%' 
-                   AND i.primary_expression_confidence > 0.7 
-                   AND i.face_count > 0 
+              WHEN i.face_count > 0
+                   AND ((',' || REPLACE(COALESCE(i.expression_tags,''),' ','') || ',') NOT LIKE '%,happy,%')
+                   AND ((',' || REPLACE(COALESCE(i.expression_tags,''),' ','') || ',') LIKE '%,neutral,%')
                    THEN 2
-              WHEN i.primary_face_quality > 0.8 
-                   AND i.face_count > 0 
-                   THEN 3
-              WHEN i.face_count > 0 THEN 4
-              WHEN i.person_count > 0 THEN 5
-              ELSE 6
+              WHEN i.face_count > 0 THEN 3
+              WHEN i.person_count > 0 THEN 4
+              ELSE 5
             END,
-            COALESCE(i.primary_expression_confidence, 0) DESC,
-            COALESCE(i.primary_face_quality, 0) DESC,
+            COALESCE(i.preferred_face_quality, 0) DESC,
             COALESCE(i.face_count, 0) DESC,
             COALESCE(i.person_count, 0) DESC,
             COALESCE(i.captured_at, 0) DESC,
@@ -1097,39 +1016,30 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
       -- 为所有图片按日期分组并排序，使用窗口函数避免N+1查询
       SELECT 
         date_key,
+        expression_tags,
+        face_count,
+        person_count,
+        preferred_face_quality,
         thumbnail_storage_key,
         captured_at,
         id,
         ROW_NUMBER() OVER (
           PARTITION BY date_key 
           ORDER BY 
-            -- 🥰 封面选择策略：综合考虑表情和清晰度
-            -- 注意：AI字段为NULL时表示未分析，会自动落入最低优先级
+            -- 🥰 封面选择策略：情绪优先 + 清晰度优先
             CASE 
-              -- 🏆 第一优先级：开心且清晰（综合最优，有人脸）
-              WHEN expression_tags LIKE 'happy%' 
-                   AND primary_expression_confidence > 0.7 
-                   AND primary_face_quality > 0.7 
-                   AND face_count > 0 
+              WHEN face_count > 0
+                   AND ((',' || REPLACE(COALESCE(expression_tags,''),' ','') || ',') LIKE '%,happy,%')
                    THEN 1
-              -- 😊 第二优先级：主要是开心（有人脸即可）
-              WHEN expression_tags LIKE 'happy%' 
-                   AND primary_expression_confidence > 0.7 
-                   AND face_count > 0 
+              WHEN face_count > 0
+                   AND ((',' || REPLACE(COALESCE(expression_tags,''),' ','') || ',') NOT LIKE '%,happy,%')
+                   AND ((',' || REPLACE(COALESCE(expression_tags,''),' ','') || ',') LIKE '%,neutral,%')
                    THEN 2
-              -- 📸 第三优先级：清晰度高（有人脸，不限表情）
-              WHEN primary_face_quality > 0.8 
-                   AND face_count > 0 
-                   THEN 3
-              -- 👤 第四优先级：有人脸的图片（不限表情和质量）
-              WHEN face_count > 0 THEN 4
-              -- 🚶 第五优先级：有人物但无人脸（背影、远景）
-              WHEN person_count > 0 THEN 5
-              -- ⏰ 第六优先级：其他所有图片（包括未分析的图片，兜底策略）
-              ELSE 6
+              WHEN face_count > 0 THEN 3
+              WHEN person_count > 0 THEN 4
+              ELSE 5
             END,
-            COALESCE(primary_expression_confidence, 0) DESC,
-            COALESCE(primary_face_quality, 0) DESC,
+            COALESCE(preferred_face_quality, 0) DESC,
             COALESCE(face_count, 0) DESC,
             COALESCE(person_count, 0) DESC,
             COALESCE(captured_at, 0) DESC,
@@ -1198,6 +1108,10 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
       SELECT 
         id,
         COALESCE(NULLIF(TRIM(city), ''), 'unknown') AS city_key,
+        expression_tags,
+        face_count,
+        person_count,
+        preferred_face_quality,
         thumbnail_storage_key,
         captured_at
       FROM media
@@ -1212,7 +1126,24 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
         id,
         ROW_NUMBER() OVER (
           PARTITION BY city_key 
-          ORDER BY captured_at DESC, id DESC
+          ORDER BY 
+            CASE 
+              WHEN face_count > 0
+                   AND ((',' || REPLACE(COALESCE(expression_tags,''),' ','') || ',') LIKE '%,happy,%')
+                   THEN 1
+              WHEN face_count > 0
+                   AND ((',' || REPLACE(COALESCE(expression_tags,''),' ','') || ',') NOT LIKE '%,happy,%')
+                   AND ((',' || REPLACE(COALESCE(expression_tags,''),' ','') || ',') LIKE '%,neutral,%')
+                   THEN 2
+              WHEN face_count > 0 THEN 3
+              WHEN person_count > 0 THEN 4
+              ELSE 5
+            END,
+            COALESCE(preferred_face_quality, 0) DESC,
+            COALESCE(face_count, 0) DESC,
+            COALESCE(person_count, 0) DESC,
+            COALESCE(captured_at, 0) DESC,
+            id DESC
         ) AS rn
       FROM city_normalized
     ),
@@ -1422,106 +1353,6 @@ function selectMediaRowByHashForUser({ userId, imageHash }) {
   return stmt.get(userId, imageHash);
 }
 
-/**
- * 更新图片的搜索相关字段
- */
-/**
- * 📝 更新图片搜索元数据到images表
- *
- * 功能说明:
- * • 存储人脸识别分析结果的汇总信息
- * • 支持增量更新：null值不更新，保持原有值
- *
- * @function updateMediaSearchMetadata
- * @param {Object} params - 更新参数对象
- * @param {number} params.imageId - 图片ID（必须）
- * @param {string} [params.altText] - AI图片描述（待启用）
- * @param {string} [params.keywords] - 关键词（待启用）
- * @param {number} [params.faceCount] - 人脸数量
- * @param {number} [params.personCount] - 人物总数（包括背面、远景）【2025-10-27 新增】
- * @param {string} [params.expressionTags] - 表情标签（逗号分隔）如："happy,neutral"
- * @param {string} [params.ageTags] - 年龄段标签（逗号分隔）如："20-29,0-2"
- * @param {string} [params.genderTags] - 性别标签（逗号分隔）如："female,male"
- * @param {number} [params.primaryExpressionConfidence] - 主要人物表情置信度 (0-1)
- * @param {number} [params.primaryFaceQuality] - 主要人脸质量 (0-1)
- *
- * @returns {Object} 返回对象 { affectedRows: 更新的行数 }
- *
- * 💡 使用场景:
- * • 人脸识别完成后，存储汇总信息
- * • 支持按标签快速筛选照片
- * • 支持按质量排序照片
- *
- * ⚠️ 注意事项:
- * • 传入null不会更新该字段（使用COALESCE保护）
- * • 传入undefined会被转为null
- */
-function updateMediaSearchMetadata({
-  imageId,
-  altText,
-  keywords,
-  faceCount,
-  personCount,
-  expressionTags,
-  ageTags,
-  genderTags,
-  primaryExpressionConfidence,
-  primaryFaceQuality,
-  rebuildSearchArtifacts = true,
-}) {
-  const tx = db.transaction(() => {
-    const primaryExpr = pickPrimaryTag(expressionTags);
-    const exprTagsStr =
-      expressionTags != null && String(expressionTags).trim() !== "" ? String(expressionTags).trim() : null;
-    const ageStr = ageTags != null && String(ageTags).trim() !== "" ? String(ageTags).trim() : null;
-    const genderStr = genderTags != null && String(genderTags).trim() !== "" ? String(genderTags).trim() : null;
-
-    const analysisUpdate = db.prepare(`
-      UPDATE media
-      SET
-        face_count = COALESCE(?, face_count),
-        person_count = COALESCE(?, person_count),
-        primary_face_quality = COALESCE(?, primary_face_quality),
-        primary_expression = COALESCE(?, primary_expression),
-        primary_expression_confidence = COALESCE(?, primary_expression_confidence),
-        expression_tags = COALESCE(?, expression_tags),
-        age_tags = COALESCE(?, age_tags),
-        gender_tags = COALESCE(?, gender_tags),
-        analysis_status = 'done'
-      WHERE id = ?
-    `);
-    const result = analysisUpdate.run(
-      faceCount ?? null,
-      personCount ?? null,
-      primaryFaceQuality ?? null,
-      primaryExpr,
-      primaryExpressionConfidence ?? null,
-      exprTagsStr,
-      ageStr,
-      genderStr,
-      imageId,
-    );
-
-    if (altText || keywords) {
-      db.prepare(
-        `
-        UPDATE media SET
-          ai_description = ?,
-          ai_keywords_json = ?
-        WHERE id = ?
-      `,
-      ).run(altText || null, toJsonArrayString(keywords), imageId);
-    }
-
-    if (rebuildSearchArtifacts) {
-      rebuildMediaSearchDoc(imageId);
-    }
-    return { affectedRows: result.changes };
-  });
-
-  return tx();
-}
-
 // 异步更新图片位置信息
 function updateLocationInfo(imageId, { gpsLocation, country, city }, options = {}) {
   const { rebuildSearchArtifacts = false } = options;
@@ -1613,11 +1444,12 @@ function updateIngestStatusByHash({ userId, imageHash, ingestStatus }) {
  * await insertFaceEmbeddings(imageId, faces);
  * ```
  */
-async function insertFaceEmbeddings(imageId, faceData) {
+async function insertFaceEmbeddings(imageId, faceData, options = {}) {
   try {
-    const deleteSql = `DELETE FROM media_face_embeddings WHERE media_id = ? AND source_type = 'image'`;
+    const sourceType = options.sourceType === "video" ? "video" : "image";
+    const deleteSql = `DELETE FROM media_face_embeddings WHERE media_id = ? AND source_type = ?`;
     const deleteStmt = db.prepare(deleteSql);
-    deleteStmt.run(imageId);
+    deleteStmt.run(imageId, sourceType);
 
     if (!faceData || faceData.length === 0) {
       return { affectedRows: 0 };
@@ -1628,8 +1460,8 @@ async function insertFaceEmbeddings(imageId, faceData) {
     // 缩略图将在聚类后，只为最佳人脸生成
     const insertSql = `
       INSERT INTO media_face_embeddings (
-        media_id, source_type, source_ref_id, face_index, embedding, age, gender, expression, confidence, quality_score, bbox, pose
-      ) VALUES (?, 'image', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        media_id, source_type, face_index, embedding, age, gender, expression, confidence, quality_score, bbox, pose
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const insertStmt = db.prepare(insertSql);
 
@@ -1638,11 +1470,9 @@ async function insertFaceEmbeddings(imageId, faceData) {
       // 将embedding数组转换为Buffer存储
       const embeddingBuffer = Buffer.from(JSON.stringify(face.embedding));
 
-      // 优化（2025-12-XX）：不再处理 face_thumbnail_base64
-      // 缩略图将在聚类后，只为最佳人脸生成
-
       const result = insertStmt.run(
         imageId,
+        sourceType,
         face.face_index,
         embeddingBuffer,
         face.age || null,
@@ -1757,7 +1587,6 @@ function getMediasDownloadInfo({ userId, imageIds }) {
   }));
 }
 
-
 /**
  * 媒体分析链路：写入 caption / VLM 结果（含 Python modules.caption → ai_* 文本字段；人脸/人数写入 face_count / person_count）。
  * 仅更新传入的非空字段（caption 为 success 但全空时不写库）。
@@ -1794,20 +1623,14 @@ function upsertMediaAiFieldsForAnalysis({ mediaId, caption }) {
     params.push(caption.ocr);
   }
   if (caption.faceCount !== undefined && caption.faceCount !== null) {
-    const fc =
-      typeof caption.faceCount === "number" && Number.isFinite(caption.faceCount)
-        ? Math.max(0, Math.floor(caption.faceCount))
-        : null;
+    const fc = typeof caption.faceCount === "number" && Number.isFinite(caption.faceCount) ? Math.max(0, Math.floor(caption.faceCount)) : null;
     if (fc !== null) {
       assignments.push("face_count = ?");
       params.push(fc);
     }
   }
   if (caption.personCount !== undefined && caption.personCount !== null) {
-    const pc =
-      typeof caption.personCount === "number" && Number.isFinite(caption.personCount)
-        ? Math.max(0, Math.floor(caption.personCount))
-        : null;
+    const pc = typeof caption.personCount === "number" && Number.isFinite(caption.personCount) ? Math.max(0, Math.floor(caption.personCount)) : null;
     if (pc !== null) {
       assignments.push("person_count = ?");
       params.push(pc);
@@ -1825,7 +1648,6 @@ module.exports = {
   selectMediaRowByHashForUser,
   insertMedia,
   updateMediaMetadata,
-  updateMediaSearchMetadata,
   updateLocationInfo,
   insertFaceEmbeddings,
   selectMediasByYear,
@@ -1836,7 +1658,6 @@ module.exports = {
   selectGroupsByYear,
   selectGroupsByMonth,
   selectGroupsByDate,
-  selectUnknownGroup,
   selectGroupsByCity,
   selectMediasByCity,
   selectGroupsByYearForCluster,

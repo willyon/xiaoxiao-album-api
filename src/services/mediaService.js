@@ -358,23 +358,6 @@ async function getGroupsByMonth({ userId, pageNo = 1, pageSize = 10, withFullUrl
   }
 }
 
-// 获取「未知时间」相册（单独查询，不混在年/月列表中）
-async function getUnknownGroup({ userId, withFullUrls = true }) {
-  try {
-    const queryResult = await mediaModel.selectUnknownGroup({ userId });
-    if (withFullUrls && queryResult.data?.length) {
-      queryResult.data = await _addFullUrlToGroupCover(queryResult.data);
-    }
-    return queryResult;
-  } catch (error) {
-    throw new CustomError({
-      httpStatus: 500,
-      messageCode: ERROR_CODES.FAILED_SELECT_GROUPS_BY_YEAR,
-      messageType: "error",
-    });
-  }
-}
-
 // 按地点获取分组信息
 async function getGroupsByCity({ userId, pageNo = 1, pageSize = 10, withFullUrls = true }) {
   if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId) {
@@ -610,7 +593,6 @@ module.exports = {
   getGroupsByYear,
   getGroupsByMonth,
   getGroupsByDate,
-  getUnknownGroup,
   getGroupsByCity,
   getGroupsByYearForCluster,
   getGroupsByMonthForCluster,

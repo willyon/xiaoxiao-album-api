@@ -20,7 +20,17 @@ const FFPROBE_PATH = process.env.FFPROBE_PATH || "ffprobe";
  */
 async function getVideoColorMetadata(videoPath) {
   return new Promise((resolve) => {
-    const args = ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_space,color_range,color_primaries,color_transfer", "-of", "json", videoPath];
+    const args = [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=color_space,color_range,color_primaries,color_transfer",
+      "-of",
+      "json",
+      videoPath,
+    ];
     const proc = require("child_process").spawn(FFPROBE_PATH, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     proc.stdout.on("data", (c) => (stdout += c.toString()));
@@ -45,7 +55,9 @@ async function getVideoColorMetadata(videoPath) {
         }
         const inRange = colorRange === "pc" || colorRange === "full" ? "pc" : "tv";
         // HDR: bt2020 色彩空间 + HLG(arib-std-b67) 或 PQ(smpte2084) 传输
-        const isHdr = inColorMatrix === "bt2020" && (transfer.includes("arib") || transfer.includes("smpte2084") || transfer.includes("hlg") || transfer.includes("pq"));
+        const isHdr =
+          inColorMatrix === "bt2020" &&
+          (transfer.includes("arib") || transfer.includes("smpte2084") || transfer.includes("hlg") || transfer.includes("pq"));
         resolve({ inColorMatrix, inRange, isHdr });
       } catch {
         resolve({ inColorMatrix: "bt709", inRange: "tv", isHdr: false });
@@ -113,19 +125,12 @@ async function extractFirstFrame(videoPath) {
 /**
  * 使用 ffprobe 获取视频元数据
  * @param {string} videoPath - 视频文件路径
- * @returns {Promise<Object>} { duration, codec, width, height, creationTime, gpsLatitude, gpsLongitude }
+ * @returns {Promise<Object>} { duration, codec, width, height, codedWidth, codedHeight, rotationDegrees, creationTime, gpsLatitude, gpsLongitude }
+ *   width/height 为考虑 rotation 后的显示尺寸；coded* 为码流内宽高
  */
 async function getVideoMetadata(videoPath) {
   return new Promise((resolve, reject) => {
-    const args = [
-      "-v",
-      "quiet",
-      "-print_format",
-      "json",
-      "-show_format",
-      "-show_streams",
-      videoPath,
-    ];
+    const args = ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", videoPath];
 
     const proc = spawn(FFPROBE_PATH, args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -158,7 +163,52 @@ async function getVideoMetadata(videoPath) {
 }
 
 /**
+ * ffprobe 视频流中的旋转角度（度），常见：tags.rotate 或 side_data Display Matrix
+ * @returns {number} 可为负值，与 FFmpeg 行为一致
+ */
+function _parseVideoRotationDegrees(videoStream) {
+  if (!videoStream) return 0;
+  const tags = videoStream.tags || {};
+  if (tags.rotate != null) {
+    const n = parseInt(String(tags.rotate), 10);
+    if (!isNaN(n)) return n;
+  }
+  const list = videoStream.side_data_list;
+  if (Array.isArray(list)) {
+    for (const item of list) {
+      if (item && item.rotation != null) {
+        const n = parseInt(String(item.rotation), 10);
+        if (!isNaN(n)) return n;
+      }
+    }
+  }
+  return 0;
+}
+
+/**
+ * 按显示旋转得到用户观感上的宽高（与 EXIF 5–8 交换宽高一致：90°/270° 交换）
+ */
+function _displayDimensionsFromRotation(codedWidth, codedHeight, rotationDegrees) {
+  if (!codedWidth || !codedHeight) {
+    return { codedWidth, codedHeight, displayWidth: codedWidth, displayHeight: codedHeight };
+  }
+  const r = ((rotationDegrees % 360) + 360) % 360;
+  const swap = r === 90 || r === 270;
+  if (swap) {
+    return {
+      codedWidth,
+      codedHeight,
+      displayWidth: codedHeight,
+      displayHeight: codedWidth,
+    };
+  }
+  return { codedWidth, codedHeight, displayWidth: codedWidth, displayHeight: codedHeight };
+}
+
+/**
  * 解析 ffprobe JSON 输出
+ * width/height 为「显示」尺寸（已考虑 rotation），与图片侧 displayWidth/displayHeight 语义一致
+ * codedWidth/codedHeight 为码流内存储的像素框
  */
 function _parseFfprobeOutput(data) {
   const result = {
@@ -166,6 +216,9 @@ function _parseFfprobeOutput(data) {
     codec: null,
     width: null,
     height: null,
+    codedWidth: null,
+    codedHeight: null,
+    rotationDegrees: 0,
     creationTime: null,
     gpsLatitude: null,
     gpsLongitude: null,
@@ -180,8 +233,15 @@ function _parseFfprobeOutput(data) {
   const videoStream = data.streams?.find((s) => s.codec_type === "video");
   if (videoStream) {
     result.codec = videoStream.codec_name || null;
-    result.width = videoStream.width ? parseInt(videoStream.width, 10) : null;
-    result.height = videoStream.height ? parseInt(videoStream.height, 10) : null;
+    const cw = videoStream.width ? parseInt(videoStream.width, 10) : null;
+    const ch = videoStream.height ? parseInt(videoStream.height, 10) : null;
+    result.codedWidth = cw;
+    result.codedHeight = ch;
+    const rotationDegrees = _parseVideoRotationDegrees(videoStream);
+    result.rotationDegrees = rotationDegrees;
+    const { displayWidth, displayHeight } = _displayDimensionsFromRotation(cw, ch, rotationDegrees);
+    result.width = displayWidth;
+    result.height = displayHeight;
 
     // stream_tags.creation_time
     if (videoStream.tags?.creation_time) {

@@ -33,17 +33,39 @@ const SUPPORTED_IMAGE_EXTENSIONS = new Set(Object.keys(IMAGE_FORMAT_MAP));
 const SUPPORTED_IMAGE_MIME_TYPES = new Set(Object.values(IMAGE_FORMAT_MAP));
 
 /**
- * 视频格式映射表
+ * 视频格式映射表（扩展名 → MIME，用于入库、校验）
  */
 const VIDEO_FORMAT_MAP = {
   mp4: "video/mp4",
   mov: "video/quicktime",
   webm: "video/webm",
   avi: "video/x-msvideo",
+  mkv: "video/x-matroska",
+  m4v: "video/x-m4v",
+  "3gp": "video/3gpp",
+  mpeg: "video/mpeg",
+  mpg: "video/mpeg",
+  mts: "video/mp2t",
+  m2ts: "video/mp2t",
+  ts: "video/mp2t",
+  flv: "video/x-flv",
+  wmv: "video/x-ms-wmv",
 };
 
 const SUPPORTED_VIDEO_EXTENSIONS = new Set(Object.keys(VIDEO_FORMAT_MAP));
 const SUPPORTED_VIDEO_MIME_TYPES = new Set(Object.values(VIDEO_FORMAT_MAP));
+
+/**
+ * 从视频文件名解析 MIME（与 VIDEO_FORMAT_MAP 一致；未知扩展名返回 null）
+ * @param {string} fileName - 含扩展名的文件名或路径
+ * @returns {string|null}
+ */
+function getVideoMimeTypeFromFileName(fileName) {
+  if (!fileName || typeof fileName !== "string") return null;
+  const ext = fileName.toLowerCase().trim().split(".").pop();
+  if (!ext) return null;
+  return VIDEO_FORMAT_MAP[ext] ?? null;
+}
 
 /**
  * 智能图片文件检测 - 解决HEIC等格式MIME类型识别问题
@@ -306,6 +328,7 @@ module.exports = {
   isMediaFile,
   getMediaTypeFromFile,
   getStandardMimeType,
+  getVideoMimeTypeFromFileName,
   getExtensionFromMimeType,
   detectImageFormatFromBuffer,
   getMimeTypeByMagicBytes,

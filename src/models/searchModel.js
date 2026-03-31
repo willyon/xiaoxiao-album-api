@@ -51,7 +51,7 @@ function listMediaSearchResults({ userId, ftsQuery, whereConditions = [], whereP
         i.ai_description,
         i.ai_ocr,
         NULL AS age_tags,
-        COALESCE(i.expression_tags, i.primary_expression) AS expression_tags,
+        i.expression_tags AS expression_tags,
         i.is_favorite
       FROM media_search_fts fts
       JOIN media_search ms ON fts.rowid = ms.media_id
@@ -97,7 +97,7 @@ function listMediaSearchResults({ userId, ftsQuery, whereConditions = [], whereP
         i.ai_description,
         i.ai_ocr,
         NULL AS age_tags,
-        COALESCE(i.expression_tags, i.primary_expression) AS expression_tags,
+        i.expression_tags AS expression_tags,
         i.is_favorite
       FROM media i
       WHERE i.user_id = ?
@@ -389,7 +389,7 @@ function getMediasByIds({ userId, imageIds }) {
       i.ai_description,
       i.ai_ocr,
       NULL AS age_tags,
-      COALESCE(i.expression_tags, i.primary_expression) AS expression_tags,
+      i.expression_tags AS expression_tags,
       i.is_favorite
     FROM media i
     WHERE i.user_id = ?
@@ -442,26 +442,33 @@ function getFilterOptions(userId) {
       )
       .get(userId);
 
-    // 4. 获取表情的不同值（需要解析逗号分隔字符串）
-    // 注意：expression_tags = NULL 表示未分析，排除NULL
-    const expressionRows = db
+    // 4. 从 expression_tags（逗号分隔）解析用户库中实际出现过的表情（与 buildSearchQueryParts 白名单一致）
+    const ALLOWED_EXPRESSION = new Set(["happy", "sad", "anger", "surprise", "neutral"]);
+    const expressionTagRows = db
       .prepare(
         `
-      SELECT DISTINCT i.primary_expression
+      SELECT i.expression_tags
       FROM media i
-      WHERE i.user_id = ? AND i.primary_expression IS NOT NULL AND i.primary_expression != ''
-      LIMIT 100
+      WHERE i.user_id = ?
+        AND i.expression_tags IS NOT NULL
+        AND TRIM(i.expression_tags) != ''
+      LIMIT 2000
     `,
       )
-      .pluck()
       .all(userId);
 
-    // 解析表情标签（去重）
     const expressionSet = new Set();
-    expressionRows.forEach((tags) => {
-      const trimmed = String(tags).trim();
-      if (trimmed) expressionSet.add(trimmed);
+    expressionTagRows.forEach((row) => {
+      String(row.expression_tags)
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .forEach((t) => {
+          if (ALLOWED_EXPRESSION.has(t)) expressionSet.add(t);
+        });
     });
+    const expressionOrder = ["happy", "sad", "anger", "surprise", "neutral"];
+    const expressionsSorted = expressionOrder.filter((e) => expressionSet.has(e));
 
     // 5. 组装返回数据（不再包含cities和years，改用分页接口）
     return {
@@ -480,7 +487,7 @@ function getFilterOptions(userId) {
       },
 
       // 表情选项（实际存在的表情）
-      expressions: Array.from(expressionSet),
+      expressions: expressionsSorted,
 
       // 分辨率统计
       resolutionStats: {

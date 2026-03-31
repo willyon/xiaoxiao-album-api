@@ -148,6 +148,7 @@ def run_analyze_image(
     device: str,
     manager: Any,
     image_id: Optional[str] = None,
+    module_names: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     串行执行各分析模块，聚合为统一结构。
@@ -158,7 +159,7 @@ def run_analyze_image(
             image_id=image_id,
             errors=[{"code": IMAGE_DECODE_FAILED, "message": "无效的图片数据"}],
         )
-    module_names = IMAGE_ANALYSIS_MODULE_ORDER
+    selected_modules = module_names or IMAGE_ANALYSIS_MODULE_ORDER
     try:
         rgb_image = _bgr_to_rgb_safe(image_bgr)
     except Exception as exc:
@@ -170,7 +171,7 @@ def run_analyze_image(
     started_at = time.perf_counter()
     modules: Dict[str, Dict[str, Any]] = {}
 
-    for name in module_names:
+    for name in selected_modules:
         t0 = time.perf_counter()
         try:
             module_result = _run_one_module(

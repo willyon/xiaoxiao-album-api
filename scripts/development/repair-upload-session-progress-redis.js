@@ -65,7 +65,7 @@ async function repairOneSession(redis, sessionKey, apply) {
   if (!data || Object.keys(data).length === 0) return null;
 
   const uploadedCount = toInt(data.uploadedCount);
-  const mediaDone = toInt(data.mediaDone || data.highResDone);
+  const mediaDone = toInt(data.mediaDone);
   const highResErrors = toInt(data.highResErrors);
   const workerSkippedCount = toInt(data.workerSkippedCount);
 

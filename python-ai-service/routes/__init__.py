@@ -5,12 +5,14 @@
 
 from . import (
     analyze_image,
+    analyze_video,
     face_cluster,
     health,
 )
 
 __all__ = [
     "analyze_image",
+    "analyze_video",
     "face_cluster",
     "health",
 ]

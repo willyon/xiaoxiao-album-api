@@ -1,4 +1,3 @@
-const { CLEANUP_TYPES } = require("../constants/cleanupTypes");
 const cleanupModel = require("../models/cleanupModel");
 const mediaModel = require("../models/mediaModel");
 const logger = require("../utils/logger");
@@ -13,7 +12,7 @@ function rebuildCleanupGroups({ userId }) {
 
   const images = cleanupModel.selectCleanupCandidatesByUser(userId);
   if (!images || images.length === 0) {
-    cleanupModel.deleteGroupsByType(userId, CLEANUP_TYPES.SIMILAR);
+    cleanupModel.deleteGroupsByUser(userId);
     mediaModel.updateBlurryForUser(userId, []);
     return {
       similarGroupCount: 0,
@@ -23,7 +22,6 @@ function rebuildCleanupGroups({ userId }) {
   const similarGroups = _buildSimilarGroups(images);
   const similarSummary = _replaceGroups({
     userId,
-    groupType: CLEANUP_TYPES.SIMILAR,
     groups: similarGroups,
   });
 
@@ -36,8 +34,8 @@ function rebuildCleanupGroups({ userId }) {
   };
 }
 
-function _replaceGroups({ userId, groupType, groups }) {
-  cleanupModel.deleteGroupsByType(userId, groupType);
+function _replaceGroups({ userId, groups }) {
+  cleanupModel.deleteGroupsByUser(userId);
 
   if (!groups || groups.length === 0) {
     return { groupCount: 0 };
@@ -50,11 +48,9 @@ function _replaceGroups({ userId, groupType, groups }) {
     try {
       const groupId = cleanupModel.insertSimilarGroup({
         userId,
-        groupType,
         primaryImageId: group.primaryImageId,
         score: group.score,
         memberCount: group.members.length,
-        totalSizeBytes: group.totalSizeBytes,
         updatedAt: now, // 明确传递当前时间，确保每次重建时更新时间都是最新的
       });
 
@@ -65,7 +61,7 @@ function _replaceGroups({ userId, groupType, groups }) {
       }
     } catch (error) {
       logger.error({
-        message: `插入清理分组失败: ${groupType}`,
+        message: "插入清理分组失败: similar",
         details: { userId, error: error.message },
       });
     }
@@ -224,20 +220,16 @@ function _createGroupFromMembers(members, { similarityResolver }) {
     };
   });
 
-  const totalSizeBytes = sorted.reduce((acc, item) => acc + (item.file_size_bytes || 0), 0);
-
   return {
     primaryImageId: primary.id,
-    totalSizeBytes,
     members: groupMembers,
   };
 }
 
 function _computeRankScore(image) {
   const aesthetic = typeof image.aesthetic_score === "number" ? image.aesthetic_score : 0;
-  const faceQuality = typeof image.primary_face_quality === "number" ? image.primary_face_quality : 0;
-  // 移除 sharpness_score 权重，仅使用 aesthetic_score 和 faceQuality
-  return Number((0.8 * aesthetic + 0.2 * faceQuality).toFixed(6));
+  // 相似组推荐仅按美学分排序
+  return Number(aesthetic.toFixed(6));
 }
 
 function _hammingDistance(hashA, hashB) {

@@ -50,8 +50,11 @@ function buildSearchQueryParts(filters, options = {}) {
   if (filters.expression && Array.isArray(filters.expression) && filters.expression.length > 0) {
     const exprConditions = [];
     filters.expression.forEach((expr) => {
-      exprConditions.push("i.primary_expression = ?");
-      whereParams.push(`${expr}`);
+      // 以 media.expression_tags 为准（入库时由多人脸表情合并写入，逗号分隔）
+      exprConditions.push(
+        "(',' || REPLACE(COALESCE(i.expression_tags, ''), ' ', '') || ',') LIKE '%,' || ? || ',%'",
+      );
+      whereParams.push(expr);
     });
     if (exprConditions.length > 0) {
       whereConditions.push(`(${exprConditions.join(" OR ")})`);

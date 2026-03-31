@@ -52,7 +52,7 @@ from config import settings
 from logger import logger
 
 # 导入路由模块
-from routes import analyze_image, face_cluster, health
+from routes import analyze_image, analyze_video, face_cluster, health
 
 # 导入 ModelManager
 from services.model_manager import get_model_manager
@@ -95,6 +95,7 @@ def create_app():
     # 注册路由
     app.include_router(health.router, tags=["健康检查"])
     app.include_router(analyze_image.router, tags=["图片分析"])
+    app.include_router(analyze_video.router, tags=["视频分析"])
     app.include_router(face_cluster.router, tags=["人脸聚类"])
     
     return app
@@ -112,6 +113,7 @@ def main():
         logger.info("🔍 可用接口:")
         logger.info("  - GET  /health - 健康检查")
         logger.info("  - POST /analyze_image - 全量图片分析")
+        logger.info("  - POST /analyze_video - 视频分析（抽帧聚合）")
         logger.info("  - POST /cluster_face_embeddings - 人脸 embedding 聚类")
         logger.info("  - POST /crop_face_thumbnail - 人脸缩略图裁剪")
         

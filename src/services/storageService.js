@@ -4,6 +4,7 @@
  * @Description: 统一存储服务 - 提供统一的文件存储接口，支持本地存储和云存储
  */
 
+const fs = require("fs-extra");
 const StorageAdapterFactory = require("../storage/factory/StorageAdapterFactory");
 const { STORAGE_TYPES } = require("../storage/constants/StorageTypes");
 const logger = require("../utils/logger");
@@ -136,6 +137,80 @@ function _applyEncoderByExt(pipeline, ext, quality = 80, fileSize = FILE_SIZE_TH
   }
 }
 
+/** libvips 无法确定 interpretation / 色彩空间时可能抛出，可经 PNG 栅格化再编码 */
+function _isColourspaceRecoverableError(err) {
+  const msg = err && err.message ? String(err.message) : "";
+  return msg.includes("colourspace") || msg.includes("parameter space not set");
+}
+
+/**
+ * 管线与输出均固定在 sRGB；开头 pipelineColourspace 可处理部分异常 ICC。
+ * @param {boolean} alreadyRotated 为 true 时跳过 rotate（用于 PNG 回退后的二次管线）
+ */
+function _sharpPipelineSrgb(inputData, { alreadyRotated }) {
+  let p = sharp(inputData, SHARP_CONFIG).pipelineColourspace("srgb");
+  if (!alreadyRotated) {
+    p = p.rotate();
+  }
+  return p.toColorspace("srgb");
+}
+
+/** 无调色板 PNG 强制像素落到标准 interpretation，再交给 WebP/AVIF 等 */
+async function _rasterizeToPngBuffer(inputData) {
+  return _sharpPipelineSrgb(inputData, { alreadyRotated: false })
+    .png({ palette: false, compressionLevel: 6 })
+    .toBuffer();
+}
+
+/**
+ * 旋正、缩放、编码并 toBuffer；遇色彩空间类错误时先 PNG 栅格化再重试（不重做 rotate）
+ */
+async function _encodeImageToBuffer(inputData, options, logContext) {
+  const {
+    alreadyRotated,
+    resizeWidth,
+    fit,
+    withoutEnlargement,
+    fastShrinkOnLoad,
+    extension,
+    quality,
+    fileSize,
+    finalOptions,
+  } = options;
+
+  let pipeline = _sharpPipelineSrgb(inputData, { alreadyRotated });
+  if (resizeWidth) {
+    pipeline = pipeline.resize({
+      width: resizeWidth,
+      fit,
+      withoutEnlargement,
+      fastShrinkOnLoad,
+    });
+  }
+  pipeline = _applyEncoderByExt(pipeline, extension, quality, fileSize, finalOptions);
+
+  try {
+    return await pipeline.toBuffer({ resolveWithObject: true });
+  } catch (err) {
+    if (!_isColourspaceRecoverableError(err) || alreadyRotated) {
+      throw err;
+    }
+    logger.warn({
+      message: "image colourspace fallback: rasterize PNG then re-encode",
+      details: { ...logContext, error: err.message },
+    });
+    const normalized = await _rasterizeToPngBuffer(inputData);
+    return _encodeImageToBuffer(
+      normalized,
+      {
+        ...options,
+        alreadyRotated: true,
+      },
+      logContext,
+    );
+  }
+}
+
 /**
  * 统一存储服务 — 单一适配器，由环境变量 STORAGE_TYPE 决定（local | aliyun-oss）
  */
@@ -217,6 +292,30 @@ class StorageService {
     }
   }
 
+  /**
+   * 本地存储时：若文件存在，返回绝对路径（供 Python 等通过路径读盘，避免整文件经 HTTP 再传一遍）。
+   * 非本地存储或文件不存在时返回 null，调用方应回退 getFileBuffer。
+   */
+  async getLocalFilePath(storageKey) {
+    if (this._currentStorageType !== STORAGE_TYPES.LOCAL || !storageKey) {
+      return null;
+    }
+    if (typeof this.storage.getFullPath !== "function") {
+      return null;
+    }
+    try {
+      const fullPath = this.storage.getFullPath(storageKey);
+      const exists = await fs.pathExists(fullPath);
+      return exists ? fullPath : null;
+    } catch (e) {
+      logger.warn({
+        message: "getLocalFilePath failed",
+        details: { storageKey, error: e.message },
+      });
+      return null;
+    }
+  }
+
   // ========== 业务方法（有实际价值的封装） ==========
 
   /**
@@ -285,26 +384,24 @@ class StorageService {
     const inputData = await this.storage.getFileData(sourceStorageKey);
     fileSize = fileSize || (await this.storage.getFileSize(inputData));
 
-    // 创建Sharp实例并应用自动旋转
-    let pipeline = sharp(inputData, SHARP_CONFIG).rotate();
+    const defaultOptions = { enableAdaptiveQuality: false, enableDynamicEffort: false };
+    const finalOptions = { ...defaultOptions, ...optimizationOptions };
 
-    // 统一的缩放处理
-    if (resizeWidth) {
-      pipeline = pipeline.resize({
-        width: resizeWidth,
+    const { data, info } = await _encodeImageToBuffer(
+      inputData,
+      {
+        alreadyRotated: false,
+        resizeWidth,
         fit,
         withoutEnlargement,
         fastShrinkOnLoad,
-      });
-    }
-
-    // 统一的编码器选择逻辑
-    const defaultOptions = { enableAdaptiveQuality: false, enableDynamicEffort: false };
-    const finalOptions = { ...defaultOptions, ...optimizationOptions };
-    pipeline = _applyEncoderByExt(pipeline, extension, quality, fileSize, finalOptions);
-
-    // 一次编码拿到 { data, info }，避免回读，提高性能
-    const { data, info } = await pipeline.toBuffer({ resolveWithObject: true });
+        extension,
+        quality,
+        fileSize,
+        finalOptions,
+      },
+      { sourceStorageKey, targetStorageKey, extension },
+    );
 
     // 通过适配器上传 Buffer（OSS/本地均支持），Content-Type 由适配器按 key 推断
     await this.storage.storeFile(data, targetStorageKey);
@@ -340,22 +437,24 @@ class StorageService {
     optimizationOptions = {},
   }) {
     const fileSize = buffer.length;
-    let pipeline = sharp(buffer, SHARP_CONFIG).rotate();
+    const defaultOptions = { enableAdaptiveQuality: false, enableDynamicEffort: false };
+    const finalOptions = { ...defaultOptions, ...optimizationOptions };
 
-    if (resizeWidth) {
-      pipeline = pipeline.resize({
-        width: resizeWidth,
+    const { data, info } = await _encodeImageToBuffer(
+      buffer,
+      {
+        alreadyRotated: false,
+        resizeWidth,
         fit,
         withoutEnlargement,
         fastShrinkOnLoad,
-      });
-    }
-
-    const defaultOptions = { enableAdaptiveQuality: false, enableDynamicEffort: false };
-    const finalOptions = { ...defaultOptions, ...optimizationOptions };
-    pipeline = _applyEncoderByExt(pipeline, extension, quality, fileSize, finalOptions);
-
-    const { data, info } = await pipeline.toBuffer({ resolveWithObject: true });
+        extension,
+        quality,
+        fileSize,
+        finalOptions,
+      },
+      { context: "processImageBuffer" },
+    );
     return {
       data,
       width: info.width,

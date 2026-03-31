@@ -1,13 +1,12 @@
 /*
- * @Description: 媒体智能分析主链 Ingestor（Phase 0 + Phase 1）
- * - Phase 0：建立骨架，支持 video 占位完成
- * - Phase 1：迁移 face + cleanup，统一 finalize
+ * @Description: 媒体智能分析主链 Ingestor
+ * - 图片：POST /analyze_image（multipart 或 image_path）
+ * - 视频：POST /analyze_video（JSON + video_path，与设计方案 Phase 1 一致）
  */
 
 const logger = require("../utils/logger");
 const storageService = require("../services/storageService");
 const {
-  updateMediaSearchMetadata,
   insertFaceEmbeddings,
   rebuildMediaSearchDoc,
   upsertMediaAiFieldsForAnalysis,
@@ -25,6 +24,10 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_CLEANUP_SERVICE_URL || process.env
 const ANALYZE_IMAGE_TIMEOUT_MS = Number(
   process.env.ANALYZE_IMAGE_TIMEOUT_MS || process.env.ANALYZE_FULL_TIMEOUT_MS || 120000
 );
+/** 视频多帧分析，默认 10 分钟；可通过 ANALYZE_VIDEO_TIMEOUT_MS 覆盖 */
+const ANALYZE_VIDEO_TIMEOUT_MS = Number(process.env.ANALYZE_VIDEO_TIMEOUT_MS || 600000);
+// 与 .env 的 ANALYZE_IMAGE_USE_LOCAL_PATH 对应：未设置或 true → 本地存储时优先传 image_path；为 false 时强制 multipart
+const ANALYZE_IMAGE_USE_LOCAL_PATH = process.env.ANALYZE_IMAGE_USE_LOCAL_PATH !== "false";
 
 // 最新设计：Node 侧不再决定「开启哪些能力」，一律视为参与分析；是否真正可用由 Python 端模型加载结果与降级逻辑决定
 // 图中可读文字由 Python body.data.caption.data.ocr 写入 media.ai_ocr
@@ -42,16 +45,46 @@ async function processMediaAnalysis(job) {
 
   try {
     if (mediaType === "video") {
-      await _markVideoAnalysisDone(imageId, sessionId);
+      const videoPath = await _resolveVideoLocalPath({ highResStorageKey, originalStorageKey, imageId, userId, fileName });
+      if (!videoPath) {
+        const err = new Error("VIDEO_FILE_NOT_FOUND_OR_NO_LOCAL_PATH");
+        await _markMediaAnalysisFailed(imageId, err);
+        throw err;
+      }
+
+      await _markMediaAnalysisRunning(imageId);
+
+      const stepResults = {
+        face: { status: "pending", errorCode: null, data: {} },
+        cleanup: { status: "pending", errorCode: null, data: {} },
+        description: { status: "pending", errorCode: null, data: {} },
+      };
+
+      await _runAnalyzeVideo({ imageId, userId, videoPath, stepResults });
+
+      await finalizeMediaAnalysis({ imageId, stepResults });
+      if (sessionId) {
+        await updateProgressOnce({ sessionId, status: "aiDoneCount", dedupeKey: imageId });
+        logger.info({
+          message: "mediaAnalysis.progress.updated",
+          details: { imageId, userId, sessionId: sessionId.substring(0, 8) + "...", status: "aiDoneCount" },
+        });
+      } else {
+        logger.warn({
+          message: "mediaAnalysis.progress.skipped_no_session",
+          details: { imageId, userId, reason: "sessionId 为空，智能分析进度不会更新" },
+        });
+      }
+
       logger.info({
         message: "mediaAnalysis.video.completed",
-        details: { imageId, userId, sessionId },
+        details: { imageId, userId },
       });
       return;
     }
 
-    const { imageData, storageKey } = await _loadMediaBuffer({ highResStorageKey, originalStorageKey, imageId, userId, fileName });
-    if (!imageData) {
+    const { imageData, storageKey, localPath } = await _loadMediaBuffer({ highResStorageKey, originalStorageKey, imageId, userId, fileName });
+    if (!imageData && !localPath) {
       const err = new Error("MEDIA_FILE_NOT_FOUND");
       await _markMediaAnalysisFailed(imageId, err);
       throw err;
@@ -65,7 +98,7 @@ async function processMediaAnalysis(job) {
       description: { status: "pending", errorCode: null, data: {} },
     };
 
-    await _runAnalyzeFull({ imageId, userId, imageData, stepResults });
+    await _runAnalyzeImage({ imageId, userId, imageData, localPath, stepResults });
 
     await finalizeMediaAnalysis({ imageId, stepResults });
     if (sessionId) {
@@ -103,6 +136,21 @@ async function processMediaAnalysis(job) {
 }
 
 async function _loadMediaBuffer({ highResStorageKey, originalStorageKey, imageId, userId, fileName }) {
+  if (ANALYZE_IMAGE_USE_LOCAL_PATH) {
+    if (highResStorageKey) {
+      const p = await storageService.getLocalFilePath(highResStorageKey);
+      if (p) {
+        return { imageData: null, storageKey: highResStorageKey, localPath: p };
+      }
+    }
+    if (originalStorageKey) {
+      const p = await storageService.getLocalFilePath(originalStorageKey);
+      if (p) {
+        return { imageData: null, storageKey: originalStorageKey, localPath: p };
+      }
+    }
+  }
+
   let imageData = null;
   let storageKey = null;
 
@@ -123,14 +171,49 @@ async function _loadMediaBuffer({ highResStorageKey, originalStorageKey, imageId
     });
   }
 
-  return { imageData, storageKey };
+  return { imageData, storageKey, localPath: null };
 }
 
-async function _markVideoAnalysisDone(imageId, sessionId) {
-  await updateMediaSearchMetadata({ imageId });
-  if (sessionId) {
-    await updateProgressOnce({ sessionId, status: "aiDoneCount", dedupeKey: imageId });
+/**
+ * 视频原片本地路径（与 /analyze_video 设计方案一致：需 Python 与 Node 同卷可读）
+ */
+async function _resolveVideoLocalPath({ highResStorageKey, originalStorageKey, imageId, userId, fileName }) {
+  if (ANALYZE_IMAGE_USE_LOCAL_PATH) {
+    if (originalStorageKey) {
+      const p = await storageService.getLocalFilePath(originalStorageKey);
+      if (p) return p;
+    }
+    if (highResStorageKey) {
+      const p = await storageService.getLocalFilePath(highResStorageKey);
+      if (p) return p;
+    }
   }
+  logger.warn({
+    message: "mediaAnalysis.videoLocalPath.missing",
+    details: { imageId, userId, highResStorageKey, originalStorageKey, fileName },
+  });
+  return null;
+}
+
+async function _runAnalyzeVideo({ imageId, userId, videoPath, stepResults }) {
+  const device = process.env.AI_DEVICE || "auto";
+  const response = await withAiSlot(() =>
+    axios.post(
+      `${PYTHON_SERVICE_URL}/analyze_video`,
+      {
+        video_path: videoPath,
+        device,
+        image_id: String(imageId),
+      },
+      {
+        timeout: ANALYZE_VIDEO_TIMEOUT_MS,
+        maxBodyLength: Infinity,
+        headers: { "Content-Type": "application/json" },
+      },
+    ),
+  );
+  const body = response.data || {};
+  _applyAdapterFromModules(imageId, userId, body, stepResults, { mediaType: "video" });
 }
 
 async function _markMediaAnalysisRunning(imageId) {
@@ -148,15 +231,19 @@ async function _markMediaAnalysisFailed(imageId, error) {
   markMediaAnalysisFailed(imageId, error);
 }
 
-async function _runAnalyzeFull({ imageId, userId, imageData, stepResults }) {
+async function _runAnalyzeImage({ imageId, userId, imageData, localPath, stepResults }) {
   const { FormData, Blob } = globalThis;
-  if (!imageData) {
+  if (!localPath && !imageData) {
     stepResults.cleanup = { status: "failed", errorCode: "ANALYZE_IMAGE_BUFFER_MISSING", data: {} };
     throw new Error("ANALYZE_IMAGE_BUFFER_MISSING");
   }
   const formData = new FormData();
-  const blob = imageData instanceof Blob ? imageData : new Blob([imageData], { type: "application/octet-stream" });
-  formData.append("image", blob, `image-${imageId}.bin`);
+  if (localPath) {
+    formData.append("image_path", localPath);
+  } else {
+    const blob = imageData instanceof Blob ? imageData : new Blob([imageData], { type: "application/octet-stream" });
+    formData.append("image", blob, `image-${imageId}.bin`);
+  }
   const device = process.env.AI_DEVICE || "auto";
   formData.append("device", device);
   formData.append("image_id", String(imageId));
@@ -168,10 +255,11 @@ async function _runAnalyzeFull({ imageId, userId, imageData, stepResults }) {
     }),
   );
   const body = response.data || {};
-  _applyAdapterFromModules(imageId, userId, body, stepResults);
+  _applyAdapterFromModules(imageId, userId, body, stepResults, { mediaType: "image" });
 }
 
-function _applyAdapterFromModules(imageId, userId, body, stepResults) {
+function _applyAdapterFromModules(imageId, userId, body, stepResults, options = {}) {
+  const mediaType = options.mediaType === "video" ? "video" : "image";
   const modules = body.data || {};
   const round2 = (v) => (typeof v === "number" ? Number(v.toFixed(2)) : null);
 
@@ -216,7 +304,10 @@ function _applyAdapterFromModules(imageId, userId, body, stepResults) {
     caption: captionForDb,
   });
 
-  if (modules.quality?.status === "success") {
+  if (mediaType === "video") {
+    // 视频链路当前不返回 quality，cleanup 置为空完成态。
+    stepResults.cleanup = { status: "completed", errorCode: null, data: {} };
+  } else if (modules.quality?.status === "success") {
     if (modules.quality.data) {
       const d = modules.quality.data;
       stepResults.cleanup = {
@@ -236,14 +327,14 @@ function _applyAdapterFromModules(imageId, userId, body, stepResults) {
     stepResults.cleanup = { status: modules.quality?.status || "failed", errorCode: modules.quality?.error?.code || null, data: {} };
   }
 
-  if (modules.embedding?.status === "success" && modules.embedding.data?.vector) {
+  if (mediaType === "image" && modules.embedding?.status === "success" && modules.embedding.data?.vector) {
     try {
       upsertMediaEmbedding({ imageId, vector: modules.embedding.data.vector });
     } catch (e) {
       logger.warn({ message: "analyze_image adapter: upsertMediaEmbedding failed", details: { imageId, error: e.message } });
     }
   }
-  if ((modules.quality?.status === "success" || modules.embedding?.status === "success") && userId) {
+  if (mediaType === "image" && (modules.quality?.status === "success" || modules.embedding?.status === "success") && userId) {
     scheduleUserRebuild(userId);
   }
 
@@ -256,14 +347,33 @@ function _applyAdapterFromModules(imageId, userId, body, stepResults) {
       const personCount = d.person_count ?? 0;
       const faces = Array.isArray(d.faces) ? d.faces : [];
       const summary = d.summary || {};
-      const expressions = summary.expressions || [];
+      const expressions = Array.isArray(summary.expressions) ? summary.expressions : [];
       const expressionTagsText = expressions.length > 0 ? expressions.join(",") : null;
       const ages = summary.ages || [];
       const genders = summary.genders || [];
-      const primaryFace = faces[0];
+      const preferredFaces = faces.filter((f) => {
+        const e = typeof f?.expression === "string" ? f.expression.trim().toLowerCase() : "";
+        return e === "happy" || e === "neutral";
+      });
+      const maxFaceQuality = (arr) =>
+        arr.reduce((acc, f) => {
+          const q = Number(f?.quality_score);
+          return Number.isFinite(q) ? Math.max(acc, q) : acc;
+        }, Number.NEGATIVE_INFINITY);
+      const preferredQuality = maxFaceQuality(preferredFaces);
+      const fallbackQuality = maxFaceQuality(faces);
+      const preferredFaceQuality = Number.isFinite(preferredQuality)
+        ? preferredQuality
+        : Number.isFinite(fallbackQuality)
+          ? fallbackQuality
+          : null;
       const ageTagsText = ages.length > 0 ? ages.join(",") : null;
       const genderTagsText = genders.length > 0 ? genders.join(",") : null;
-      const highQualityFaces = faces.filter((f) => f.is_high_quality);
+      // 图片：is_high_quality；视频：person.data.faces 已是多帧去重列表，以有 embedding 为准
+      const highQualityFaces =
+        mediaType === "video"
+          ? faces.filter((f) => Array.isArray(f.embedding) && f.embedding.length > 0)
+          : faces.filter((f) => f.is_high_quality);
       if (highQualityFaces.length > 0) {
         const toInsert = highQualityFaces.map((f) => ({
           face_index: f.face_index,
@@ -276,7 +386,7 @@ function _applyAdapterFromModules(imageId, userId, body, stepResults) {
           bbox: f.bbox || [],
           pose: f.pose || {},
         }));
-        insertFaceEmbeddings(imageId, toInsert);
+        insertFaceEmbeddings(imageId, toInsert, { sourceType: mediaType });
       }
       stepResults.face = {
         status: "completed",
@@ -284,9 +394,7 @@ function _applyAdapterFromModules(imageId, userId, body, stepResults) {
         data: {
           faceCount,
           personCount,
-          primaryFaceQuality: primaryFace?.quality_score ?? null,
-          primaryExpression: expressions[0] ?? null,
-          primaryExpressionConfidence: primaryFace?.expression_confidence ?? null,
+          preferredFaceQuality,
           expressionTagsText,
           ageTagsText,
           genderTagsText,

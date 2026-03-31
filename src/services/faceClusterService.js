@@ -589,12 +589,20 @@ async function _generateThumbnailsForClusters(userId, clusters, faceEmbeddings) 
         continue;
       }
 
-      // 5. 获取图片数据
+      // 5. 获取图片/视频数据（封面仅支持图片，视频人脸只参与聚类，不生成缩略图）
       const imageInfo = getMediaStorageInfo(bestFace.image_id);
       if (!imageInfo) {
         logger.warn({
           message: `图片不存在: imageId=${bestFace.image_id}`,
           details: { userId, clusterId },
+        });
+        continue;
+      }
+
+      if (imageInfo.mediaType && imageInfo.mediaType !== "image") {
+        logger.warn({
+          message: `跳过非图片媒体的聚类封面缩略图生成`,
+          details: { userId, clusterId, imageId: bestFace.image_id, mediaType: imageInfo.mediaType },
         });
         continue;
       }
@@ -804,16 +812,10 @@ function _selectBestFace(faces, imagesMap = new Map()) {
     let poseScore = 1.0 - (Math.abs(yaw) / 90.0 + Math.abs(pitch) / 90.0) / 2.0;
     poseScore = Math.max(0.0, poseScore); // 确保不为负数
 
-    // 表情优先级（如果有表情信息）
+    // 表情优先级（happy > neutral > 其他）
     const expressionPriority = {
-      happy: 3,
-      neutral: 2,
-      surprise: 1,
-      sad: 1,
-      anger: 0,
-      fear: 0,
-      disgust: 0,
-      contempt: 0,
+      happy: 2,
+      neutral: 1,
     };
     const expressionScore = expressionPriority[face.expression] || 0;
 
@@ -833,19 +835,19 @@ function _selectBestFace(faces, imagesMap = new Map()) {
     };
   });
 
-  // 多级排序（优先级从高到低）
+  // 多级排序：先按表情硬分桶（happy > neutral > 其他），桶内再看质量/pose/大小/清晰度/时间
   facesWithMetrics.sort((a, b) => {
-    // 第一优先级：quality_score（基础质量，权重最高）
-    if (Math.abs(a.qualityScore - b.qualityScore) > 0.05) {
-      return b.qualityScore - a.qualityScore;
-    }
-
-    // 第二优先级：表情（开心优先）
+    // 第一优先级：表情分桶（happy > neutral > 其他）
     if (a.expressionScore !== b.expressionScore) {
       return b.expressionScore - a.expressionScore;
     }
 
-    // 第三优先级：pose得分（正面优先）
+    // 第二优先级：quality_score（基础质量）
+    if (Math.abs(a.qualityScore - b.qualityScore) > 0.05) {
+      return b.qualityScore - a.qualityScore;
+    }
+
+    // 第三优先级：pose得分（越正面越好）
     if (Math.abs(a.poseScore - b.poseScore) > 0.05) {
       return b.poseScore - a.poseScore;
     }
@@ -855,7 +857,7 @@ function _selectBestFace(faces, imagesMap = new Map()) {
       return b.bboxArea - a.bboxArea;
     }
 
-    // 第五优先级：清晰度（可选）
+    // 第五优先级：清晰度
     if (Math.abs(a.sharpnessScore - b.sharpnessScore) > 0.05) {
       return b.sharpnessScore - a.sharpnessScore;
     }
@@ -994,12 +996,20 @@ async function generateThumbnailForFaceEmbedding(faceEmbeddingId, forceRegenerat
       }
     }
 
-    // 3. 获取图片数据
+    // 3. 获取图片数据（封面仅支持图片，视频人脸只参与聚类，不生成缩略图）
     const imageInfo = getMediaStorageInfo(faceEmbedding.image_id);
     if (!imageInfo) {
       logger.warn({
         message: `图片不存在: imageId=${faceEmbedding.image_id}`,
         details: { faceEmbeddingId },
+      });
+      return null;
+    }
+
+    if (imageInfo.mediaType && imageInfo.mediaType !== "image") {
+      logger.warn({
+        message: `跳过非图片媒体的聚类封面缩略图生成`,
+        details: { faceEmbeddingId, imageId: faceEmbedding.image_id, mediaType: imageInfo.mediaType },
       });
       return null;
     }
