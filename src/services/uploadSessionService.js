@@ -25,15 +25,12 @@ async function createSession(userId) {
   // 在Redis中创建会话
   await redisClient.hset(`upload:session:${sessionId}`, {
     uploadedCount: 0,
-    thumbDone: 0,
-    mediaDone: 0,
-    thumbErrors: 0,
-    highResErrors: 0,
+    ingestDoneCount: 0,
+    ingestErrorCount: 0,
     duplicateCount: 0, // Controller层检测的重复（不加入队列）
     workerSkippedCount: 0, // Worker层检测的重复（已加入队列但跳过）
     existingFiles: 0,
     aiEligibleCount: 0,
-    aiQueuedCount: 0,
     aiDoneCount: 0,
     aiErrorCount: 0,
   });
@@ -48,15 +45,12 @@ async function createSession(userId) {
   return {
     sessionId,
     uploadedCount: 0,
-    thumbDone: 0,
-    mediaDone: 0,
-    thumbErrors: 0,
-    highResErrors: 0,
+    ingestDoneCount: 0,
+    ingestErrorCount: 0,
     duplicateCount: 0,
     workerSkippedCount: 0,
     existingFiles: 0,
     aiEligibleCount: 0,
-    aiQueuedCount: 0,
     aiDoneCount: 0,
     aiErrorCount: 0,
     phase: "uploading",

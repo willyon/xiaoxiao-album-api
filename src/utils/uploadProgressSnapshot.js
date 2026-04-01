@@ -5,21 +5,19 @@ function toInt(value) {
 function hasMediaSignal(progressData) {
   const {
     uploadedCount,
-    thumbDone,
-    thumbErrors,
-    mediaDone,
-    highResErrors,
+    ingestDoneCount,
+    ingestErrorCount,
     duplicateCount,
     workerSkippedCount,
     existingFiles,
   } = progressData;
 
-  return uploadedCount + thumbDone + thumbErrors + mediaDone + highResErrors + duplicateCount + workerSkippedCount + existingFiles > 0;
+  return uploadedCount + ingestDoneCount + ingestErrorCount + duplicateCount + workerSkippedCount + existingFiles > 0;
 }
 
 function computeMediaStageDone(progressData) {
-  const { uploadedCount, mediaDone, highResErrors, workerSkippedCount } = progressData;
-  return uploadedCount === 0 || mediaDone + highResErrors + workerSkippedCount >= uploadedCount;
+  const { uploadedCount, ingestDoneCount, ingestErrorCount, workerSkippedCount } = progressData;
+  return uploadedCount === 0 || ingestDoneCount + ingestErrorCount + workerSkippedCount >= uploadedCount;
 }
 
 function computeAiStageDone(progressData) {
@@ -50,19 +48,16 @@ function computePhase(progressData) {
 }
 
 function normalizeProgressData(sessionId, redisData = {}) {
-  const mediaDone = toInt(redisData.mediaDone);
+  const ingestDoneCount = toInt(redisData.ingestDoneCount);
   const normalized = {
     sessionId,
     uploadedCount: toInt(redisData.uploadedCount),
-    thumbDone: toInt(redisData.thumbDone),
-    mediaDone,
-    thumbErrors: toInt(redisData.thumbErrors),
-    highResErrors: toInt(redisData.highResErrors),
+    ingestDoneCount,
+    ingestErrorCount: toInt(redisData.ingestErrorCount),
     duplicateCount: toInt(redisData.duplicateCount),
     workerSkippedCount: toInt(redisData.workerSkippedCount),
     existingFiles: toInt(redisData.existingFiles),
     aiEligibleCount: toInt(redisData.aiEligibleCount),
-    aiQueuedCount: toInt(redisData.aiQueuedCount),
     aiDoneCount: toInt(redisData.aiDoneCount),
     aiErrorCount: toInt(redisData.aiErrorCount),
   };
@@ -77,15 +72,12 @@ function normalizeProgressData(sessionId, redisData = {}) {
 function hasAnyProgressData(progressData) {
   return (
     progressData.uploadedCount +
-      progressData.thumbDone +
-      progressData.mediaDone +
-      progressData.thumbErrors +
-      progressData.highResErrors +
+      progressData.ingestDoneCount +
+      progressData.ingestErrorCount +
       progressData.duplicateCount +
       progressData.workerSkippedCount +
       progressData.existingFiles +
       progressData.aiEligibleCount +
-      progressData.aiQueuedCount +
       progressData.aiDoneCount +
       progressData.aiErrorCount >
     0

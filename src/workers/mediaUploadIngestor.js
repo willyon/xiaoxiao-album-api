@@ -27,7 +27,7 @@ async function _restoreTrashIfApplicableAndSkipUpload(fileInfo) {
   });
   if (fileInfo.sessionId) {
     await updateProgress({ sessionId: fileInfo.sessionId, status: "uploadedCount" });
-    await updateProgress({ sessionId: fileInfo.sessionId, status: "mediaDone" });
+    await updateProgress({ sessionId: fileInfo.sessionId, status: "ingestDoneCount" });
   }
   await storageService.deleteFile(fileInfo);
   return true;
@@ -166,14 +166,6 @@ async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHas
         },
       });
     }
-
-    // 3. 更新处理进度（最终失败）
-    if (job.data.sessionId) {
-      await updateProgress({
-        sessionId: job.data.sessionId,
-        status: "thumbErrors",
-      });
-    }
   } else {
     // 还有重试机会，只清理缩略图（如果有），保留源文件
     if (thumbnailStorageKey) {
@@ -246,12 +238,7 @@ async function processAndSaveSingleMedia(job) {
         await timeIt(
           "storeVideoThumbnail",
           async () => {
-            await videoProcessingService.storeVideoThumbnail(
-              storageKey,
-              thumbnailStorageKey,
-              storageService.storage,
-              { extension },
-            );
+            await videoProcessingService.storeVideoThumbnail(storageKey, thumbnailStorageKey, storageService.storage, { extension });
           },
           imageHash,
         );
@@ -311,14 +298,6 @@ async function processAndSaveSingleMedia(job) {
     try {
       await saveNewMedia(imageData);
       await redisClient.sadd(userSetKey(userId), imageHash);
-
-      // 更新处理进度（成功）
-      if (fileInfo.sessionId) {
-        await updateProgress({
-          sessionId: fileInfo.sessionId,
-          status: "thumbDone",
-        });
-      }
     } catch (error) {
       // 数据库保存失败
       logger.error({

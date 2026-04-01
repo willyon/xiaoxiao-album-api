@@ -29,8 +29,9 @@ def redact_embeddings_for_log(obj: Any, *, min_vector_len: int = 32) -> Any:
     if isinstance(obj, dict):
         out: dict[str, Any] = {}
         for k, v in obj.items():
-            # 统一约定：所有高维向量都放在 vector 字段中
-            if k == "vector" and _is_long_numeric_vector(v, min_len=min_vector_len):
+            # 统一约定：所有高维向量都放在 vector 字段中；
+            # 兼容旧结构：部分结果（如 person.faces[i].embedding）直接将向量放在 embedding 字段中
+            if k in ("vector", "embedding") and _is_long_numeric_vector(v, min_len=min_vector_len):
                 out[k] = "<redacted len=%d>" % len(v)
             else:
                 out[k] = redact_embeddings_for_log(v, min_vector_len=min_vector_len)

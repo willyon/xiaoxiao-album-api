@@ -98,9 +98,9 @@ async function handleCheckFileExists(req, res, next) {
         /* ignore */
       }
       if (sessionId) {
-        // 与正常入库后走 meta 流水线一致：媒体整理进度 = mediaDone/uploadedCount
+        // 与正常入库后走 meta 流水线一致：基础处理进度 = ingestDoneCount/uploadedCount
         await updateProgress({ sessionId, status: "uploadedCount" });
-        await updateProgress({ sessionId, status: "mediaDone" });
+        await updateProgress({ sessionId, status: "ingestDoneCount" });
       }
       logger.info({
         message: "checkFileExists: restored from trash on re-upload",

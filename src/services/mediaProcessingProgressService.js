@@ -16,7 +16,7 @@ const redisClient = getRedisClient();
  * 更新会话进度（统一接口）
  * @param {Object} params - 参数对象
  * @param {string} params.sessionId - 会话ID
- * @param {string} params.status - 状态字段：'uploadedCount'、'thumbDone'、'mediaDone'、'thumbErrors'、'highResErrors'、'duplicateCount'、'workerSkippedCount' 或 'existingFiles'
+ * @param {string} params.status - 状态字段：'uploadedCount'、'ingestDoneCount'、'ingestErrorCount'、'duplicateCount'、'workerSkippedCount' 或 'existingFiles'
  * @param {number} params.increment - 增量值（默认为1）
  */
 async function updateProgress({ sessionId, status, increment = 1 }) {

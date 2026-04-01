@@ -65,11 +65,11 @@ async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userI
       });
     }
 
-    // 4. 更新处理进度（最终失败）
+    // 4. 更新处理进度（基础处理最终失败）
     if (job.data.sessionId) {
       await updateProgress({
         sessionId: job.data.sessionId,
-        status: "highResErrors",
+        status: "ingestErrorCount",
       });
     }
 
@@ -249,7 +249,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
   // 将 media 完成计数后移到 AI 入队之后，避免单图场景出现 completed 的短暂竞态窗口
   if (sessionId) {
     try {
-      await updateProgress({ sessionId, status: "mediaDone" });
+      await updateProgress({ sessionId, status: "ingestDoneCount" });
     } catch (err) {}
   }
 }
@@ -281,11 +281,6 @@ async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, origin
       await updateProgressOnce({
         sessionId,
         status: "aiEligibleCount",
-        dedupeKey: imageId,
-      });
-      await updateProgressOnce({
-        sessionId,
-        status: "aiQueuedCount",
         dedupeKey: imageId,
       });
     }
@@ -503,7 +498,7 @@ async function processMediaMeta(job) {
     if (sessionId) {
       await updateProgress({
         sessionId,
-        status: "mediaDone",
+        status: "ingestDoneCount",
       });
     }
   } catch (err) {}
