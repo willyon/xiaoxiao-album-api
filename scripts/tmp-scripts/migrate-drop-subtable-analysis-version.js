@@ -1,8 +1,6 @@
 /*
  * 一次性迁移：从以下表删除 analysis_version 列（SQLite 3.35+ DROP COLUMN）
- *   media_face_embeddings, media_embeddings, video_keyframes, video_transcripts
- *
- * video_transcripts 上若有 idx_transcript_version，先删除索引再删列。
+ *   media_face_embeddings, media_embeddings
  *
  * 新库请使用 initTableModel 对应 createTable*（已无 analysis_version），无需运行本脚本。
  * 可重跑：某表已无该列则跳过该表。
@@ -45,19 +43,9 @@ function dropColumnIfExists(table) {
 }
 
 function migrate() {
-  try {
-    if (tableExists("video_transcripts") && columnNames("video_transcripts").includes("analysis_version")) {
-      db.prepare("DROP INDEX IF EXISTS idx_transcript_version").run();
-    }
-  } catch (e) {
-    console.warn("DROP INDEX idx_transcript_version（可忽略）:", e.message);
-  }
-
   const tx = db.transaction(() => {
     dropColumnIfExists("media_face_embeddings");
     dropColumnIfExists("media_embeddings");
-    dropColumnIfExists("video_keyframes");
-    dropColumnIfExists("video_transcripts");
   });
 
   try {

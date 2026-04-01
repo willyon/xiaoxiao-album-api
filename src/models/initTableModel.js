@@ -95,7 +95,7 @@ function createTableMedia() {
       city TEXT,
       duration_sec REAL,
       video_codec TEXT,
-      ingest_status TEXT DEFAULT 'pending' CHECK (ingest_status IN ('pending','processing','ready','failed')),
+      ingest_status TEXT DEFAULT 'pending',
       deleted_at INTEGER,
       created_at INTEGER,
       is_favorite INTEGER DEFAULT 0 NOT NULL,
@@ -105,7 +105,6 @@ function createTableMedia() {
       ai_action_tags_json TEXT,
       ai_scene_tags_json TEXT,
       ai_ocr TEXT,
-      analysis_status TEXT DEFAULT 'pending' CHECK (analysis_status IN ('pending','running','done','failed')),
       aesthetic_score REAL,
       sharpness_score REAL,
       is_blurry INTEGER DEFAULT 0 NOT NULL,
@@ -115,6 +114,8 @@ function createTableMedia() {
       expression_tags TEXT,
       age_tags TEXT,
       gender_tags TEXT,
+      analysis_status_primary TEXT DEFAULT 'pending',
+      analysis_status_cloud   TEXT DEFAULT 'pending',
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       UNIQUE (user_id, file_hash)
     );
@@ -127,44 +128,10 @@ function createTableMedia() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_deleted ON media(user_id, deleted_at);").run();
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_type ON media(user_id, media_type);").run();
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_favorite ON media(user_id, is_favorite);").run();
-  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_analysis_status ON media(user_id, analysis_status);").run();
-  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_status_face ON media(analysis_status, face_count);").run();
-}
-
-/** 创建 video_keyframes：视频关键帧及存储 key */
-function createTableVideoKeyframes() {
-  const sql = `
-    CREATE TABLE IF NOT EXISTS video_keyframes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      media_id INTEGER NOT NULL,
-      timestamp_ms INTEGER NOT NULL,
-      storage_key TEXT NOT NULL,
-      width_px INTEGER,
-      height_px INTEGER,
-      created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
-      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
-    );
-  `;
-  db.prepare(sql).run();
-  db.prepare("CREATE INDEX IF NOT EXISTS idx_keyframes_video ON video_keyframes(media_id, timestamp_ms);").run();
-}
-
-/** 创建 video_transcripts：视频转写文本与词级数据 */
-function createTableVideoTranscripts() {
-  const sql = `
-    CREATE TABLE IF NOT EXISTS video_transcripts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      media_id INTEGER NOT NULL,
-      language TEXT,
-      transcript_text TEXT,
-      words_json TEXT,
-      created_at INTEGER DEFAULT (strftime('%s','now') * 1000),
-      model_id TEXT,
-      FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
-    );
-  `;
-  db.prepare(sql).run();
-  db.prepare("CREATE INDEX IF NOT EXISTS idx_transcript_video ON video_transcripts(media_id);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_analysis_status_primary ON media(user_id, analysis_status_primary);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_analysis_status_cloud   ON media(user_id, analysis_status_cloud);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_face_count   ON media(user_id, face_count);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_person_count ON media(user_id, person_count);").run();
 }
 
 /** 创建 media_face_embeddings：单条人脸向量，关联 media，用于人脸聚类与检索 */
@@ -234,7 +201,7 @@ function createTableAlbumMedia() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_album_media_media_id ON album_media(media_id);").run();
 }
 
-/** 创建 media_search：汇总 caption/OCR/转写等，供搜索与 FTS 同步（ocr_text 为 OCR 原文，检索走 LIKE；caption_search_terms 为图片理解 jieba） */
+/** 创建 media_search：汇总 caption/OCR 等，供搜索与 FTS 同步（ocr_text 为 OCR 原文，检索走 LIKE；caption_search_terms 为图片理解 jieba） */
 function createTableMediaSearch() {
   const sql = `
     CREATE TABLE IF NOT EXISTS media_search (
@@ -246,7 +213,6 @@ function createTableMediaSearch() {
       action_tags_text TEXT,
       scene_tags_text TEXT,
       ocr_text TEXT,
-      transcript_text TEXT,
       caption_search_terms TEXT,
       updated_at INTEGER,
       FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE
@@ -273,7 +239,6 @@ function createTableMediaSearchFts() {
       subject_tags_text,
       action_tags_text,
       scene_tags_text,
-      transcript_text,
       caption_search_terms
     );
   `;
@@ -399,8 +364,6 @@ module.exports = {
   createTableMedia,
   createTableMediaFaceEmbeddings,
   createTableMediaEmbeddings,
-  createTableVideoKeyframes,
-  createTableVideoTranscripts,
   createTableMediaSearch,
   createTableMediaSearchFts,
   createTableMediaSearchTerms,

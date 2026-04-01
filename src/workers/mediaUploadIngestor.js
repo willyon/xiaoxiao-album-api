@@ -286,6 +286,19 @@ async function processAndSaveSingleMedia(job) {
       throw error;
     }
 
+    // ======== 将源文件移动到 original 存储位置（确保后续 meta / 重试都有稳定路径）========
+    const originalType = process.env.MEDIA_STORAGE_KEY_ORIGINAL || "original";
+    let originalStorageKey = storageService.storage.generateStorageKey(originalType, fileName);
+    try {
+      await storageService.storage.moveFile(storageKey, originalStorageKey);
+    } catch (e) {
+      logger.warn({
+        message: "Upload worker: move original file failed, fallback to temp storageKey",
+        details: { imageHash, userId, sourceStorageKey: storageKey, targetStorageKey: originalStorageKey, error: e.message },
+      });
+      originalStorageKey = storageKey;
+    }
+
     // ======== 先写库（仅必要字段，其他走默认值）========
     const imageData = {
       userId,
@@ -293,6 +306,7 @@ async function processAndSaveSingleMedia(job) {
       thumbnailStorageKey,
       fileSizeBytes: fileSize,
       mediaType: mediaType === "video" ? "video" : "image",
+      originalStorageKey,
     };
 
     try {
@@ -325,14 +339,14 @@ async function processAndSaveSingleMedia(job) {
       throw error;
     }
 
-    // ======== 入 Meta 队列做"慢活"（EXIF + 高清 AVIF + DB 更新）========
+    // ======== 入 Meta 阶段队列做"慢活"（EXIF + 高清 AVIF + DB 更新）========
     await mediaMetaQueue.add(
       process.env.MEDIA_META_QUEUE_NAME || "media-meta",
       {
         userId,
         imageHash,
         fileName,
-        storageKey,
+        originalStorageKey,
         mediaType, // 透传，供 imageMetaIngestor 分支判断
         extension: process.env.MEDIA_HIGHRES_EXTENSION || "avif",
         fileSize,

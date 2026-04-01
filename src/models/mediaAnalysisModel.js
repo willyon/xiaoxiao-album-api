@@ -8,7 +8,7 @@ function markMediaAnalysisRunning(mediaId) {
   db.prepare(
     `
     UPDATE media SET
-      analysis_status = 'running'
+      analysis_status_primary = 'running'
     WHERE id = ?
   `,
   ).run(mediaId);
@@ -21,7 +21,7 @@ function markMediaAnalysisFailed(mediaId, _error) {
   db.prepare(
     `
     UPDATE media SET
-      analysis_status = 'failed'
+      analysis_status_primary = 'failed'
     WHERE id = ?
   `,
   ).run(mediaId);
@@ -53,7 +53,7 @@ function finalizeMediaAnalysis({
   db.prepare(
     `
     UPDATE media SET
-      analysis_status = 'done',
+      analysis_status_primary = 'success',
       phash = COALESCE(?, phash),
       dhash = COALESCE(?, dhash),
       face_count = COALESCE(?, face_count),

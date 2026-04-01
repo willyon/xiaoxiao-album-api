@@ -48,7 +48,7 @@ function buildFtsQueryForToken(token) {
 }
 
 const VISUAL_FTS5_COLUMN_GROUP =
-  "{description_text keywords_text subject_tags_text action_tags_text scene_tags_text transcript_text caption_search_terms}";
+  "{description_text keywords_text subject_tags_text action_tags_text scene_tags_text caption_search_terms}";
 
 function wrapFtsQueryForVisualColumnsOnly(innerQuery) {
   const inner = String(innerQuery || "").trim();

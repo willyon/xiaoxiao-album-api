@@ -11,6 +11,7 @@ const {
   rebuildMediaSearchDoc,
   upsertMediaAiFieldsForAnalysis,
   normalizeTextArray,
+  updateAnalysisStatusPrimary,
 } = require("../models/mediaModel");
 const { updateProgressOnce } = require("../services/mediaProcessingProgressService");
 const axios = require("axios");
@@ -48,7 +49,7 @@ async function processMediaAnalysis(job) {
       const videoPath = await _resolveVideoLocalPath({ highResStorageKey, originalStorageKey, imageId, userId, fileName });
       if (!videoPath) {
         const err = new Error("VIDEO_FILE_NOT_FOUND_OR_NO_LOCAL_PATH");
-        await _markMediaAnalysisFailed(imageId, err);
+        await _markMediaAnalysisFailed(imageId, err, sessionId);
         throw err;
       }
 
@@ -63,6 +64,11 @@ async function processMediaAnalysis(job) {
       await _runAnalyzeVideo({ imageId, userId, videoPath, stepResults });
 
       await finalizeMediaAnalysis({ imageId, stepResults });
+      try {
+        updateAnalysisStatusPrimary(imageId, "success");
+      } catch (_e) {
+        // ignore
+      }
       if (sessionId) {
         await updateProgressOnce({ sessionId, status: "aiDoneCount", dedupeKey: imageId });
         logger.info({
@@ -86,7 +92,7 @@ async function processMediaAnalysis(job) {
     const { imageData, storageKey, localPath } = await _loadMediaBuffer({ highResStorageKey, originalStorageKey, imageId, userId, fileName });
     if (!imageData && !localPath) {
       const err = new Error("MEDIA_FILE_NOT_FOUND");
-      await _markMediaAnalysisFailed(imageId, err);
+      await _markMediaAnalysisFailed(imageId, err, sessionId);
       throw err;
     }
 
@@ -101,6 +107,11 @@ async function processMediaAnalysis(job) {
     await _runAnalyzeImage({ imageId, userId, imageData, localPath, stepResults });
 
     await finalizeMediaAnalysis({ imageId, stepResults });
+    try {
+      updateAnalysisStatusPrimary(imageId, "success");
+    } catch (_e) {
+      // ignore
+    }
     if (sessionId) {
       await updateProgressOnce({ sessionId, status: "aiDoneCount", dedupeKey: imageId });
       logger.info({
@@ -124,7 +135,7 @@ async function processMediaAnalysis(job) {
       details: { imageId, userId, error: error.message },
     });
     try {
-      await _markMediaAnalysisFailed(imageId, error);
+      await _markMediaAnalysisFailed(imageId, error, sessionId);
     } catch (e) {
       logger.warn({
         message: "markMediaAnalysisFailed error (swallowed)",
@@ -220,7 +231,7 @@ async function _markMediaAnalysisRunning(imageId) {
   markMediaAnalysisRunning(imageId);
 }
 
-async function _markMediaAnalysisFailed(imageId, error) {
+async function _markMediaAnalysisFailed(imageId, error, sessionId) {
   if (!imageId) {
     logger.error({
       message: "markMediaAnalysisFailed called without imageId",
@@ -229,6 +240,18 @@ async function _markMediaAnalysisFailed(imageId, error) {
     return;
   }
   markMediaAnalysisFailed(imageId, error);
+  try {
+    updateAnalysisStatusPrimary(imageId, "failed");
+  } catch (_e) {
+    // ignore
+  }
+  if (sessionId) {
+    try {
+      await updateProgressOnce({ sessionId, status: "aiErrorCount", dedupeKey: imageId });
+    } catch (_e) {
+      // ignore
+    }
+  }
 }
 
 async function _runAnalyzeImage({ imageId, userId, imageData, localPath, stepResults }) {

@@ -26,7 +26,7 @@ function tableExists(name) {
 }
 
 function rebuildMediaSearchFtsWithoutOcrColumn() {
-  console.log("📝 重建 media_search_fts（FTS 列已不含 ocr_text）…");
+  console.log("📝 重建 media_search_fts（FTS 列已不含 ocr_text / transcript_text）…");
   db.prepare("DROP TRIGGER IF EXISTS media_search_fts_ai").run();
   db.prepare("DROP TRIGGER IF EXISTS media_search_fts_ad").run();
   db.prepare("DROP TRIGGER IF EXISTS media_search_fts_au").run();
@@ -47,10 +47,14 @@ function rebuildMediaSearchTerms() {
   createTableMediaSearchTerms();
   db.prepare("DELETE FROM media_search_terms").run();
 
-  const rows = db.prepare(`
-    SELECT media_id, user_id, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, transcript_text, updated_at
+  const rows = db
+    .prepare(
+      `
+    SELECT media_id, user_id, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text, updated_at
     FROM media_search
-  `).all();
+  `,
+    )
+    .all();
 
   const insertStmt = db.prepare(`
     INSERT INTO media_search_terms (
@@ -69,7 +73,6 @@ function rebuildMediaSearchTerms() {
         subject_tags: row.subject_tags_text,
         action_tags: row.action_tags_text,
         scene_tags: row.scene_tags_text,
-        transcript: row.transcript_text,
       },
       updatedAt: row.updated_at || Date.now(),
     });

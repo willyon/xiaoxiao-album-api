@@ -73,10 +73,13 @@ function buildSearchQueryParts(filters, options = {}) {
   }
 
   if (filters.aiAnalysisStatus && filters.aiAnalysisStatus !== "" && filters.aiAnalysisStatus !== "all") {
+    // 旧逻辑依赖 media.analysis_status（已废弃），这里改为使用 analysis_status_primary：
+    // - analyzed: 主分析成功（success）
+    // - notAnalyzed: 主分析未完成 / 失败 / 未开始
     if (filters.aiAnalysisStatus === "analyzed") {
-      whereConditions.push("i.analysis_status = 'done'");
+      whereConditions.push("i.analysis_status_primary = 'success'");
     } else if (filters.aiAnalysisStatus === "notAnalyzed") {
-      whereConditions.push("(i.analysis_status IS NULL OR i.analysis_status != 'done')");
+      whereConditions.push("(i.analysis_status_primary IS NULL OR i.analysis_status_primary != 'success')");
     }
   }
 

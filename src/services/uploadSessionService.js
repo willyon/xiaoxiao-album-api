@@ -125,84 +125,9 @@ async function addMediaToSession({ sessionId, mediaId }) {
   await redisClient.expire(sessionMediaSetKey, 1 * 24 * 3600);
 }
 
-async function addAiFailureToSession({ sessionId, mediaId, fileName, errorCode, errorMessage, retryable = true }) {
-  if (!sessionId || !mediaId) return;
-
-  const failuresKey = `upload:session:${sessionId}:failures:ai`;
-  const failurePayload = {
-    mediaId: String(mediaId),
-    fileName: fileName || "",
-    status: "failed",
-    errorCode: errorCode || "AI_ANALYSIS_FAILED",
-    errorMessage: errorMessage || "AI analysis failed",
-    retryable: Boolean(retryable),
-    failedAt: new Date().toISOString(),
-  };
-
-  await redisClient.lpush(failuresKey, JSON.stringify(failurePayload));
-  await redisClient.ltrim(failuresKey, 0, 199);
-  await redisClient.expire(failuresKey, 1 * 24 * 3600);
-}
-
-async function getAiFailuresBySessionId(sessionId) {
-  if (!sessionId) return [];
-  const failuresKey = `upload:session:${sessionId}:failures:ai`;
-  const rows = await redisClient.lrange(failuresKey, 0, 199);
-
-  return rows
-    .map((row) => {
-      try {
-        return JSON.parse(row);
-      } catch (_error) {
-        return null;
-      }
-    })
-    .filter(Boolean);
-}
-
-async function clearAiFailuresByMediaIds(sessionId, mediaIds = []) {
-  if (!sessionId || !Array.isArray(mediaIds) || mediaIds.length === 0) return;
-
-  const failuresKey = `upload:session:${sessionId}:failures:ai`;
-  const rows = await redisClient.lrange(failuresKey, 0, 199);
-  if (!rows || rows.length === 0) return;
-
-  const targetSet = new Set(mediaIds.map((id) => String(id)));
-  const remainedRows = rows.filter((row) => {
-    try {
-      const item = JSON.parse(row);
-      return !targetSet.has(String(item.mediaId));
-    } catch (_error) {
-      return true;
-    }
-  });
-
-  await redisClient.del(failuresKey);
-  if (remainedRows.length > 0) {
-    await redisClient.rpush(failuresKey, ...remainedRows);
-    await redisClient.expire(failuresKey, 1 * 24 * 3600);
-  }
-}
-
-async function resetAiErrorMarkersForRetry(sessionId, mediaIds = []) {
-  if (!sessionId || !Array.isArray(mediaIds) || mediaIds.length === 0) return;
-  const markerKey = `upload:session:${sessionId}:counter_marker:aiErrorCount`;
-  await redisClient.srem(markerKey, ...mediaIds.map((id) => String(id)));
-}
-
-async function decrementAiErrorCountForRetry(sessionId, count = 0) {
-  if (!sessionId || !count || count <= 0) return;
-  await redisClient.hincrby(`upload:session:${sessionId}`, "aiErrorCount", -count);
-}
-
 module.exports = {
   createSession,
   getActiveSession,
   getCurrentProgressSnapshot,
   addMediaToSession,
-  addAiFailureToSession,
-  getAiFailuresBySessionId,
-  clearAiFailuresByMediaIds,
-  resetAiErrorMarkersForRetry,
-  decrementAiErrorCountForRetry,
 };

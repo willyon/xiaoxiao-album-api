@@ -16,6 +16,8 @@ const {
   handleDeleteMedias,
   handleReanalyzeMedia,
   handleRebuildSearchMedia,
+  handleGetProcessingFailures,
+  handleRetryProcessingFailures,
 } = require("../controllers/mediaController");
 const { handleDownloadSingleMedia, handleDownloadBatchMedias } = require("../controllers/downloadController");
 const { handlePostMedias } = require("../controllers/uploadController");
@@ -37,6 +39,10 @@ router.patch("/:mediaId", handlePatchMedia);
 // Phase 4 管理能力：单图重新分析、重建搜索文档
 router.post("/:mediaId/reanalyze", handleReanalyzeMedia);
 router.post("/:mediaId/rebuild-search", handleRebuildSearchMedia);
+
+// 处理失败列表与重试（基础处理 / 智能分析 / 云模型预留）
+router.get("/processing-failures", handleGetProcessingFailures);
+router.post("/processing-failures/retry", handleRetryProcessingFailures);
 
 // 批量删除图片（软删除，移至回收站）
 router.delete("/", handleDeleteMedias);

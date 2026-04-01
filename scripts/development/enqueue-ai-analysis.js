@@ -10,7 +10,7 @@
  *
  * 📋 判断标准：
  * • 有 high_res_storage_key 或 original_storage_key（媒体处理完成）
- * • media.analysis_status != 'done'
+ * • media.analysis_status_primary != 'success'
  *
  * 使用场景：
  * • 批量补充AI分析数据
@@ -51,7 +51,7 @@ function findImagesNeedingAI() {
         m.high_res_storage_key IS NOT NULL 
         OR m.original_storage_key IS NOT NULL
       )
-      AND COALESCE(m.analysis_status, 'pending') != 'done'
+      AND COALESCE(m.analysis_status_primary, 'pending') != 'success'
       AND m.deleted_at IS NULL
     ORDER BY m.created_at DESC
   `;

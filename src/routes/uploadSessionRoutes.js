@@ -11,8 +11,6 @@ const {
   handleCreateSession,
   handleGetActiveSession,
   handleGetCurrentProgress,
-  handleGetSessionFailures,
-  handleRetrySessionFailures,
 } = require("../controllers/uploadSessionController");
 
 // 创建上传会话
@@ -23,11 +21,5 @@ router.get("/", handleGetActiveSession);
 
 // 当前会话快照（处理中心首屏恢复）
 router.get("/current-progress", handleGetCurrentProgress);
-
-// 会话失败明细
-router.get("/:sessionId/failures", handleGetSessionFailures);
-
-// 会话失败重试
-router.post("/:sessionId/retry-failures", handleRetrySessionFailures);
 
 module.exports = router;

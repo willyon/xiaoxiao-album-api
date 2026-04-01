@@ -77,8 +77,6 @@ function collectMediaSearchDocument(mediaId) {
   };
   const ocrValue = pickNonEmpty(media.ai_ocr);
 
-  const transcriptTextRow = db.prepare("SELECT GROUP_CONCAT(transcript_text, ' ') AS value FROM video_transcripts WHERE media_id = ?").get(mediaId);
-
   return {
     media,
     fields: {
@@ -88,7 +86,6 @@ function collectMediaSearchDocument(mediaId) {
       action_tags: actionTagsText,
       scene_tags: sceneTagsText,
       ocr: ocrValue,
-      transcript: transcriptTextRow?.value || null,
     },
   };
 }
@@ -119,7 +116,7 @@ function syncMediaSearchFtsRow(mediaId) {
     .prepare(
       `
       SELECT media_id, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text,
-             transcript_text, caption_search_terms
+             caption_search_terms
       FROM media_search WHERE media_id = ?
     `,
     )
@@ -130,8 +127,8 @@ function syncMediaSearchFtsRow(mediaId) {
     `
     INSERT INTO media_search_fts(
       rowid, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text,
-      transcript_text, caption_search_terms
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      caption_search_terms
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
   `,
   ).run(
     row.media_id,
@@ -140,7 +137,6 @@ function syncMediaSearchFtsRow(mediaId) {
     row.subject_tags_text,
     row.action_tags_text,
     row.scene_tags_text,
-    row.transcript_text,
     row.caption_search_terms,
   );
 }
@@ -168,8 +164,8 @@ function rebuildMediaSearchDoc(mediaId) {
   const upsert = db.prepare(`
     INSERT INTO media_search (
       media_id, user_id, description_text, keywords_text, subject_tags_text, action_tags_text, scene_tags_text,
-      ocr_text, transcript_text, caption_search_terms, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ocr_text, caption_search_terms, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(media_id) DO UPDATE SET
       user_id = excluded.user_id,
       description_text = excluded.description_text,
@@ -178,7 +174,6 @@ function rebuildMediaSearchDoc(mediaId) {
       action_tags_text = excluded.action_tags_text,
       scene_tags_text = excluded.scene_tags_text,
       ocr_text = excluded.ocr_text,
-      transcript_text = excluded.transcript_text,
       caption_search_terms = excluded.caption_search_terms,
       updated_at = excluded.updated_at
   `);
@@ -192,7 +187,6 @@ function rebuildMediaSearchDoc(mediaId) {
     fields.action_tags,
     fields.scene_tags,
     fields.ocr,
-    fields.transcript,
     searchTermsText,
     updatedAt,
   );
@@ -215,7 +209,7 @@ function rebuildMediaSearchDoc(mediaId) {
 }
 
 //保存用户上传的图片元数据到数据库（初始上传时的必要字段）
-function insertMedia({ userId, imageHash, thumbnailStorageKey, fileSizeBytes, mediaType }) {
+function insertMedia({ userId, imageHash, thumbnailStorageKey, fileSizeBytes, mediaType, originalStorageKey }) {
   const now = Date.now();
   const normalizedType = mediaType === "video" ? "video" : "image";
   const stmt = db.prepare(`
@@ -226,10 +220,19 @@ function insertMedia({ userId, imageHash, thumbnailStorageKey, fileSizeBytes, me
       thumbnail_storage_key,
       file_size_bytes,
       media_type,
-      ingest_status
-    ) VALUES (?, ?, ?, ?, ?, ?, 'pending')
+      ingest_status,
+      original_storage_key
+    ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
   `);
-  const result = stmt.run(userId, imageHash, now, thumbnailStorageKey || null, fileSizeBytes || null, normalizedType);
+  const result = stmt.run(
+    userId,
+    imageHash,
+    now,
+    thumbnailStorageKey || null,
+    fileSizeBytes || null,
+    normalizedType,
+    originalStorageKey || null,
+  );
 
   return { affectedRows: result.changes };
 }
@@ -1388,6 +1391,95 @@ function updateIngestStatusByHash({ userId, imageHash, ingestStatus }) {
   return { affectedRows: result.changes };
 }
 
+function updateAnalysisStatusPrimary(mediaId, status) {
+  if (!mediaId) return { affectedRows: 0 };
+  const allowed = new Set(["pending", "running", "success", "failed", "skipped"]);
+  const normalized = allowed.has(status) ? status : "pending";
+  const result = db
+    .prepare(
+      `
+      UPDATE media
+      SET analysis_status_primary = ?
+      WHERE id = ?
+    `,
+    )
+    .run(normalized, mediaId);
+  return { affectedRows: result.changes };
+}
+
+function updateAnalysisStatusCloud(mediaId, status) {
+  if (!mediaId) return { affectedRows: 0 };
+  const allowed = new Set(["pending", "running", "success", "failed", "skipped"]);
+  const normalized = allowed.has(status) ? status : "pending";
+  const result = db
+    .prepare(
+      `
+      UPDATE media
+      SET analysis_status_cloud = ?
+      WHERE id = ?
+    `,
+    )
+    .run(normalized, mediaId);
+  return { affectedRows: result.changes };
+}
+
+function listFailedMedias({ userId, stage, mediaIds = null, limit = 500, offset = 0 }) {
+  if (!userId) return [];
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 1000));
+  const safeOffset = Math.max(0, Number(offset) || 0);
+
+  let whereStage = "";
+  if (stage === "ingest") {
+    whereStage = "ingest_status = 'failed'";
+  } else if (stage === "primary") {
+    whereStage = "analysis_status_primary = 'failed'";
+  } else if (stage === "cloud") {
+    whereStage = "analysis_status_cloud = 'failed'";
+  } else {
+    return [];
+  }
+
+  const baseSql = `
+    SELECT
+      id              AS mediaId,
+      file_size_bytes AS fileSize,
+      media_type      AS mediaType,
+      created_at      AS createdAt,
+      original_storage_key AS originalStorageKey,
+      file_hash       AS imageHash
+    FROM media
+    WHERE user_id = ?
+      AND deleted_at IS NULL
+      AND ${whereStage}
+  `;
+
+  let sql = `${baseSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+  const params = [userId];
+
+  if (Array.isArray(mediaIds) && mediaIds.length > 0) {
+    const placeholders = mediaIds.map(() => "?").join(", ");
+    sql = `
+      ${baseSql}
+        AND id IN (${placeholders})
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    mediaIds.forEach((id) => params.push(Number(id)));
+  }
+
+  params.push(safeLimit, safeOffset);
+
+  const rows = db.prepare(sql).all(...params);
+  return rows.map((row) => ({
+    mediaId: row.mediaId,
+    fileSize: row.fileSize,
+    mediaType: row.mediaType || "image",
+    createdAt: row.createdAt,
+    originalStorageKey: row.originalStorageKey,
+    imageHash: row.imageHash,
+  }));
+}
+
 /**
  * 👤 插入人脸特征向量数据到face_embeddings表
  *
@@ -1669,4 +1761,7 @@ module.exports = {
   rebuildMediaSearchDoc,
   updateIngestStatusByHash,
   upsertMediaAiFieldsForAnalysis,
+  updateAnalysisStatusPrimary,
+  updateAnalysisStatusCloud,
+  listFailedMedias,
 };

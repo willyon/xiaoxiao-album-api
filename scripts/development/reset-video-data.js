@@ -113,7 +113,7 @@ function clearLocalStorageVideosOnly() {
 }
 
 /**
- * 删除 media 表中视频行；依赖外键 ON DELETE CASCADE 清理 video_keyframes、video_transcripts、
+ * 删除 media 表中视频行；依赖外键 ON DELETE CASCADE 清理
  * album_media、media_face_embeddings 等子表（见 initTableModel）
  */
 function deleteVideoRowsFromMedia() {

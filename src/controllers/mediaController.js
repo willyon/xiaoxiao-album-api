@@ -13,9 +13,10 @@ const { getRedisClient } = require("../services/redisClient");
 const { userSetKey } = require("../workers/userMediaHashset");
 const { updateProgress } = require("../services/mediaProcessingProgressService");
 const logger = require("../utils/logger");
-const { getMediaDownloadInfo, rebuildMediaSearchDoc, selectMediaRowByHashForUser } = require("../models/mediaModel");
+const { getMediaDownloadInfo, rebuildMediaSearchDoc, selectMediaRowByHashForUser, listFailedMedias, updateAnalysisStatusPrimary } = require("../models/mediaModel");
 const trashService = require("../services/trashService");
 const { mediaAnalysisQueue } = require("../queues/mediaAnalysisQueue");
+const { mediaMetaQueue } = require("../queues/mediaMetaQueue");
 
 // 分页获取模糊图列表（is_blurry = 1），用于清理页模糊图 tab
 // GET /api/media/blurry?pageNo=1&pageSize=20
@@ -293,6 +294,182 @@ async function handleRebuildSearchMedia(req, res, next) {
   }
 }
 
+/**
+ * 获取处理失败媒体列表
+ * GET /api/media/processing-failures?stage=primary&pageNo=&pageSize=
+ */
+async function handleGetProcessingFailures(req, res, next) {
+  try {
+    const userId = req?.user?.userId;
+  const stage = req.query.stage || null; // null / 'all' → 全部阶段
+    const pageNo = Number(req.query.pageNo) || 1;
+    const pageSize = Math.min(Number(req.query.pageSize) || 50, 200);
+
+  const validStages = ["ingest", "primary", "cloud"];
+  const stagesToQuery =
+    stage === null || stage === "all"
+      ? validStages
+      : validStages.includes(stage)
+        ? [stage]
+        : [];
+
+  if (stagesToQuery.length === 0) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: "error",
+    });
+  }
+
+  const offset = (pageNo - 1) * pageSize;
+
+  const payloadItems = [];
+
+  for (const s of stagesToQuery) {
+    const items = listFailedMedias({ userId, stage: s, mediaIds: null, limit: pageSize, offset });
+    for (const item of items) {
+      payloadItems.push({
+        mediaId: item.mediaId,
+        fileSize: item.fileSize,
+        mediaType: item.mediaType,
+        stage: s,
+      });
+    }
+  }
+
+  const total = payloadItems.length;
+
+    res.sendResponse({
+      data: {
+        pageNo,
+        pageSize,
+        total,
+        items: payloadItems,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * 重试处理失败媒体
+ * POST /api/media/processing-failures/retry?stage=primary
+ * body: { mediaIds?: number[] }
+ */
+async function handleRetryProcessingFailures(req, res, next) {
+  try {
+    const userId = req?.user?.userId;
+    const stage = req.query.stage || null; // null / 'all' → 所有阶段
+    const bodyMediaIds = Array.isArray(req.body?.mediaIds) ? req.body.mediaIds : null;
+
+    const validStages = ["primary", "ingest"];
+    const stagesToRetry =
+      stage === null || stage === "all"
+        ? validStages
+        : validStages.includes(stage)
+          ? [stage]
+          : [];
+
+    if (stagesToRetry.length === 0) {
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
+      });
+    }
+
+    const failedMediasWithStage = [];
+
+    for (const s of stagesToRetry) {
+      const items = listFailedMedias({
+        userId,
+        stage: s,
+        mediaIds: bodyMediaIds || null,
+        limit: 500,
+        offset: 0,
+      });
+      for (const it of items) {
+        failedMediasWithStage.push({ ...it, stage: s });
+      }
+    }
+
+    if (!failedMediasWithStage.length) {
+      return res.sendResponse({
+        data: { stage: stage || "all", retriedCount: 0, skippedCount: 0, mediaIds: [] },
+      });
+    }
+
+    let retriedCount = 0;
+    const retriedMediaIds = [];
+
+    for (const media of failedMediasWithStage) {
+      const mediaId = media.mediaId;
+
+      if (media.stage === "primary") {
+        const mediaInfo = getMediaDownloadInfo({ userId, imageId: mediaId });
+        if (!mediaInfo) continue;
+
+        const jobId = `retry-primary:${userId}:${mediaId}:${Date.now()}`;
+        await mediaAnalysisQueue.add(
+          "media-analysis",
+          {
+            imageId: mediaInfo.id,
+            userId,
+            highResStorageKey: mediaInfo.highResStorageKey || null,
+            originalStorageKey: mediaInfo.originalStorageKey || null,
+            mediaType: mediaInfo.mediaType || "image",
+            fileName: "",
+          },
+          { jobId },
+        );
+
+        try {
+          updateAnalysisStatusPrimary(mediaInfo.id, "running");
+        } catch (_e) {
+          // ignore
+        }
+      } else if (media.stage === "ingest") {
+        // 基础处理重试：基于 original_storage_key 重新入队 meta 阶段
+        if (!media.originalStorageKey) {
+          continue;
+        }
+
+        await mediaMetaQueue.add(
+          process.env.MEDIA_META_QUEUE_NAME || "media-meta",
+          {
+            userId,
+            imageHash: media.imageHash,
+            fileName: "",
+            originalStorageKey: media.originalStorageKey,
+            mediaType: media.mediaType || "image",
+            extension: process.env.MEDIA_HIGHRES_EXTENSION || "avif",
+            fileSize: media.fileSize,
+            sessionId: null,
+          },
+          {
+            jobId: `retry-ingest:${userId}:${mediaId}:${Date.now()}`,
+          },
+        );
+      }
+
+      retriedMediaIds.push(String(mediaId));
+      retriedCount += 1;
+    }
+
+    res.sendResponse({
+      data: {
+        stage: stage || "all",
+        retriedCount,
+        skippedCount: failedMediasWithStage.length - retriedCount,
+        mediaIds: retriedMediaIds,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   handleGetBlurryMedias,
   handleGetSimilarGroups,
@@ -301,4 +478,6 @@ module.exports = {
   handleDeleteMedias,
   handleReanalyzeMedia,
   handleRebuildSearchMedia,
+   handleGetProcessingFailures,
+   handleRetryProcessingFailures,
 };

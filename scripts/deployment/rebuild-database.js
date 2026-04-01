@@ -3,7 +3,7 @@
  * 使用方式：node scripts/deployment/rebuild-database.js
  *
  * 覆盖表：users, media（文案/OCR/分析状态与指标均在 media）,
- *        media_face_embeddings, media_embeddings, video_keyframes, video_transcripts,
+ *        media_face_embeddings, media_embeddings,
  *        albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta,
  *        similar_groups, similar_group_members, media_search, media_search_fts, media_search_terms
  */
@@ -21,8 +21,6 @@ const {
   createTableMedia,
   createTableMediaFaceEmbeddings,
   createTableMediaEmbeddings,
-  createTableVideoKeyframes,
-  createTableVideoTranscripts,
   createTableAlbumsMediaVersion,
   createTableAlbumMedia,
   createTableFaceClustersMediaVersion,
@@ -39,8 +37,6 @@ const {
 const TABLES_TO_DROP = [
   "album_media",
   "albums",
-  "video_transcripts",
-  "video_keyframes",
   "media_search_fts",
   "media_fts",
   "media_search_terms",
@@ -90,8 +86,6 @@ async function rebuildDatabase() {
       createTableMedia();
       createTableMediaFaceEmbeddings();
       createTableMediaEmbeddings();
-      createTableVideoKeyframes();
-      createTableVideoTranscripts();
       createTableAlbumsMediaVersion();
       createTableAlbumMedia();
       createTableFaceClustersMediaVersion();
@@ -107,7 +101,7 @@ async function rebuildDatabase() {
 
       console.log("🎉 数据库重建完成！");
       console.log(
-        "📋 已创建表：users, media, media_face_embeddings, media_embeddings, video_keyframes, video_transcripts, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_search_fts, media_search_terms",
+        "📋 已创建表：users, media, media_face_embeddings, media_embeddings, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_search_fts, media_search_terms",
       );
     } catch (err) {
       db.prepare("ROLLBACK").run();

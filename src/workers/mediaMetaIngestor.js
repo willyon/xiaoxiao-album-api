@@ -14,6 +14,7 @@ const { updateProgress, updateProgressOnce } = require("../services/mediaProcess
 const { mediaAnalysisQueue } = require("../queues/mediaAnalysisQueue");
 const mediaMetadataService = require("../services/mediaMetadataService");
 const { addMediaToSession } = require("../services/uploadSessionService");
+const { updateAnalysisStatusPrimary } = require("../models/mediaModel");
 const { getVideoMimeTypeFromFileName } = require("../utils/fileUtils");
 
 /**
@@ -115,10 +116,10 @@ async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userI
 /**
  * 处理视频的 meta 阶段：ffprobe 元数据、移动原片、入队 AI 阶段
  */
-async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, originalStorageKey, sessionId }) {
+async function processVideoMeta(job, { userId, imageHash, fileName, originalStorageKey, sessionId }) {
   let videoPath;
   try {
-    videoPath = await storageService.storage.getFileData(storageKey);
+    videoPath = await storageService.storage.getFileData(originalStorageKey);
   } catch (err) {
     await _handleMetaRetryFailure({ job, reason: "file_read_failed", fileName, imageHash, userId });
     throw err;
@@ -161,7 +162,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
   const durationSec = typeof meta.duration === "number" ? Math.round(meta.duration) : null;
 
   let imageId = null;
-  let effectiveOriginalStorageKey = originalStorageKey;
+  const effectiveOriginalStorageKey = originalStorageKey;
   try {
     const result = await saveProcessedMediaMetadata({
       userId,
@@ -210,31 +211,6 @@ async function processVideoMeta(job, { userId, imageHash, fileName, storageKey, 
     } catch (error) {}
   }
 
-  try {
-    await storageService.storage.moveFile(storageKey, originalStorageKey);
-  } catch (e) {
-    // 与图片链路保持一致：移动失败不阻断主流程，但要保证 DB 中 original_storage_key 可用
-    // 否则会出现 DB 指向 original 路径、实际文件仍在临时路径，导致下载失败
-    logger.warn({
-      message: "Video original file move failed",
-      details: { imageHash, userId, sourceStorageKey: storageKey, targetStorageKey: originalStorageKey, error: e.message },
-    });
-    effectiveOriginalStorageKey = storageKey;
-    try {
-      await saveProcessedMediaMetadata({
-        userId,
-        imageHash,
-        originalStorageKey: storageKey,
-        mediaType: "video",
-      });
-    } catch (fallbackErr) {
-      logger.warn({
-        message: "Video fallback original_storage_key sync failed",
-        details: { imageHash, userId, fallbackStorageKey: storageKey, error: fallbackErr.message },
-      });
-    }
-  }
-
   await _enqueueAiAndCleanup({
     imageId,
     userId,
@@ -264,6 +240,13 @@ async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, origin
   }
 
   try {
+    // 标记本地智能分析阶段为 running
+    try {
+      updateAnalysisStatusPrimary(imageId, "running");
+    } catch (_e) {
+      // 忽略状态写入失败，不阻断主流程
+    }
+
     await mediaAnalysisQueue.add(
       "media-analysis",
       {
@@ -302,7 +285,7 @@ async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, origin
  * @param {Object} job - BullMQ job对象
  */
 async function processMediaMeta(job) {
-  const { userId, imageHash, fileName, storageKey, extension, fileSize, sessionId, mediaType = "image" } = job.data;
+  const { userId, imageHash, fileName, originalStorageKey, extension, fileSize, sessionId, mediaType = "image" } = job.data;
 
   await setMediaIngestStatus({
     userId,
@@ -310,16 +293,12 @@ async function processMediaMeta(job) {
     ingestStatus: "processing",
   });
 
-  const originalType = process.env.MEDIA_STORAGE_KEY_ORIGINAL || "original";
-  const originalStorageKey = storageService.storage.generateStorageKey(originalType, fileName);
-
   // ========== 视频分支：ffprobe 元数据，不生成 highres；会入队 AI worker 做 analysis 完成态收敛 ==========
   if (mediaType === "video") {
     return processVideoMeta(job, {
       userId,
       imageHash,
       fileName,
-      storageKey,
       originalStorageKey,
       sessionId,
     });
@@ -333,7 +312,7 @@ async function processMediaMeta(job) {
 
   let fileData = null;
   try {
-    fileData = await storageService.storage.getFileData(storageKey);
+    fileData = await storageService.storage.getFileData(originalStorageKey);
   } catch (err) {
     await _handleMetaRetryFailure({ job, reason: "file_read_failed", fileName, imageHash, userId });
     throw err;
@@ -378,7 +357,7 @@ async function processMediaMeta(job) {
       async () => {
         return await storageService.processAndStoreImage({
           fileSize,
-          sourceStorageKey: storageKey,
+          sourceStorageKey: originalStorageKey,
           targetStorageKey: highResStorageKey,
           extension,
           quality: 65,
@@ -457,25 +436,6 @@ async function processMediaMeta(job) {
     throw e;
   }
   // ======== 移动原图到 original 存储位置 ========
-  try {
-    await storageService.storage.moveFile(storageKey, originalStorageKey);
-  } catch (e) {
-    // 原图移动失败 - 非致命错误，不影响核心功能
-    logger.warn({
-      message: "Original file move failed - file remains in temporary location",
-      details: {
-        imageHash,
-        userId,
-        sourceStorageKey: storageKey,
-        targetStorageKey: originalStorageKey,
-        error: e.message,
-        note: "This does not affect image functionality, manual cleanup may be needed",
-      },
-    });
-
-    // 不抛出错误，让任务正常完成
-  }
-
   if (sessionId && imageId) {
     try {
       await addMediaToSession({ sessionId, mediaId: imageId });
