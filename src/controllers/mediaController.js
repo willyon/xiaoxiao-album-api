@@ -13,10 +13,17 @@ const { getRedisClient } = require("../services/redisClient");
 const { userSetKey } = require("../workers/userMediaHashset");
 const { updateProgress } = require("../services/mediaProcessingProgressService");
 const logger = require("../utils/logger");
-const { getMediaDownloadInfo, rebuildMediaSearchDoc, selectMediaRowByHashForUser, listFailedMedias, updateAnalysisStatusPrimary } = require("../models/mediaModel");
+const {
+  getMediaDownloadInfo,
+  rebuildMediaSearchDoc,
+  selectMediaRowByHashForUser,
+  listFailedMedias,
+  updateAnalysisStatusPrimary,
+} = require("../models/mediaModel");
 const trashService = require("../services/trashService");
 const { mediaAnalysisQueue } = require("../queues/mediaAnalysisQueue");
 const { mediaMetaQueue } = require("../queues/mediaMetaQueue");
+const { cloudCaptionQueue } = require("../queues/cloudCaptionQueue");
 
 // 分页获取模糊图列表（is_blurry = 1），用于清理页模糊图 tab
 // GET /api/media/blurry?pageNo=1&pageSize=20
@@ -363,7 +370,7 @@ async function handleRetryProcessingFailures(req, res, next) {
     const stage = req.query.stage || null; // null / 'all' → 所有阶段
     const bodyMediaIds = Array.isArray(req.body?.mediaIds) ? req.body.mediaIds : null;
 
-    const validStages = ["primary", "ingest"];
+    const validStages = ["primary", "ingest", "cloud"];
     const stagesToRetry =
       stage === null || stage === "all"
         ? validStages
@@ -450,6 +457,22 @@ async function handleRetryProcessingFailures(req, res, next) {
           {
             jobId: `retry-ingest:${userId}:${mediaId}:${Date.now()}`,
           },
+        );
+      } else if (media.stage === "cloud") {
+        const mediaInfo = getMediaDownloadInfo({ userId, imageId: mediaId });
+        if (!mediaInfo) continue;
+
+        const jobId = `retry-cloud:${userId}:${mediaId}:${Date.now()}`;
+        await cloudCaptionQueue.add(
+          "cloud-caption-retry",
+          {
+            mediaId: mediaInfo.id,
+            userId,
+            highResStorageKey: mediaInfo.highResStorageKey ?? null,
+            originalStorageKey: mediaInfo.originalStorageKey ?? null,
+            mediaType: mediaInfo.mediaType || "image",
+          },
+          { jobId },
         );
       }
 

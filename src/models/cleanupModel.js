@@ -185,7 +185,6 @@ function selectDisplayableSimilarGroups({ userId, limit, offset }) {
       sg.user_id,
       sg.primary_media_id,
       sg.member_count,
-      sg.total_size_bytes,
       sg.created_at,
       sg.updated_at
     FROM similar_groups sg
@@ -295,8 +294,7 @@ function refreshGroupStats(groupId, { updatedAt }) {
   // 统计所有未删除的成员（包含推荐图片）
   const statsStmt = db.prepare(`
     SELECT
-      COUNT(*) AS member_count,
-      COALESCE(SUM(i.file_size_bytes), 0) AS total_size_bytes
+      COUNT(*) AS member_count
     FROM similar_group_members cgm
     JOIN media i ON i.id = cgm.media_id
     WHERE cgm.group_id = ?
@@ -331,12 +329,11 @@ function refreshGroupStats(groupId, { updatedAt }) {
     UPDATE similar_groups
     SET
       member_count = ?,
-      total_size_bytes = ?,
       primary_media_id = ?,
       updated_at = ?
     WHERE id = ?
   `);
-  updateStmt.run(stats.member_count || 0, stats.total_size_bytes || 0, primary?.media_id || null, updatedAt, groupId);
+  updateStmt.run(stats.member_count || 0, primary?.media_id || null, updatedAt, groupId);
   return { deleted: false, memberCount: stats.member_count || 0 };
 }
 

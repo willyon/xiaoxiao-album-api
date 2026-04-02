@@ -68,11 +68,6 @@ class ModelManager:
     def _resolve_device(self, device: str) -> str:
         return resolve_device(device or settings.DEFAULT_DEVICE)
 
-    def _cloud_api_key(self, capability: str) -> str:
-        if capability == "caption":
-            return (getattr(settings, "CAPTION_CLOUD_API_KEY", "") or "").strip()
-        return ""
-
     def _configured_cloud_vendor(self, capability: str) -> str:
         if capability == "caption":
             return ((getattr(settings, "CAPTION_CLOUD_VENDOR", "qwen") or "qwen").strip().lower())
@@ -98,7 +93,8 @@ class ModelManager:
         if provider == "off":
             return False
         if provider == "cloud":
-            return bool(self._cloud_api_key(capability)) and bool(self._cloud_vendor(capability))
+            # 仅根据 vendor 判断可用性；API Key 由调用方通过 cloud_config 透传
+            return bool(self._cloud_vendor(capability))
         return False
 
     def _caption_runtime_ready(self) -> bool:

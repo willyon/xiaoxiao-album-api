@@ -8,7 +8,7 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from typing import Optional
@@ -33,6 +33,8 @@ async def analyze_image_route(
     image_path: Optional[str] = Form(None),
     device: str = Form("auto"),
     image_id: Optional[str] = Form(None),
+    cloud_config: Optional[str] = Form(None),
+    modules: Optional[str] = Query(None, description="可选：逗号分隔的模块名列表，如 'caption' 或 'caption,person'"),
 ):
     """
     全量图片分析：串行执行各模块（含 caption/person/quality/embedding 等），
@@ -81,11 +83,33 @@ async def analyze_image_route(
             detail=ErrorBody(error_code=IMAGE_DECODE_FAILED, error_message=decode_err or "图片解码失败").dict(),
         )
     manager = get_model_manager()
+    # 解析可选的 modules 查询参数：仅允许白名单中的模块名
+    module_names = None
+    if modules:
+        raw = [m.strip() for m in str(modules).split(",") if m and str(m).strip()]
+        allowed = {"embedding", "person", "quality", "caption"}
+        filtered = [m for m in raw if m in allowed]
+        if filtered:
+            module_names = filtered
+    cloud_api_key: Optional[str] = None
+    if cloud_config:
+        try:
+            import json
+
+            parsed = json.loads(cloud_config)
+            if isinstance(parsed, dict):
+                raw_key = parsed.get("api_key")
+                if isinstance(raw_key, str):
+                    cloud_api_key = raw_key.strip() or None
+        except Exception:
+            cloud_api_key = None
     result = run_analyze_image(
         image_bgr=img_bgr,
         device=resolved,
         manager=manager,
         image_id=image_id,
+        module_names=module_names,
+        cloud_api_key=cloud_api_key,
     )
     # 开发环境：返回 Node 前打一行与响应同结构的预览（已剔除 embedding/长 vector）
     if settings.NODE_ENV == "development":

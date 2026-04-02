@@ -12,7 +12,9 @@ const {
   upsertMediaAiFieldsForAnalysis,
   normalizeTextArray,
   updateAnalysisStatusPrimary,
+  updateAnalysisStatusCloud,
 } = require("../models/mediaModel");
+const { getCloudConfigForAnalysis } = require("../services/cloudModelService");
 const { updateProgressOnce } = require("../services/mediaProcessingProgressService");
 const axios = require("axios");
 const { withAiSlot } = require("../services/aiConcurrencyLimiter");
@@ -21,10 +23,8 @@ const { upsertMediaEmbedding } = require("../models/mediaEmbeddingModel");
 const { scheduleUserRebuild } = require("../services/cleanupGroupingScheduler");
 const { scheduleUserClustering } = require("../services/faceClusterScheduler");
 const PYTHON_SERVICE_URL = process.env.PYTHON_CLEANUP_SERVICE_URL || process.env.PYTHON_FACE_SERVICE_URL || "http://localhost:5001";
-// 优先 ANALYZE_IMAGE_TIMEOUT_MS；仍认 ANALYZE_FULL_TIMEOUT_MS 以兼容旧部署
-const ANALYZE_IMAGE_TIMEOUT_MS = Number(
-  process.env.ANALYZE_IMAGE_TIMEOUT_MS || process.env.ANALYZE_FULL_TIMEOUT_MS || 120000
-);
+// 图片分析超时：仅认 ANALYZE_IMAGE_TIMEOUT_MS，默认 120 秒
+const ANALYZE_IMAGE_TIMEOUT_MS = Number(process.env.ANALYZE_IMAGE_TIMEOUT_MS || 120000);
 /** 视频多帧分析，默认 10 分钟；可通过 ANALYZE_VIDEO_TIMEOUT_MS 覆盖 */
 const ANALYZE_VIDEO_TIMEOUT_MS = Number(process.env.ANALYZE_VIDEO_TIMEOUT_MS || 600000);
 // 与 .env 的 ANALYZE_IMAGE_USE_LOCAL_PATH 对应：未设置或 true → 本地存储时优先传 image_path；为 false 时强制 multipart
@@ -208,6 +208,8 @@ async function _resolveVideoLocalPath({ highResStorageKey, originalStorageKey, i
 
 async function _runAnalyzeVideo({ imageId, userId, videoPath, stepResults }) {
   const device = process.env.AI_DEVICE || "auto";
+  const cloudConfig = getCloudConfigForAnalysis();
+  const cloudEnabled = !!cloudConfig;
   const response = await withAiSlot(() =>
     axios.post(
       `${PYTHON_SERVICE_URL}/analyze_video`,
@@ -215,6 +217,7 @@ async function _runAnalyzeVideo({ imageId, userId, videoPath, stepResults }) {
         video_path: videoPath,
         device,
         image_id: String(imageId),
+        cloud_config: cloudConfig,
       },
       {
         timeout: ANALYZE_VIDEO_TIMEOUT_MS,
@@ -224,7 +227,7 @@ async function _runAnalyzeVideo({ imageId, userId, videoPath, stepResults }) {
     ),
   );
   const body = response.data || {};
-  _applyAdapterFromModules(imageId, userId, body, stepResults, { mediaType: "video" });
+  _applyAdapterFromModules(imageId, userId, body, stepResults, { mediaType: "video", cloudEnabled });
 }
 
 async function _markMediaAnalysisRunning(imageId) {
@@ -270,6 +273,12 @@ async function _runAnalyzeImage({ imageId, userId, imageData, localPath, stepRes
   const device = process.env.AI_DEVICE || "auto";
   formData.append("device", device);
   formData.append("image_id", String(imageId));
+  const cloudConfig = getCloudConfigForAnalysis();
+  const cloudEnabled = !!cloudConfig;
+  if (cloudConfig) {
+    // cloud_config 作为 JSON 字符串透传给 Python
+    formData.append("cloud_config", JSON.stringify(cloudConfig));
+  }
   const response = await withAiSlot(() =>
     axios.post(`${PYTHON_SERVICE_URL}/analyze_image`, formData, {
       timeout: ANALYZE_IMAGE_TIMEOUT_MS,
@@ -278,11 +287,12 @@ async function _runAnalyzeImage({ imageId, userId, imageData, localPath, stepRes
     }),
   );
   const body = response.data || {};
-  _applyAdapterFromModules(imageId, userId, body, stepResults, { mediaType: "image" });
+  _applyAdapterFromModules(imageId, userId, body, stepResults, { mediaType: "image", cloudEnabled });
 }
 
 function _applyAdapterFromModules(imageId, userId, body, stepResults, options = {}) {
   const mediaType = options.mediaType === "video" ? "video" : "image";
+  const cloudEnabled = options.cloudEnabled !== false;
   const modules = body.data || {};
   const round2 = (v) => (typeof v === "number" ? Number(v.toFixed(2)) : null);
 
@@ -320,6 +330,21 @@ function _applyAdapterFromModules(imageId, userId, body, stepResults, options = 
     }
   } else {
     stepResults.description = { status: capStatus || "failed", errorCode: captionModule?.error?.code || null, data: {} };
+  }
+
+  // 同步云分析状态（仅使用业务侧枚举：success / running / skipped / failed）
+  // - 云模型未启用：统一视为“可补跑”，标记为 skipped
+  // - 云模型启用：仅根据 Python caption 模块的 success / failed 做二元归类
+  if (!cloudEnabled) {
+    updateAnalysisStatusCloud(imageId, "skipped");
+  } else if (capStatus === "success") {
+    updateAnalysisStatusCloud(imageId, "success");
+  } else if (capStatus === "failed") {
+    // 包含 MODULE_DISABLED / AI_SERVICE_ERROR / IMAGE_DECODE_FAILED / AI_TIMEOUT 等所有失败类型
+    updateAnalysisStatusCloud(imageId, "failed");
+  } else {
+    // 兜底：Python 端理论上不会返回其它 status，这里统一视为 failed，避免产生无法识别的状态
+    updateAnalysisStatusCloud(imageId, "failed");
   }
 
   upsertMediaAiFieldsForAnalysis({

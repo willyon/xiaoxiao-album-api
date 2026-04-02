@@ -191,13 +191,6 @@ class Settings:
     # - 需要代理、网关或兼容层时可按能力单独覆盖
     CAPTION_CLOUD_BASE_URL = (os.getenv("CAPTION_CLOUD_BASE_URL") or "").strip()
 
-    # 通用云 API Key（caption 云可回退到此项）
-    CLOUD_API_KEY = os.getenv("CLOUD_API_KEY", "sk-333be461c3ac4e5bb015838918ebe7d0").strip()
-
-    # 云 provider 的 API Key
-    # - 优先读取能力级 key；若未配置，则回退到通用 CLOUD_API_KEY
-    CAPTION_CLOUD_API_KEY = (os.getenv("CAPTION_CLOUD_API_KEY") or CLOUD_API_KEY).strip()
-    
     # 推理与模型缓存（首版可不实现 LRU，仅占位）
     MODEL_CACHE_LIMIT = int(os.getenv("MODEL_CACHE_LIMIT", "16"))
 

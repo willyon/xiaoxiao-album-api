@@ -52,7 +52,7 @@ from config import settings
 from logger import logger
 
 # 导入路由模块
-from routes import analyze_image, analyze_video, face_cluster, health
+from routes import analyze_image, analyze_video, face_cluster, health, cloud_test
 
 # 导入 ModelManager
 from services.model_manager import get_model_manager
@@ -97,6 +97,7 @@ def create_app():
     app.include_router(analyze_image.router, tags=["图片分析"])
     app.include_router(analyze_video.router, tags=["视频分析"])
     app.include_router(face_cluster.router, tags=["人脸聚类"])
+    app.include_router(cloud_test.router, tags=["云模型测试"])
     
     return app
 

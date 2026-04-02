@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 
 from config import settings
-from constants.error_codes import AI_SERVICE_ERROR, IMAGE_DECODE_FAILED
+from constants.error_codes import AI_SERVICE_ERROR, IMAGE_DECODE_FAILED, MODULE_DISABLED
 from logger import logger
 from services.analyze_image_orchestrator import run_analyze_image
 from services.model_manager import get_model_manager
@@ -129,8 +129,13 @@ def run_analyze_video(
     video_path: str,
     device: str,
     image_id: Optional[str] = None,
+    cloud_api_key: Optional[str] = None,
+    module_names: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """返回结构：image_id, duration_ms, data.{person,caption}。"""
+    """返回结构：image_id, duration_ms, data.{person,caption}。
+
+    module_names 为空时默认跑 ["person", "caption"]；仅用于内部选择需要的子模块（如云补跑仅 caption）。
+    """
     resolved_dev, dev_err = normalize_device(device)
     if dev_err:
         return _fail_all_modules(image_id, str(dev_err))
@@ -158,6 +163,8 @@ def run_analyze_video(
 
         manager = get_model_manager()
 
+        selected_modules = module_names or ["person", "caption"]
+
         per_frame: List[Dict[str, Any]] = []
         sample_ts_ms: List[float] = []
 
@@ -175,7 +182,8 @@ def run_analyze_video(
                 device=resolved_dev,
                 manager=manager,
                 image_id=None,
-                module_names=["person", "caption"],
+                module_names=selected_modules,
+                cloud_api_key=cloud_api_key,
             )
             one["_frame_index"] = idx
             one["_frame_analyze_ms"] = round((time.perf_counter() - t0) * 1000)
@@ -210,7 +218,7 @@ def run_analyze_video(
         if not per_frame:
             return _fail_all_modules(image_id, "未能解码任何采样帧")
 
-        agg = _aggregate_per_frame_results(per_frame)
+        agg = _aggregate_per_frame_results(per_frame, cloud_api_key=cloud_api_key)
         total_ms = round((time.perf_counter() - started_total) * 1000)
 
         log_payload = {
@@ -238,7 +246,7 @@ def run_analyze_video(
         cap.release()
 
 
-def _aggregate_per_frame_results(per_frame: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _aggregate_per_frame_results(per_frame: List[Dict[str, Any]], *, cloud_api_key: Optional[str] = None) -> Dict[str, Any]:
     """将多帧 run_analyze_image 结果聚合为视频关注的模块（person/caption）。"""
     captions_ok: List[Dict[str, Any]] = []
     video_faces_raw: List[Dict[str, Any]] = []
@@ -307,10 +315,20 @@ def _aggregate_per_frame_results(per_frame: List[Dict[str, Any]]) -> Dict[str, A
         )
 
     # --- caption：合并 ---
-    if captions_ok:
+    # 无云 API Key 时，整条视频 caption 视为禁用
+    if not cloud_api_key:
+        c_mod = build_module_result(
+            status=MODULE_STATUS_FAILED,
+            error={"code": MODULE_DISABLED, "message": "caption module disabled: no cloud api key"},
+        )
+    elif captions_ok:
         descriptions = [str(c.get("description") or "").strip() for c in captions_ok]
         descriptions = [d for d in descriptions if d]
-        merged_desc = merge_frame_descriptions_to_video_summary(descriptions) if descriptions else ""
+        merged_desc = (
+            merge_frame_descriptions_to_video_summary(descriptions, api_key=cloud_api_key)
+            if descriptions
+            else ""
+        )
 
         kw_lists = [c.get("keywords") for c in captions_ok if isinstance(c.get("keywords"), list)]
         sub_lists = [c.get("subject_tags") for c in captions_ok if isinstance(c.get("subject_tags"), list)]

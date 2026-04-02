@@ -149,6 +149,7 @@ def run_analyze_image(
     manager: Any,
     image_id: Optional[str] = None,
     module_names: Optional[List[str]] = None,
+    cloud_api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     串行执行各分析模块，聚合为统一结构。
@@ -181,6 +182,7 @@ def run_analyze_image(
                 device=device,
                 manager=manager,
                 modules=modules,
+                cloud_api_key=cloud_api_key,
             )
             duration_ms = round((time.perf_counter() - t0) * 1000)
             module_result = _finalize_module_data(name, module_result)
@@ -211,10 +213,17 @@ def _run_one_module(
     device: str,
     manager: Any,
     modules: Optional[Dict[str, Dict[str, Any]]] = None,
+    cloud_api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """执行单个模块，返回统一模块结果结构（尚未做缺省键裁剪）。"""
     try:
         if name == "caption":
+            # 无云 API Key 时直接视为模块禁用，不再尝试调用 provider
+            if not cloud_api_key:
+                return build_module_result(
+                    status=MODULE_STATUS_FAILED,
+                    error={"code": MODULE_DISABLED, "message": "caption module disabled: no cloud api key"},
+                )
             configured_provider = getattr(settings, "CAPTION_PROVIDER", "local")
             resolved_provider = normalize_provider(configured_provider)
             provider = get_caption_provider(resolved_provider)
@@ -234,6 +243,7 @@ def _run_one_module(
                 model_manager=manager,
                 configured_provider=configured_provider,
                 resolved_provider=resolved_provider,
+                cloud_api_key=cloud_api_key,
             )
             st = out.get("status") or MODULE_STATUS_FAILED
             err = out.get("error") if isinstance(out.get("error"), dict) else None

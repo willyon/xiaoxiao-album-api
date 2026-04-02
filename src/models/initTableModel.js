@@ -19,6 +19,18 @@ function createTableUsers() {
   db.prepare(createtablestmt).run();
 }
 
+/** 创建 app_settings 表：全局应用配置（如云模型 API Key） */
+function createTableAppSettings() {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at INTEGER
+    );
+  `;
+  db.prepare(sql).run();
+}
+
 /** 创建 face_cluster_representatives：每人脸聚类一条代表向量，用于增量/全量人脸匹配 */
 function createTableFaceClusterRepresentatives() {
   const sql = `
@@ -314,7 +326,9 @@ function createTableFaceClustersMediaVersion() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_face_clusters_cluster_id ON face_clusters(cluster_id);").run();
   db.prepare("CREATE INDEX IF NOT EXISTS idx_face_clusters_cluster_user ON face_clusters(cluster_id, user_id);").run();
   db.prepare("CREATE INDEX IF NOT EXISTS idx_face_clusters_embedding_cluster ON face_clusters(face_embedding_id, cluster_id);").run();
-  db.prepare("CREATE INDEX IF NOT EXISTS idx_face_clusters_user_cluster_rep ON face_clusters(user_id, cluster_id, representative_type DESC, similarity_score DESC);").run();
+  db.prepare(
+    "CREATE INDEX IF NOT EXISTS idx_face_clusters_user_cluster_rep ON face_clusters(user_id, cluster_id, representative_type DESC, similarity_score DESC);",
+  ).run();
 }
 
 /** 创建 similar_groups：相似图分组，primary_media_id 指向 media */
@@ -359,6 +373,7 @@ function createTableSimilarGroupMembersMediaVersion() {
 
 module.exports = {
   createTableUsers,
+  createTableAppSettings,
   createTableFaceClusterRepresentatives,
   createTableFaceClusterMeta,
   createTableMedia,

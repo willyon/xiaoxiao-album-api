@@ -224,15 +224,7 @@ function insertMedia({ userId, imageHash, thumbnailStorageKey, fileSizeBytes, me
       original_storage_key
     ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
   `);
-  const result = stmt.run(
-    userId,
-    imageHash,
-    now,
-    thumbnailStorageKey || null,
-    fileSizeBytes || null,
-    normalizedType,
-    originalStorageKey || null,
-  );
+  const result = stmt.run(userId, imageHash, now, thumbnailStorageKey || null, fileSizeBytes || null, normalizedType, originalStorageKey || null);
 
   return { affectedRows: result.changes };
 }
@@ -1480,6 +1472,54 @@ function listFailedMedias({ userId, stage, mediaIds = null, limit = 500, offset 
   }));
 }
 
+function getCloudCaptionProgressStats() {
+  const row = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN analysis_status_cloud = 'success' THEN 1 ELSE 0 END) AS successCount,
+        SUM(CASE WHEN analysis_status_cloud = 'running' THEN 1 ELSE 0 END) AS runningCount,
+        SUM(CASE WHEN analysis_status_cloud = 'failed'  THEN 1 ELSE 0 END) AS failedCount,
+        SUM(CASE WHEN analysis_status_cloud = 'skipped' THEN 1 ELSE 0 END) AS skippedCount,
+        SUM(CASE WHEN analysis_status_cloud = 'pending' THEN 1 ELSE 0 END) AS pendingCount
+      FROM media
+      WHERE deleted_at IS NULL
+    `,
+    )
+    .get();
+  return {
+    total: row?.total || 0,
+    successCount: row?.successCount || 0,
+    runningCount: row?.runningCount || 0,
+    failedCount: row?.failedCount || 0,
+    skippedCount: row?.skippedCount || 0,
+    pendingCount: row?.pendingCount || 0,
+  };
+}
+
+function selectPendingCloudCaptionBatch(limit) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 500, 2000));
+  const stmt = db.prepare(
+    `
+    SELECT
+      id   AS mediaId,
+      user_id AS userId,
+      high_res_storage_key AS highResStorageKey,
+      original_storage_key AS originalStorageKey,
+      media_type AS mediaType
+    FROM media
+    WHERE deleted_at IS NULL
+      AND (high_res_storage_key IS NOT NULL OR original_storage_key IS NOT NULL)
+      AND analysis_status_primary = 'success'
+      AND analysis_status_cloud IN ('failed', 'skipped')
+    ORDER BY id DESC
+    LIMIT ?
+  `,
+  );
+  return stmt.all(safeLimit);
+}
+
 /**
  * 👤 插入人脸特征向量数据到face_embeddings表
  *
@@ -1764,4 +1804,6 @@ module.exports = {
   updateAnalysisStatusPrimary,
   updateAnalysisStatusCloud,
   listFailedMedias,
+  getCloudCaptionProgressStats,
+  selectPendingCloudCaptionBatch,
 };

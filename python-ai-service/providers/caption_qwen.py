@@ -12,15 +12,12 @@ from services.module_result import MODULE_STATUS_FAILED, MODULE_STATUS_SUCCESS, 
 from config import settings
 from providers.base import BaseCaptionProvider
 from providers.qwen_common import (
-    DEFAULT_QWEN_COMPATIBLE_BASE_URL,
     dedupe_keywords_against_tags,
     encode_image_to_data_url,
-    extract_openai_message_text,
     normalize_keywords,
     parse_json_object_from_text,
-    post_json,
-    resolve_endpoint,
 )
+from services.cloud_caption_client import call_qwen_vision_json
 from utils.errors import AiServiceError, AiTimeoutError
 
 
@@ -33,6 +30,7 @@ class QwenCaptionProvider(BaseCaptionProvider):
         model_manager: Any,
         configured_provider: str,
         resolved_provider: str,
+        cloud_api_key: str | None = None,
     ) -> Dict[str, Any]:
         base_data = {
             "description": "",
@@ -43,14 +41,6 @@ class QwenCaptionProvider(BaseCaptionProvider):
             "ocr": "",
         }
 
-        api_key = (getattr(settings, "CAPTION_CLOUD_API_KEY", "") or "").strip()
-        if not api_key:
-            return build_module_result(
-                status=MODULE_STATUS_FAILED,
-                data=base_data,
-                error={"code": AI_SERVICE_ERROR, "message": "caption cloud api key missing"},
-            )
-
         json_shape = '{"description":"","keywords":[],"subject_tags":[],"action_tags":[],"scene_tags":[],"ocr":"","face_count":0,"person_count":0}'
         vision_text_rules = (
             "【ocr】逐字转写整张图里能看清的文字（边角、分屏、文档区与人物区域一样要扫到），"
@@ -60,7 +50,6 @@ class QwenCaptionProvider(BaseCaptionProvider):
             "【face_count】非负整数：图中可见、可辨认为「人脸」的个数（含侧脸、远景小脸；完全无法判断则填 0）。"
             "【person_count】非负整数：图中可见「人物」数量（含背影、远景人形、仅身体不露脸者；可与 face_count 不同；无法判断则填 0）。"
         )
-        model = getattr(settings, "CAPTION_CLOUD_MODEL", "") or "qwen3-vl-plus"
         prompt = (
             "请分析这张图片，并严格输出一个 JSON 对象，不要输出 Markdown 或额外解释。"
             f"JSON 结构必须为 {json_shape}。"
@@ -82,33 +71,14 @@ class QwenCaptionProvider(BaseCaptionProvider):
             "subject_tags / action_tags / scene_tags 职责分明，同一词尽量只放在最合适的一类；"
             "若无法判断，对应字段返回空字符串或空数组。"
         )
-        max_tokens = int(getattr(settings, "CAPTION_MAX_TOKENS", 150) or 150)
-        max_tokens = max(
-            max_tokens,
-            int(getattr(settings, "CAPTION_CLOUD_VISION_OCR_MAX_TOKENS", 1024) or 1024),
-        )
-        endpoint = resolve_endpoint(
-            getattr(settings, "CAPTION_CLOUD_BASE_URL", "") or "",
-            DEFAULT_QWEN_COMPATIBLE_BASE_URL,
-            "chat/completions",
-        )
-        payload = {
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image_url", "image_url": {"url": encode_image_to_data_url(image)}},
-                        {"type": "text", "text": prompt},
-                    ],
-                }
-            ],
-            "max_tokens": max_tokens,
-        }
-
         try:
-            response = post_json(endpoint, payload, api_key, float(getattr(settings, "CAPTION_TIMEOUT_SECONDS", 30.0) or 30.0))
-            raw_text = extract_openai_message_text(response)
+            image_data_url = encode_image_to_data_url(image)
+            resp = call_qwen_vision_json(
+                image_data_url=image_data_url,
+                prompt=prompt,
+                api_key=cloud_api_key,
+            )
+            raw_text = resp.get("raw_text") or ""
             data = _coerce_caption_response(raw_text)
             return build_module_result(status=MODULE_STATUS_SUCCESS, data=data)
         except AiTimeoutError as exc:

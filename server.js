@@ -44,6 +44,7 @@ const faceClusterRoutes = require("./src/routes/faceClusterRoutes");
 const favoritesRoutes = require("./src/routes/favoritesRoutes");
 const timelineRoutes = require("./src/routes/timelineRoutes");
 const locationsRoutes = require("./src/routes/locationsRoutes");
+const settingsRoutes = require("./src/routes/settingsRoutes");
 
 // ========================== 创建Express实例，设置端口号 ========================== //
 
@@ -150,6 +151,9 @@ app.use("/api/timeline", [authMiddleware], timelineRoutes);
 
 // 注册地点路由+鉴权中间件(authMiddleware)
 app.use("/api/locations", [authMiddleware], locationsRoutes);
+
+// 注册应用设置路由+鉴权中间件(authMiddleware)
+app.use("/api/settings", [authMiddleware], settingsRoutes);
 
 // ========================== 错误处理中间件 ========================== //
 
