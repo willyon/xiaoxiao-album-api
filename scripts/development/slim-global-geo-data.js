@@ -8,7 +8,7 @@
  *   node scripts/development/slim-global-geo-data.js
  *
  * 默认读写的路径:
- *   src/config/globalGeoData.json
+ *   src/data/geo/globalGeoData.json
  *
  * 可选环境变量:
  *   GLOBAL_GEO_IN=/path/to/in.json GLOBAL_GEO_OUT=/path/to/out.json
@@ -21,7 +21,7 @@ const scriptDir = path.dirname(__filename);
 const projectRoot = path.resolve(scriptDir, "..", "..");
 process.chdir(projectRoot);
 
-const DEFAULT_PATH = path.join(projectRoot, "src", "config", "globalGeoData.json");
+const DEFAULT_PATH = path.join(projectRoot, "src", "data", "geo", "globalGeoData.json");
 
 const inPath = process.env.GLOBAL_GEO_IN || DEFAULT_PATH;
 const outPath = process.env.GLOBAL_GEO_OUT || DEFAULT_PATH;

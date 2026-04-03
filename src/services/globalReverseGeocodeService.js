@@ -11,7 +11,7 @@ const RBush = require("rbush");
 const { booleanPointInPolygon } = require("@turf/boolean-point-in-polygon");
 const logger = require("../utils/logger");
 
-const GLOBAL_PATH = path.join(__dirname, "..", "config", "globalGeoData.json");
+const GLOBAL_PATH = path.join(__dirname, "..", "data", "geo", "globalGeoData.json");
 
 let indexReady = false;
 /** @type {Error|null} */

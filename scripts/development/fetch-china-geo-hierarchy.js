@@ -7,7 +7,7 @@
  * 用法（在项目根目录）:
  *   node scripts/development/fetch-china-geo-hierarchy.js
  *
- * 输出默认: src/config/chinaGeoDataHierarchy.json
+ * 输出默认: src/data/geo/chinaGeoDataHierarchy.json
  * 可选: CHINA_GEO_OUT=/path/to/out.json node scripts/development/fetch-china-geo-hierarchy.js
  */
 
@@ -19,8 +19,8 @@ const projectRoot = path.resolve(scriptDir, "..", "..");
 process.chdir(projectRoot);
 
 const BASE_URL = "https://geo.datav.aliyun.com/areas_v3/bound";
-const PROVINCE_SOURCE = path.join(projectRoot, "src", "config", "chinaGeoData.json");
-const DEFAULT_OUT = path.join(projectRoot, "src", "config", "chinaGeoDataHierarchy.json");
+const PROVINCE_SOURCE = path.join(projectRoot, "src", "data", "geo", "chinaGeoData.json");
+const DEFAULT_OUT = path.join(projectRoot, "src", "data", "geo", "chinaGeoDataHierarchy.json");
 
 const REQUEST_DELAY_MS = Number(process.env.CHINA_GEO_DELAY_MS || 150);
 const MAX_RETRIES = Number(process.env.CHINA_GEO_RETRIES || 3);
@@ -149,7 +149,7 @@ async function main() {
   const output = {
     generatedAt: new Date().toISOString(),
     sources: {
-      provincesFile: "src/config/chinaGeoData.json",
+      provincesFile: "src/data/geo/chinaGeoData.json",
       boundBaseUrl: `${BASE_URL}/:adcode_full.json`,
     },
     province: {

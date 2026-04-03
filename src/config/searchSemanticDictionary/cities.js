@@ -16,8 +16,6 @@ module.exports = [
   { label: "基隆市", aliases: ["基隆", "Keelung", "Keelung City", "KEE"] },
   { label: "新竹市", aliases: ["新竹", "Hsinchu", "Hsinchu City", "HSZ"] },
   { label: "嘉义市", aliases: ["嘉义", "Chiayi", "Chiayi City", "CYI"] },
-  /** 省级/地区级名称：逆地理常只有省无市时地点键落在「台湾」 */
-  { label: "台湾", aliases: ["台湾省", "Taiwan", "TW", "Formosa"] },
   { label: "阿尔山市", aliases: ["阿尔山"] },
   { label: "阿克苏市", aliases: ["阿克苏"] },
   { label: "阿拉尔市", aliases: ["阿拉尔"] },

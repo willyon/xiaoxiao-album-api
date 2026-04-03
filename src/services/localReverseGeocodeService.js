@@ -13,7 +13,7 @@ const RBush = require("rbush");
 const { booleanPointInPolygon } = require("@turf/boolean-point-in-polygon");
 const logger = require("../utils/logger");
 
-const HIERARCHY_PATH = path.join(__dirname, "..", "config", "chinaGeoDataHierarchy.json");
+const HIERARCHY_PATH = path.join(__dirname, "..", "data", "geo", "chinaGeoDataHierarchy.json");
 
 const MUNICIPALITY_ADCODES = new Set([110000, 120000, 310000, 500000]);
 

@@ -1,11 +1,11 @@
 /*
  * @Description: 查询地点解析工具
  */
-const { CITY_DICTIONARY } = require("../config/searchSemanticDictionary");
+const { LOCATION_DICTIONARY } = require("../config/searchSemanticDictionary");
 const { uniqueTerms, collectMatches } = require("./querySemanticMatcher");
 
 function collectCitySignals(normalizedQuery) {
-  return collectMatches(normalizedQuery, CITY_DICTIONARY);
+  return collectMatches(normalizedQuery, LOCATION_DICTIONARY);
 }
 
 function buildLocationFilter(cities) {
