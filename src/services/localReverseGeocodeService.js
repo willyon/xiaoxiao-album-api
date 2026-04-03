@@ -2,6 +2,9 @@
  * 本地行政区划逆地理编码（chinaGeoDataHierarchy.json）
  * 边界数据为 GCJ-02；入参须为 GCJ-02（由 geocodingService 对 EXIF 的 WGS-84 转换后再传入）。
  * 使用 RBush（bbox）粗筛 + Turf booleanPointInPolygon 精确判断。
+ *
+ * 数据精度：仅含省 / 市 / 区县（县级）行政区划边界，**最细到区县**；无街道、乡镇、兴趣点等更细粒度。
+ * 命中时尽量返回区县；未命中则降级为市或省。
  */
 
 const fs = require("fs");
@@ -225,6 +228,8 @@ function buildResultFromProvince(f) {
 }
 
 /**
+ * 返回的 formattedAddress 最细为省/市/区（县）组合，无街道、乡镇或 POI。
+ *
  * @param {number} latitude GCJ-02 纬度
  * @param {number} longitude GCJ-02 经度
  * @returns {{

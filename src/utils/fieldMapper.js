@@ -45,6 +45,7 @@ const FIELD_MAPPING = {
     thumb_height_px: "thumbHeightPx",
     mime: "mime",
     country: "country",
+    province: "province",
     city: "city",
     person_count: "personCount", // 新增：人物数量（YOLOv10检测）
     added_at: "addedAt", // 添加到相册的时间
@@ -97,6 +98,7 @@ const FIELD_MAPPING = {
     hd_height_px: "hdHeightPx",
     mime: "mime",
     country: "country",
+    province: "province",
     city: "city",
     is_favorite: "isFavorite",
     media_type: "mediaType",

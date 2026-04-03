@@ -10,72 +10,6 @@ const searchService = require("../services/searchService");
 const { addFullUrlToMedia } = require("../services/mediaService");
 const faceClusterModel = require("../models/faceClusterModel");
 const logger = require("../utils/logger");
-const { buildSearchQueryParts } = require("../utils/buildSearchQueryParts");
-
-/**
- * 根据 source + scope 构建「范围」条件（用于统一列表与按维度筛选选项）
- * 返回的 whereConditions 使用表别名 "i."，可直接与 buildSearchQueryParts 的结果合并。
- * @param {Object} scope - { source, type?, albumId?, clusterId? }
- * @param {number} userId - 用户ID
- * @returns {{ scopeConditions: string[], scopeParams: any[] }}
- */
-function buildScopeConditions(scope, userId) {
-  const scopeConditions = [];
-  const scopeParams = [];
-  if (!scope || !scope.source) return { scopeConditions, scopeParams };
-
-  const { source, type, albumId, clusterId } = scope;
-
-  switch (source) {
-    case "favorites":
-      scopeConditions.push("i.is_favorite = 1");
-      break;
-    case "timeline":
-      if (type === "year" && albumId != null) {
-        scopeConditions.push("i.year_key = ?");
-        scopeParams.push(String(albumId));
-      } else if (type === "month" && albumId != null) {
-        scopeConditions.push("i.month_key = ?");
-        scopeParams.push(String(albumId));
-      } else if (type === "unknown") {
-        scopeConditions.push(
-          "(i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown')"
-        );
-      }
-      break;
-    case "album":
-      if (albumId != null && albumId !== "") {
-        const aid = parseInt(albumId, 10);
-        if (!Number.isNaN(aid)) {
-          scopeConditions.push("i.id IN (SELECT media_id FROM album_media WHERE album_id = ?)");
-          scopeParams.push(aid);
-        }
-      }
-      break;
-    case "location":
-      if (albumId == null || albumId === "") break;
-      if (albumId === "unknown") {
-        scopeConditions.push("(i.city IS NULL OR i.city = '' OR i.city = 'unknown')");
-      } else {
-        scopeConditions.push("i.city = ?");
-        scopeParams.push(String(albumId));
-      }
-      break;
-    case "people":
-      if (clusterId != null && !Number.isNaN(Number(clusterId)) && userId != null) {
-        scopeConditions.push(
-          "i.id IN (SELECT mfe.media_id FROM media_face_embeddings mfe INNER JOIN face_clusters fc ON mfe.id = fc.face_embedding_id WHERE fc.user_id = ? AND fc.cluster_id = ?)"
-        );
-        scopeParams.push(userId, Number(clusterId));
-      }
-      break;
-    case "search":
-    default:
-      break;
-  }
-
-  return { scopeConditions, scopeParams };
-}
 
 /**
  * 搜索/列表图片（统一接口）
@@ -124,7 +58,7 @@ async function handleSearchMedias(req, res, next) {
 
     if (hasScope) {
       const scope = { source, type, albumId, clusterId: validClusterId };
-      const { scopeConditions, scopeParams } = buildScopeConditions(scope, userId);
+      const { scopeConditions, scopeParams } = searchService.buildScopeConditions(scope, userId);
       if (hasQuery) {
         searchResult = await searchService.searchMediaResults({
           userId,
@@ -137,7 +71,7 @@ async function handleSearchMedias(req, res, next) {
           pageSize: parseInt(pageSize, 10),
         });
       } else {
-        const filterBuilt = buildSearchQueryParts(filters, filterOptions);
+        const filterBuilt = searchService.buildFilterQueryParts(filters, filterOptions);
         searchResult = await searchService.searchMediaResults({
           userId,
           query: "",
@@ -179,7 +113,7 @@ async function handleSearchMedias(req, res, next) {
         pageSize: parseInt(pageSize, 10),
       });
     } else {
-      const built = buildSearchQueryParts(filters, filterOptions);
+      const built = searchService.buildFilterQueryParts(filters, filterOptions);
       searchResult = await searchService.searchMediaResults({
         userId,
         query: "",
@@ -280,7 +214,7 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
         albumId: scopeAlbumId,
         clusterId: scopeClusterId,
       };
-      const built = buildScopeConditions(scope, userId);
+      const built = searchService.buildScopeConditions(scope, userId);
       scopeConditions = built.scopeConditions;
       scopeParams = built.scopeParams;
     }
@@ -319,5 +253,4 @@ module.exports = {
   handleSearchMedias,
   handleGetQueueStatus,
   handleGetFilterOptionsPaginated,
-  buildScopeConditions,
 };

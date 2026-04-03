@@ -4,11 +4,86 @@
  * @Description: 搜索业务逻辑服务
  */
 const searchModel = require("../models/searchModel");
+const mediaModel = require("../models/mediaModel");
 const { listVisualTextEmbeddingRowsForRecall } = require("../models/mediaEmbeddingModel");
 const { makeSearchRankCacheKey, getSearchRankCache, setSearchRankCache } = require("../utils/searchRankCacheStore");
 const { FTS_RANKING, SEARCH_TERM_FIELD_WEIGHTS, CHINESE_QUERY_TERM_BOOST } = require("../config/searchRankingWeights");
 const { parseQueryIntent, mergeFilters } = require("../utils/queryIntentParser");
 const { buildSearchQueryParts } = require("../utils/buildSearchQueryParts");
+
+/**
+ * 根据 source + scope 构建列表/筛选用的 WHERE 片段（表别名 i.），供搜索与筛选项 scope 共用。
+ * @param {Object} scope - { source, type?, albumId?, clusterId? }
+ * @param {number} userId
+ * @returns {{ scopeConditions: string[], scopeParams: any[] }}
+ */
+function buildScopeConditions(scope, userId) {
+  const scopeConditions = [];
+  const scopeParams = [];
+  if (!scope || !scope.source) return { scopeConditions, scopeParams };
+
+  const { source, type, albumId, clusterId } = scope;
+
+  switch (source) {
+    case "favorites":
+      scopeConditions.push("i.is_favorite = 1");
+      break;
+    case "timeline":
+      if (type === "year" && albumId != null) {
+        scopeConditions.push("i.year_key = ?");
+        scopeParams.push(String(albumId));
+      } else if (type === "month" && albumId != null) {
+        scopeConditions.push("i.month_key = ?");
+        scopeParams.push(String(albumId));
+      } else if (type === "unknown") {
+        scopeConditions.push(
+          "(i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown')",
+        );
+      }
+      break;
+    case "album":
+      if (albumId != null && albumId !== "") {
+        const aid = parseInt(albumId, 10);
+        if (!Number.isNaN(aid)) {
+          scopeConditions.push("i.id IN (SELECT media_id FROM album_media WHERE album_id = ?)");
+          scopeParams.push(aid);
+        }
+      }
+      break;
+    case "location":
+      if (albumId == null || albumId === "") break;
+      if (albumId === "unknown") {
+        scopeConditions.push(mediaModel.sqlLocationIsUnknown("i"));
+      } else {
+        scopeConditions.push(`(${mediaModel.sqlLocationKeyNullable("i")}) = ?`);
+        scopeParams.push(String(albumId));
+      }
+      break;
+    case "people":
+      if (clusterId != null && !Number.isNaN(Number(clusterId)) && userId != null) {
+        scopeConditions.push(
+          "i.id IN (SELECT mfe.media_id FROM media_face_embeddings mfe INNER JOIN face_clusters fc ON mfe.id = fc.face_embedding_id WHERE fc.user_id = ? AND fc.cluster_id = ?)",
+        );
+        scopeParams.push(userId, Number(clusterId));
+      }
+      break;
+    case "search":
+    default:
+      break;
+  }
+
+  return { scopeConditions, scopeParams };
+}
+
+/**
+ * 构建筛选 WHERE；注入 media 表地点键表达式（经 model），供 controller 仅调 service 时使用。
+ */
+function buildFilterQueryParts(filters, filterOptions) {
+  return buildSearchQueryParts(filters, {
+    ...filterOptions,
+    locationKeyExpr: mediaModel.sqlLocationKeyNullable("i"),
+  });
+}
 const { containsChinese, segmentLengthUnits } = require("../utils/searchTermUtils");
 const { generateTextEmbeddingForQuery } = require("./embeddingProvider");
 const { SEARCH_TERMS_SPLIT_REGEX } = require("../utils/chineseSegmenter");
@@ -590,7 +665,7 @@ async function searchMediaResults({
 
   const parsedIntent = parseQueryIntent(segment);
   const mergedFilters = mergeFilters(baseFilters, parsedIntent);
-  const built = buildSearchQueryParts(mergedFilters, filterOptions);
+  const built = buildFilterQueryParts(mergedFilters, filterOptions);
   const { whereConditions: wc, whereParams: wp } = mergeScopeWhere(scopeConditions, scopeParams, built);
 
   const residual = (parsedIntent.residualQuery || "").trim();
@@ -697,4 +772,6 @@ module.exports = {
   searchMediaResults,
   getFilterOptionsPaginated,
   getMediasByIds,
+  buildScopeConditions,
+  buildFilterQueryParts,
 };

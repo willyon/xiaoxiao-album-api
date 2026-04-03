@@ -1,7 +1,7 @@
 /**
  * 在「与线上一致」的 where 与 residual 下，打印文本向量召回阶段每条 media 的 similarity（点积=余弦）。
  *
- * 与 searchService 中长句分支一致：query 文本为 parseQueryIntent 后的 residual，where 为全局搜索的 mergeScopeWhere([], [], buildSearchQueryParts(...))。
+ * 与 searchService 中长句分支一致：query 文本为 parseQueryIntent 后的 residual，where 为全局搜索的 mergeScopeWhere([], [], buildFilterQueryParts(...))。
  *
  * Usage:
  *   node scripts/tmp-scripts/debug-visual-text-similarities.js
@@ -21,7 +21,7 @@ require("dotenv").config();
 
 const { db } = require(path.join(projectRoot, "src", "services", "database"));
 const { parseQueryIntent, mergeFilters } = require(path.join(projectRoot, "src", "utils", "queryIntentParser"));
-const { buildSearchQueryParts } = require(path.join(projectRoot, "src", "utils", "buildSearchQueryParts"));
+const searchService = require(path.join(projectRoot, "src", "services", "searchService"));
 const { generateTextEmbeddingForQuery } = require(path.join(projectRoot, "src", "services", "embeddingProvider"));
 const { listVisualTextEmbeddingRowsForRecall } = require(path.join(projectRoot, "src", "models", "mediaEmbeddingModel"));
 
@@ -91,7 +91,7 @@ async function main() {
 
   const parsedIntent = parseQueryIntent(segment);
   const mergedFilters = mergeFilters({}, parsedIntent);
-  const built = buildSearchQueryParts(mergedFilters, { userId, clusterId: null });
+  const built = searchService.buildFilterQueryParts(mergedFilters, { userId, clusterId: null });
   const { whereConditions: wc, whereParams: wp } = mergeScopeWhere([], [], built);
   const residual = String(parsedIntent.residualQuery || "").trim();
 

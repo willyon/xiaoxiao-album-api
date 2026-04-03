@@ -312,6 +312,7 @@ class MediaMetadataService {
       return {
         gpsLocation: locationObj?.formattedAddress || null,
         country: locationObj?.country || null,
+        province: locationObj?.province || null,
         city: locationObj?.city || null,
       };
     } catch (error) {
@@ -327,6 +328,7 @@ class MediaMetadataService {
       return {
         gpsLocation: null,
         country: null,
+        province: null,
         city: null,
       };
     }

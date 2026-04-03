@@ -141,12 +141,14 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
 
   let gpsLocation = null;
   let country = null;
+  let province = null;
   let city = null;
   if (meta.gpsLatitude != null && meta.gpsLongitude != null) {
     try {
       const locInfo = await mediaMetadataService.analyzeLocationInfo(meta.gpsLatitude, meta.gpsLongitude);
       gpsLocation = locInfo?.gpsLocation || null;
       country = locInfo?.country || null;
+      province = locInfo?.province || null;
       city = locInfo?.city || null;
     } catch (e) {
       logger.warn({ message: "Video GPS reverse geocode failed", details: { imageHash, error: e.message } });
@@ -178,6 +180,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
       gpsLongitude: meta.gpsLongitude,
       gpsLocation,
       country,
+      province,
       city,
       widthPx: meta.width,
       heightPx: meta.height,
@@ -335,6 +338,7 @@ async function processMediaMeta(job) {
     altitude,
     gpsLocation,
     country,
+    province,
     city,
     width,
     height,
@@ -405,6 +409,7 @@ async function processMediaMeta(job) {
       gpsAltitude: altitude,
       gpsLocation,
       country,
+      province,
       city,
       widthPx: width,
       heightPx: height,

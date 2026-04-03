@@ -2,13 +2,14 @@
  * 逆地理编码服务
  * 将 GPS 坐标转换为可读的位置描述
  * - 配置了 AMAP_API_KEY 时使用高德地图 API
- * - 未配置时使用本地 chinaGeoDataHierarchy.json（GCJ-02 边界 + R-tree）
+ * - 未配置时：先本地 chinaGeoDataHierarchy.json（省市区）；未命中再用 globalGeoData.json（国家/地区名，中文优先）
  */
 
 const https = require("https");
 const logger = require("../utils/logger");
 const { wgs84ToGcj02 } = require("../utils/coordinateTransform");
 const { getLocationFromCoordinatesLocal } = require("./localReverseGeocodeService");
+const { getLocationFromCoordinatesGlobal } = require("./globalReverseGeocodeService");
 
 /**
  * 使用高德地图API进行逆地理编码
@@ -28,11 +29,14 @@ async function getLocationFromCoordinates(latitude, longitude) {
     return null;
   }
 
-  // EXIF 为 WGS-84；高德与本地边界数据均按 GCJ-02 使用，在此统一转换一次
+  // EXIF 为 WGS-84。高德与 DataV 中国边界为 GCJ-02，故中国区划/高德统一用 GCJ。
+  // `wgs84ToGcj02` 仅在 `isInChina` 粗略矩形内做偏移；矩形外保持 WGS。
+  // 全球 Natural Earth 为 CRS84/WGS-84，兜底时必须用**原始 WGS**，不能用 GCJ：
+  // 若真实位置在境外但落在 `isInChina` 矩形内，会被误转 GCJ；中国区划未命中时若仍用 GCJ 去匹配全球多边形，会错国/漏判。
   const gcj02Coords = wgs84ToGcj02(longitude, latitude);
 
   const apiKey = (process.env.AMAP_API_KEY || "").trim();
-  // 如果未配置高德 API Key，则使用本地行政区划逆地理编码
+  // 未配置高德：先中国本地（GCJ），未命中再全球（WGS）。多数用户照片在中国时，先试中国成本可接受，无需先判「是否在中国」。
   if (!apiKey) {
     const local = getLocationFromCoordinatesLocal(gcj02Coords.lat, gcj02Coords.lng);
     if (local) {
@@ -47,8 +51,21 @@ async function getLocationFromCoordinates(latitude, longitude) {
           district: local.district,
         },
       });
+      return local;
     }
-    return local;
+    const globalLoc = getLocationFromCoordinatesGlobal(latitude, longitude);
+    if (globalLoc) {
+      logger.info({
+        message: "本地全球国家/地区逆地理编码成功",
+        details: {
+          latitude,
+          longitude,
+          formattedAddress: globalLoc.formattedAddress,
+          country: globalLoc.country,
+        },
+      });
+    }
+    return globalLoc;
   }
 
   try {

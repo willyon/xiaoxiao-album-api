@@ -17,7 +17,6 @@ require("dotenv").config();
 
 const { clearSearchRankCache } = require(path.join(projectRoot, "src", "utils", "searchRankCacheStore"));
 const { parseQueryIntent, mergeFilters } = require(path.join(projectRoot, "src", "utils", "queryIntentParser"));
-const { buildSearchQueryParts } = require(path.join(projectRoot, "src", "utils", "buildSearchQueryParts"));
 const {
   buildChineseQueryTerms,
   containsChinese,
@@ -109,7 +108,7 @@ async function main() {
     const segment = segments[si];
     const parsedIntent = parseQueryIntent(segment);
     const mergedFilters = mergeFilters(baseFilters, parsedIntent);
-    const built = buildSearchQueryParts(mergedFilters, filterOptions);
+    const built = searchService.buildFilterQueryParts(mergedFilters, filterOptions);
     const { whereConditions: wc, whereParams: wp } = mergeScopeWhere([], [], built);
 
     const residual = (parsedIntent.residualQuery || "").trim();

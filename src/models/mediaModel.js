@@ -12,6 +12,31 @@ const { clearSearchRankCache } = require("../utils/searchRankCacheStore");
 const { rebuildMediaEmbeddingDoc } = require("../services/mediaEmbeddingRebuildService");
 const { deleteMediaEmbeddingBySourceType, MEDIA_EMBEDDING_SOURCE_TYPES } = require("./mediaEmbeddingModel");
 
+/**
+ * 单条媒体在筛选 / 地点相册分组中的「地点键」SQL 片段（优先 city，其次 province，否则 country）。
+ * @param {string} alias 表别名，如 i、media
+ * @returns {string} 可嵌入 SQL 的表达式（可空）
+ */
+function sqlLocationKeyNullable(alias) {
+  const a = alias;
+  return `(
+    CASE
+      WHEN ${a}.city IS NOT NULL AND TRIM(${a}.city) != '' AND ${a}.city != 'unknown' THEN TRIM(${a}.city)
+      WHEN ${a}.province IS NOT NULL AND TRIM(${a}.province) != '' AND ${a}.province != 'unknown' THEN TRIM(${a}.province)
+      WHEN ${a}.country IS NOT NULL AND TRIM(${a}.country) != '' AND ${a}.country != 'unknown' THEN TRIM(${a}.country)
+      ELSE NULL
+    END
+  )`;
+}
+
+function sqlLocationAlbumKey(alias) {
+  return `COALESCE(${sqlLocationKeyNullable(alias)}, 'unknown')`;
+}
+
+function sqlLocationIsUnknown(alias) {
+  return `(${sqlLocationKeyNullable(alias)} IS NULL)`;
+}
+
 function parseCommaTags(input) {
   if (!input || typeof input !== "string") return [];
   return input
@@ -1093,25 +1118,25 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
   }
 }
 
-// 分页获取用户按地点（city）分组的数据
-// 使用 COALESCE(NULLIF(TRIM(city), ''), 'unknown') 统一处理 NULL/空/unknown
+// 分页获取用户按地点分组的数据（优先 city，否则 country；均无则为 unknown）
 function selectGroupsByCity({ pageNo, pageSize, userId }) {
   const offset = (pageNo - 1) * pageSize;
+  const albumKey = sqlLocationAlbumKey("m");
 
   const dataQuery = db.prepare(`
     WITH city_normalized AS (
       SELECT 
-        id,
-        COALESCE(NULLIF(TRIM(city), ''), 'unknown') AS city_key,
-        expression_tags,
-        face_count,
-        person_count,
-        preferred_face_quality,
-        thumbnail_storage_key,
-        captured_at
-      FROM media
-      WHERE user_id = ? AND deleted_at IS NULL
-        AND (COALESCE(media_type, 'image') IN ('image', 'video', 'audio'))
+        m.id,
+        ${albumKey} AS city_key,
+        m.expression_tags,
+        m.face_count,
+        m.person_count,
+        m.preferred_face_quality,
+        m.thumbnail_storage_key,
+        m.captured_at
+      FROM media AS m
+      WHERE m.user_id = ? AND m.deleted_at IS NULL
+        AND (COALESCE(m.media_type, 'image') IN ('image', 'video', 'audio'))
     ),
     ranked_images AS (
       SELECT 
@@ -1167,9 +1192,10 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
   `);
 
   const countQuery = db.prepare(`
-    SELECT COUNT(DISTINCT COALESCE(NULLIF(TRIM(city), ''), 'unknown')) AS groupCount
-    FROM media
-    WHERE user_id = ? AND deleted_at IS NULL;
+    SELECT COUNT(DISTINCT ${albumKey}) AS groupCount
+    FROM media AS m
+    WHERE m.user_id = ? AND m.deleted_at IS NULL
+      AND (COALESCE(m.media_type, 'image') IN ('image', 'video', 'audio'));
   `);
 
   try {
@@ -1182,43 +1208,46 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
 }
 
 // 分页获取用户具体某个地点的图片数据
-// albumId: 城市名称或 'unknown'
+// albumId: 地点键（优先 city，否则 country）或 'unknown'
 function selectMediasByCity({ pageNo, pageSize, albumId, userId }) {
   const offset = (pageNo - 1) * pageSize;
   const isUnknown = albumId === "unknown";
+  const locKey = sqlLocationKeyNullable("m");
 
   const baseSelect = `
     SELECT 
-      id,
-      high_res_storage_key, 
-      thumbnail_storage_key, 
-      original_storage_key,
-      media_type,
-      duration_sec,
-      captured_at, 
-      date_key, 
-      day_key, 
-      month_key, 
-      year_key, 
-      gps_location,
-      width_px,
-      height_px,
-      aspect_ratio,
-        layout_type,
-        file_size_bytes,
-      face_count,
-      person_count,
-      age_tags,
-      expression_tags,
-      is_favorite
-    FROM media
-    WHERE user_id = ? AND deleted_at IS NULL
+      m.id,
+      m.high_res_storage_key, 
+      m.thumbnail_storage_key, 
+      m.original_storage_key,
+      m.media_type,
+      m.duration_sec,
+      m.captured_at, 
+      m.date_key, 
+      m.day_key, 
+      m.month_key, 
+      m.year_key, 
+      m.gps_location,
+      m.width_px,
+      m.height_px,
+      m.aspect_ratio,
+        m.layout_type,
+        m.file_size_bytes,
+      m.face_count,
+      m.person_count,
+      m.age_tags,
+      m.expression_tags,
+      m.is_favorite
+    FROM media AS m
+    WHERE m.user_id = ? AND m.deleted_at IS NULL
   `;
-  const cityCondition = isUnknown ? " AND (city IS NULL OR TRIM(COALESCE(city, '')) = '' OR city = 'unknown')" : " AND city = ?";
-  const orderLimit = " ORDER BY COALESCE(captured_at, 0) DESC, id DESC LIMIT ? OFFSET ?";
+  const cityCondition = isUnknown ? ` AND ${sqlLocationIsUnknown("m")}` : ` AND (${locKey}) = ?`;
+  const orderLimit = " ORDER BY COALESCE(m.captured_at, 0) DESC, m.id DESC LIMIT ? OFFSET ?";
 
   const dataQuery = db.prepare(baseSelect + cityCondition + orderLimit);
-  const countQuery = db.prepare("SELECT COUNT(*) AS total FROM media WHERE user_id = ? AND deleted_at IS NULL" + cityCondition);
+  const countQuery = db.prepare(
+    "SELECT COUNT(*) AS total FROM media AS m WHERE m.user_id = ? AND m.deleted_at IS NULL" + cityCondition,
+  );
 
   try {
     const params = isUnknown ? [userId, pageSize, offset] : [userId, albumId, pageSize, offset];
@@ -1247,6 +1276,7 @@ function updateMediaMetadata({
   gpsAltitude,
   gpsLocation,
   country,
+  province,
   city,
   widthPx,
   heightPx,
@@ -1274,6 +1304,7 @@ function updateMediaMetadata({
       gps_altitude = COALESCE(?, gps_altitude),
       gps_location = COALESCE(?, gps_location),
       country = COALESCE(?, country),
+      province = COALESCE(?, province),
       city = COALESCE(?, city),
       width_px = COALESCE(?, width_px),
       height_px = COALESCE(?, height_px),
@@ -1304,6 +1335,7 @@ function updateMediaMetadata({
     gpsAltitude,
     gpsLocation,
     country,
+    province,
     city,
     widthPx,
     heightPx,
@@ -1349,18 +1381,19 @@ function selectMediaRowByHashForUser({ userId, imageHash }) {
 }
 
 // 异步更新图片位置信息
-function updateLocationInfo(imageId, { gpsLocation, country, city }, options = {}) {
+function updateLocationInfo(imageId, { gpsLocation, country, province, city }, options = {}) {
   const { rebuildSearchArtifacts = false } = options;
   const sql = `
     UPDATE media SET
       gps_location = COALESCE(?, gps_location),
       country = COALESCE(?, country),
+      province = COALESCE(?, province),
       city = COALESCE(?, city)
     WHERE id = ?
   `;
 
   const stmt = db.prepare(sql);
-  const result = stmt.run(gpsLocation, country, city, imageId);
+  const result = stmt.run(gpsLocation, country, province, city, imageId);
 
   if (rebuildSearchArtifacts) {
     rebuildMediaSearchDoc(imageId);
@@ -1775,6 +1808,9 @@ function upsertMediaAiFieldsForAnalysis({ mediaId, caption }) {
 }
 
 module.exports = {
+  sqlLocationKeyNullable,
+  sqlLocationAlbumKey,
+  sqlLocationIsUnknown,
   normalizeTextArray,
   checkFileExists,
   selectMediaRowByHashForUser,

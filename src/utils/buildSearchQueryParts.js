@@ -1,5 +1,6 @@
 /*
  * @Description: 由筛选条件构建 WHERE（供无关键词列表与自然搜索里筛选合并共用）。有关键词时的全文检索在 searchService 内单独构造 MATCH 串，不经本函数。
+ * 地点筛选依赖 options.locationKeyExpr（表别名 i 上的地点键 SQL 表达式），须由 searchService 经 mediaModel 注入，保持 controller→service→model。
  */
 const { AGE_GROUP_FRONTEND_TO_BACKEND } = require("../constants/filterMappings");
 
@@ -7,7 +8,7 @@ const ALLOWED_EXPRESSION_FILTERS = new Set(["happy", "sad", "anger", "surprise",
 
 /**
  * @param {Object} filters - 筛选条件
- * @param {Object} [options] - { userId, clusterId }
+ * @param {Object} [options] - { userId, clusterId, locationKeyExpr? }
  */
 function buildSearchQueryParts(filters, options = {}) {
   const convertedFilters = { ...filters };
@@ -31,19 +32,23 @@ function buildSearchQueryParts(filters, options = {}) {
   const whereParams = [];
 
   if (filters.location && Array.isArray(filters.location) && filters.location.length > 0) {
+    const locKey = options.locationKeyExpr;
+    if (!locKey || typeof locKey !== "string") {
+      throw new Error("buildSearchQueryParts: options.locationKeyExpr is required when filters.location is set");
+    }
     const hasUnknown = filters.location.includes("unknown");
-    const knownCities = filters.location.filter((city) => city !== "unknown");
+    const knownLocations = filters.location.filter((city) => city !== "unknown");
 
-    if (knownCities.length > 0 && hasUnknown) {
-      const cityPlaceholders = knownCities.map(() => "?").join(",");
-      whereConditions.push(`(i.city IN (${cityPlaceholders}) OR i.city IS NULL OR i.city = '' OR i.city = 'unknown')`);
-      whereParams.push(...knownCities);
-    } else if (knownCities.length > 0) {
-      const cityPlaceholders = knownCities.map(() => "?").join(",");
-      whereConditions.push(`i.city IN (${cityPlaceholders})`);
-      whereParams.push(...knownCities);
+    if (knownLocations.length > 0 && hasUnknown) {
+      const ph = knownLocations.map(() => "?").join(",");
+      whereConditions.push(`((${locKey}) IN (${ph}) OR (${locKey}) IS NULL)`);
+      whereParams.push(...knownLocations);
+    } else if (knownLocations.length > 0) {
+      const ph = knownLocations.map(() => "?").join(",");
+      whereConditions.push(`(${locKey}) IN (${ph})`);
+      whereParams.push(...knownLocations);
     } else if (hasUnknown) {
-      whereConditions.push("(i.city IS NULL OR i.city = '' OR i.city = 'unknown')");
+      whereConditions.push(`(${locKey}) IS NULL`);
     }
   }
 

@@ -6,6 +6,9 @@
 
 const { db } = require("../services/database");
 const { mapFields } = require("../utils/fieldMapper");
+const { sqlLocationKeyNullable } = require("./mediaModel");
+
+const LOC_KEY_MEDIA = sqlLocationKeyNullable("media");
 
 function normalizeSearchRows(rows) {
   return mapFields("media", rows);
@@ -556,10 +559,10 @@ function getFilterOptionsPaginated({
         const cityData = db
           .prepare(
             `
-          SELECT city, COUNT(*) as count
-          FROM media 
-          WHERE user_id = ? AND city IS NOT NULL AND city != ''${mediaClause}${scopeClause}
-          GROUP BY city
+          SELECT (${LOC_KEY_MEDIA}) AS loc_key, COUNT(*) as count
+          FROM media
+          WHERE user_id = ? AND (${LOC_KEY_MEDIA}) IS NOT NULL${mediaClause}${scopeClause}
+          GROUP BY (${LOC_KEY_MEDIA})
           ORDER BY count DESC
           LIMIT ? OFFSET ?
         `
@@ -569,14 +572,14 @@ function getFilterOptionsPaginated({
         const cityTotal = db
           .prepare(
             `
-          SELECT COUNT(DISTINCT city) as total
-          FROM media 
-          WHERE user_id = ? AND city IS NOT NULL AND city != ''${mediaClause}${scopeClause}
+          SELECT COUNT(DISTINCT (${LOC_KEY_MEDIA})) as total
+          FROM media
+          WHERE user_id = ? AND (${LOC_KEY_MEDIA}) IS NOT NULL${mediaClause}${scopeClause}
         `
           )
           .get(userId, ...baseParams);
 
-        list = cityData.map((c) => c.city);
+        list = cityData.map((c) => c.loc_key);
         total = cityTotal.total;
         break;
       }

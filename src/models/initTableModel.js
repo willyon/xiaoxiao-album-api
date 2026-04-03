@@ -104,6 +104,7 @@ function createTableMedia() {
       gps_altitude REAL,
       gps_location TEXT,
       country TEXT,
+      province TEXT,
       city TEXT,
       duration_sec REAL,
       video_codec TEXT,

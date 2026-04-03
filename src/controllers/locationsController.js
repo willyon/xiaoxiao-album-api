@@ -1,10 +1,10 @@
 /*
- * @Description: 地点（按城市分组）接口控制器
+ * @Description: 地点相册列表（地点键：优先 city，否则 country）
  */
 const mediaService = require("../services/mediaService");
 
 /**
- * 获取地点相册列表（按城市分组）
+ * 获取地点相册列表（按地点键分组）
  * GET /api/locations?pageNo=1&pageSize=20
  */
 async function getLocations(req, res, next) {
