@@ -1,12 +1,14 @@
 /**
  * 逆地理编码服务
  * 将 GPS 坐标转换为可读的位置描述
- * 使用高德地图API
+ * - 配置了 AMAP_API_KEY 时使用高德地图 API
+ * - 未配置时使用本地 chinaGeoDataHierarchy.json（GCJ-02 边界 + R-tree）
  */
 
 const https = require("https");
 const logger = require("../utils/logger");
 const { wgs84ToGcj02 } = require("../utils/coordinateTransform");
+const { getLocationFromCoordinatesLocal } = require("./localReverseGeocodeService");
 
 /**
  * 使用高德地图API进行逆地理编码
@@ -26,19 +28,30 @@ async function getLocationFromCoordinates(latitude, longitude) {
     return null;
   }
 
-  const apiKey = process.env.AMAP_API_KEY;
+  // EXIF 为 WGS-84；高德与本地边界数据均按 GCJ-02 使用，在此统一转换一次
+  const gcj02Coords = wgs84ToGcj02(longitude, latitude);
+
+  const apiKey = (process.env.AMAP_API_KEY || "").trim();
+  // 如果未配置高德 API Key，则使用本地行政区划逆地理编码
   if (!apiKey) {
-    logger.warn({
-      message: "高德地图API Key未配置，跳过逆地理编码",
-      details: { latitude, longitude },
-    });
-    return null;
+    const local = getLocationFromCoordinatesLocal(gcj02Coords.lat, gcj02Coords.lng);
+    if (local) {
+      logger.info({
+        message: "本地行政区划逆地理编码成功",
+        details: {
+          latitude,
+          longitude,
+          formattedAddress: local.formattedAddress,
+          province: local.province,
+          city: local.city,
+          district: local.district,
+        },
+      });
+    }
+    return local;
   }
 
   try {
-    // 1. 坐标转换：WGS-84 -> GCJ-02 (高德地图使用GCJ-02坐标系)
-    const gcj02Coords = wgs84ToGcj02(longitude, latitude);
-
     logger.info({
       message: "坐标转换完成",
       details: {
@@ -47,7 +60,7 @@ async function getLocationFromCoordinates(latitude, longitude) {
       },
     });
 
-    // 2. 高德地图逆地理编码API - 使用转换后的GCJ-02坐标
+    // 高德地图逆地理编码 API（GCJ-02）
     const url = `https://restapi.amap.com/v3/geocode/regeo?key=${apiKey}&location=${gcj02Coords.lng},${gcj02Coords.lat}&extensions=all&poitype=&radius=500&roadlevel=0&output=json`;
 
     const data = await new Promise((resolve, reject) => {
