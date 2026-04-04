@@ -5,7 +5,7 @@
  *
  * 🚀 包含服务:
  * • Node.js API 服务
- * • Node.js Workers (图片上传、元数据处理、搜索索引)
+ * • Node.js Workers (图片上传、元数据处理、云模型字幕、搜索索引)
  * • Python AI 服务 (人脸识别、图片理解等)
  */
 module.exports = {
@@ -38,6 +38,16 @@ module.exports = {
       script: "src/workers/mediaMetaWorker.js",
       // cwd: "/var/www/photos.bingbingcloud.com/backend", // 绝对路径
       cwd: ".", // 相对路径
+      watch: false,
+      max_restarts: 5,
+      env: {
+        NODE_ENV: "production",
+      },
+    },
+    {
+      name: "cloud-caption-worker",
+      script: "src/workers/cloudCaptionWorker.js",
+      cwd: ".",
       watch: false,
       max_restarts: 5,
       env: {
@@ -103,7 +113,7 @@ pm2 start ecosystem.config.js
 📋 单独管理服务:
 - 重启 API 服务: pm2 restart app-service
 - 重启 Python AI 服务: pm2 restart python-ai-service
-- 重启所有 Workers: pm2 restart media-upload-worker media-meta-worker media-analysis-worker
+- 重启所有 Workers: pm2 restart media-upload-worker media-meta-worker cloud-caption-worker media-analysis-worker
 
 📋 定时任务管理:
 - 查看定时任务状态: pm2 list

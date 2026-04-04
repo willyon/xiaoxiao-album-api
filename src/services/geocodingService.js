@@ -1,12 +1,13 @@
 /**
  * 逆地理编码服务
  * 将 GPS 坐标转换为可读的位置描述
- * - 配置了 AMAP_API_KEY 时优先高德（amapReverseGeocodeService）；失败则降级：先本地 chinaGeoDataHierarchy（GCJ），未命中再 globalGeoData（WGS）
- * - 未配置高德：同上本地 → 全球
+ * - 已启用且 app_config 中已保存 Key 时优先高德；失败则降级：先本地 chinaGeoDataHierarchy（GCJ），未命中再 globalGeoData（WGS）
+ * - 无可用 Key：同上本地 → 全球
  */
 
 const logger = require("../utils/logger");
 const { wgs84ToGcj02 } = require("../utils/coordinateTransform");
+const { getAmapApiKeyForGeocode } = require("./amapSettingsService");
 const { getLocationFromCoordinatesAmap } = require("./amapReverseGeocodeService");
 const { getLocationFromCoordinatesLocal } = require("./localReverseGeocodeService");
 const { getLocationFromCoordinatesGlobal } = require("./globalReverseGeocodeService");
@@ -71,7 +72,7 @@ async function getLocationFromCoordinates(latitude, longitude) {
 
   const gcj02Coords = wgs84ToGcj02(longitude, latitude);
 
-  const apiKey = (process.env.AMAP_API_KEY || "").trim();
+  const apiKey = getAmapApiKeyForGeocode();
   if (!apiKey) {
     return fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, null);
   }

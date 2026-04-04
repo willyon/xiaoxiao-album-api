@@ -18,7 +18,7 @@ require("dotenv").config();
 const { db } = require(path.join(projectRoot, "src", "services", "database"));
 const {
   createTableUsers,
-  createTableAppSettings,
+  createTableAppConfig,
   createTableMedia,
   createTableMediaFaceEmbeddings,
   createTableMediaEmbeddings,
@@ -51,6 +51,8 @@ const TABLES_TO_DROP = [
   "media_face_embeddings",
   "media_embeddings",
   "media",
+  "app_config",
+  "app_settings",
   "users",
 ];
 
@@ -84,7 +86,12 @@ async function rebuildDatabase() {
       console.log("📝 创建新表（与 initTableModel 一致）...");
 
       createTableUsers();
-      createTableAppSettings();
+      createTableAppConfig();
+      const appConfigSeedTs = Date.now();
+      db.prepare("INSERT INTO app_config (key_type, enabled, updated_at) VALUES ('cloud_model', 0, ?)").run(
+        appConfigSeedTs,
+      );
+      db.prepare("INSERT INTO app_config (key_type, enabled, updated_at) VALUES ('amap', 0, ?)").run(appConfigSeedTs);
       createTableMedia();
       createTableMediaFaceEmbeddings();
       createTableMediaEmbeddings();
@@ -103,7 +110,7 @@ async function rebuildDatabase() {
 
       console.log("🎉 数据库重建完成！");
       console.log(
-        "📋 已创建表：users, app_settings, media, media_face_embeddings, media_embeddings, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_search_fts, media_search_terms",
+        "📋 已创建表：users, app_config, media, media_face_embeddings, media_embeddings, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_search_fts, media_search_terms",
       );
     } catch (err) {
       db.prepare("ROLLBACK").run();

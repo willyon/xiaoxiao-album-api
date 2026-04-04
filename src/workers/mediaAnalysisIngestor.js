@@ -17,8 +17,10 @@ const {
 const { getCloudConfigForAnalysis } = require("../services/cloudModelService");
 const { updateProgressOnce } = require("../services/mediaProcessingProgressService");
 const axios = require("axios");
+const { UnrecoverableError } = require("bullmq");
 const { withAiSlot } = require("../services/aiConcurrencyLimiter");
-const { markMediaAnalysisRunning, markMediaAnalysisFailed, finalizeMediaAnalysis: finalizeMediaAnalysisInModel } = require("../models/mediaAnalysisModel");
+const { bullMqWillRetryAfterThisFailure } = require("../utils/queuePipelineLifecycle");
+const { finalizeMediaAnalysis: finalizeMediaAnalysisInModel } = require("../models/mediaAnalysisModel");
 const { upsertMediaEmbedding } = require("../models/mediaEmbeddingModel");
 const { scheduleUserRebuild } = require("../services/cleanupGroupingScheduler");
 const { scheduleUserClustering } = require("../services/faceClusterScheduler");
@@ -48,12 +50,10 @@ async function processMediaAnalysis(job) {
     if (mediaType === "video") {
       const videoPath = await _resolveVideoLocalPath({ highResStorageKey, originalStorageKey, imageId, userId, fileName });
       if (!videoPath) {
-        const err = new Error("VIDEO_FILE_NOT_FOUND_OR_NO_LOCAL_PATH");
-        await _markMediaAnalysisFailed(imageId, err, sessionId);
+        const err = new UnrecoverableError("VIDEO_FILE_NOT_FOUND_OR_NO_LOCAL_PATH");
+        await _markMediaAnalysisFailed(imageId, err, sessionId, job);
         throw err;
       }
-
-      await _markMediaAnalysisRunning(imageId);
 
       const stepResults = {
         face: { status: "pending", errorCode: null, data: {} },
@@ -64,11 +64,6 @@ async function processMediaAnalysis(job) {
       await _runAnalyzeVideo({ imageId, userId, videoPath, stepResults });
 
       await finalizeMediaAnalysis({ imageId, stepResults });
-      try {
-        updateAnalysisStatusPrimary(imageId, "success");
-      } catch (_e) {
-        // ignore
-      }
       if (sessionId) {
         await updateProgressOnce({ sessionId, status: "aiDoneCount", dedupeKey: imageId });
         logger.info({
@@ -91,12 +86,10 @@ async function processMediaAnalysis(job) {
 
     const { imageData, storageKey, localPath } = await _loadMediaBuffer({ highResStorageKey, originalStorageKey, imageId, userId, fileName });
     if (!imageData && !localPath) {
-      const err = new Error("MEDIA_FILE_NOT_FOUND");
-      await _markMediaAnalysisFailed(imageId, err, sessionId);
+      const err = new UnrecoverableError("MEDIA_FILE_NOT_FOUND");
+      await _markMediaAnalysisFailed(imageId, err, sessionId, job);
       throw err;
     }
-
-    await _markMediaAnalysisRunning(imageId);
 
     const stepResults = {
       face: { status: "pending", errorCode: null, data: {} },
@@ -107,11 +100,6 @@ async function processMediaAnalysis(job) {
     await _runAnalyzeImage({ imageId, userId, imageData, localPath, stepResults });
 
     await finalizeMediaAnalysis({ imageId, stepResults });
-    try {
-      updateAnalysisStatusPrimary(imageId, "success");
-    } catch (_e) {
-      // ignore
-    }
     if (sessionId) {
       await updateProgressOnce({ sessionId, status: "aiDoneCount", dedupeKey: imageId });
       logger.info({
@@ -135,7 +123,7 @@ async function processMediaAnalysis(job) {
       details: { imageId, userId, error: error.message },
     });
     try {
-      await _markMediaAnalysisFailed(imageId, error, sessionId);
+      await _markMediaAnalysisFailed(imageId, error, sessionId, job);
     } catch (e) {
       logger.warn({
         message: "markMediaAnalysisFailed error (swallowed)",
@@ -230,11 +218,7 @@ async function _runAnalyzeVideo({ imageId, userId, videoPath, stepResults }) {
   _applyAdapterFromModules(imageId, userId, body, stepResults, { mediaType: "video", cloudEnabled });
 }
 
-async function _markMediaAnalysisRunning(imageId) {
-  markMediaAnalysisRunning(imageId);
-}
-
-async function _markMediaAnalysisFailed(imageId, error, sessionId) {
+async function _markMediaAnalysisFailed(imageId, error, sessionId, job) {
   if (!imageId) {
     logger.error({
       message: "markMediaAnalysisFailed called without imageId",
@@ -242,13 +226,15 @@ async function _markMediaAnalysisFailed(imageId, error, sessionId) {
     });
     return;
   }
-  markMediaAnalysisFailed(imageId, error);
-  try {
-    updateAnalysisStatusPrimary(imageId, "failed");
-  } catch (_e) {
-    // ignore
+  const finalFailure = !job || !bullMqWillRetryAfterThisFailure(job, error);
+  if (finalFailure) {
+    try {
+      updateAnalysisStatusPrimary(imageId, "failed");
+    } catch (_e) {
+      // ignore
+    }
   }
-  if (sessionId) {
+  if (sessionId && finalFailure) {
     try {
       await updateProgressOnce({ sessionId, status: "aiErrorCount", dedupeKey: imageId });
     } catch (_e) {
@@ -332,9 +318,9 @@ function _applyAdapterFromModules(imageId, userId, body, stepResults, options = 
     stepResults.description = { status: capStatus || "failed", errorCode: captionModule?.error?.code || null, data: {} };
   }
 
-  // 同步云分析状态（仅使用业务侧枚举：success / running / skipped / failed）
-  // - 云模型未启用：统一视为“可补跑”，标记为 skipped
-  // - 云模型启用：仅根据 Python caption 模块的 success / failed 做二元归类
+  // 同步云分析状态：success/failed/skipped（主流程同步调用 Python；不写 running）
+  // - 云模型未启用：skipped（可补跑）
+  // - 云模型启用：按 caption 模块 success / failed 归类
   if (!cloudEnabled) {
     updateAnalysisStatusCloud(imageId, "skipped");
   } else if (capStatus === "success") {

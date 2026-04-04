@@ -18,12 +18,48 @@ const {
   rebuildMediaSearchDoc,
   selectMediaRowByHashForUser,
   listFailedMedias,
-  updateAnalysisStatusPrimary,
+  listAllFailedCloudMedias,
+  countFailedMediasByStage,
 } = require("../models/mediaModel");
 const trashService = require("../services/trashService");
 const { mediaAnalysisQueue } = require("../queues/mediaAnalysisQueue");
 const { mediaMetaQueue } = require("../queues/mediaMetaQueue");
 const { cloudCaptionQueue } = require("../queues/cloudCaptionQueue");
+const { getRowByKeyType, KEY_TYPE_CLOUD_MODEL } = require("../models/appSettingsModel");
+
+const CLOUD_RETRY_JOB_IN_FLIGHT_STATES = new Set(["waiting", "active", "delayed", "paused"]);
+const CLOUD_RETRY_LIST_MAX = Math.max(500, Math.min(Number(process.env.CLOUD_RETRY_LIST_MAX) || 20000, 200000));
+const CLOUD_RETRY_BATCH_SIZE = Math.max(50, Math.min(Number(process.env.CLOUD_RETRY_BATCH_SIZE) || 500, 2000));
+
+/**
+ * 处理中心「云阶段失败」重试：固定 jobId 避免连点重复入队。
+ * removeOnFail 会保留失败 job，同 jobId 再次 add 只会走 duplicated 且不会重新进 wait，故非进行中状态会先 remove 再 add。
+ * @returns {Promise<boolean>} true 表示新入队；false 表示已有同 jobId 在等待/执行中，跳过。
+ */
+async function enqueueCloudCaptionRetryJob(userId, mediaInfo) {
+  const mediaId = mediaInfo.id;
+  const jobId = `retry-cloud:${userId}:${mediaId}`;
+  const existing = await cloudCaptionQueue.getJob(jobId);
+  if (existing) {
+    const st = await existing.getState();
+    if (CLOUD_RETRY_JOB_IN_FLIGHT_STATES.has(st)) {
+      return false;
+    }
+    await existing.remove({ removeChildren: true });
+  }
+  await cloudCaptionQueue.add(
+    "cloud-caption-retry",
+    {
+      mediaId: mediaInfo.id,
+      userId,
+      highResStorageKey: mediaInfo.highResStorageKey ?? null,
+      originalStorageKey: mediaInfo.originalStorageKey ?? null,
+      mediaType: mediaInfo.mediaType || "image",
+    },
+    { jobId },
+  );
+  return true;
+}
 
 // 分页获取模糊图列表（is_blurry = 1），用于清理页模糊图 tab
 // GET /api/media/blurry?pageNo=1&pageSize=20
@@ -205,7 +241,8 @@ async function handleDeleteMedias(req, res, next) {
 }
 
 /**
- * 单图重新分析：将指定媒体重新入队 mediaAnalysisQueue（手动强制重算，使用新 jobId 绕过去重）
+ * 单图重新分析：将指定媒体重新入队 mediaAnalysisQueue。
+ * 主链路入队使用固定 jobId `analysis:${userId}:${mediaId}` 会去重；手动重算需每次唯一 jobId（带时间戳），否则会与 Bull 已有任务冲突或被 duplicated 吞掉。
  * POST /api/media/:mediaId/reanalyze
  */
 async function handleReanalyzeMedia(req, res, next) {
@@ -302,57 +339,18 @@ async function handleRebuildSearchMedia(req, res, next) {
 }
 
 /**
- * 获取处理失败媒体列表
- * GET /api/media/processing-failures?stage=primary&pageNo=&pageSize=
+ * 各阶段处理失败数量汇总
+ * GET /api/media/processing-failures/summary
  */
-async function handleGetProcessingFailures(req, res, next) {
+async function handleGetProcessingFailureSummary(req, res, next) {
   try {
     const userId = req?.user?.userId;
-  const stage = req.query.stage || null; // null / 'all' → 全部阶段
-    const pageNo = Number(req.query.pageNo) || 1;
-    const pageSize = Math.min(Number(req.query.pageSize) || 50, 200);
-
-  const validStages = ["ingest", "primary", "cloud"];
-  const stagesToQuery =
-    stage === null || stage === "all"
-      ? validStages
-      : validStages.includes(stage)
-        ? [stage]
-        : [];
-
-  if (stagesToQuery.length === 0) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: "error",
-    });
-  }
-
-  const offset = (pageNo - 1) * pageSize;
-
-  const payloadItems = [];
-
-  for (const s of stagesToQuery) {
-    const items = listFailedMedias({ userId, stage: s, mediaIds: null, limit: pageSize, offset });
-    for (const item of items) {
-      payloadItems.push({
-        mediaId: item.mediaId,
-        fileSize: item.fileSize,
-        mediaType: item.mediaType,
-        stage: s,
-      });
-    }
-  }
-
-  const total = payloadItems.length;
-
+    const cloudRow = getRowByKeyType(KEY_TYPE_CLOUD_MODEL);
+    const cloudModelReady =
+      Number(cloudRow?.enabled) === 1 && Boolean(cloudRow?.api_key && String(cloudRow.api_key).trim() !== "");
+    const data = countFailedMediasByStage(userId, { includeCloudFailures: cloudModelReady });
     res.sendResponse({
-      data: {
-        pageNo,
-        pageSize,
-        total,
-        items: payloadItems,
-      },
+      data,
     });
   } catch (error) {
     next(error);
@@ -371,7 +369,7 @@ async function handleRetryProcessingFailures(req, res, next) {
     const bodyMediaIds = Array.isArray(req.body?.mediaIds) ? req.body.mediaIds : null;
 
     const validStages = ["primary", "ingest", "cloud"];
-    const stagesToRetry =
+    let stagesToRetry =
       stage === null || stage === "all"
         ? validStages
         : validStages.includes(stage)
@@ -386,9 +384,37 @@ async function handleRetryProcessingFailures(req, res, next) {
       });
     }
 
-    const failedMediasWithStage = [];
+    const cloudRow = getRowByKeyType(KEY_TYPE_CLOUD_MODEL);
+    const cloudModelReady =
+      Number(cloudRow?.enabled) === 1 && Boolean(cloudRow?.api_key && String(cloudRow.api_key).trim() !== "");
+
+    if (!cloudModelReady && stage === "cloud") {
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.UNSUPPORTED_OPERATION,
+        messageType: "error",
+        message: "云模型未启用或未配置 API Key，无法重试云端分析阶段。",
+      });
+    }
+
+    if (!cloudModelReady) {
+      stagesToRetry = stagesToRetry.filter((s) => s !== "cloud");
+    }
+
+    if (stagesToRetry.length === 0) {
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
+      });
+    }
+
+    const nonCloudFailed = [];
 
     for (const s of stagesToRetry) {
+      if (s === "cloud") {
+        continue;
+      }
       const items = listFailedMedias({
         userId,
         stage: s,
@@ -397,11 +423,21 @@ async function handleRetryProcessingFailures(req, res, next) {
         offset: 0,
       });
       for (const it of items) {
-        failedMediasWithStage.push({ ...it, stage: s });
+        nonCloudFailed.push({ ...it, stage: s });
       }
     }
 
-    if (!failedMediasWithStage.length) {
+    let cloudFailedRows = [];
+    if (stagesToRetry.includes("cloud")) {
+      cloudFailedRows = listAllFailedCloudMedias({
+        userId,
+        mediaIds: bodyMediaIds,
+        maxRows: CLOUD_RETRY_LIST_MAX,
+      });
+    }
+
+    const totalTargets = nonCloudFailed.length + cloudFailedRows.length;
+    if (totalTargets === 0) {
       return res.sendResponse({
         data: { stage: stage || "all", retriedCount: 0, skippedCount: 0, mediaIds: [] },
       });
@@ -410,13 +446,14 @@ async function handleRetryProcessingFailures(req, res, next) {
     let retriedCount = 0;
     const retriedMediaIds = [];
 
-    for (const media of failedMediasWithStage) {
+    for (const media of nonCloudFailed) {
       const mediaId = media.mediaId;
 
       if (media.stage === "primary") {
         const mediaInfo = getMediaDownloadInfo({ userId, imageId: mediaId });
         if (!mediaInfo) continue;
 
+        // 带时间戳：与主链路 analysis: 前缀不同；失败任务在 removeOnFail 下仍占 jobId 时仍可再次重试
         const jobId = `retry-primary:${userId}:${mediaId}:${Date.now()}`;
         await mediaAnalysisQueue.add(
           "media-analysis",
@@ -430,12 +467,6 @@ async function handleRetryProcessingFailures(req, res, next) {
           },
           { jobId },
         );
-
-        try {
-          updateAnalysisStatusPrimary(mediaInfo.id, "running");
-        } catch (_e) {
-          // ignore
-        }
       } else if (media.stage === "ingest") {
         // 基础处理重试：基于 original_storage_key 重新入队 meta 阶段
         if (!media.originalStorageKey) {
@@ -458,33 +489,32 @@ async function handleRetryProcessingFailures(req, res, next) {
             jobId: `retry-ingest:${userId}:${mediaId}:${Date.now()}`,
           },
         );
-      } else if (media.stage === "cloud") {
-        const mediaInfo = getMediaDownloadInfo({ userId, imageId: mediaId });
-        if (!mediaInfo) continue;
-
-        const jobId = `retry-cloud:${userId}:${mediaId}:${Date.now()}`;
-        await cloudCaptionQueue.add(
-          "cloud-caption-retry",
-          {
-            mediaId: mediaInfo.id,
-            userId,
-            highResStorageKey: mediaInfo.highResStorageKey ?? null,
-            originalStorageKey: mediaInfo.originalStorageKey ?? null,
-            mediaType: mediaInfo.mediaType || "image",
-          },
-          { jobId },
-        );
       }
 
       retriedMediaIds.push(String(mediaId));
       retriedCount += 1;
     }
 
+    for (let i = 0; i < cloudFailedRows.length; i += CLOUD_RETRY_BATCH_SIZE) {
+      const batch = cloudFailedRows.slice(i, i + CLOUD_RETRY_BATCH_SIZE);
+      for (const row of batch) {
+        const mediaId = row.mediaId;
+        const mediaInfo = getMediaDownloadInfo({ userId, imageId: mediaId });
+        if (!mediaInfo) continue;
+
+        const enqueued = await enqueueCloudCaptionRetryJob(userId, mediaInfo);
+        if (!enqueued) continue;
+
+        retriedMediaIds.push(String(mediaId));
+        retriedCount += 1;
+      }
+    }
+
     res.sendResponse({
       data: {
         stage: stage || "all",
         retriedCount,
-        skippedCount: failedMediasWithStage.length - retriedCount,
+        skippedCount: totalTargets - retriedCount,
         mediaIds: retriedMediaIds,
       },
     });
@@ -501,6 +531,6 @@ module.exports = {
   handleDeleteMedias,
   handleReanalyzeMedia,
   handleRebuildSearchMedia,
-   handleGetProcessingFailures,
-   handleRetryProcessingFailures,
+  handleGetProcessingFailureSummary,
+  handleRetryProcessingFailures,
 };

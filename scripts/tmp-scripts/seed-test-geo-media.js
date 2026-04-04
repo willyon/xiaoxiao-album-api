@@ -53,7 +53,7 @@ async function main() {
       file_hash,
       created_at,
       media_type,
-      ingest_status,
+      meta_pipeline_status,
       gps_latitude,
       gps_longitude,
       gps_location,

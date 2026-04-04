@@ -5,7 +5,7 @@
  */
 
 const logger = require("../utils/logger");
-const { saveProcessedMediaMetadata, setMediaIngestStatus } = require("../services/mediaService");
+const { saveProcessedMediaMetadata, setMetaPipelineStatus } = require("../services/mediaService");
 const { timestampToYearMonth, timestampToYear, timestampToDate, timestampToDayOfWeek } = require("../utils/formatTime");
 const timeIt = require("../utils/timeIt");
 const storageService = require("../services/storageService");
@@ -14,7 +14,6 @@ const { updateProgress, updateProgressOnce } = require("../services/mediaProcess
 const { mediaAnalysisQueue } = require("../queues/mediaAnalysisQueue");
 const mediaMetadataService = require("../services/mediaMetadataService");
 const { addMediaToSession } = require("../services/uploadSessionService");
-const { updateAnalysisStatusPrimary } = require("../models/mediaModel");
 const { getVideoMimeTypeFromFileName } = require("../utils/fileUtils");
 
 /**
@@ -66,18 +65,19 @@ async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userI
       });
     }
 
-    // 4. 更新处理进度（基础处理最终失败）
-    if (job.data.sessionId) {
-      await updateProgress({
+    // 4. 更新处理进度（基础处理最终失败；同图同会话只计一次，与 aiErrorCount 一致）
+    if (job.data.sessionId && imageHash) {
+      await updateProgressOnce({
         sessionId: job.data.sessionId,
         status: "ingestErrorCount",
+        dedupeKey: imageHash,
       });
     }
 
-    await setMediaIngestStatus({
+    await setMetaPipelineStatus({
       userId,
       imageHash,
-      ingestStatus: "failed",
+      metaPipelineStatus: "failed",
     });
   } else {
     // 还有重试机会，只清理已生成的高清图，保留源文件
@@ -109,6 +109,12 @@ async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userI
         maxAttempts,
         nextAttempt: attemptsMade + 1,
       },
+    });
+
+    await setMetaPipelineStatus({
+      userId,
+      imageHash,
+      metaPipelineStatus: null,
     });
   }
 }
@@ -243,13 +249,6 @@ async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, origin
   }
 
   try {
-    // 标记本地智能分析阶段为 running
-    try {
-      updateAnalysisStatusPrimary(imageId, "running");
-    } catch (_e) {
-      // 忽略状态写入失败，不阻断主流程
-    }
-
     await mediaAnalysisQueue.add(
       "media-analysis",
       {
@@ -289,12 +288,6 @@ async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, origin
  */
 async function processMediaMeta(job) {
   const { userId, imageHash, fileName, originalStorageKey, extension, fileSize, sessionId, mediaType = "image" } = job.data;
-
-  await setMediaIngestStatus({
-    userId,
-    imageHash,
-    ingestStatus: "processing",
-  });
 
   // ========== 视频分支：ffprobe 元数据，不生成 highres；会入队 AI worker 做 analysis 完成态收敛 ==========
   if (mediaType === "video") {

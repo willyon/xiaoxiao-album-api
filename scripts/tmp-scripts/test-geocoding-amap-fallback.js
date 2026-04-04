@@ -16,6 +16,7 @@ require("dotenv").config({ path: path.join(projectRoot, ".env") });
 
 const geoModulePath = path.join(projectRoot, "src/services/geocodingService.js");
 const amapModulePath = path.join(projectRoot, "src/services/amapReverseGeocodeService.js");
+const amapSettingsModulePath = path.join(projectRoot, "src/services/amapSettingsService.js");
 
 const originalHttpsGet = https.get;
 
@@ -30,10 +31,14 @@ const LNG_FR = 2.3522;
 function clearGeocodingCache() {
   delete require.cache[geoModulePath];
   delete require.cache[amapModulePath];
+  delete require.cache[amapSettingsModulePath];
 }
 
+/** 让逆地理走「已启用 + 有 Key」分支，不依赖数据库与 .env */
 function loadGeocoding() {
   clearGeocodingCache();
+  const amapSettings = require(amapSettingsModulePath);
+  amapSettings.getAmapApiKeyForGeocode = () => "test-fake-key-for-mock";
   return require(geoModulePath);
 }
 
@@ -149,7 +154,6 @@ function restoreHttps() {
 }
 
 async function runCase(name, behavior, lat, lng, assertions) {
-  process.env.AMAP_API_KEY = "test-fake-key-for-mock";
   installMock({ behavior });
   const { getLocationFromCoordinates } = loadGeocoding();
   try {

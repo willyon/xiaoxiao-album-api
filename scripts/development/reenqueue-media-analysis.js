@@ -1,7 +1,7 @@
 /*
  * @Description: 自动修复 media 中「未完成」的分析记录
- *               （analysis_status_primary IN ('failed','pending')）
- *               重置状态并重新入队 mediaAnalysisQueue
+ *               （analysis_status_primary IS NULL 或 'failed'）
+ *               入队前将状态置 NULL，再入队 mediaAnalysisQueue
  * @Usage:
  *   node scripts/development/reenqueue-media-analysis.js
  */
@@ -21,7 +21,7 @@ function getFailedMedia() {
     `
     SELECT m.id, m.user_id, m.high_res_storage_key, m.original_storage_key, m.media_type
     FROM media m
-    WHERE m.analysis_status_primary IN ('failed','pending')
+    WHERE (m.analysis_status_primary IS NULL OR m.analysis_status_primary = 'failed')
       AND m.deleted_at IS NULL
   `,
   );
@@ -34,7 +34,7 @@ function resetMediaAnalysis(ids) {
       `
       UPDATE media
       SET
-        analysis_status_primary = 'pending'
+        analysis_status_primary = NULL
       WHERE id = ?
     `,
     );
@@ -49,7 +49,7 @@ async function main() {
   const rows = getFailedMedia();
   if (!rows.length) {
     // eslint-disable-next-line no-console
-    console.log("没有找到 analysis_status='failed'/'pending' 且未完成的 media 记录，无需处理。");
+    console.log("没有找到 analysis_status_primary 为 NULL/failed 的 media 记录，无需处理。");
     process.exit(0);
   }
 

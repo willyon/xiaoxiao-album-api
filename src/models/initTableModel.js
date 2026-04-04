@@ -19,13 +19,15 @@ function createTableUsers() {
   db.prepare(createtablestmt).run();
 }
 
-/** 创建 app_settings 表：全局应用配置（如云模型 API Key） */
-function createTableAppSettings() {
+/** 创建 app_config：id 自增；key_type 区分 cloud_model(百炼) / amap(高德)，UNIQUE */
+function createTableAppConfig() {
   const sql = `
-    CREATE TABLE IF NOT EXISTS app_settings (
-      key TEXT PRIMARY KEY,
-      value TEXT,
-      updated_at INTEGER
+    CREATE TABLE IF NOT EXISTS app_config (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      key_type TEXT NOT NULL UNIQUE,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      api_key TEXT,
+      updated_at INTEGER NOT NULL DEFAULT 0
     );
   `;
   db.prepare(sql).run();
@@ -108,7 +110,8 @@ function createTableMedia() {
       city TEXT,
       duration_sec REAL,
       video_codec TEXT,
-      ingest_status TEXT DEFAULT 'pending',
+      -- meta_pipeline_status：NULL（尚无终态）| 'success' | 'failed'；进行中不写库（与 primary/cloud 一致）
+      meta_pipeline_status TEXT CHECK (meta_pipeline_status IS NULL OR meta_pipeline_status IN ('success','failed')),
       deleted_at INTEGER,
       created_at INTEGER,
       is_favorite INTEGER DEFAULT 0 NOT NULL,
@@ -127,8 +130,10 @@ function createTableMedia() {
       expression_tags TEXT,
       age_tags TEXT,
       gender_tags TEXT,
-      analysis_status_primary TEXT DEFAULT 'pending',
-      analysis_status_cloud   TEXT DEFAULT 'pending',
+      -- analysis_status_primary：NULL（尚无终态）| 'success' | 'failed'；进行中不写库
+      analysis_status_primary TEXT,
+      -- analysis_status_cloud：NULL（未写入）| 'success' | 'failed' | 'skipped'
+      analysis_status_cloud   TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       UNIQUE (user_id, file_hash)
     );
@@ -374,7 +379,7 @@ function createTableSimilarGroupMembersMediaVersion() {
 
 module.exports = {
   createTableUsers,
-  createTableAppSettings,
+  createTableAppConfig,
   createTableFaceClusterRepresentatives,
   createTableFaceClusterMeta,
   createTableMedia,

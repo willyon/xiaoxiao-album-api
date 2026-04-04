@@ -245,9 +245,8 @@ function insertMedia({ userId, imageHash, thumbnailStorageKey, fileSizeBytes, me
       thumbnail_storage_key,
       file_size_bytes,
       media_type,
-      ingest_status,
       original_storage_key
-    ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
   const result = stmt.run(userId, imageHash, now, thumbnailStorageKey || null, fileSizeBytes || null, normalizedType, originalStorageKey || null);
 
@@ -1317,7 +1316,7 @@ function updateMediaMetadata({
       duration_sec = COALESCE(?, duration_sec),
       video_codec = COALESCE(?, video_codec),
       media_type = COALESCE(?, media_type),
-      ingest_status = 'ready'
+      meta_pipeline_status = 'success'
     WHERE user_id = ? AND file_hash = ? RETURNING id
   `;
 
@@ -1358,17 +1357,6 @@ function updateMediaMetadata({
   };
 }
 
-// 检查文件是否已存在（用于预检）
-function checkFileExists({ imageHash, userId }) {
-  const stmt = db.prepare(`
-    SELECT id
-    FROM media
-    WHERE file_hash = ? AND user_id = ?
-    LIMIT 1
-  `);
-  return stmt.get(imageHash, userId);
-}
-
 /** 按用户 + file_hash 查一行（含回收站），用于预检是否仅命中软删记录 */
 function selectMediaRowByHashForUser({ userId, imageHash }) {
   const stmt = db.prepare(`
@@ -1401,25 +1389,40 @@ function updateLocationInfo(imageId, { gpsLocation, country, province, city }, o
   return { affectedRows: result.changes };
 }
 
-function updateIngestStatusByHash({ userId, imageHash, ingestStatus }) {
-  const allowed = new Set(["pending", "processing", "ready", "failed"]);
-  const status = allowed.has(ingestStatus) ? ingestStatus : "pending";
+/** meta 流水线终态：success | failed；传 null 清空为 NULL；非法字符串不执行 UPDATE。 */
+function updateMetaPipelineStatusByHash({ userId, imageHash, metaPipelineStatus }) {
+  if (!userId || !imageHash) return { affectedRows: 0 };
+  if (metaPipelineStatus === null || metaPipelineStatus === undefined) {
+    const result = db
+      .prepare(
+        `
+      UPDATE media
+      SET meta_pipeline_status = NULL
+      WHERE user_id = ? AND file_hash = ?
+    `,
+      )
+      .run(userId, imageHash);
+    return { affectedRows: result.changes };
+  }
+  const allowed = new Set(["success", "failed"]);
+  if (!allowed.has(metaPipelineStatus)) return { affectedRows: 0 };
   const result = db
     .prepare(
       `
       UPDATE media
-      SET ingest_status = ?
+      SET meta_pipeline_status = ?
       WHERE user_id = ? AND file_hash = ?
     `,
     )
-    .run(status, userId, imageHash);
+    .run(metaPipelineStatus, userId, imageHash);
   return { affectedRows: result.changes };
 }
 
+/** 本地智能分析阶段终态：success | failed；进行中不写库（由 Bull 队列体现）。非法 status 不执行 UPDATE。 */
 function updateAnalysisStatusPrimary(mediaId, status) {
   if (!mediaId) return { affectedRows: 0 };
-  const allowed = new Set(["pending", "running", "success", "failed", "skipped"]);
-  const normalized = allowed.has(status) ? status : "pending";
+  const allowed = new Set(["success", "failed"]);
+  if (!allowed.has(status)) return { affectedRows: 0 };
   const result = db
     .prepare(
       `
@@ -1428,14 +1431,18 @@ function updateAnalysisStatusPrimary(mediaId, status) {
       WHERE id = ?
     `,
     )
-    .run(normalized, mediaId);
+    .run(status, mediaId);
   return { affectedRows: result.changes };
 }
 
+/**
+ * 云分析结果落库：仅接受 success | failed | skipped；非法 status 不执行 UPDATE。
+ * 新行未写该列时为 NULL；终态由主流程/异步队列写入。
+ */
 function updateAnalysisStatusCloud(mediaId, status) {
   if (!mediaId) return { affectedRows: 0 };
-  const allowed = new Set(["pending", "running", "success", "failed", "skipped"]);
-  const normalized = allowed.has(status) ? status : "pending";
+  const allowed = new Set(["success", "failed", "skipped"]);
+  if (!allowed.has(status)) return { affectedRows: 0 };
   const result = db
     .prepare(
       `
@@ -1444,7 +1451,7 @@ function updateAnalysisStatusCloud(mediaId, status) {
       WHERE id = ?
     `,
     )
-    .run(normalized, mediaId);
+    .run(status, mediaId);
   return { affectedRows: result.changes };
 }
 
@@ -1455,7 +1462,7 @@ function listFailedMedias({ userId, stage, mediaIds = null, limit = 500, offset 
 
   let whereStage = "";
   if (stage === "ingest") {
-    whereStage = "ingest_status = 'failed'";
+    whereStage = "meta_pipeline_status = 'failed'";
   } else if (stage === "primary") {
     whereStage = "analysis_status_primary = 'failed'";
   } else if (stage === "cloud") {
@@ -1505,36 +1512,98 @@ function listFailedMedias({ userId, stage, mediaIds = null, limit = 500, offset 
   }));
 }
 
-function getCloudCaptionProgressStats() {
+/**
+ * 云阶段失败媒体一次性列出（处理中心重试：先缓存再分批入队，避免多次分页查库）。
+ * @param {{ userId: number, mediaIds?: number[]|null, maxRows?: number }} args
+ */
+function listAllFailedCloudMedias({ userId, mediaIds = null, maxRows = 20000 }) {
+  if (!userId) return [];
+  const cap = Math.max(1, Math.min(Number(maxRows) || 20000, 200000));
+
+  const baseSql = `
+    SELECT
+      id              AS mediaId,
+      file_size_bytes AS fileSize,
+      media_type      AS mediaType,
+      created_at      AS createdAt,
+      original_storage_key AS originalStorageKey,
+      file_hash       AS imageHash
+    FROM media
+    WHERE user_id = ?
+      AND deleted_at IS NULL
+      AND analysis_status_cloud = 'failed'
+  `;
+  const params = [userId];
+  let sql = `${baseSql} ORDER BY created_at DESC LIMIT ?`;
+  if (Array.isArray(mediaIds) && mediaIds.length > 0) {
+    const placeholders = mediaIds.map(() => "?").join(", ");
+    sql = `
+      ${baseSql}
+        AND id IN (${placeholders})
+      ORDER BY created_at DESC
+      LIMIT ?
+    `;
+    mediaIds.forEach((id) => params.push(Number(id)));
+  }
+  params.push(cap);
+
+  const rows = db.prepare(sql).all(...params);
+  return rows.map((row) => ({
+    mediaId: row.mediaId,
+    fileSize: row.fileSize,
+    mediaType: row.mediaType || "image",
+    createdAt: row.createdAt,
+    originalStorageKey: row.originalStorageKey,
+    imageHash: row.imageHash,
+  }));
+}
+
+/**
+ * 当前用户各阶段处理失败条数（未删除媒体），用于处理中心汇总展示。
+ * @param {number} userId
+ * @param {{ includeCloudFailures?: boolean }} [options] 为 false 时不统计云端失败（与 total 中不含 cloud）
+ */
+function countFailedMediasByStage(userId, options = {}) {
+  const includeCloudFailures = options.includeCloudFailures !== false;
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid < 1) {
+    return { ingest: 0, primary: 0, cloud: 0, total: 0 };
+  }
+  const cloudSelect = includeCloudFailures
+    ? `COALESCE(SUM(CASE WHEN analysis_status_cloud = 'failed' THEN 1 ELSE 0 END), 0) AS cnt_cloud`
+    : `0 AS cnt_cloud`;
   const row = db
     .prepare(
       `
       SELECT
-        COUNT(*) AS total,
-        SUM(CASE WHEN analysis_status_cloud = 'success' THEN 1 ELSE 0 END) AS successCount,
-        SUM(CASE WHEN analysis_status_cloud = 'running' THEN 1 ELSE 0 END) AS runningCount,
-        SUM(CASE WHEN analysis_status_cloud = 'failed'  THEN 1 ELSE 0 END) AS failedCount,
-        SUM(CASE WHEN analysis_status_cloud = 'skipped' THEN 1 ELSE 0 END) AS skippedCount,
-        SUM(CASE WHEN analysis_status_cloud = 'pending' THEN 1 ELSE 0 END) AS pendingCount
+        COALESCE(SUM(CASE WHEN meta_pipeline_status = 'failed' THEN 1 ELSE 0 END), 0)       AS cnt_ingest,
+        COALESCE(SUM(CASE WHEN analysis_status_primary = 'failed' THEN 1 ELSE 0 END), 0) AS cnt_primary,
+        ${cloudSelect}
       FROM media
-      WHERE deleted_at IS NULL
+      WHERE user_id = ?
+        AND deleted_at IS NULL
     `,
     )
-    .get();
-  return {
-    total: row?.total || 0,
-    successCount: row?.successCount || 0,
-    runningCount: row?.runningCount || 0,
-    failedCount: row?.failedCount || 0,
-    skippedCount: row?.skippedCount || 0,
-    pendingCount: row?.pendingCount || 0,
-  };
+    .get(uid);
+  const ingest = Number(row?.cnt_ingest || 0);
+  const primary = Number(row?.cnt_primary || 0);
+  const cloud = includeCloudFailures ? Number(row?.cnt_cloud || 0) : 0;
+  return { ingest, primary, cloud, total: ingest + primary + cloud };
 }
 
-function selectPendingCloudCaptionBatch(limit) {
+/**
+ * 历史补跑批次：仅 skipped；失败请在处理中心重试。
+ * @param {number|null|undefined} cursorBeforeId 上一批最后一条的 id（本批取 `id < cursorBeforeId`），避免同一次全量入队重复选中同一批。
+ */
+function selectPendingCloudCaptionBatch(limit, userId, cursorBeforeId = null) {
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid < 1) return [];
   const safeLimit = Math.max(1, Math.min(Number(limit) || 500, 2000));
-  const stmt = db.prepare(
-    `
+  const cursor = cursorBeforeId != null && Number.isFinite(Number(cursorBeforeId)) ? Number(cursorBeforeId) : null;
+  if (cursor != null) {
+    return db
+      .prepare(
+        `
     SELECT
       id   AS mediaId,
       user_id AS userId,
@@ -1542,15 +1611,34 @@ function selectPendingCloudCaptionBatch(limit) {
       original_storage_key AS originalStorageKey,
       media_type AS mediaType
     FROM media
-    WHERE deleted_at IS NULL
-      AND (high_res_storage_key IS NOT NULL OR original_storage_key IS NOT NULL)
-      AND analysis_status_primary = 'success'
-      AND analysis_status_cloud IN ('failed', 'skipped')
+    WHERE user_id = ?
+      AND deleted_at IS NULL
+      AND analysis_status_cloud = 'skipped'
+      AND id < ?
     ORDER BY id DESC
     LIMIT ?
   `,
-  );
-  return stmt.all(safeLimit);
+      )
+      .all(uid, cursor, safeLimit);
+  }
+  return db
+    .prepare(
+      `
+    SELECT
+      id   AS mediaId,
+      user_id AS userId,
+      high_res_storage_key AS highResStorageKey,
+      original_storage_key AS originalStorageKey,
+      media_type AS mediaType
+    FROM media
+    WHERE user_id = ?
+      AND deleted_at IS NULL
+      AND analysis_status_cloud = 'skipped'
+    ORDER BY id DESC
+    LIMIT ?
+  `,
+    )
+    .all(uid, safeLimit);
 }
 
 /**
@@ -1807,12 +1895,28 @@ function upsertMediaAiFieldsForAnalysis({ mediaId, caption }) {
   db.prepare(`UPDATE media SET ${assignments.join(", ")} WHERE id = ?`).run(...params);
 }
 
+/** 当前用户下云阶段为 skipped 的媒体条数（未删除） */
+function countCloudAnalysisSkippedForUser(userId) {
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid < 1) return 0;
+  const row = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS cnt
+      FROM media
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+        AND analysis_status_cloud = 'skipped'
+    `,
+    )
+    .get(uid);
+  return Number(row?.cnt || 0);
+}
+
 module.exports = {
   sqlLocationKeyNullable,
-  sqlLocationAlbumKey,
   sqlLocationIsUnknown,
   normalizeTextArray,
-  checkFileExists,
   selectMediaRowByHashForUser,
   insertMedia,
   updateMediaMetadata,
@@ -1835,11 +1939,13 @@ module.exports = {
   getMediaDownloadInfo,
   getMediasDownloadInfo,
   rebuildMediaSearchDoc,
-  updateIngestStatusByHash,
+  updateMetaPipelineStatusByHash,
   upsertMediaAiFieldsForAnalysis,
   updateAnalysisStatusPrimary,
   updateAnalysisStatusCloud,
   listFailedMedias,
-  getCloudCaptionProgressStats,
+  listAllFailedCloudMedias,
+  countFailedMediasByStage,
   selectPendingCloudCaptionBatch,
+  countCloudAnalysisSkippedForUser,
 };

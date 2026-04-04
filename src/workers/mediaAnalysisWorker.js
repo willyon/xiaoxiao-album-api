@@ -54,11 +54,8 @@ worker.on("failed", (job, error) => {
   });
 });
 
-worker.on("stalled", (job) => {
-  logger.warn({
-    message: "mediaAnalysisWorker.stalled",
-    details: { jobId: job?.id },
-  });
+worker.on("stalled", (jobId) => {
+  logger.warn({ message: "mediaAnalysisWorker.stalled", details: { jobId } });
 });
 
 initGracefulShutdown({

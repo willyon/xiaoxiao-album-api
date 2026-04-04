@@ -5,7 +5,7 @@
  *
  * 🚀 包含服务:
  * • Node.js API 服务 (开发版)
- * • Node.js Workers (开发版)
+ * • Node.js Workers (开发版，含云模型字幕 Worker)
  * • Python AI 服务 (开发版 - 人脸识别、图片理解等)
  */
 module.exports = {
@@ -49,6 +49,16 @@ module.exports = {
       script: "src/workers/mediaAnalysisWorker.js",
       // cwd: 未设置，使用 PM2 启动目录
       cwd: ".", // 相对路径
+      watch: false,
+      max_restarts: 5,
+      env: {
+        NODE_ENV: "development",
+      },
+    },
+    {
+      name: "cloud-caption-worker-dev",
+      script: "src/workers/cloudCaptionWorker.js",
+      cwd: ".",
       watch: false,
       max_restarts: 5,
       env: {
@@ -118,7 +128,7 @@ pm2 start ecosystem.dev.config.js
 📋 单独管理开发服务:
 - 重启 API 服务: pm2 restart app-service-dev
 - 重启 Python AI 服务: pm2 restart python-ai-service-dev
-- 重启所有 Workers: pm2 restart media-upload-worker-dev media-meta-worker-dev media-analysis-worker-dev
+- 重启所有 Workers: pm2 restart media-upload-worker-dev media-meta-worker-dev media-analysis-worker-dev cloud-caption-worker-dev
 
 📋 开发调试:
 - 查看 API 日志: pm2 logs app-service-dev

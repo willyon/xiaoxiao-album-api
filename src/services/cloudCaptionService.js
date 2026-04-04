@@ -1,42 +1,63 @@
+const logger = require("../utils/logger");
 const { cloudCaptionQueue } = require("../queues/cloudCaptionQueue");
-const { getCloudCaptionProgressStats, selectPendingCloudCaptionBatch } = require("../models/mediaModel");
+const { selectPendingCloudCaptionBatch, countCloudAnalysisSkippedForUser } = require("../models/mediaModel");
 
 /**
- * 读取云 caption 分析进度（图片 + 视频统一统计）。
+ * 设置页门闸：当前用户未删除且云阶段为 skipped 的条数（与历史补跑入队条件一致；失败请在处理中心重试）。
  */
-function getCloudCaptionProgress() {
-  return getCloudCaptionProgressStats();
+function getCloudSkippedCount(userId) {
+  return {
+    skippedCount: countCloudAnalysisSkippedForUser(userId),
+  };
 }
 
 /**
- * 为一批历史媒体创建云 caption 补跑任务，并将其 analysis_status_cloud 标记为 pending。
- * 返回本次入队的任务数量。
+ * 单次请求内全量补跑：按 `id` 游标分页查询 skipped 并入队，不在入队时改库；Worker 终态再写 success/failed。
+ * @returns {number} 入队总条数
  */
-async function enqueueCloudCaptionRebuildBatch(limitPerBatch = 500) {
-  const rows = selectPendingCloudCaptionBatch(limitPerBatch);
+async function enqueueCloudCaptionRebuildAll(limitPerBatch = 500, userId) {
+  const envIter = Number(process.env.CLOUD_CAPTION_REBUILD_MAX_ITERATIONS);
+  const maxIter = Math.max(
+    1,
+    Math.min(Number.isFinite(envIter) && envIter > 0 ? envIter : 40, 100_000_000),
+  );
+  let totalEnqueued = 0;
+  let cursorBeforeId = null;
 
-  if (!rows || rows.length === 0) {
-    return 0;
+  for (let i = 0; i < maxIter; i++) {
+    const rows = selectPendingCloudCaptionBatch(limitPerBatch, userId, cursorBeforeId);
+    if (!rows || rows.length === 0) {
+      return totalEnqueued;
+    }
+
+    const jobs = rows.map((row) => ({
+      name: `cloud-caption-${row.mediaId}`,
+      data: {
+        mediaId: row.mediaId,
+        userId: row.userId,
+        highResStorageKey: row.highResStorageKey,
+        originalStorageKey: row.originalStorageKey,
+        mediaType: row.mediaType || "image",
+      },
+    }));
+
+    await cloudCaptionQueue.addBulk(jobs);
+    totalEnqueued += rows.length;
+    cursorBeforeId = rows[rows.length - 1].mediaId;
   }
 
-  const jobs = rows.map((row) => ({
-    name: `cloud-caption-${row.mediaId}`,
-    data: {
-      mediaId: row.mediaId,
-      userId: row.userId,
-      highResStorageKey: row.highResStorageKey,
-      originalStorageKey: row.originalStorageKey,
-      mediaType: row.mediaType || "image",
-    },
-  }));
-
-  await cloudCaptionQueue.addBulk(jobs);
-
-  return jobs.length;
+  const skippedLeft = countCloudAnalysisSkippedForUser(userId);
+  logger.error({
+    message: "enqueueCloudCaptionRebuildAll: iteration cap reached (check CLOUD_CAPTION_REBUILD_MAX_ITERATIONS)",
+    totalEnqueued,
+    skippedLeft,
+    maxIter,
+    limitPerBatch,
+  });
+  return totalEnqueued;
 }
 
 module.exports = {
-  getCloudCaptionProgress,
-  enqueueCloudCaptionRebuildBatch,
+  getCloudSkippedCount,
+  enqueueCloudCaptionRebuildAll,
 };
-

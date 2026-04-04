@@ -142,13 +142,13 @@ async function saveProcessedMediaMetadata(imageData) {
   }
 }
 
-async function setMediaIngestStatus({ userId, imageHash, ingestStatus }) {
+async function setMetaPipelineStatus({ userId, imageHash, metaPipelineStatus }) {
   try {
-    return mediaModel.updateIngestStatusByHash({ userId, imageHash, ingestStatus });
+    return mediaModel.updateMetaPipelineStatusByHash({ userId, imageHash, metaPipelineStatus });
   } catch (error) {
     logger.warn({
-      message: "更新 ingest_status 失败",
-      details: { userId, imageHash, ingestStatus, error: error.message },
+      message: "更新 meta_pipeline_status 失败",
+      details: { userId, imageHash, metaPipelineStatus, error: error.message },
     });
     return { affectedRows: 0 };
   }
@@ -581,7 +581,7 @@ module.exports = {
   // ========== 媒体业务逻辑函数 ==========
   saveNewMedia,
   saveProcessedMediaMetadata,
-  setMediaIngestStatus,
+  setMetaPipelineStatus,
   getUserMediaHashes,
 
   // ========== 媒体查询服务函数 ==========

@@ -3,12 +3,13 @@
  * 并将旧 analysis_status 字段的状态迁移到 analysis_status_primary。
  *
  * 设计要点：
- * - 新增列均为 TEXT，默认值 'pending'，用于表示本地/云端智能分析阶段状态；
+ * - analysis_status_primary：TEXT，无 DEFAULT（新建行为 NULL）；旧库列级 DEFAULT 请另跑 migrate-media-analysis-status-primary-default-null.js
+ * - analysis_status_cloud：TEXT，无 DEFAULT（新建行为 NULL）；旧库若曾为 DEFAULT 'pending' 请另跑 migrate-media-analysis-status-cloud-default-null.js
  * - 若存在旧列 analysis_status（running/failed/done），映射为：
- *   - running -> 'running'
+ *   - running -> NULL（当前设计不在 primary 列存 running）
  *   - failed  -> 'failed'
  *   - done    -> 'success'
- *   - 其它 / NULL -> 'pending'
+ *   - 其它 / NULL：保留原 analysis_status_primary（不写入非法枚举）
  *
  * 使用方式（在 xiaoxiao-project-service 根目录执行）：
  *   node scripts/tmp-scripts/migrate-media-add-analysis-status-columns.js
@@ -41,15 +42,15 @@ function migrate() {
   db.exec("BEGIN TRANSACTION");
   try {
     if (!cols.includes("analysis_status_primary")) {
-      db.prepare("ALTER TABLE media ADD COLUMN analysis_status_primary TEXT DEFAULT 'pending'").run();
-      console.log("✅ 已新增列 media.analysis_status_primary（默认值 'pending'）");
+      db.prepare("ALTER TABLE media ADD COLUMN analysis_status_primary TEXT").run();
+      console.log("✅ 已新增列 media.analysis_status_primary TEXT（无 DEFAULT，新建行为 NULL）");
     } else {
       console.log("ℹ️ media.analysis_status_primary 已存在，跳过 ADD COLUMN");
     }
 
     if (!cols.includes("analysis_status_cloud")) {
-      db.prepare("ALTER TABLE media ADD COLUMN analysis_status_cloud TEXT DEFAULT 'pending'").run();
-      console.log("✅ 已新增列 media.analysis_status_cloud（默认值 'pending'）");
+      db.prepare("ALTER TABLE media ADD COLUMN analysis_status_cloud TEXT").run();
+      console.log("✅ 已新增列 media.analysis_status_cloud TEXT（无 DEFAULT，新建行为 NULL）");
     } else {
       console.log("ℹ️ media.analysis_status_cloud 已存在，跳过 ADD COLUMN");
     }
@@ -60,10 +61,10 @@ function migrate() {
         `
         UPDATE media
         SET analysis_status_primary = CASE
-          WHEN analysis_status = 'running' THEN 'running'
+          WHEN analysis_status = 'running' THEN NULL
           WHEN analysis_status = 'failed'  THEN 'failed'
           WHEN analysis_status = 'done'    THEN 'success'
-          ELSE COALESCE(analysis_status_primary, 'pending')
+          ELSE analysis_status_primary
         END
       `,
       ).run();

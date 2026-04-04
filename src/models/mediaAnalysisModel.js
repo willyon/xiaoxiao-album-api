@@ -1,31 +1,8 @@
 /*
- * @Description: 媒体智能分析状态与汇总字段（落在 media 表）
+ * @Description: 媒体智能分析结果与汇总字段（落在 media 表）
  */
 
 const { db } = require("../services/database");
-
-function markMediaAnalysisRunning(mediaId) {
-  db.prepare(
-    `
-    UPDATE media SET
-      analysis_status_primary = 'running'
-    WHERE id = ?
-  `,
-  ).run(mediaId);
-}
-
-function markMediaAnalysisFailed(mediaId, _error) {
-  if (!mediaId) {
-    return;
-  }
-  db.prepare(
-    `
-    UPDATE media SET
-      analysis_status_primary = 'failed'
-    WHERE id = ?
-  `,
-  ).run(mediaId);
-}
 
 function finalizeMediaAnalysis({
   mediaId,
@@ -82,7 +59,5 @@ function finalizeMediaAnalysis({
 }
 
 module.exports = {
-  markMediaAnalysisRunning,
-  markMediaAnalysisFailed,
   finalizeMediaAnalysis,
 };

@@ -51,7 +51,7 @@ function findImagesNeedingAI() {
         m.high_res_storage_key IS NOT NULL 
         OR m.original_storage_key IS NOT NULL
       )
-      AND COALESCE(m.analysis_status_primary, 'pending') != 'success'
+      AND (m.analysis_status_primary IS NULL OR m.analysis_status_primary != 'success')
       AND m.deleted_at IS NULL
     ORDER BY m.created_at DESC
   `;
