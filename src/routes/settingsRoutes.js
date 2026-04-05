@@ -10,6 +10,8 @@ const {
   getAmapSettings,
   updateAmapSettings,
   testAmapConnection,
+  getMapRegeoSkippedCountHandler,
+  rebuildMapRegeo,
 } = require("../controllers/settingsController");
 
 router.get("/cloud-model", getCloudModelSettings);
@@ -21,5 +23,7 @@ router.post("/cloud-model/rebuild-caption", rebuildCloudCaption);
 router.get("/amap", getAmapSettings);
 router.post("/amap", updateAmapSettings);
 router.post("/amap/test", testAmapConnection);
+router.get("/amap/skipped-count", getMapRegeoSkippedCountHandler);
+router.post("/amap/rebuild-geocode", rebuildMapRegeo);
 
 module.exports = router;

@@ -183,9 +183,6 @@ class Settings:
     # 云模型名：不同 vendor 可复用同一配置位，方便未来切换云厂商
     CAPTION_CLOUD_MODEL = (os.getenv("CAPTION_CLOUD_MODEL") or "qwen3-vl-plus").strip()
 
-    # 千问云 caption 的 JSON 固定包含 ocr（图中可读文字）；以下为该能力预留的生成 token 上限（需 ≥ CAPTION_MAX_TOKENS）
-    CAPTION_CLOUD_VISION_OCR_MAX_TOKENS = int(os.getenv("CAPTION_CLOUD_VISION_OCR_MAX_TOKENS", "1024"))
-
     # 可选：云 API Base URL
     # - 默认留空，使用各 vendor SDK / 官方默认地址
     # - 需要代理、网关或兼容层时可按能力单独覆盖
@@ -196,12 +193,12 @@ class Settings:
 
     # 物体检测置信度阈值（YOLO）
     YOLO_CONF_THRESHOLD = float(os.getenv("YOLO_CONF_THRESHOLD", "0.25"))
-    
-    # Caption：OpenAI 兼容接口里模型单次生成上限（token），过短会截断 JSON
-    CAPTION_MAX_TOKENS = int(os.getenv("CAPTION_MAX_TOKENS") or "150")
 
     # 各能力单次推理超时时间（秒）
     CAPTION_TIMEOUT_SECONDS = float(os.getenv("CAPTION_TIMEOUT_SECONDS") or "30")
+
+    # 云 caption prompt 中要求 VLM 输出的 ocr 字段最大字符数（Unicode）
+    CAPTION_OCR_PROMPT_MAX_CHARS = int(os.getenv("CAPTION_OCR_PROMPT_MAX_CHARS", "400"))
 
     OBJECT_TIMEOUT_SECONDS = float(os.getenv("OBJECT_TIMEOUT_SECONDS", "10"))
 

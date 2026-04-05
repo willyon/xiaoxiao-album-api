@@ -1,4 +1,6 @@
 const axios = require("axios");
+const CustomError = require("../errors/customError");
+const { ERROR_CODES } = require("../constants/messageCodes");
 const {
   getRowByKeyType,
   updateConfigRow,
@@ -6,6 +8,7 @@ const {
   KEY_TYPE_AMAP,
 } = require("../models/appSettingsModel");
 const { getCloudSkippedCount, enqueueCloudCaptionRebuildAll } = require("../services/cloudCaptionService");
+const { getMapRegeoSkippedCount, enqueueMapRegeoRebuildAll } = require("../services/mapRegeoService");
 
 /** 天安门附近 GCJ-02，用于连通性检测 */
 const AMAP_TEST_LNG = 116.397428;
@@ -193,6 +196,42 @@ async function testAmapConnection(req, res, next) {
   }
 }
 
+async function getMapRegeoSkippedCountHandler(req, res, next) {
+  try {
+    const userId = req.user?.userId;
+    res.sendResponse({
+      data: getMapRegeoSkippedCount(userId),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+async function rebuildMapRegeo(req, res, next) {
+  try {
+    const row = getRowByKeyType(KEY_TYPE_AMAP);
+    const amapReady = Number(row?.enabled) === 1 && Boolean(row?.api_key && String(row.api_key).trim() !== "");
+    if (!amapReady) {
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.UNSUPPORTED_OPERATION,
+        messageType: "error",
+        message: "高德逆地理未启用或未配置 Web 服务 Key，无法补跑。",
+      });
+    }
+
+    const limitPerBatch = Number(process.env.MAP_REGEO_BATCH_LIMIT || 500);
+    const userId = req.user?.userId;
+    const totalEnqueued = await enqueueMapRegeoRebuildAll(limitPerBatch, userId);
+
+    res.sendResponse({
+      data: { enqueued: totalEnqueued },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   getCloudModelSettings,
   updateCloudModelSettings,
@@ -202,5 +241,7 @@ module.exports = {
   getAmapSettings,
   updateAmapSettings,
   testAmapConnection,
+  getMapRegeoSkippedCountHandler,
+  rebuildMapRegeo,
 };
 

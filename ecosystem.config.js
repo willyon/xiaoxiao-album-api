@@ -54,6 +54,16 @@ module.exports = {
         NODE_ENV: "production",
       },
     },
+    {
+      name: "map-regeo-worker",
+      script: "src/workers/mapRegeoWorker.js",
+      cwd: ".",
+      watch: false,
+      max_restarts: 5,
+      env: {
+        NODE_ENV: "production",
+      },
+    },
     // ========== 定时任务 ==========
     {
       name: "cleanup-rebuild-all",

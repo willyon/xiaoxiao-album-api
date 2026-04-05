@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from config import normalize_cloud_vendor, settings
 from providers.base import BaseCaptionProvider, provider_not_implemented_result
@@ -21,6 +21,7 @@ class CloudCaptionProvider(BaseCaptionProvider):
         model_manager: Any,
         configured_provider: str,
         resolved_provider: str,
+        cloud_api_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         configured_vendor = getattr(settings, "CAPTION_CLOUD_VENDOR", "qwen")
         resolved_vendor = normalize_cloud_vendor(configured_vendor)
@@ -35,6 +36,7 @@ class CloudCaptionProvider(BaseCaptionProvider):
                 model_manager=model_manager,
                 configured_provider=configured_provider,
                 resolved_provider=resolved_provider,
+                cloud_api_key=cloud_api_key,
             )
         return provider_not_implemented_result(
             capability="caption",

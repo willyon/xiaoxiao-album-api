@@ -142,6 +142,7 @@ async function saveProcessedMediaMetadata(imageData) {
   }
 }
 
+/** 仅支持终态 success | failed（与 updateMetaPipelineStatusByHash 一致，不支持清空为 NULL）。 */
 async function setMetaPipelineStatus({ userId, imageHash, metaPipelineStatus }) {
   try {
     return mediaModel.updateMetaPipelineStatusByHash({ userId, imageHash, metaPipelineStatus });

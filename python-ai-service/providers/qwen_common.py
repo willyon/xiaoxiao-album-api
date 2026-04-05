@@ -59,6 +59,11 @@ def post_json(url: str, payload: Dict[str, Any], api_key: str, timeout_seconds: 
     try:
         with request.urlopen(req, timeout=timeout_seconds) as resp:
             raw = resp.read().decode("utf-8")
+        # 云模型（OpenAI 兼容）原始 HTTP 响应体；不走 CustomLogger.details 以免被截断
+        try:
+            logger.logger.info("[qwen_openai_compatible] url=%s raw_response_body=%s", url, raw)
+        except Exception:
+            pass
     except error.HTTPError as exc:
         resp_body = exc.read().decode("utf-8", errors="replace")
         logger.warning(
@@ -78,6 +83,17 @@ def post_json(url: str, payload: Dict[str, Any], api_key: str, timeout_seconds: 
     except json.JSONDecodeError as exc:
         logger.warning("qwen provider invalid json", details={"url": url, "body": raw[:1000]})
         raise AiServiceError(f"qwen response json decode failed: {exc}")
+
+
+def extract_openai_finish_reason(response: Dict[str, Any]) -> Optional[str]:
+    """OpenAI 兼容响应 choices[0].finish_reason，常见值：stop | length | content_filter。"""
+    choices = response.get("choices") or []
+    if not choices:
+        return None
+    fr = choices[0].get("finish_reason")
+    if fr is None or fr == "":
+        return None
+    return str(fr).strip()
 
 
 def extract_openai_message_text(response: Dict[str, Any]) -> str:

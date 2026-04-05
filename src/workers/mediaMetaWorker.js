@@ -24,6 +24,7 @@ const worker = new Worker(
       await processMediaMeta(job);
     } catch (err) {
       const { userId, imageHash } = job.data || {};
+      // meta 终局 failed 仅此一处落库（与 mediaMetaIngestor 解耦，避免与 _handleMetaRetryFailure 重复 UPDATE）
       if (userId && imageHash && !bullMqWillRetryAfterThisFailure(job, err)) {
         await setMetaPipelineStatus({ userId, imageHash, metaPipelineStatus: "failed" });
       }

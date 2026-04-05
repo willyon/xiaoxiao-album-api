@@ -22,13 +22,13 @@ async function createSession(userId) {
   // 生成会话ID
   const sessionId = uuidv4();
 
-  // 在Redis中创建会话
+  // 在 Redis 中创建会话 Hash（九字段语义见 ../utils/uploadProgressSnapshot.js 文件头）
   await redisClient.hset(`upload:session:${sessionId}`, {
     uploadedCount: 0,
     ingestDoneCount: 0,
     ingestErrorCount: 0,
-    duplicateCount: 0, // Controller层检测的重复（不加入队列）
-    workerSkippedCount: 0, // Worker层检测的重复（已加入队列但跳过）
+    duplicateCount: 0,
+    workerSkippedCount: 0,
     existingFiles: 0,
     aiEligibleCount: 0,
     aiDoneCount: 0,

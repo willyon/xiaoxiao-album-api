@@ -134,6 +134,8 @@ function createTableMedia() {
       analysis_status_primary TEXT,
       -- analysis_status_cloud：NULL（未写入）| 'success' | 'failed' | 'skipped'
       analysis_status_cloud   TEXT,
+      -- map_regeo_status：NULL（未写入）| 'success' | 'failed' | 'skipped'（线上地图逆地理，当前实现为高德）
+      map_regeo_status        TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       UNIQUE (user_id, file_hash)
     );
@@ -148,6 +150,7 @@ function createTableMedia() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_favorite ON media(user_id, is_favorite);").run();
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_analysis_status_primary ON media(user_id, analysis_status_primary);").run();
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_analysis_status_cloud   ON media(user_id, analysis_status_cloud);").run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_map_regeo_status        ON media(user_id, map_regeo_status);").run();
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_face_count   ON media(user_id, face_count);").run();
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_person_count ON media(user_id, person_count);").run();
 }

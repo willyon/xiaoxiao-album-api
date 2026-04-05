@@ -59,25 +59,28 @@ async function main() {
       gps_location,
       country,
       province,
-      city
-    ) VALUES (?, ?, ?, 'image', 'success', ?, ?, ?, ?, ?, ?)
+      city,
+      map_regeo_status
+    ) VALUES (?, ?, ?, 'image', 'success', ?, ?, ?, ?, ?, ?, ?)
   `);
 
   console.log(`使用 user_id=${userId}，开始逆地理并写入 media …\n`);
 
   for (const p of TEST_POINTS) {
     const fileHash = `test-geo-${p.key}-${now}-${crypto.randomBytes(4).toString("hex")}`;
-    let loc = null;
+    let geo = null;
     try {
-      loc = await getLocationFromCoordinates(p.lat, p.lng);
+      geo = await getLocationFromCoordinates(p.lat, p.lng);
     } catch (e) {
       console.error(`[${p.label}] 逆地理异常:`, e.message);
     }
 
+    const loc = geo?.location ?? null;
     const gpsLocation = loc?.formattedAddress ?? null;
     const country = loc?.country ?? null;
     const province = loc?.province ?? null;
     const city = loc?.city ?? null;
+    const mapRegeoStatus = geo?.mapRegeoStatus ?? null;
 
     const info = insert.run(
       userId,
@@ -89,12 +92,14 @@ async function main() {
       country,
       province,
       city,
+      mapRegeoStatus,
     );
 
     console.log(`--- ${p.label} (${p.lat}, ${p.lng}) ---`);
     console.log(`  file_hash: ${fileHash}`);
     console.log(`  gps_location: ${gpsLocation ?? "(null)"}`);
     console.log(`  country: ${country ?? "(null)"} | province: ${province ?? "(null)"} | city: ${city ?? "(null)"}`);
+    console.log(`  map_regeo_status: ${mapRegeoStatus ?? "(null)"}`);
     console.log(`  row id: ${info.lastInsertRowid}, changes: ${info.changes}\n`);
   }
 

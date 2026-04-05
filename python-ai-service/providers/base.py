@@ -21,6 +21,7 @@ class BaseCaptionProvider(ABC):
         model_manager: Any,
         configured_provider: str,
         resolved_provider: str,
+        cloud_api_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         raise NotImplementedError
 

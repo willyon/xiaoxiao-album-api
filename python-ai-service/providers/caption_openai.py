@@ -18,6 +18,7 @@ class OpenAICaptionProvider(BaseCaptionProvider):
         model_manager: Any,
         configured_provider: str,
         resolved_provider: str,
+        cloud_api_key: str | None = None,
     ) -> Dict[str, Any]:
         return provider_not_implemented_result(
             capability="caption",

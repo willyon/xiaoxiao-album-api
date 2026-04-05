@@ -1288,7 +1288,9 @@ function updateMediaMetadata({
   durationSec,
   videoCodec,
   mediaType,
+  mapRegeoStatus,
 }) {
+  const mapRegeoClause = mapRegeoStatus !== undefined ? ", map_regeo_status = ?" : "";
   const sql = `
     UPDATE media SET
       captured_at = COALESCE(?, captured_at),
@@ -1315,13 +1317,13 @@ function updateMediaMetadata({
       mime = COALESCE(?, mime),
       duration_sec = COALESCE(?, duration_sec),
       video_codec = COALESCE(?, video_codec),
-      media_type = COALESCE(?, media_type),
+      media_type = COALESCE(?, media_type)${mapRegeoClause},
       meta_pipeline_status = 'success'
     WHERE user_id = ? AND file_hash = ? RETURNING id
   `;
 
   const stmt = db.prepare(sql);
-  const result = stmt.get(
+  const params = [
     creationDate,
     monthKey,
     yearKey,
@@ -1347,9 +1349,13 @@ function updateMediaMetadata({
     durationSec,
     videoCodec,
     mediaType,
-    userId,
-    imageHash,
-  );
+  ];
+  if (mapRegeoStatus !== undefined) {
+    params.push(mapRegeoStatus);
+  }
+  params.push(userId, imageHash);
+
+  const result = stmt.get(...params);
 
   return {
     affectedRows: result ? 1 : 0,
@@ -1369,19 +1375,25 @@ function selectMediaRowByHashForUser({ userId, imageHash }) {
 }
 
 // 异步更新图片位置信息
-function updateLocationInfo(imageId, { gpsLocation, country, province, city }, options = {}) {
+function updateLocationInfo(imageId, { gpsLocation, country, province, city, mapRegeoStatus }, options = {}) {
   const { rebuildSearchArtifacts = false } = options;
+  const mapClause = mapRegeoStatus !== undefined ? ", map_regeo_status = ?" : "";
   const sql = `
     UPDATE media SET
       gps_location = COALESCE(?, gps_location),
       country = COALESCE(?, country),
       province = COALESCE(?, province),
-      city = COALESCE(?, city)
+      city = COALESCE(?, city)${mapClause}
     WHERE id = ?
   `;
 
   const stmt = db.prepare(sql);
-  const result = stmt.run(gpsLocation, country, province, city, imageId);
+  const locParams = [gpsLocation, country, province, city];
+  if (mapRegeoStatus !== undefined) {
+    locParams.push(mapRegeoStatus);
+  }
+  locParams.push(imageId);
+  const result = stmt.run(...locParams);
 
   if (rebuildSearchArtifacts) {
     rebuildMediaSearchDoc(imageId);
@@ -1389,23 +1401,11 @@ function updateLocationInfo(imageId, { gpsLocation, country, province, city }, o
   return { affectedRows: result.changes };
 }
 
-/** meta 流水线终态：success | failed；传 null 清空为 NULL；非法字符串不执行 UPDATE。 */
+/** meta 流水线终态：仅 success | failed；空值与非法字符串不执行 UPDATE。 */
 function updateMetaPipelineStatusByHash({ userId, imageHash, metaPipelineStatus }) {
   if (!userId || !imageHash) return { affectedRows: 0 };
-  if (metaPipelineStatus === null || metaPipelineStatus === undefined) {
-    const result = db
-      .prepare(
-        `
-      UPDATE media
-      SET meta_pipeline_status = NULL
-      WHERE user_id = ? AND file_hash = ?
-    `,
-      )
-      .run(userId, imageHash);
-    return { affectedRows: result.changes };
-  }
   const allowed = new Set(["success", "failed"]);
-  if (!allowed.has(metaPipelineStatus)) return { affectedRows: 0 };
+  if (metaPipelineStatus == null || !allowed.has(metaPipelineStatus)) return { affectedRows: 0 };
   const result = db
     .prepare(
       `
@@ -1448,6 +1448,23 @@ function updateAnalysisStatusCloud(mediaId, status) {
       `
       UPDATE media
       SET analysis_status_cloud = ?
+      WHERE id = ?
+    `,
+    )
+    .run(status, mediaId);
+  return { affectedRows: result.changes };
+}
+
+/** 线上地图逆地理终态：success | failed | skipped；非法不 UPDATE。 */
+function updateMapRegeoStatus(mediaId, status) {
+  if (!mediaId) return { affectedRows: 0 };
+  const allowed = new Set(["success", "failed", "skipped"]);
+  if (!allowed.has(status)) return { affectedRows: 0 };
+  const result = db
+    .prepare(
+      `
+      UPDATE media
+      SET map_regeo_status = ?
       WHERE id = ?
     `,
     )
@@ -1913,6 +1930,93 @@ function countCloudAnalysisSkippedForUser(userId) {
   return Number(row?.cnt || 0);
 }
 
+/** 当前用户 map_regeo_status ∈ {skipped, failed} 且含 GPS（与设置页补跑入队条件一致） */
+function countMapRegeoSkippedForUser(userId) {
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid < 1) return 0;
+  const row = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS cnt
+      FROM media
+      WHERE user_id = ?
+        AND deleted_at IS NULL
+        AND map_regeo_status IN ('skipped', 'failed')
+        AND gps_latitude IS NOT NULL
+        AND gps_longitude IS NOT NULL
+    `,
+    )
+    .get(uid);
+  return Number(row?.cnt || 0);
+}
+
+/**
+ * 地图逆地理补跑批次：skipped / failed + 有 GPS；入队不改库。
+ * @param {number|null|undefined} cursorBeforeId 上一批最后一条 id，本批 `id < cursorBeforeId`
+ */
+function selectPendingMapRegeoBatch(limit, userId, cursorBeforeId = null) {
+  const uid = Number(userId);
+  if (!Number.isFinite(uid) || uid < 1) return [];
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 500, 2000));
+  const cursor = cursorBeforeId != null && Number.isFinite(Number(cursorBeforeId)) ? Number(cursorBeforeId) : null;
+  const baseWhere = `
+    WHERE user_id = ?
+      AND deleted_at IS NULL
+      AND map_regeo_status IN ('skipped', 'failed')
+      AND gps_latitude IS NOT NULL
+      AND gps_longitude IS NOT NULL
+  `;
+  if (cursor != null) {
+    return db
+      .prepare(
+        `
+    SELECT
+      id AS mediaId,
+      user_id AS userId,
+      gps_latitude AS latitude,
+      gps_longitude AS longitude
+    FROM media
+    ${baseWhere}
+      AND id < ?
+    ORDER BY id DESC
+    LIMIT ?
+  `,
+      )
+      .all(uid, cursor, safeLimit);
+  }
+  return db
+    .prepare(
+      `
+    SELECT
+      id AS mediaId,
+      user_id AS userId,
+      gps_latitude AS latitude,
+      gps_longitude AS longitude
+    FROM media
+    ${baseWhere}
+    ORDER BY id DESC
+    LIMIT ?
+  `,
+    )
+    .all(uid, safeLimit);
+}
+
+/** Worker 校验：指定用户下媒体是否存在、未删 */
+function selectMediaRowForMapRegeoJob(mediaId, userId) {
+  const mid = Number(mediaId);
+  const uid = Number(userId);
+  if (!Number.isFinite(mid) || mid < 1 || !Number.isFinite(uid) || uid < 1) return null;
+  return db
+    .prepare(
+      `
+    SELECT id, user_id, gps_latitude, gps_longitude, map_regeo_status
+    FROM media
+    WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+  `,
+    )
+    .get(mid, uid);
+}
+
 module.exports = {
   sqlLocationKeyNullable,
   sqlLocationIsUnknown,
@@ -1943,9 +2047,13 @@ module.exports = {
   upsertMediaAiFieldsForAnalysis,
   updateAnalysisStatusPrimary,
   updateAnalysisStatusCloud,
+  updateMapRegeoStatus,
   listFailedMedias,
   listAllFailedCloudMedias,
   countFailedMediasByStage,
   selectPendingCloudCaptionBatch,
   countCloudAnalysisSkippedForUser,
+  countMapRegeoSkippedForUser,
+  selectPendingMapRegeoBatch,
+  selectMediaRowForMapRegeoJob,
 };

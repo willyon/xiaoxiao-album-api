@@ -56,25 +56,29 @@ function fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, fallbackReaso
 }
 
 /**
- * 照片 EXIF 经纬度为 WGS-84；返回结构化位置（与本地/全球服务字段对齐）。
+ * 照片 EXIF 经纬度为 WGS-84；返回结构化位置（与本地/全球服务字段对齐）及线上地图逆地理终态。
  * @returns {Promise<{
- *   formattedAddress: string|null,
- *   country: string|null,
- *   province: string|null,
- *   city: string|null,
- *   district: string|null
- * }|null>}
+ *   location: {
+ *     formattedAddress: string|null,
+ *     country: string|null,
+ *     province: string|null,
+ *     city: string|null,
+ *     district: string|null
+ *   }|null,
+ *   mapRegeoStatus: 'skipped'|'success'|'failed'|null
+ * }>}
  */
 async function getLocationFromCoordinates(latitude, longitude) {
   if (!latitude || !longitude) {
-    return null;
+    return { location: null, mapRegeoStatus: null };
   }
 
   const gcj02Coords = wgs84ToGcj02(longitude, latitude);
 
   const apiKey = getAmapApiKeyForGeocode();
   if (!apiKey) {
-    return fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, null);
+    const location = fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, null);
+    return { location, mapRegeoStatus: "skipped" };
   }
 
   try {
@@ -88,15 +92,17 @@ async function getLocationFromCoordinates(latitude, longitude) {
 
     const out = await getLocationFromCoordinatesAmap(apiKey, gcj02Coords, latitude, longitude);
     if (out.success) {
-      return out.result;
+      return { location: out.result, mapRegeoStatus: "success" };
     }
-    return fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, out.fallbackReason);
+    const location = fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, out.fallbackReason);
+    return { location, mapRegeoStatus: "failed" };
   } catch (error) {
     logger.warn({
       message: "高德逆地理编码失败，尝试本地降级",
       details: { latitude, longitude, error: error.message },
     });
-    return fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, error.message);
+    const location = fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, error.message);
+    return { location, mapRegeoStatus: "failed" };
   }
 }
 

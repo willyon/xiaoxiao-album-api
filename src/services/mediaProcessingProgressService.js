@@ -16,7 +16,7 @@ const redisClient = getRedisClient();
  * 更新会话进度（统一接口）
  * @param {Object} params - 参数对象
  * @param {string} params.sessionId - 会话ID
- * @param {string} params.status - 状态字段：'uploadedCount'、'ingestDoneCount'、'ingestErrorCount'、'duplicateCount'、'workerSkippedCount' 或 'existingFiles'
+ * @param {string} params.status - `upload:session:{sessionId}` 的 Hash 字段名；九字段含义见 ../utils/uploadProgressSnapshot.js
  * @param {number} params.increment - 增量值（默认为1）
  */
 async function updateProgress({ sessionId, status, increment = 1 }) {
@@ -36,6 +36,10 @@ async function updateProgress({ sessionId, status, increment = 1 }) {
   }
 }
 
+/**
+ * 同一会话同一 dedupeKey 对某 status 只递增一次（用于 ingestError / aiDone / aiError / aiEligible 等）。
+ * status 字段语义见 ../utils/uploadProgressSnapshot.js
+ */
 async function updateProgressOnce({ sessionId, status, dedupeKey, increment = 1 }) {
   if (!sessionId || !status || !dedupeKey) return;
 

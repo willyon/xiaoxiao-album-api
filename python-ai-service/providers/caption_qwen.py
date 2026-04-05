@@ -6,10 +6,10 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from config import settings
 from constants.error_codes import AI_SERVICE_ERROR, AI_TIMEOUT
 from logger import logger
 from services.module_result import MODULE_STATUS_FAILED, MODULE_STATUS_SUCCESS, build_module_result
-from config import settings
 from providers.base import BaseCaptionProvider
 from providers.qwen_common import (
     dedupe_keywords_against_tags,
@@ -41,14 +41,14 @@ class QwenCaptionProvider(BaseCaptionProvider):
             "ocr": "",
         }
 
-        json_shape = '{"description":"","keywords":[],"subject_tags":[],"action_tags":[],"scene_tags":[],"ocr":"","face_count":0,"person_count":0}'
+        json_shape = '{"description":"","keywords":[],"subject_tags":[],"action_tags":[],"scene_tags":[],"face_count":0,"person_count":0,"ocr":""}'
         vision_text_rules = (
-            "【ocr】逐字转写整张图里能看清的文字（边角、分屏、文档区与人物区域一样要扫到），"
-            "按阅读顺序用空格分段，不要翻译、不要概括；没有文字则空字符串。"
-        )
-        count_rules = (
-            "【face_count】非负整数：图中可见、可辨认为「人脸」的个数（含侧脸、远景小脸；完全无法判断则填 0）。"
-            "【person_count】非负整数：图中可见「人物」数量（含背影、远景人形、仅身体不露脸者；可与 face_count 不同；无法判断则填 0）。"
+            "【ocr】抄写图中对用户检索有帮助的可见文字：含实景里的路牌、屏幕字幕、商品包装、门牌、衣物字样等；"
+            "也含聊天/网页/文档/App 界面/海报等截图或页面中的标题、按钮、标签与正文片段。"
+            "按阅读顺序用空格分段，保持原文不要翻译。"
+            f"整段 ocr 字符串总长度不得超过 {settings.CAPTION_OCR_PROMPT_MAX_CHARS} 个字符；"
+            "超出时从上到下、从左到右优先保留标题、栏目标签、按钮名与最靠前的正文，到上限即停止，勿用「…」等省略号凑长度。"
+            "若画面以大面积重复矩阵或无意义字母串为主，可大幅压缩或留空。没有可见文字时 ocr 为空字符串。"
         )
         prompt = (
             "请分析这张图片，并严格输出一个 JSON 对象，不要输出 Markdown 或额外解释。"
@@ -64,12 +64,13 @@ class QwenCaptionProvider(BaseCaptionProvider):
             "仅填口语化、用户会搜但尚未被上述三类 tags 覆盖的说法，或 description 里长称呼/地名的更短同义说法；"
             "严禁把三类 tags 里已出现的词再写进 keywords（字面完全相同即算重复，"
             "例如 tags 已有「吃饭」则 keywords 不要再写「吃饭」，可写「用餐」「辅食」等同义补充）。"
-            + vision_text_rules
-            + count_rules
-            + "keywords 与 subject_tags、action_tags、scene_tags 四个数组中的每一项均须为简短名词或动宾短语，不要输出完整句子；"
+            "【face_count】非负整数：图中可见、可辨认为「人脸」的个数（含侧脸、远景小脸；完全无法判断则填 0）。"
+            "【person_count】非负整数：图中可见「人物」数量（含背影、远景人形、仅身体不露脸者；可与 face_count 不同；无法判断则填 0）。"
+            "keywords 与 subject_tags、action_tags、scene_tags 四个数组中的每一项均须为简短名词或动宾短语，不要输出完整句子；"
             "避免单条超过 8 字的冗长定语；"
             "subject_tags / action_tags / scene_tags 职责分明，同一词尽量只放在最合适的一类；"
-            "若无法判断，对应字段返回空字符串或空数组。"
+            + vision_text_rules
+            +"若无法判断，对应字段返回空字符串或空数组。"
         )
         try:
             image_data_url = encode_image_to_data_url(image)

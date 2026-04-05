@@ -5,7 +5,7 @@
  */
 
 const logger = require("../utils/logger");
-const { saveProcessedMediaMetadata, setMetaPipelineStatus } = require("../services/mediaService");
+const { saveProcessedMediaMetadata } = require("../services/mediaService");
 const { timestampToYearMonth, timestampToYear, timestampToDate, timestampToDayOfWeek } = require("../utils/formatTime");
 const timeIt = require("../utils/timeIt");
 const storageService = require("../services/storageService");
@@ -65,7 +65,7 @@ async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userI
       });
     }
 
-    // 4. 更新处理进度（基础处理最终失败；同图同会话只计一次，与 aiErrorCount 一致）
+    // 更新处理进度（基础处理最终失败；同图同会话只计一次，与 aiErrorCount 一致）
     if (job.data.sessionId && imageHash) {
       await updateProgressOnce({
         sessionId: job.data.sessionId,
@@ -73,12 +73,6 @@ async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userI
         dedupeKey: imageHash,
       });
     }
-
-    await setMetaPipelineStatus({
-      userId,
-      imageHash,
-      metaPipelineStatus: "failed",
-    });
   } else {
     // 还有重试机会，只清理已生成的高清图，保留源文件
     let highResCleaned = false;
@@ -109,12 +103,6 @@ async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userI
         maxAttempts,
         nextAttempt: attemptsMade + 1,
       },
-    });
-
-    await setMetaPipelineStatus({
-      userId,
-      imageHash,
-      metaPipelineStatus: null,
     });
   }
 }
@@ -149,6 +137,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
   let country = null;
   let province = null;
   let city = null;
+  let mapRegeoStatus;
   if (meta.gpsLatitude != null && meta.gpsLongitude != null) {
     try {
       const locInfo = await mediaMetadataService.analyzeLocationInfo(meta.gpsLatitude, meta.gpsLongitude);
@@ -156,6 +145,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
       country = locInfo?.country || null;
       province = locInfo?.province || null;
       city = locInfo?.city || null;
+      mapRegeoStatus = locInfo?.mapRegeoStatus;
     } catch (e) {
       logger.warn({ message: "Video GPS reverse geocode failed", details: { imageHash, error: e.message } });
     }
@@ -197,6 +187,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
       durationSec,
       videoCodec: meta.codec,
       mediaType: "video",
+      mapRegeoStatus: meta.gpsLatitude != null && meta.gpsLongitude != null ? mapRegeoStatus : undefined,
     });
     imageId = result.imageId;
   } catch (e) {
@@ -339,6 +330,7 @@ async function processMediaMeta(job) {
     orientation,
     layoutType,
     mime,
+    mapRegeoStatus,
   } = metadata;
 
   const monthKey = timestampToYearMonth(captureTime);
@@ -412,6 +404,7 @@ async function processMediaMeta(job) {
       hdWidthPx,
       hdHeightPx,
       mime,
+      mapRegeoStatus: latitude != null && longitude != null ? mapRegeoStatus : undefined,
     });
     imageId = result.imageId;
   } catch (e) {

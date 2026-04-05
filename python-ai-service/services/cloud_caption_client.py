@@ -17,6 +17,7 @@ from config import settings
 from logger import logger
 from providers.qwen_common import (
     DEFAULT_QWEN_COMPATIBLE_BASE_URL,
+    extract_openai_finish_reason,
     extract_openai_message_text,
     post_json,
     resolve_endpoint,
@@ -45,6 +46,7 @@ def call_qwen_vision_json(
         DEFAULT_QWEN_COMPATIBLE_BASE_URL,
         "chat/completions",
     )
+    # 不传 max_tokens：由 DashScope/OpenAI 兼容层按模型默认输出上限处理；输出结构由 prompt 约束。若接口报错要求必填，再在代码里补单一默认值即可。
     payload = {
         "model": model,
         "messages": [
@@ -56,12 +58,17 @@ def call_qwen_vision_json(
                 ],
             }
         ],
-        "max_tokens": int(getattr(settings, "CAPTION_MAX_TOKENS", 150) or 150),
     }
     try:
         timeout = float(getattr(settings, "CAPTION_TIMEOUT_SECONDS", 30.0) or 30.0)
         resp = post_json(endpoint, payload, key, timeout_seconds=timeout)
+        finish = extract_openai_finish_reason(resp)
         text = extract_openai_message_text(resp)
+        if finish == "length":
+            raise AiServiceError(
+                "cloud caption truncated (finish_reason=length): JSON may be incomplete; "
+                "hit model/API output limit — shorten prompt or check provider max output"
+            )
         return {"raw_text": text}
     except AiTimeoutError:
         raise

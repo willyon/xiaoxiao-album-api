@@ -9,10 +9,8 @@ const storageService = require("../services/storageService");
 const {
   insertFaceEmbeddings,
   rebuildMediaSearchDoc,
-  upsertMediaAiFieldsForAnalysis,
   normalizeTextArray,
   updateAnalysisStatusPrimary,
-  updateAnalysisStatusCloud,
 } = require("../models/mediaModel");
 const { getCloudConfigForAnalysis } = require("../services/cloudModelService");
 const { updateProgressOnce } = require("../services/mediaProcessingProgressService");
@@ -318,25 +316,17 @@ function _applyAdapterFromModules(imageId, userId, body, stepResults, options = 
     stepResults.description = { status: capStatus || "failed", errorCode: captionModule?.error?.code || null, data: {} };
   }
 
-  // 同步云分析状态：success/failed/skipped（主流程同步调用 Python；不写 running）
-  // - 云模型未启用：skipped（可补跑）
-  // - 云模型启用：按 caption 模块 success / failed 归类
+  // 云阶段状态与 caption 文本：与 primary / 人脸 / 质量 同在 finalizeMediaAnalysis 一次 UPDATE
   if (!cloudEnabled) {
-    updateAnalysisStatusCloud(imageId, "skipped");
+    stepResults.analysisCloudStatus = "skipped";
   } else if (capStatus === "success") {
-    updateAnalysisStatusCloud(imageId, "success");
+    stepResults.analysisCloudStatus = "success";
   } else if (capStatus === "failed") {
-    // 包含 MODULE_DISABLED / AI_SERVICE_ERROR / IMAGE_DECODE_FAILED / AI_TIMEOUT 等所有失败类型
-    updateAnalysisStatusCloud(imageId, "failed");
+    stepResults.analysisCloudStatus = "failed";
   } else {
-    // 兜底：Python 端理论上不会返回其它 status，这里统一视为 failed，避免产生无法识别的状态
-    updateAnalysisStatusCloud(imageId, "failed");
+    stepResults.analysisCloudStatus = "failed";
   }
-
-  upsertMediaAiFieldsForAnalysis({
-    mediaId: imageId,
-    caption: captionForDb,
-  });
+  stepResults.captionForFinalize = captionForDb;
 
   if (mediaType === "video") {
     // 视频链路当前不返回 quality，cleanup 置为空完成态。
@@ -460,7 +450,7 @@ function _applyAdapterFromModules(imageId, userId, body, stepResults, options = 
   }
 }
 
-/** Python caption.data 中非空字段才落库（与 upsertMediaAiFieldsForAnalysis 一致） */
+/** Python caption.data 中非空字段才落库（finalize 中文本列与 upsertMediaAiFieldsForAnalysis 规则一致；人数由 faceData 合并后写入） */
 function _pickCaptionFieldsForDb(capData) {
   if (!capData || typeof capData !== "object") return null;
   const out = {};
@@ -488,13 +478,17 @@ function _pickCaptionFieldsForDb(capData) {
 async function finalizeMediaAnalysis({ imageId, stepResults }) {
   const faceData = stepResults.face?.data || {};
   const cleanupData = stepResults.cleanup?.data || {};
-  const descriptionData = stepResults.description?.data || {};
+  const analysisStatusCloud = stepResults.analysisCloudStatus;
+  if (analysisStatusCloud == null) {
+    throw new Error("finalizeMediaAnalysis: missing stepResults.analysisCloudStatus (adapter bug)");
+  }
 
   finalizeMediaAnalysisInModel({
     mediaId: imageId,
+    analysisStatusCloud,
+    caption: stepResults.captionForFinalize ?? null,
     faceData,
     cleanupData,
-    descriptionData,
   });
 
   await rebuildMediaSearchDoc(imageId);

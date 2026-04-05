@@ -65,6 +65,16 @@ module.exports = {
         NODE_ENV: "development",
       },
     },
+    {
+      name: "map-regeo-worker-dev",
+      script: "src/workers/mapRegeoWorker.js",
+      cwd: ".",
+      watch: false,
+      max_restarts: 5,
+      env: {
+        NODE_ENV: "development",
+      },
+    },
 
     // ========== 定时任务 (开发版) ==========
     // {

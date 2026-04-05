@@ -307,13 +307,14 @@ class MediaMetadataService {
    */
   async analyzeLocationInfo(latitude, longitude) {
     try {
-      const locationObj = await getLocationFromCoordinates(latitude, longitude);
+      const { location, mapRegeoStatus } = await getLocationFromCoordinates(latitude, longitude);
 
       return {
-        gpsLocation: locationObj?.formattedAddress || null,
-        country: locationObj?.country || null,
-        province: locationObj?.province || null,
-        city: locationObj?.city || null,
+        gpsLocation: location?.formattedAddress || null,
+        country: location?.country || null,
+        province: location?.province || null,
+        city: location?.city || null,
+        mapRegeoStatus: mapRegeoStatus ?? undefined,
       };
     } catch (error) {
       logger.warn({
