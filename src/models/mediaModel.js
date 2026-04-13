@@ -1026,7 +1026,7 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
   }
 }
 
-// 分页获取用户按日期分组（YYYY-MM-DD / 'unknown'）数据 —— 基于物化 dateKey
+// 分页获取用户按日期分组（YYYY-MM-DD，排除 unknown；与年/月一致，时间未知仅走「时间未知」Tab）
 function selectGroupsByDate({ pageNo, pageSize, userId }) {
   const offset = (pageNo - 1) * pageSize;
 
@@ -1067,6 +1067,7 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
       FROM media
       WHERE user_id = ?
         AND deleted_at IS NULL
+        AND date_key != 'unknown'
         AND (COALESCE(media_type, 'image') IN ('image', 'video', 'audio'))
     ),
     latest AS (
@@ -1080,11 +1081,12 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
       WHERE rn = 1
     ),
     counts AS (
-      -- 统计每个日期的图片数量
+      -- 统计每个日期的图片数量（排除 unknown）
       SELECT date_key, COUNT(*) AS imageCount
       FROM media
       WHERE user_id = ?
         AND deleted_at IS NULL
+        AND date_key != 'unknown'
       GROUP BY date_key
     )
     SELECT
@@ -1094,18 +1096,17 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
       counts.imageCount
     FROM latest
     JOIN counts ON counts.date_key = latest.date_key
-    ORDER BY
-      CASE WHEN latest.date_key = 'unknown' THEN 1 ELSE 0 END,
-      latest.date_key DESC
+    ORDER BY latest.date_key DESC
     LIMIT ? OFFSET ?;
   `);
 
-  // 组总数：直接对 date_key 去重计数
+  // 组总数：排除 unknown
   const countQuery = db.prepare(`
     SELECT COUNT(DISTINCT date_key) AS groupCount
     FROM media
     WHERE user_id = ?
-      AND deleted_at IS NULL;
+      AND deleted_at IS NULL
+      AND date_key != 'unknown';
   `);
 
   try {

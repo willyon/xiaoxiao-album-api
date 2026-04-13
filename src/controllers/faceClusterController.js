@@ -542,7 +542,8 @@ async function setClusterCoverImage(req, res, next) {
       });
     }
 
-    if (result.affectedRows === 0) {
+    // setClusterCover 在「选中的就是当前默认封面」时有意返回 affectedRows=0（无需改库），此时 isDefaultCover=true，不应当作 404
+    if (result.affectedRows === 0 && !result.isDefaultCover) {
       throw new CustomError({
         httpStatus: 404,
         messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,

@@ -192,6 +192,7 @@ function _mapMemberRow(row) {
     isFavorite: row.is_favorite === 1 || row.is_favorite === true,
     // PhotoPreview 和 PhotoInfoPanel 需要的字段
     capturedAt: row.captured_at,
+    dateKey: row.date_key,
     dayKey: row.day_key,
     gpsLocation: row.gps_location,
     widthPx: row.width_px,

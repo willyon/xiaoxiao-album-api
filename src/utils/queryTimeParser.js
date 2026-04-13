@@ -64,10 +64,11 @@ function buildTimeFilter(type, payload) {
     case "absolute_month":
       return { timeDimension: "month", selectedTimeValues: [formatMonthKey(payload.year, payload.month)] };
     case "named_month": {
+      // 与侧栏「月份」一致：无年份的「三月」「三月份」表示公历 3 月，跨任意年份（month_key 如 2023-03、2024-03 均命中），勿用当年单月否则往年三月会零结果。
       const m = Number(payload.month);
       if (!Number.isFinite(m) || m < 1 || m > 12) return null;
-      const year = new Date().getFullYear();
-      return { timeDimension: "month", selectedTimeValues: [formatMonthKey(year, m)] };
+      const monthStr = String(m).padStart(2, "0");
+      return { timeDimension: "monthOfYear", selectedTimeValues: [monthStr] };
     }
     case "absolute_date": {
       const dateKey = formatDateKey(payload.year, payload.month, payload.day);

@@ -35,6 +35,9 @@ function buildScopeConditions(scope, userId) {
       } else if (type === "month" && albumId != null) {
         scopeConditions.push("i.month_key = ?");
         scopeParams.push(String(albumId));
+      } else if (type === "day" && albumId != null) {
+        scopeConditions.push("i.date_key = ?");
+        scopeParams.push(String(albumId));
       } else if (type === "unknown") {
         scopeConditions.push(
           "(i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown')",

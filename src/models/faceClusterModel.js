@@ -562,10 +562,10 @@ function getClustersByUserId(userId, options = {}) {
       INNER JOIN media m ON fe.media_id = m.id
       WHERE fc.user_id = ?
         AND m.deleted_at IS NULL
-        AND (fc.name LIKE ? OR CAST(fc.cluster_id AS TEXT) LIKE ?)
+        AND fc.name LIKE ?
     `;
     const countStmt = db.prepare(countSql);
-    total = countStmt.get(userId, searchPattern, searchPattern)?.total || 0;
+    total = countStmt.get(userId, searchPattern)?.total || 0;
   } else {
     if (!preparedStatements.count) {
       const countSql = `
@@ -649,7 +649,7 @@ function getClustersByUserId(userId, options = {}) {
       LEFT JOIN face_cluster_meta fcm ON fcm.user_id = fc.user_id AND fcm.cluster_id = fc.cluster_id
       WHERE fc.user_id = ?
         AND m.deleted_at IS NULL
-        AND (fc.name LIKE ? OR CAST(fc.cluster_id AS TEXT) LIKE ?)
+        AND fc.name LIKE ?
       GROUP BY fc.cluster_id, fc.name
       ORDER BY COALESCE(fcm.last_used_at, 0) DESC, (fc.name IS NOT NULL AND fc.name != '') DESC, imageCount DESC, fc.cluster_id ASC
       LIMIT ? OFFSET ?
@@ -664,16 +664,16 @@ function getClustersByUserId(userId, options = {}) {
       INNER JOIN media m ON fe.media_id = m.id
       WHERE fc.user_id = ?
         AND m.deleted_at IS NULL
-        AND (fc.name LIKE ? OR CAST(fc.cluster_id AS TEXT) LIKE ?)
+        AND fc.name LIKE ?
       GROUP BY fc.cluster_id, fc.name
       ORDER BY (fc.name IS NOT NULL AND fc.name != '') DESC, imageCount DESC, fc.cluster_id ASC
       LIMIT ? OFFSET ?
     `;
     try {
-      basicRows = db.prepare(basicSqlSearchRecent).all(userId, searchPattern, searchPattern, pageSize, offset);
+      basicRows = db.prepare(basicSqlSearchRecent).all(userId, searchPattern, pageSize, offset);
     } catch (err) {
       logger.warn({ message: "getClustersByUserId 搜索使用默认排序", details: { error: err.message } });
-      basicRows = db.prepare(basicSqlSearch).all(userId, searchPattern, searchPattern, pageSize, offset);
+      basicRows = db.prepare(basicSqlSearch).all(userId, searchPattern, pageSize, offset);
     }
   } else {
     const basicSqlRecent = `

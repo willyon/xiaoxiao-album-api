@@ -225,6 +225,7 @@ function selectMembersByGroupIds(groupIds) {
       i.aesthetic_score AS image_aesthetic_score,
       i.captured_at,
       i.is_favorite,
+      i.date_key,
       i.day_key,
       i.gps_location,
       i.width_px,

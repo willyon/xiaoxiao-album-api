@@ -226,12 +226,13 @@ async function queryAlbumPhotos(req, res, next) {
 
 /**
  * 添加图片到相册（albumId 为数字相册 ID）
+ * Body: { mediaIds: number[] }
  */
 async function addMediasToAlbum(req, res, next) {
   try {
     const userId = req.user.userId;
     const { albumId } = req.params;
-    const { imageIds } = req.body;
+    const { mediaIds } = req.body;
 
     const albumIdNum = parseInt(albumId, 10);
     if (Number.isNaN(albumIdNum)) {
@@ -242,7 +243,7 @@ async function addMediasToAlbum(req, res, next) {
       });
     }
 
-    if (!Array.isArray(imageIds) || imageIds.length === 0) {
+    if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -253,7 +254,7 @@ async function addMediasToAlbum(req, res, next) {
     const result = await albumService.addMediasToAlbum({
       userId,
       albumId: albumIdNum,
-      imageIds: imageIds.map((id) => parseInt(id)),
+      mediaIds: mediaIds.map((id) => parseInt(id, 10)),
     });
 
     res.sendResponse({ data: result });
@@ -264,12 +265,13 @@ async function addMediasToAlbum(req, res, next) {
 
 /**
  * 从相册中移除图片（albumId 为数字相册 ID）
+ * Body: { mediaIds: number[] }
  */
 async function removeMediasFromAlbum(req, res, next) {
   try {
     const userId = req.user.userId;
     const { albumId } = req.params;
-    const { imageIds } = req.body;
+    const { mediaIds } = req.body;
 
     const albumIdNum = parseInt(albumId, 10);
     if (Number.isNaN(albumIdNum)) {
@@ -280,7 +282,7 @@ async function removeMediasFromAlbum(req, res, next) {
       });
     }
 
-    if (!Array.isArray(imageIds) || imageIds.length === 0) {
+    if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -291,7 +293,7 @@ async function removeMediasFromAlbum(req, res, next) {
     const result = await albumService.removeMediasFromAlbum({
       userId,
       albumId: albumIdNum,
-      imageIds: imageIds.map((id) => parseInt(id)),
+      mediaIds: mediaIds.map((id) => parseInt(id, 10)),
     });
 
     res.sendResponse({ data: result });
@@ -307,9 +309,9 @@ async function setAlbumCover(req, res, next) {
   try {
     const userId = req.user.userId;
     const { albumId } = req.params;
-    const { imageId } = req.body;
-
-    if (!imageId) {
+    const { mediaId } = req.body;
+    const mediaIdNum = parseInt(mediaId, 10);
+    if (!Number.isInteger(mediaIdNum) || mediaIdNum < 1) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
@@ -320,7 +322,35 @@ async function setAlbumCover(req, res, next) {
     const result = await albumService.setAlbumCover({
       userId,
       albumId: parseInt(albumId),
-      imageId: parseInt(imageId),
+      mediaId: mediaIdNum,
+    });
+
+    res.sendResponse({ data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * 恢复相册默认封面（最近加入的一张图/视频，与系统自动封面规则一致）
+ * DELETE /api/albums/:albumId/cover
+ */
+async function restoreAlbumCover(req, res, next) {
+  try {
+    const userId = req.user.userId;
+    const { albumId } = req.params;
+    const albumIdNum = parseInt(albumId, 10);
+    if (Number.isNaN(albumIdNum)) {
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+        messageType: "error",
+      });
+    }
+
+    const result = await albumService.restoreAlbumCover({
+      userId,
+      albumId: albumIdNum,
     });
 
     res.sendResponse({ data: result });
@@ -340,4 +370,5 @@ module.exports = {
   addMediasToAlbum,
   removeMediasFromAlbum,
   setAlbumCover,
+  restoreAlbumCover,
 };

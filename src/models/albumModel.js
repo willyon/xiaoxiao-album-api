@@ -214,7 +214,7 @@ function updateAlbumLastUsedAt(albumId) {
 /**
  * 添加图片到相册
  */
-function addMediasToAlbum({ albumId, imageIds, userId }) {
+function addMediasToAlbum({ albumId, mediaIds, userId }) {
   const insertSql = `
     INSERT OR IGNORE INTO album_media (album_id, media_id, added_at)
     VALUES (?, ?, ?)
@@ -224,8 +224,8 @@ function addMediasToAlbum({ albumId, imageIds, userId }) {
   const now = Date.now();
   let addedCount = 0;
 
-  for (const imageId of imageIds) {
-    const result = insertStmt.run(albumId, imageId, now);
+  for (const mediaId of mediaIds) {
+    const result = insertStmt.run(albumId, mediaId, now);
     if (result.changes > 0) {
       addedCount++;
     }
@@ -239,21 +239,21 @@ function addMediasToAlbum({ albumId, imageIds, userId }) {
 
   return {
     addedCount,
-    skippedCount: imageIds.length - addedCount,
+    skippedCount: mediaIds.length - addedCount,
   };
 }
 
 /**
  * 从相册中移除图片
  */
-function removeMediasFromAlbum({ albumId, imageIds, userId }) {
+function removeMediasFromAlbum({ albumId, mediaIds, userId }) {
   const deleteSql = `
     DELETE FROM album_media
-    WHERE album_id = ? AND media_id IN (${imageIds.map(() => "?").join(",")})
+    WHERE album_id = ? AND media_id IN (${mediaIds.map(() => "?").join(",")})
   `;
 
   const stmt = db.prepare(deleteSql);
-  const result = stmt.run(albumId, ...imageIds);
+  const result = stmt.run(albumId, ...mediaIds);
 
   if (result.changes > 0) {
     updateAlbumMediaCount(albumId);
@@ -339,9 +339,9 @@ function getAlbumTimeRange(albumId) {
 }
 
 /**
- * 检查图片是否在相册中
+ * 检查媒体是否在相册中
  */
-function isMediaInAlbum({ albumId, imageId }) {
+function isMediaInAlbum({ albumId, mediaId }) {
   const sql = `
     SELECT 1
     FROM album_media
@@ -350,7 +350,7 @@ function isMediaInAlbum({ albumId, imageId }) {
   `;
 
   const stmt = db.prepare(sql);
-  const result = stmt.get(albumId, imageId);
+  const result = stmt.get(albumId, mediaId);
 
   return !!result;
 }
@@ -401,9 +401,8 @@ function updateAlbumCover(albumId) {
 /**
  * 设置相册封面图片
  */
-function setAlbumCover({ albumId, imageId }) {
-  // 先检查图片是否在相册中
-  const exists = isMediaInAlbum({ albumId, imageId });
+function setAlbumCover({ albumId, mediaId }) {
+  const exists = isMediaInAlbum({ albumId, mediaId });
   if (!exists) {
     return { affectedRows: 0 };
   }
@@ -416,7 +415,7 @@ function setAlbumCover({ albumId, imageId }) {
   `;
 
   const stmt = db.prepare(sql);
-  const result = stmt.run(imageId, Date.now(), albumId);
+  const result = stmt.run(mediaId, Date.now(), albumId);
 
   return { affectedRows: result.changes };
 }

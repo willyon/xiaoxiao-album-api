@@ -88,28 +88,6 @@ function buildSearchQueryParts(filters, options = {}) {
     }
   }
 
-  if (filters.hasText && filters.hasText !== "" && filters.hasText !== "all") {
-    if (filters.hasText === "withText") {
-      whereConditions.push(`
-        EXISTS (
-          SELECT 1 FROM media_search ms2
-          WHERE ms2.media_id = i.id
-            AND ms2.ocr_text IS NOT NULL
-            AND TRIM(ms2.ocr_text) != ''
-        )
-      `);
-    } else if (filters.hasText === "withoutText") {
-      whereConditions.push(`
-        NOT EXISTS (
-          SELECT 1 FROM media_search ms2
-          WHERE ms2.media_id = i.id
-            AND ms2.ocr_text IS NOT NULL
-            AND TRIM(ms2.ocr_text) != ''
-        )
-      `);
-    }
-  }
-
   if (filters.timeDimension === "unknown") {
     whereConditions.push("(i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown')");
   } else if (filters.timeDimension && filters.selectedTimeValues && filters.selectedTimeValues.length > 0) {

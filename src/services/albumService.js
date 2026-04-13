@@ -188,7 +188,7 @@ async function updateAlbum({ userId, albumId, name, description, coverImageId })
 
   // 如果设置封面，验证图片是否在相册中
   if (coverImageId !== undefined) {
-    const isInAlbum = albumModel.isMediaInAlbum({ albumId, imageId: coverImageId });
+    const isInAlbum = albumModel.isMediaInAlbum({ albumId, mediaId: coverImageId });
     if (!isInAlbum) {
       throw new CustomError({
         httpStatus: 400,
@@ -262,7 +262,7 @@ async function deleteAlbum({ userId, albumId }) {
 /**
  * 添加图片到相册
  */
-async function addMediasToAlbum({ userId, albumId, imageIds }) {
+async function addMediasToAlbum({ userId, albumId, mediaIds }) {
   // 验证相册存在且属于当前用户
   const album = albumModel.getAlbumById({ albumId, userId });
   if (!album) {
@@ -277,7 +277,7 @@ async function addMediasToAlbum({ userId, albumId, imageIds }) {
   // 验证图片存在且属于当前用户
   // TODO: 添加图片验证逻辑（可以调用 mediaModel 检查）
 
-  const result = albumModel.addMediasToAlbum({ albumId, imageIds, userId });
+  const result = albumModel.addMediasToAlbum({ albumId, mediaIds, userId });
 
   return result;
 }
@@ -285,7 +285,7 @@ async function addMediasToAlbum({ userId, albumId, imageIds }) {
 /**
  * 从相册中移除图片
  */
-async function removeMediasFromAlbum({ userId, albumId, imageIds }) {
+async function removeMediasFromAlbum({ userId, albumId, mediaIds }) {
   // 验证相册存在且属于当前用户
   const album = albumModel.getAlbumById({ albumId, userId });
   if (!album) {
@@ -297,7 +297,7 @@ async function removeMediasFromAlbum({ userId, albumId, imageIds }) {
     });
   }
 
-  const result = albumModel.removeMediasFromAlbum({ albumId, imageIds, userId });
+  const result = albumModel.removeMediasFromAlbum({ albumId, mediaIds, userId });
 
   return result;
 }
@@ -305,7 +305,7 @@ async function removeMediasFromAlbum({ userId, albumId, imageIds }) {
 /**
  * 设置相册封面图片
  */
-async function setAlbumCover({ userId, albumId, imageId }) {
+async function setAlbumCover({ userId, albumId, mediaId }) {
   // 验证相册存在且属于当前用户
   const album = albumModel.getAlbumById({ albumId, userId });
   if (!album) {
@@ -317,8 +317,8 @@ async function setAlbumCover({ userId, albumId, imageId }) {
     });
   }
 
-  // 验证图片是否在相册中
-  const isInAlbum = albumModel.isMediaInAlbum({ albumId, imageId });
+  // 验证图片是否在相册中（model 层仍用 imageId 字段名，与 media 主键 id 一致）
+  const isInAlbum = albumModel.isMediaInAlbum({ albumId, mediaId });
   if (!isInAlbum) {
     throw new CustomError({
       httpStatus: 400,
@@ -328,7 +328,7 @@ async function setAlbumCover({ userId, albumId, imageId }) {
     });
   }
 
-  const result = albumModel.setAlbumCover({ albumId, imageId });
+  const result = albumModel.setAlbumCover({ albumId, mediaId });
 
   if (result.affectedRows === 0) {
     throw new CustomError({
@@ -342,6 +342,38 @@ async function setAlbumCover({ userId, albumId, imageId }) {
   const updatedAlbum = albumModel.getAlbumById({ albumId, userId });
   let coverImageUrl = null;
 
+  if (updatedAlbum.coverImageId) {
+    const coverImage = await _getMediaById(updatedAlbum.coverImageId);
+    if (coverImage && coverImage.thumbnailStorageKey) {
+      coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey);
+    }
+  }
+
+  return {
+    albumId: updatedAlbum.albumId,
+    coverImageId: updatedAlbum.coverImageId,
+    coverImageUrl,
+  };
+}
+
+/**
+ * 恢复相册默认封面：与「添加/移除媒体后」一致，取相册内最近加入的一张图片或视频（见 albumModel.updateAlbumCover）
+ */
+async function restoreAlbumCover({ userId, albumId }) {
+  const album = albumModel.getAlbumById({ albumId, userId });
+  if (!album) {
+    throw new CustomError({
+      httpStatus: 404,
+      messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
+      messageType: "error",
+      message: "相册不存在",
+    });
+  }
+
+  albumModel.updateAlbumCover(albumId);
+
+  const updatedAlbum = albumModel.getAlbumById({ albumId, userId });
+  let coverImageUrl = null;
   if (updatedAlbum.coverImageId) {
     const coverImage = await _getMediaById(updatedAlbum.coverImageId);
     if (coverImage && coverImage.thumbnailStorageKey) {
@@ -462,4 +494,5 @@ module.exports = {
   removeMediasFromAlbum,
   getAlbumMediasList,
   setAlbumCover,
+  restoreAlbumCover,
 };

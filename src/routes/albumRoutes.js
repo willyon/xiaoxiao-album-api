@@ -16,6 +16,7 @@ const {
   addMediasToAlbum,
   removeMediasFromAlbum,
   setAlbumCover,
+  restoreAlbumCover,
 } = require("../controllers/albumController");
 
 // ========== 相册列表接口 ========== //
@@ -50,5 +51,8 @@ router.delete("/:albumId/media", removeMediasFromAlbum);
 
 // 设置相册封面图片
 router.put("/:albumId/cover", setAlbumCover);
+
+// 恢复相册默认封面
+router.delete("/:albumId/cover", restoreAlbumCover);
 
 module.exports = router;

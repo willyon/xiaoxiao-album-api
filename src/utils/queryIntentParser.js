@@ -42,8 +42,9 @@ function mergeFilters(existingFilters, parsedFilters) {
   const merged = { ...existingFilters };
   const normalizedParsed = parsedFilters?.filters || parsedFilters || {};
 
-  // 只合并用户未设置的字段
-  if (!merged.timeDimension && normalizedParsed.timeDimension) {
+  // 只合并用户未设置的字段。侧栏默认「全部」为 timeDimension === 'all'，视为未指定时间轴，仍允许合并搜索框内自然语言时间。
+  const timeDimensionUnset = !merged.timeDimension || merged.timeDimension === "all";
+  if (timeDimensionUnset && normalizedParsed.timeDimension) {
     merged.timeDimension = normalizedParsed.timeDimension;
     merged.selectedTimeValues = normalizedParsed.selectedTimeValues;
   }
