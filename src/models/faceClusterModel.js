@@ -633,7 +633,7 @@ function getClustersByUserId(userId, options = {}) {
   `;
 
   // 如果 SQLite 不支持窗口函数，使用更简单的方式
-  // 只查询必要的字段：cluster_id, name, imageCount
+  // 只查询必要的字段：cluster_id, name, mediaCount
   // 注意：必须使用与总数查询相同的过滤条件，确保数据一致性
   // 使用 COUNT(DISTINCT m.id) 统计照片数量，而不是人脸数量
   let basicRows;
@@ -642,7 +642,7 @@ function getClustersByUserId(userId, options = {}) {
       SELECT 
         fc.cluster_id,
         fc.name,
-        COUNT(DISTINCT m.id) AS imageCount
+        COUNT(DISTINCT m.id) AS mediaCount
       FROM face_clusters fc
       INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
       INNER JOIN media m ON fe.media_id = m.id
@@ -651,14 +651,14 @@ function getClustersByUserId(userId, options = {}) {
         AND m.deleted_at IS NULL
         AND fc.name LIKE ?
       GROUP BY fc.cluster_id, fc.name
-      ORDER BY COALESCE(fcm.last_used_at, 0) DESC, (fc.name IS NOT NULL AND fc.name != '') DESC, imageCount DESC, fc.cluster_id ASC
+      ORDER BY COALESCE(fcm.last_used_at, 0) DESC, (fc.name IS NOT NULL AND fc.name != '') DESC, mediaCount DESC, fc.cluster_id ASC
       LIMIT ? OFFSET ?
     `;
     const basicSqlSearch = `
       SELECT 
         fc.cluster_id,
         fc.name,
-        COUNT(DISTINCT m.id) AS imageCount
+        COUNT(DISTINCT m.id) AS mediaCount
       FROM face_clusters fc
       INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
       INNER JOIN media m ON fe.media_id = m.id
@@ -666,7 +666,7 @@ function getClustersByUserId(userId, options = {}) {
         AND m.deleted_at IS NULL
         AND fc.name LIKE ?
       GROUP BY fc.cluster_id, fc.name
-      ORDER BY (fc.name IS NOT NULL AND fc.name != '') DESC, imageCount DESC, fc.cluster_id ASC
+      ORDER BY (fc.name IS NOT NULL AND fc.name != '') DESC, mediaCount DESC, fc.cluster_id ASC
       LIMIT ? OFFSET ?
     `;
     try {
@@ -680,7 +680,7 @@ function getClustersByUserId(userId, options = {}) {
       SELECT 
         fc.cluster_id,
         fc.name,
-        COUNT(DISTINCT m.id) AS imageCount
+        COUNT(DISTINCT m.id) AS mediaCount
       FROM face_clusters fc
       INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
       INNER JOIN media m ON fe.media_id = m.id
@@ -688,21 +688,21 @@ function getClustersByUserId(userId, options = {}) {
       WHERE fc.user_id = ?
         AND m.deleted_at IS NULL
       GROUP BY fc.cluster_id, fc.name
-      ORDER BY COALESCE(fcm.last_used_at, 0) DESC, (fc.name IS NOT NULL AND fc.name != '') DESC, imageCount DESC, fc.cluster_id ASC
+      ORDER BY COALESCE(fcm.last_used_at, 0) DESC, (fc.name IS NOT NULL AND fc.name != '') DESC, mediaCount DESC, fc.cluster_id ASC
       LIMIT ? OFFSET ?
     `;
     const basicSqlSimple = `
       SELECT 
         fc.cluster_id,
         fc.name,
-        COUNT(DISTINCT m.id) AS imageCount
+        COUNT(DISTINCT m.id) AS mediaCount
       FROM face_clusters fc
       INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
       INNER JOIN media m ON fe.media_id = m.id
       WHERE fc.user_id = ?
         AND m.deleted_at IS NULL
       GROUP BY fc.cluster_id, fc.name
-      ORDER BY (fc.name IS NOT NULL AND fc.name != '') DESC, imageCount DESC, fc.cluster_id ASC
+      ORDER BY (fc.name IS NOT NULL AND fc.name != '') DESC, mediaCount DESC, fc.cluster_id ASC
       LIMIT ? OFFSET ?
     `;
     try {
@@ -817,7 +817,7 @@ function getClustersByUserId(userId, options = {}) {
     return {
       clusterId: row.cluster_id,
       name: row.name || null,
-      imageCount: row.imageCount,
+      mediaCount: row.mediaCount,
       coverImage,
       timeRange,
     };
@@ -861,14 +861,14 @@ function getRecentClustersByUserId(userId, options = {}) {
     SELECT 
       fc.cluster_id,
       fc.name,
-      COUNT(DISTINCT m.id) AS imageCount
+      COUNT(DISTINCT m.id) AS mediaCount
     FROM face_clusters fc
     INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
     INNER JOIN media m ON fe.media_id = m.id
     LEFT JOIN face_cluster_meta fcm ON fcm.user_id = fc.user_id AND fcm.cluster_id = fc.cluster_id
     WHERE ${whereClause}
     GROUP BY fc.cluster_id, fc.name
-    ORDER BY COALESCE(fcm.last_used_at, 0) DESC, (fc.name IS NOT NULL AND fc.name != '') DESC, imageCount DESC, fc.cluster_id ASC
+    ORDER BY COALESCE(fcm.last_used_at, 0) DESC, (fc.name IS NOT NULL AND fc.name != '') DESC, mediaCount DESC, fc.cluster_id ASC
     LIMIT ?
   `;
   params.push(Math.min(limit, 20));
@@ -884,13 +884,13 @@ function getRecentClustersByUserId(userId, options = {}) {
       SELECT 
         fc.cluster_id,
         fc.name,
-        COUNT(DISTINCT m.id) AS imageCount
+        COUNT(DISTINCT m.id) AS mediaCount
       FROM face_clusters fc
       INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
       INNER JOIN media m ON fe.media_id = m.id
       WHERE ${whereClause}
       GROUP BY fc.cluster_id, fc.name
-      ORDER BY (fc.name IS NOT NULL AND fc.name != '') DESC, imageCount DESC, fc.cluster_id ASC
+      ORDER BY (fc.name IS NOT NULL AND fc.name != '') DESC, mediaCount DESC, fc.cluster_id ASC
       LIMIT ?
     `;
     fallbackParams.push(Math.min(limit, 20));
@@ -937,7 +937,7 @@ function getRecentClustersByUserId(userId, options = {}) {
   const list = basicRows.map((row) => ({
     clusterId: row.cluster_id,
     name: row.name || null,
-    imageCount: row.imageCount,
+    mediaCount: row.mediaCount,
     coverImage: coversMap.get(row.cluster_id) || null,
     timeRange: timeMap.get(row.cluster_id) || null,
   }));
@@ -1604,6 +1604,26 @@ function getDefaultCoverFaceEmbeddingId(userId, clusterId) {
 }
 
 /**
+ * 获取用户当前作为封面的 face_embedding_id 列表（默认封面=1，手动封面=2）
+ * @param {number} userId - 用户ID
+ * @returns {number[]} face_embedding_id 列表
+ */
+function getRepresentativeFaceEmbeddingIdsByUserId(userId) {
+  const sql = `
+    SELECT DISTINCT fc.face_embedding_id
+    FROM face_clusters fc
+    INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
+    INNER JOIN media m ON fe.media_id = m.id
+    WHERE fc.user_id = ?
+      AND fc.representative_type IN (1, 2)
+      AND m.deleted_at IS NULL
+  `;
+  const stmt = db.prepare(sql);
+  const rows = stmt.all(userId);
+  return rows.map((row) => row.face_embedding_id).filter((id) => id != null);
+}
+
+/**
  * 设置聚类封面（手动设置）：设置为 is_representative = 2，保留默认封面（is_representative = 1）不变
  * 如果手动设置的就是默认封面本身（is_representative = 1），则保持为 1，不改为 2
  * @param {number} userId - 用户ID
@@ -1685,6 +1705,7 @@ module.exports = {
   getFaceEmbeddingRepresentativeValue,
   getRepresentativeStatusByThumbnailKeys,
   getDefaultCoverFaceEmbeddingId,
+  getRepresentativeFaceEmbeddingIdsByUserId,
   getClusterRepresentative,
   getAllClusterRepresentativesByUserId,
   upsertClusterRepresentative,

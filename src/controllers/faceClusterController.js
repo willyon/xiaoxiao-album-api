@@ -128,7 +128,7 @@ async function getClusters(req, res, next) {
       return {
         clusterId: cluster.clusterId,
         name: cluster.name,
-        imageCount: cluster.imageCount,
+        mediaCount: cluster.mediaCount,
         coverImage: coverImageUrl ? { thumbnailUrl: coverImageUrl } : null,
         timeRange: cluster.timeRange,
       };
@@ -182,7 +182,7 @@ async function getRecentClusters(req, res, next) {
       return {
         clusterId: cluster.clusterId,
         name: cluster.name,
-        imageCount: cluster.imageCount,
+        mediaCount: cluster.mediaCount,
         coverImage: url ? { thumbnailUrl: url } : null,
         timeRange: cluster.timeRange,
       };

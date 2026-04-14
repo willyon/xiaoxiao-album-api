@@ -36,7 +36,7 @@ function getAlbumsByUserId({ userId, includeDeleted = false, search = null, excl
       name,
       description,
       cover_media_id,
-      image_count,
+      media_count,
       created_at,
       updated_at,
       last_used_at
@@ -81,7 +81,7 @@ function getRecentAlbumsByUserId({ userId, limit = 8, excludeAlbumId = null }) {
       name,
       description,
       cover_media_id,
-      image_count,
+      media_count,
       created_at,
       updated_at,
       last_used_at
@@ -125,7 +125,7 @@ function getAlbumById({ albumId, userId }) {
       name,
       description,
       cover_media_id,
-      image_count,
+      media_count,
       created_at,
       updated_at,
       last_used_at
@@ -362,7 +362,7 @@ function isMediaInAlbum({ albumId, mediaId }) {
 function updateAlbumMediaCount(albumId) {
   const sql = `
     UPDATE albums
-    SET image_count = (
+    SET media_count = (
       SELECT COUNT(*)
       FROM album_media ai
       INNER JOIN media i ON ai.media_id = i.id
@@ -535,7 +535,7 @@ function updateAlbumsStatsForMedias(imageIds) {
     // 更新图片数量（只统计未删除的图片）
     const updateCountSql = `
       UPDATE albums
-      SET image_count = (
+      SET media_count = (
         SELECT COUNT(*)
         FROM album_media ai
         INNER JOIN media i ON ai.media_id = i.id

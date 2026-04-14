@@ -53,7 +53,7 @@ async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null,
 
   // 按需更新封面：如果相册有图片但没有封面，自动更新封面
   albums.forEach((album) => {
-    if (!album.coverImageId && album.imageCount > 0) {
+    if (!album.coverImageId && album.mediaCount > 0) {
       // 封面为空但相册有图片，更新封面为最新添加的图片
       albumModel.updateAlbumCover(album.albumId);
       // 获取更新后的封面ID

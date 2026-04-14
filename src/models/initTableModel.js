@@ -295,7 +295,7 @@ function createTableAlbumsMediaVersion() {
       name TEXT NOT NULL,
       description TEXT,
       cover_media_id INTEGER,
-      image_count INTEGER DEFAULT 0,
+      media_count INTEGER DEFAULT 0,
       created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
       updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
       last_used_at INTEGER,

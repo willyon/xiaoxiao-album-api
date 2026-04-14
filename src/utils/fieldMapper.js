@@ -64,7 +64,7 @@ const FIELD_MAPPING = {
     description: "description",
     cover_image_id: "coverImageId",
     cover_media_id: "coverImageId",
-    image_count: "imageCount",
+    media_count: "mediaCount",
     created_at: "createdAt",
     updated_at: "updatedAt",
     last_used_at: "lastUsedAt",

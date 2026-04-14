@@ -29,6 +29,7 @@ const {
   getMediasSharpnessByIds,
   updateFaceEmbeddingThumbnail,
   updateFaceClusterRepresentative,
+  clearOtherDefaultCoverRepresentative,
   getOldClusterNameMapping,
   getOldCoverMapping,
   restoreClusterNames,
@@ -40,6 +41,7 @@ const {
   getFaceEmbeddingRepresentativeValue,
   getRepresentativeStatusByThumbnailKeys,
   getDefaultCoverFaceEmbeddingId,
+  getRepresentativeFaceEmbeddingIdsByUserId,
   computeAndUpsertClusterRepresentative,
   getUnassignedFaceEmbeddingsByUserId,
   getAllClusterRepresentativesByUserId,
@@ -407,6 +409,23 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
     // 9. 为每个cluster选择最佳人脸并生成缩略图（默认封面）
     const generatedThumbnailPaths = await _generateThumbnailsForClusters(userId, clusters, faceEmbeddings);
 
+    // 9.0 聚类触发后同步自愈当前封面缩略图（仅在聚类流程触发，不影响日常列表接口）
+    // - 目标：处理「数据库有 key 但磁盘文件丢失」场景
+    // - 行为：对默认/手动封面的 faceEmbedding 调用 generateThumbnailForFaceEmbedding(..., false)
+    //   若文件存在会快速返回；若缺失则同步重建
+    const coverCheckStats = await _ensureRepresentativeCoverThumbnails(userId);
+    if (coverCheckStats.regenerated > 0 || coverCheckStats.failed > 0) {
+      logger.info({
+        message: `聚类后封面缩略图自愈完成`,
+        details: {
+          userId,
+          checked: coverCheckStats.checked,
+          regenerated: coverCheckStats.regenerated,
+          failed: coverCheckStats.failed,
+        },
+      });
+    }
+
     // 9.1. 如果重新聚类，为手动设置的封面（is_representative = 2）验证并生成缩略图（如果文件不存在）
     if (recluster && oldCoverMapping && oldCoverMapping.size > 0) {
       // 获取所有手动设置封面的 face_embedding_id
@@ -473,7 +492,7 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
 
       if (thumbnailsToDelete.length > 0) {
         logger.info({
-          message: `开始清理 ${thumbnailsToDelete.length} 个不再使用的缩略图文件（保留 ${oldThumbnailPaths.length - thumbnailsToDelete.length} 个手动设置的封面）`,
+          message: `开始清理 ${thumbnailsToDelete.length} 个不再使用的缩略图文件（另有 ${oldThumbnailPaths.length - thumbnailsToDelete.length} 个旧路径因仍被引用而保留，含手动封面与新默认封面）`,
           details: {
             userId,
             totalOld: oldThumbnailPaths.length,
@@ -536,6 +555,43 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
     // 错误已经在 try-catch 中处理，这里只需要重新抛出
     throw error;
   }
+}
+
+/**
+ * 聚类后检查当前封面（representative_type=1/2）缩略图是否缺失，缺失则同步重建
+ * @param {number} userId - 用户ID
+ * @returns {Promise<{checked:number, regenerated:number, failed:number}>}
+ */
+async function _ensureRepresentativeCoverThumbnails(userId) {
+  const faceEmbeddingIds = getRepresentativeFaceEmbeddingIdsByUserId(userId);
+  let regenerated = 0;
+  let failed = 0;
+
+  for (const faceEmbeddingId of faceEmbeddingIds) {
+    try {
+      const before = getFaceEmbeddingsByIds([faceEmbeddingId])[0]?.face_thumbnail_storage_key ?? null;
+      const after = await generateThumbnailForFaceEmbedding(faceEmbeddingId, false);
+      if (!after) {
+        failed++;
+        continue;
+      }
+      if (before == null || before !== after) {
+        regenerated++;
+      }
+    } catch (error) {
+      failed++;
+      logger.warn({
+        message: `聚类后封面缩略图自愈失败: faceEmbeddingId=${faceEmbeddingId}`,
+        details: { userId, faceEmbeddingId, error: error.message },
+      });
+    }
+  }
+
+  return {
+    checked: faceEmbeddingIds.length,
+    regenerated,
+    failed,
+  };
 }
 
 /**
@@ -729,7 +785,9 @@ async function _generateThumbnailsForClusters(userId, clusters, faceEmbeddings) 
       // 9. 更新face_embeddings表，设置face_thumbnail_storage_key
       updateFaceEmbeddingThumbnail(bestFace.id, thumbnailStorageKey);
 
-      // 10. 更新face_clusters表，标记is_representative = true
+      // 10. 更新face_clusters：先清除同簇其他「默认封面」(1)，避免列表封面 SQL 按 similarity_score 选到
+      // 旧默认人脸（其缩略图可能已在清理步骤中删除），再标记当前最佳人脸为代表
+      clearOtherDefaultCoverRepresentative(userId, clusterId, bestFace.id);
       updateFaceClusterRepresentative(userId, clusterId, bestFace.id);
 
       successCount++;

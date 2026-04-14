@@ -706,7 +706,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
     ),
     counts AS (
       -- 📊 统计每个月份的照片数量（排除 unknown）
-      SELECT month_key, COUNT(*) AS imageCount
+      SELECT month_key, COUNT(*) AS mediaCount
       FROM media
       WHERE user_id = ?
         AND deleted_at IS NULL
@@ -717,7 +717,7 @@ function selectGroupsByMonth({ pageNo, pageSize, userId }) {
       latest.month_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      counts.imageCount
+      counts.mediaCount
     FROM latest
     JOIN counts ON counts.month_key = latest.month_key
     ORDER BY latest.month_key DESC
@@ -798,7 +798,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
     ),
     counts AS (
       -- 统计每个年份的图片数量（排除 unknown）
-      SELECT year_key, COUNT(*) AS imageCount
+      SELECT year_key, COUNT(*) AS mediaCount
       FROM media
       WHERE user_id = ?
         AND deleted_at IS NULL
@@ -809,7 +809,7 @@ function selectGroupsByYear({ pageNo, pageSize, userId }) {
       latest.year_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      counts.imageCount
+      counts.mediaCount
     FROM latest
     JOIN counts ON counts.year_key = latest.year_key
     ORDER BY latest.year_key DESC
@@ -889,7 +889,7 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
       WHERE rn = 1
     ),
     counts AS (
-      SELECT i.year_key, COUNT(DISTINCT i.id) AS imageCount
+      SELECT i.year_key, COUNT(DISTINCT i.id) AS mediaCount
       FROM face_clusters fc
       INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
       INNER JOIN media i ON fe.media_id = i.id
@@ -902,7 +902,7 @@ function selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId }) {
       latest.year_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      counts.imageCount
+      counts.mediaCount
     FROM latest
     JOIN counts ON counts.year_key = latest.year_key
     ORDER BY
@@ -985,7 +985,7 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
       WHERE rn = 1
     ),
     counts AS (
-      SELECT i.month_key, COUNT(DISTINCT i.id) AS imageCount
+      SELECT i.month_key, COUNT(DISTINCT i.id) AS mediaCount
       FROM face_clusters fc
       INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
       INNER JOIN media i ON fe.media_id = i.id
@@ -998,7 +998,7 @@ function selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId }) 
       latest.month_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      counts.imageCount
+      counts.mediaCount
     FROM latest
     JOIN counts ON counts.month_key = latest.month_key
     ORDER BY
@@ -1082,7 +1082,7 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
     ),
     counts AS (
       -- 统计每个日期的图片数量（排除 unknown）
-      SELECT date_key, COUNT(*) AS imageCount
+      SELECT date_key, COUNT(*) AS mediaCount
       FROM media
       WHERE user_id = ?
         AND deleted_at IS NULL
@@ -1093,7 +1093,7 @@ function selectGroupsByDate({ pageNo, pageSize, userId }) {
       latest.date_key AS album_id,  -- 相册ID（统一使用 album_id，mapper 会映射为 albumId）
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      counts.imageCount
+      counts.mediaCount
     FROM latest
     JOIN counts ON counts.date_key = latest.date_key
     ORDER BY latest.date_key DESC
@@ -1173,7 +1173,7 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
       WHERE rn = 1
     ),
     counts AS (
-      SELECT city_key, COUNT(*) AS imageCount
+      SELECT city_key, COUNT(*) AS mediaCount
       FROM city_normalized
       GROUP BY city_key
     )
@@ -1181,12 +1181,12 @@ function selectGroupsByCity({ pageNo, pageSize, userId }) {
       latest.city_key AS album_id,
       latest.thumbnail_storage_key AS latestImagekey,
       latest.captured_at,
-      counts.imageCount
+      counts.mediaCount
     FROM latest
     JOIN counts ON counts.city_key = latest.city_key
     ORDER BY
       CASE WHEN latest.city_key = 'unknown' THEN 1 ELSE 0 END,
-      counts.imageCount DESC,
+      counts.mediaCount DESC,
       latest.city_key ASC
     LIMIT ? OFFSET ?;
   `);

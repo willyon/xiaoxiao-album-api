@@ -14,8 +14,10 @@ const { SUCCESS_CODES } = require("../constants/messageCodes");
 const responseHandler = (req, res, next) => {
   req.userLanguage = req.get("X-Accept-Language") || req.headers["x-accept-language"] || "zh";
 
-  res.sendResponse = ({ messageCode = SUCCESS_CODES.REQUEST_COMPLETED, data = null, httpStatus = 200, ...extraFields } = {}) => {
-    const message = getI18nMessage(messageCode, req.userLanguage, extraFields);
+  res.sendResponse = ({ messageCode = SUCCESS_CODES.REQUEST_COMPLETED, data = null, httpStatus = 200, message: customMessage, ...extraFields } = {}) => {
+    const message = typeof customMessage === "string" && customMessage.trim()
+      ? customMessage.trim()
+      : getI18nMessage(messageCode, req.userLanguage, extraFields);
     const safeStatus = Number.isInteger(httpStatus) ? httpStatus : 200;
     const payload = {
       status: "success",
