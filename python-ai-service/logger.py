@@ -8,10 +8,36 @@
 
 import logging
 import json
+import os
 from datetime import datetime
 from pathlib import Path
-from logging.handlers import RotatingFileHandler
 from log_codes import get_code_description
+
+
+class DailyTruncateFileHandler(logging.FileHandler):
+    """
+    固定文件名日志处理器：跨天时自动清空文件，仅保留当天日志。
+    """
+    def __init__(self, filename, encoding='utf-8'):
+        self.current_day = datetime.now().strftime("%Y-%m-%d")
+        super().__init__(filename, mode='w', encoding=encoding)
+
+    def emit(self, record):
+        today = datetime.now().strftime("%Y-%m-%d")
+        if today != self.current_day:
+            self.current_day = today
+            self.acquire()
+            try:
+                if self.stream:
+                    self.stream.close()
+                    self.stream = None
+                # 跨天后重新以覆盖模式打开同一个文件
+                self.mode = 'w'
+                self.stream = self._open()
+                self.mode = 'a'
+            finally:
+                self.release()
+        super().emit(record)
 
 
 class CustomLogger:
@@ -128,16 +154,10 @@ class CustomLogger:
             console_handler.setFormatter(formatter)
             self.logger.addHandler(console_handler)
             
-            # 文件处理器（按日期命名，带轮转功能）
-            today = datetime.now().strftime("%Y-%m-%d")
-            log_file = self.log_dir / f"{today}.log"
-            
-            file_handler = RotatingFileHandler(
-                log_file,
-                maxBytes=50*1024*1024,  # 单个日志文件大小上限为50MB
-                backupCount=7,  # 保留7个备份文件
-                encoding='utf-8'
-            )
+            # 文件处理器：固定单文件，跨天自动清空，仅保留当天日志
+            log_file_name = os.getenv("PYTHON_LOG_FILE_NAME", "current.log")
+            log_file = self.log_dir / log_file_name
+            file_handler = DailyTruncateFileHandler(log_file, encoding='utf-8')
             file_handler.setFormatter(formatter)
             self.logger.addHandler(file_handler)
             

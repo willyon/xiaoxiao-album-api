@@ -6,7 +6,6 @@
 const { db } = require("../services/database");
 
 const { mapFields } = require("../utils/fieldMapper");
-const logger = require("../utils/logger");
 
 /**
  * 创建相册
@@ -214,7 +213,7 @@ function updateAlbumLastUsedAt(albumId) {
 /**
  * 添加图片到相册
  */
-function addMediasToAlbum({ albumId, mediaIds, userId }) {
+function addMediasToAlbum({ albumId, mediaIds }) {
   const insertSql = `
     INSERT OR IGNORE INTO album_media (album_id, media_id, added_at)
     VALUES (?, ?, ?)
@@ -246,7 +245,7 @@ function addMediasToAlbum({ albumId, mediaIds, userId }) {
 /**
  * 从相册中移除图片
  */
-function removeMediasFromAlbum({ albumId, mediaIds, userId }) {
+function removeMediasFromAlbum({ albumId, mediaIds }) {
   const deleteSql = `
     DELETE FROM album_media
     WHERE album_id = ? AND media_id IN (${mediaIds.map(() => "?").join(",")})

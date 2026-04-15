@@ -4,18 +4,18 @@
  * @Description: meta 阶段（EXIF + 高清产物 + DB 补充）的独立处理器
  */
 
-const logger = require("../utils/logger");
-const { saveProcessedMediaMetadata } = require("../services/mediaService");
-const { timestampToYearMonth, timestampToYear, timestampToDate, timestampToDayOfWeek } = require("../utils/formatTime");
-const timeIt = require("../utils/timeIt");
-const storageService = require("../services/storageService");
-const videoProcessingService = require("../services/videoProcessingService");
-const { updateProgress, updateProgressOnce } = require("../services/mediaProcessingProgressService");
-const { mediaAnalysisQueue } = require("../queues/mediaAnalysisQueue");
-const { QUEUE_JOB_ATTEMPTS } = require("../config/queueConfig");
-const mediaMetadataService = require("../services/mediaMetadataService");
-const { addMediaToSession } = require("../services/uploadSessionService");
-const { getVideoMimeTypeFromFileName } = require("../utils/fileUtils");
+const logger = require('../utils/logger')
+const { saveProcessedMediaMetadata } = require('../services/mediaService')
+const { timestampToYearMonth, timestampToYear, timestampToDate, timestampToDayOfWeek } = require('../utils/formatTime')
+const timeIt = require('../utils/timeIt')
+const storageService = require('../services/storageService')
+const videoProcessingService = require('../services/videoProcessingService')
+const { updateProgress, updateProgressOnce } = require('../services/mediaProcessingProgressService')
+const { mediaAnalysisQueue } = require('../queues/mediaAnalysisQueue')
+const { QUEUE_JOB_ATTEMPTS } = require('../config/queueConfig')
+const mediaMetadataService = require('../services/mediaMetadataService')
+const { addMediaToSession } = require('../services/uploadSessionService')
+const { getVideoMimeTypeFromFileName } = require('../utils/fileUtils')
 
 /**
  * 处理重试失败后的清理工作（用于imageMetaIngestor）
@@ -28,73 +28,73 @@ const { getVideoMimeTypeFromFileName } = require("../utils/fileUtils");
  * @param {string} [params.highResStorageKey] - 高清图存储键（可选）
  */
 async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userId, highResStorageKey }) {
-  const maxAttempts = job?.opts?.attempts || QUEUE_JOB_ATTEMPTS;
-  const attemptsMade = job?.attemptsMade || 0;
+  const maxAttempts = job?.opts?.attempts || QUEUE_JOB_ATTEMPTS
+  const attemptsMade = job?.attemptsMade || 0
   // 修复：判断失败后 BullMQ 是否还会重试
   // BullMQ 会在失败后将 attemptsMade 递增，然后判断是否 < maxAttempts
   // 我们需要预测递增后的判断结果：(attemptsMade + 1) < maxAttempts
   // 例如：第5次失败时 attemptsMade = 4 → (4+1) < 5 = false → 不会重试
-  const willRetry = attemptsMade + 1 < maxAttempts;
+  const willRetry = attemptsMade + 1 < maxAttempts
 
   if (!willRetry) {
     // 没有重试机会了，执行最终清理
     try {
       // 1. 如果有高清图，先删除
       if (highResStorageKey) {
-        await storageService.storage.deleteFile(highResStorageKey);
+        await storageService.storage.deleteFile(highResStorageKey)
       }
 
       logger.info({
-        message: "High-res image processing failed after all retries exhausted",
+        message: 'High-res image processing failed after all retries exhausted',
         details: {
           imageHash,
           userId,
           highResCleaned: highResStorageKey,
           reason,
           attemptsMade,
-          maxAttempts,
-        },
-      });
+          maxAttempts
+        }
+      })
     } catch (cleanupError) {
       logger.warn({
-        message: "Failed to cleanup files after all retries exhausted",
+        message: 'Failed to cleanup files after all retries exhausted',
         details: {
           highResStorageKey,
           cleanupError: cleanupError.message,
-          fallbackAction: "manual_cleanup_required",
-        },
-      });
+          fallbackAction: 'manual_cleanup_required'
+        }
+      })
     }
 
     // 更新处理进度（基础处理最终失败；同图同会话只计一次，与 aiErrorCount 一致）
     if (job.data.sessionId && imageHash) {
       await updateProgressOnce({
         sessionId: job.data.sessionId,
-        status: "ingestErrorCount",
-        dedupeKey: imageHash,
-      });
+        status: 'ingestErrorCount',
+        dedupeKey: imageHash
+      })
     }
   } else {
     // 还有重试机会，只清理已生成的高清图，保留源文件
-    let highResCleaned = false;
+    let highResCleaned = false
 
     if (highResStorageKey) {
       try {
-        await storageService.storage.deleteFile(highResStorageKey);
-        highResCleaned = true;
+        await storageService.storage.deleteFile(highResStorageKey)
+        highResCleaned = true
       } catch (cleanupError) {
         logger.warn({
-          message: "Failed to cleanup highRes file before retry",
+          message: 'Failed to cleanup highRes file before retry',
           details: {
             highResStorageKey,
-            cleanupError: cleanupError.message,
-          },
-        });
+            cleanupError: cleanupError.message
+          }
+        })
       }
     }
 
     logger.info({
-      message: `${reason}, will retry${highResCleaned ? " - highRes cleaned" : ""}`,
+      message: `${reason}, will retry${highResCleaned ? ' - highRes cleaned' : ''}`,
       details: {
         imageHash,
         userId,
@@ -102,9 +102,9 @@ async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userI
         highResCleaned,
         attemptsMade,
         maxAttempts,
-        nextAttempt: attemptsMade + 1,
-      },
-    });
+        nextAttempt: attemptsMade + 1
+      }
+    })
   }
 }
 
@@ -112,56 +112,56 @@ async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userI
  * 处理视频的 meta 阶段：ffprobe 元数据、移动原片、入队 AI 阶段
  */
 async function processVideoMeta(job, { userId, imageHash, fileName, originalStorageKey, sessionId }) {
-  let videoPath;
+  let videoPath
   try {
-    videoPath = await storageService.storage.getFileData(originalStorageKey);
+    videoPath = await storageService.storage.getFileData(originalStorageKey)
   } catch (err) {
-    await _handleMetaRetryFailure({ job, reason: "file_read_failed", fileName, imageHash, userId });
-    throw err;
+    await _handleMetaRetryFailure({ job, reason: 'file_read_failed', fileName, imageHash, userId })
+    throw err
   }
 
-  let meta;
+  let meta
   try {
-    meta = await videoProcessingService.getVideoMetadata(videoPath);
+    meta = await videoProcessingService.getVideoMetadata(videoPath)
   } catch (err) {
-    await _handleMetaRetryFailure({ job, reason: "metadata_analysis_failed", fileName, imageHash, userId });
-    throw err;
+    await _handleMetaRetryFailure({ job, reason: 'metadata_analysis_failed', fileName, imageHash, userId })
+    throw err
   }
 
-  const captureTime = meta.creationTime || undefined;
-  const monthKey = timestampToYearMonth(captureTime);
-  const yearKey = timestampToYear(captureTime);
-  const dateKey = timestampToDate(captureTime);
-  const dayKey = timestampToDayOfWeek(captureTime);
+  const captureTime = meta.creationTime || undefined
+  const monthKey = timestampToYearMonth(captureTime)
+  const yearKey = timestampToYear(captureTime)
+  const dateKey = timestampToDate(captureTime)
+  const dayKey = timestampToDayOfWeek(captureTime)
 
-  let gpsLocation = null;
-  let country = null;
-  let province = null;
-  let city = null;
-  let mapRegeoStatus;
+  let gpsLocation = null
+  let country = null
+  let province = null
+  let city = null
+  let mapRegeoStatus
   if (meta.gpsLatitude != null && meta.gpsLongitude != null) {
     try {
-      const locInfo = await mediaMetadataService.analyzeLocationInfo(meta.gpsLatitude, meta.gpsLongitude, userId);
-      gpsLocation = locInfo?.gpsLocation || null;
-      country = locInfo?.country || null;
-      province = locInfo?.province || null;
-      city = locInfo?.city || null;
-      mapRegeoStatus = locInfo?.mapRegeoStatus;
+      const locInfo = await mediaMetadataService.analyzeLocationInfo(meta.gpsLatitude, meta.gpsLongitude, userId)
+      gpsLocation = locInfo?.gpsLocation || null
+      country = locInfo?.country || null
+      province = locInfo?.province || null
+      city = locInfo?.city || null
+      mapRegeoStatus = locInfo?.mapRegeoStatus
     } catch (e) {
-      logger.warn({ message: "Video GPS reverse geocode failed", details: { imageHash, error: e.message } });
+      logger.warn({ message: 'Video GPS reverse geocode failed', details: { imageHash, error: e.message } })
     }
   }
 
   // 视频：width/height 已为 ffprobe 按 rotation 换算后的「观感」尺寸；layout_type / aspect_ratio 与图片同源（calculateOrientationInfo，orientation=1 表示不再按 EXIF 交换）
   // raw_orientation 仅用于图片 EXIF 1–8，视频不传，库中保持 NULL（旋转信息已体现在宽高中）
-  const videoOrientationInfo = mediaMetadataService.calculateOrientationInfo(meta.width, meta.height, 1);
-  const aspectRatio = videoOrientationInfo.aspectRatio;
-  const layoutType = videoOrientationInfo.layoutType;
-  const mime = getVideoMimeTypeFromFileName(fileName) || "application/octet-stream";
-  const durationSec = typeof meta.duration === "number" ? Math.round(meta.duration) : null;
+  const videoOrientationInfo = mediaMetadataService.calculateOrientationInfo(meta.width, meta.height, 1)
+  const aspectRatio = videoOrientationInfo.aspectRatio
+  const layoutType = videoOrientationInfo.layoutType
+  const mime = getVideoMimeTypeFromFileName(fileName) || 'application/octet-stream'
+  const durationSec = typeof meta.duration === 'number' ? Math.round(meta.duration) : null
 
-  let imageId = null;
-  const effectiveOriginalStorageKey = originalStorageKey;
+  let imageId = null
+  const effectiveOriginalStorageKey = originalStorageKey
   try {
     const result = await saveProcessedMediaMetadata({
       userId,
@@ -187,29 +187,29 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
       mime,
       durationSec,
       videoCodec: meta.codec,
-      mediaType: "video",
-      mapRegeoStatus: meta.gpsLatitude != null && meta.gpsLongitude != null ? mapRegeoStatus : undefined,
-    });
-    imageId = result.imageId;
+      mediaType: 'video',
+      mapRegeoStatus: meta.gpsLatitude != null && meta.gpsLongitude != null ? mapRegeoStatus : undefined
+    })
+    imageId = result.imageId
   } catch (e) {
     logger.error({
-      message: "Video metadata database update failed",
-      details: { imageHash, userId, err: e.message },
-    });
+      message: 'Video metadata database update failed',
+      details: { imageHash, userId, err: e.message }
+    })
     await _handleMetaRetryFailure({
       job,
-      reason: "database_update_failed",
+      reason: 'database_update_failed',
       fileName,
       imageHash,
-      userId,
-    });
-    throw e;
+      userId
+    })
+    throw e
   }
 
   if (sessionId && imageId) {
     try {
-      await addMediaToSession({ sessionId, mediaId: imageId });
-    } catch (error) {}
+      await addMediaToSession({ sessionId, mediaId: imageId })
+    } catch {}
   }
 
   await _enqueueAiAndCleanup({
@@ -218,54 +218,54 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
     highResStorageKey: null,
     originalStorageKey: effectiveOriginalStorageKey,
     sessionId,
-    mediaType: "video",
+    mediaType: 'video',
     fileName,
-    imageHash,
-  });
+    imageHash
+  })
 
   // 将 media 完成计数后移到 AI 入队之后，避免单图场景出现 completed 的短暂竞态窗口
   if (sessionId) {
     try {
-      await updateProgress({ sessionId, status: "ingestDoneCount" });
-    } catch (err) {}
+      await updateProgress({ sessionId, status: 'ingestDoneCount' })
+    } catch {}
   }
 }
 
 async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType, fileName, imageHash }) {
   if (!imageId) {
     logger.warn({
-      message: "Cannot add to queues - imageId is null",
-      details: { imageHash, userId },
-    });
-    return;
+      message: 'Cannot add to queues - imageId is null',
+      details: { imageHash, userId }
+    })
+    return
   }
 
   try {
     await mediaAnalysisQueue.add(
-      "media-analysis",
+      'media-analysis',
       {
         imageId,
         userId,
         highResStorageKey,
         originalStorageKey,
         sessionId,
-        mediaType: mediaType || "image",
-        fileName: fileName || "",
+        mediaType: mediaType || 'image',
+        fileName: fileName || ''
       },
-      { jobId: `analysis:${userId}:${imageId}` },
-    );
+      { jobId: `analysis:${userId}:${imageId}` }
+    )
     if (sessionId) {
       await updateProgressOnce({
         sessionId,
-        status: "aiEligibleCount",
-        dedupeKey: imageId,
-      });
+        status: 'aiEligibleCount',
+        dedupeKey: imageId
+      })
     }
   } catch (err) {
     logger.warn({
-      message: "Failed to add media to mediaAnalysisQueue",
-      details: { imageHash, userId, error: err.message },
-    });
+      message: 'Failed to add media to mediaAnalysisQueue',
+      details: { imageHash, userId, error: err.message }
+    })
   }
 }
 
@@ -279,42 +279,42 @@ async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, origin
  * @param {Object} job - BullMQ job对象
  */
 async function processMediaMeta(job) {
-  const { userId, imageHash, fileName, originalStorageKey, extension, fileSize, sessionId, mediaType = "image" } = job.data;
+  const { userId, imageHash, fileName, originalStorageKey, extension, fileSize, sessionId, mediaType = 'image' } = job.data
 
   // ========== 视频分支：ffprobe 元数据，不生成 highres；会入队 AI worker 做 analysis 完成态收敛 ==========
-  if (mediaType === "video") {
+  if (mediaType === 'video') {
     return processVideoMeta(job, {
       userId,
       imageHash,
       fileName,
       originalStorageKey,
-      sessionId,
-    });
+      sessionId
+    })
   }
 
   // ========== 图片分支：沿用现有逻辑 ==========
-  const highResType = process.env.MEDIA_STORAGE_KEY_HIGHRES || "highres";
-  let highResStorageKeyResult = null;
-  let hdWidthPx = null;
-  let hdHeightPx = null;
+  const highResType = process.env.MEDIA_STORAGE_KEY_HIGHRES || 'highres'
+  let highResStorageKeyResult = null
+  let hdWidthPx = null
+  let hdHeightPx = null
 
-  let fileData = null;
+  let fileData = null
   try {
-    fileData = await storageService.storage.getFileData(originalStorageKey);
+    fileData = await storageService.storage.getFileData(originalStorageKey)
   } catch (err) {
-    await _handleMetaRetryFailure({ job, reason: "file_read_failed", fileName, imageHash, userId });
-    throw err;
+    await _handleMetaRetryFailure({ job, reason: 'file_read_failed', fileName, imageHash, userId })
+    throw err
   }
 
-  let metadata = null;
+  let metadata = null
   try {
     metadata = await mediaMetadataService.analyzeMediaMetadata(fileData, {
       includeLocation: true,
-      userId,
-    });
+      userId
+    })
   } catch (err) {
-    await _handleMetaRetryFailure({ job, reason: "metadata_analysis_failed", fileName, imageHash, userId });
-    throw err;
+    await _handleMetaRetryFailure({ job, reason: 'metadata_analysis_failed', fileName, imageHash, userId })
+    throw err
   }
 
   const {
@@ -332,19 +332,19 @@ async function processMediaMeta(job) {
     orientation,
     layoutType,
     mime,
-    mapRegeoStatus,
-  } = metadata;
+    mapRegeoStatus
+  } = metadata
 
-  const monthKey = timestampToYearMonth(captureTime);
-  const yearKey = timestampToYear(captureTime);
-  const dateKey = timestampToDate(captureTime);
-  const dayKey = timestampToDayOfWeek(captureTime);
+  const monthKey = timestampToYearMonth(captureTime)
+  const yearKey = timestampToYear(captureTime)
+  const dateKey = timestampToDate(captureTime)
+  const dayKey = timestampToDayOfWeek(captureTime)
 
-  const highResStorageKey = storageService.storage.generateStorageKey(highResType, fileName, extension);
+  const highResStorageKey = storageService.storage.generateStorageKey(highResType, fileName, extension)
 
   try {
     const hdResult = await timeIt(
-      "processAndStoreImage",
+      'processAndStoreImage',
       async () => {
         return await storageService.processAndStoreImage({
           fileSize,
@@ -352,34 +352,34 @@ async function processMediaMeta(job) {
           targetStorageKey: highResStorageKey,
           extension,
           quality: 65,
-          resizeWidth: 2048,
-        });
+          resizeWidth: 2048
+        })
       },
-      imageHash,
-    );
+      imageHash
+    )
 
-    highResStorageKeyResult = highResStorageKey;
-    hdWidthPx = hdResult.width;
-    hdHeightPx = hdResult.height;
+    highResStorageKeyResult = highResStorageKey
+    hdWidthPx = hdResult.width
+    hdHeightPx = hdResult.height
   } catch (e) {
     logger.error({
-      message: "Generate HQ image failed",
-      details: { imageHash, userId, highResStorageKey, err: String(e) },
-    });
+      message: 'Generate HQ image failed',
+      details: { imageHash, userId, highResStorageKey, err: String(e) }
+    })
 
     await _handleMetaRetryFailure({
       job,
-      reason: "highres_generation_failed",
+      reason: 'highres_generation_failed',
       fileName,
       imageHash,
       userId,
-      highResStorageKey: highResStorageKeyResult,
-    });
+      highResStorageKey: highResStorageKeyResult
+    })
 
-    throw e;
+    throw e
   }
 
-  let imageId = null;
+  let imageId = null
   try {
     const result = await saveProcessedMediaMetadata({
       userId,
@@ -406,33 +406,33 @@ async function processMediaMeta(job) {
       hdWidthPx,
       hdHeightPx,
       mime,
-      mapRegeoStatus: latitude != null && longitude != null ? mapRegeoStatus : undefined,
-    });
-    imageId = result.imageId;
+      mapRegeoStatus: latitude != null && longitude != null ? mapRegeoStatus : undefined
+    })
+    imageId = result.imageId
   } catch (e) {
     // 数据库更新失败
     logger.error({
-      message: "Database update failed - EXIF metadata and high-res image info could not be saved",
-      details: { imageHash, userId, err: String(e) },
-    });
+      message: 'Database update failed - EXIF metadata and high-res image info could not be saved',
+      details: { imageHash, userId, err: String(e) }
+    })
 
     // 处理重试失败逻辑
     await _handleMetaRetryFailure({
       job,
-      reason: "database_update_failed",
+      reason: 'database_update_failed',
       fileName,
       imageHash,
       userId,
-      highResStorageKey: highResStorageKeyResult, // 数据库更新失败时，需要清理已生成的高清图
-    });
+      highResStorageKey: highResStorageKeyResult // 数据库更新失败时，需要清理已生成的高清图
+    })
 
-    throw e;
+    throw e
   }
   // ======== 移动原图到 original 存储位置 ========
   if (sessionId && imageId) {
     try {
-      await addMediaToSession({ sessionId, mediaId: imageId });
-    } catch (error) {}
+      await addMediaToSession({ sessionId, mediaId: imageId })
+    } catch {}
   }
 
   await _enqueueAiAndCleanup({
@@ -441,22 +441,22 @@ async function processMediaMeta(job) {
     highResStorageKey: highResStorageKeyResult,
     originalStorageKey,
     sessionId,
-    mediaType: "image",
+    mediaType: 'image',
     fileName,
-    imageHash,
-  });
+    imageHash
+  })
 
   // 将 media 完成计数后移到 AI 入队之后，避免单图场景出现 completed 的短暂竞态窗口
   try {
     if (sessionId) {
       await updateProgress({
         sessionId,
-        status: "ingestDoneCount",
-      });
+        status: 'ingestDoneCount'
+      })
     }
-  } catch (err) {}
+  } catch {}
 }
 
 module.exports = {
-  processMediaMeta,
-};
+  processMediaMeta
+}

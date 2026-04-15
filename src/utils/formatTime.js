@@ -5,11 +5,11 @@
  * @LastEditTime: 2025-08-16 22:25:34
  * @Description: File description
  */
-const { DateTime } = require("luxon");
+const { DateTime } = require('luxon')
 
 // 定义两种格式
-const WITH_ZONETIME = "yyyy:MM:dd HH:mm:ssZZ"; // 包含时区信息
-const NO_ZONETIME = "yyyy:MM:dd HH:mm:ss"; // 不包含时区信息
+const WITH_ZONETIME = 'yyyy:MM:dd HH:mm:ssZZ' // 包含时区信息
+const NO_ZONETIME = 'yyyy:MM:dd HH:mm:ss' // 不包含时区信息
 
 /**
  * 将时间字符串转换为时间戳（毫秒）
@@ -38,22 +38,22 @@ const NO_ZONETIME = "yyyy:MM:dd HH:mm:ss"; // 不包含时区信息
  */
 function stringToTimestamp(timeStr) {
   if (!timeStr) {
-    return null;
+    return null
   }
 
   // 根据是否包含时区信息选择解析方式
   const dateTime =
-    timeStr.includes("+") || timeStr.includes("-") ? DateTime.fromFormat(timeStr, WITH_ZONETIME) : DateTime.fromFormat(timeStr, NO_ZONETIME);
+    timeStr.includes('+') || timeStr.includes('-') ? DateTime.fromFormat(timeStr, WITH_ZONETIME) : DateTime.fromFormat(timeStr, NO_ZONETIME)
 
   // 检查解析结果
   if (!dateTime.isValid) {
     // 时间格式化出错，使用当前时间作为fallback
-    console.error("时间格式化出错:", dateTime.invalidReason);
-    return null;
+    console.error('时间格式化出错:', dateTime.invalidReason)
+    return null
   }
 
   // 返回时间戳（毫秒）
-  return dateTime.toMillis();
+  return dateTime.toMillis()
 }
 
 /**
@@ -62,9 +62,9 @@ function stringToTimestamp(timeStr) {
  * @returns {string} 年月字符串，如 "2024-08" 或 "unknown"
  */
 function timestampToYearMonth(timestamp) {
-  if (timestamp == null) return "unknown"; // timestamp为null或undefined
-  const dt = DateTime.fromMillis(Number(timestamp)); // 使用系统默认时区，与stringToTimestamp保持一致
-  return dt.isValid ? dt.toFormat("yyyy-MM") : "unknown";
+  if (timestamp == null) return 'unknown' // timestamp为null或undefined
+  const dt = DateTime.fromMillis(Number(timestamp)) // 使用系统默认时区，与stringToTimestamp保持一致
+  return dt.isValid ? dt.toFormat('yyyy-MM') : 'unknown'
 }
 
 /**
@@ -73,9 +73,9 @@ function timestampToYearMonth(timestamp) {
  * @returns {string} 年份字符串，如 "2024" 或 "unknown"
  */
 function timestampToYear(timestamp) {
-  if (timestamp == null) return "unknown";
-  const dt = DateTime.fromMillis(Number(timestamp)); // 使用系统默认时区，与stringToTimestamp保持一致
-  return dt.isValid ? dt.toFormat("yyyy") : "unknown";
+  if (timestamp == null) return 'unknown'
+  const dt = DateTime.fromMillis(Number(timestamp)) // 使用系统默认时区，与stringToTimestamp保持一致
+  return dt.isValid ? dt.toFormat('yyyy') : 'unknown'
 }
 
 /**
@@ -84,9 +84,9 @@ function timestampToYear(timestamp) {
  * @returns {string} 日期字符串，如 "2024-08-15" 或 "unknown"
  */
 function timestampToDate(timestamp) {
-  if (timestamp == null) return "unknown";
-  const dt = DateTime.fromMillis(Number(timestamp)); // 使用系统默认时区，与stringToTimestamp保持一致
-  return dt.isValid ? dt.toFormat("yyyy-MM-dd") : "unknown";
+  if (timestamp == null) return 'unknown'
+  const dt = DateTime.fromMillis(Number(timestamp)) // 使用系统默认时区，与stringToTimestamp保持一致
+  return dt.isValid ? dt.toFormat('yyyy-MM-dd') : 'unknown'
 }
 
 /**
@@ -95,9 +95,9 @@ function timestampToDate(timestamp) {
  * @returns {string} 星期几字符串，如 "Monday" 或 "unknown"
  */
 function timestampToDayOfWeek(timestamp) {
-  if (timestamp == null) return "unknown";
-  const dt = DateTime.fromMillis(Number(timestamp)); // 使用系统默认时区，与stringToTimestamp保持一致
-  return dt.isValid ? dt.toFormat("cccc") : "unknown"; // cccc 格式输出完整的星期几名称
+  if (timestamp == null) return 'unknown'
+  const dt = DateTime.fromMillis(Number(timestamp)) // 使用系统默认时区，与stringToTimestamp保持一致
+  return dt.isValid ? dt.toFormat('cccc') : 'unknown' // cccc 格式输出完整的星期几名称
 }
 
 module.exports = {
@@ -105,5 +105,5 @@ module.exports = {
   timestampToYearMonth,
   timestampToYear,
   timestampToDate,
-  timestampToDayOfWeek,
-};
+  timestampToDayOfWeek
+}

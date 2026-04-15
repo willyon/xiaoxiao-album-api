@@ -4,12 +4,12 @@
  * @Description: 搜索功能API控制器
  */
 
-const CustomError = require("../errors/customError");
-const { SUCCESS_CODES, ERROR_CODES } = require("../constants/messageCodes");
-const searchService = require("../services/searchService");
-const { addFullUrlToMedia } = require("../services/mediaService");
-const faceClusterModel = require("../models/faceClusterModel");
-const logger = require("../utils/logger");
+const CustomError = require('../errors/customError')
+const { SUCCESS_CODES, ERROR_CODES } = require('../constants/messageCodes')
+const searchService = require('../services/searchService')
+const { addFullUrlToMedia } = require('../services/mediaService')
+const faceClusterModel = require('../models/faceClusterModel')
+const logger = require('../utils/logger')
 
 /**
  * 搜索/列表图片（统一接口）
@@ -19,28 +19,19 @@ const logger = require("../utils/logger");
  */
 async function handleSearchMedias(req, res, next) {
   try {
-    const { userId } = req.user;
-    const {
-      query,
-      filters = {},
-      pageNo = 1,
-      pageSize = 20,
-      clusterId: clusterIdRaw,
-      source,
-      type,
-      albumId,
-    } = req.body;
+    const { userId } = req.user
+    const { query, filters = {}, pageNo = 1, pageSize = 20, clusterId: clusterIdRaw, source, type, albumId } = req.body
 
-    const clusterId = clusterIdRaw != null && clusterIdRaw !== "" ? parseInt(clusterIdRaw, 10) : null;
-    const validClusterId = Number.isNaN(clusterId) ? null : clusterId;
+    const clusterId = clusterIdRaw != null && clusterIdRaw !== '' ? parseInt(clusterIdRaw, 10) : null
+    const validClusterId = Number.isNaN(clusterId) ? null : clusterId
 
-    const validSources = ["search", "favorites", "timeline", "album", "location", "people"];
-    const hasScope = source && source !== "search" && validSources.includes(source);
+    const validSources = ['search', 'favorites', 'timeline', 'album', 'location', 'people']
+    const hasScope = source && source !== 'search' && validSources.includes(source)
 
-    let searchQuery = query && query.trim() ? query.trim() : "*";
-    const hasQuery = searchQuery !== "*" && searchQuery.trim() !== "";
+    let searchQuery = query && query.trim() ? query.trim() : '*'
+    const hasQuery = searchQuery !== '*' && searchQuery.trim() !== ''
 
-    const filterOptions = { userId, clusterId: validClusterId };
+    const filterOptions = { userId, clusterId: validClusterId }
 
     logger.info({
       message: hasScope ? `范围列表/搜索: ${userId}` : `用户搜索: ${userId}`,
@@ -50,15 +41,15 @@ async function handleSearchMedias(req, res, next) {
         pageNo,
         pageSize,
         clusterId: validClusterId,
-        source: hasScope ? source : null,
-      },
-    });
+        source: hasScope ? source : null
+      }
+    })
 
-    let searchResult;
+    let searchResult
 
     if (hasScope) {
-      const scope = { source, type, albumId, clusterId: validClusterId };
-      const { scopeConditions, scopeParams } = searchService.buildScopeConditions(scope, userId);
+      const scope = { source, type, albumId, clusterId: validClusterId }
+      const { scopeConditions, scopeParams } = searchService.buildScopeConditions(scope, userId)
       if (hasQuery) {
         searchResult = await searchService.searchMediaResults({
           userId,
@@ -68,36 +59,36 @@ async function handleSearchMedias(req, res, next) {
           scopeConditions,
           scopeParams,
           pageNo: parseInt(pageNo, 10),
-          pageSize: parseInt(pageSize, 10),
-        });
+          pageSize: parseInt(pageSize, 10)
+        })
       } else {
-        const filterBuilt = searchService.buildFilterQueryParts(filters, filterOptions);
+        const filterBuilt = searchService.buildFilterQueryParts(filters, filterOptions)
         searchResult = await searchService.searchMediaResults({
           userId,
-          query: "",
+          query: '',
           whereConditions: [...scopeConditions, ...filterBuilt.whereConditions],
           whereParams: [...scopeParams, ...filterBuilt.whereParams],
           pageNo: parseInt(pageNo, 10),
-          pageSize: parseInt(pageSize, 10),
-        });
+          pageSize: parseInt(pageSize, 10)
+        })
       }
-      let resultsWithUrls = await addFullUrlToMedia(searchResult.list);
-      if (source === "people" && validClusterId != null && resultsWithUrls.length > 0) {
-        const mediaIds = resultsWithUrls.map((item) => item.mediaId).filter((id) => id != null);
-        const faceEmbeddingIdMap = faceClusterModel.getFaceEmbeddingIdByMediaIdInCluster(userId, validClusterId, mediaIds);
+      let resultsWithUrls = await addFullUrlToMedia(searchResult.list)
+      if (source === 'people' && validClusterId != null && resultsWithUrls.length > 0) {
+        const mediaIds = resultsWithUrls.map((item) => item.mediaId).filter((id) => id != null)
+        const faceEmbeddingIdMap = faceClusterModel.getFaceEmbeddingIdByMediaIdInCluster(userId, validClusterId, mediaIds)
         resultsWithUrls = resultsWithUrls.map((item) => ({
           ...item,
-          faceEmbeddingId: faceEmbeddingIdMap.get(item.mediaId) ?? null,
-        }));
+          faceEmbeddingId: faceEmbeddingIdMap.get(item.mediaId) ?? null
+        }))
       }
       logger.info({
         message: `范围列表/搜索完成: ${userId}`,
-        details: { source, resultCount: resultsWithUrls.length, total: searchResult.total },
-      });
+        details: { source, resultCount: resultsWithUrls.length, total: searchResult.total }
+      })
       return res.sendResponse({
         data: { list: resultsWithUrls, total: searchResult.total },
-        messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-      });
+        messageCode: SUCCESS_CODES.REQUEST_COMPLETED
+      })
     }
 
     // 全局搜索：有关键词时整句在 searchService 内解析（空格视为同一句内多线索，不拆成多次搜索）；无关键词时仅筛选列表
@@ -110,21 +101,21 @@ async function handleSearchMedias(req, res, next) {
         scopeConditions: [],
         scopeParams: [],
         pageNo: parseInt(pageNo, 10),
-        pageSize: parseInt(pageSize, 10),
-      });
+        pageSize: parseInt(pageSize, 10)
+      })
     } else {
-      const built = searchService.buildFilterQueryParts(filters, filterOptions);
+      const built = searchService.buildFilterQueryParts(filters, filterOptions)
       searchResult = await searchService.searchMediaResults({
         userId,
-        query: "",
+        query: '',
         whereConditions: built.whereConditions,
         whereParams: built.whereParams,
         pageNo: parseInt(pageNo, 10),
-        pageSize: parseInt(pageSize, 10),
-      });
+        pageSize: parseInt(pageSize, 10)
+      })
     }
 
-    const resultsWithUrls = await addFullUrlToMedia(searchResult.list);
+    const resultsWithUrls = await addFullUrlToMedia(searchResult.list)
 
     logger.info({
       message: `搜索完成: ${userId}`,
@@ -135,22 +126,22 @@ async function handleSearchMedias(req, res, next) {
         termCount: searchResult.stats?.termCount || 0,
         ftsCount: searchResult.stats?.ftsCount || 0,
         appliedFilters: Object.keys(filters).filter((key) => {
-          const value = filters[key];
-          if (Array.isArray(value)) return value.length > 0;
-          return value && value !== "" && value !== "all";
-        }),
-      },
-    });
+          const value = filters[key]
+          if (Array.isArray(value)) return value.length > 0
+          return value && value !== '' && value !== 'all'
+        })
+      }
+    })
 
     res.sendResponse({
       data: {
         list: resultsWithUrls,
-        total: searchResult.total,
+        total: searchResult.total
       },
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-    });
+      messageCode: SUCCESS_CODES.REQUEST_COMPLETED
+    })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
@@ -161,18 +152,18 @@ async function handleSearchMedias(req, res, next) {
  */
 async function handleGetQueueStatus(req, res, next) {
   try {
-    logger.info({ message: "获取搜索队列状态请求" });
+    logger.info({ message: '获取搜索队列状态请求' })
 
     // 简化实现，返回基本状态信息
     res.sendResponse({
       data: {
-        message: "队列状态检查功能将在队列服务集成时实现",
-        timestamp: new Date().toISOString(),
+        message: '队列状态检查功能将在队列服务集成时实现',
+        timestamp: new Date().toISOString()
       },
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-    });
+      messageCode: SUCCESS_CODES.REQUEST_COMPLETED
+    })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
@@ -183,74 +174,72 @@ async function handleGetQueueStatus(req, res, next) {
  */
 async function handleGetFilterOptionsPaginated(req, res, next) {
   try {
-    const { userId } = req.user;
+    const { userId } = req.user
     const {
       type,
       pageNo = 1,
       pageSize = 20,
-      timeDimension = null,
-      mediaType = "all",
+      mediaType = 'all',
       scopeSource,
       scopeType,
       scopeAlbumId,
-      scopeClusterId,
-    } = req.query;
+      scopeClusterId
+    } = req.query
 
-    if (!type || !["city", "year", "month", "weekday"].includes(type)) {
+    if (!type || !['city', 'year', 'month', 'weekday'].includes(type)) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: "error",
-        message: "type 参数必须是 city、year、month 或 weekday",
-      });
+        messageType: 'error',
+        message: 'type 参数必须是 city、year、month 或 weekday'
+      })
     }
 
-    let scopeConditions = [];
-    let scopeParams = [];
+    let scopeConditions = []
+    let scopeParams = []
     if (scopeSource) {
       const scope = {
         source: scopeSource,
         type: scopeType,
         albumId: scopeAlbumId,
-        clusterId: scopeClusterId,
-      };
-      const built = searchService.buildScopeConditions(scope, userId);
-      scopeConditions = built.scopeConditions;
-      scopeParams = built.scopeParams;
+        clusterId: scopeClusterId
+      }
+      const built = searchService.buildScopeConditions(scope, userId)
+      scopeConditions = built.scopeConditions
+      scopeParams = built.scopeParams
     }
 
     logger.info({
       message: `分页获取筛选选项: ${userId}`,
-      details: { type, pageNo, pageSize, scopeSource: scopeSource || null },
-    });
+      details: { type, pageNo, pageSize, scopeSource: scopeSource || null }
+    })
 
     const result = await searchService.getFilterOptionsPaginated({
       userId,
       type,
       pageNo: parseInt(pageNo),
       pageSize: parseInt(pageSize),
-      timeDimension,
-      mediaType: ["image", "video"].includes(mediaType) ? mediaType : null,
+      mediaType: ['image', 'video'].includes(mediaType) ? mediaType : null,
       scopeConditions: scopeConditions.length ? scopeConditions : null,
-      scopeParams: scopeParams.length ? scopeParams : null,
-    });
+      scopeParams: scopeParams.length ? scopeParams : null
+    })
 
     res.sendResponse({
       data: result,
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-    });
+      messageCode: SUCCESS_CODES.REQUEST_COMPLETED
+    })
   } catch (error) {
     logger.error({
-      message: "分页获取筛选选项失败",
+      message: '分页获取筛选选项失败',
       error: error.message,
-      stack: error.stack,
-    });
-    next(error);
+      stack: error.stack
+    })
+    next(error)
   }
 }
 
 module.exports = {
   handleSearchMedias,
   handleGetQueueStatus,
-  handleGetFilterOptionsPaginated,
-};
+  handleGetFilterOptionsPaginated
+}

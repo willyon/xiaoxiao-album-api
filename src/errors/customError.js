@@ -1,4 +1,4 @@
-const { ERROR_CODES } = require("../constants/messageCodes");
+const { ERROR_CODES } = require('../constants/messageCodes')
 /*
  * @Author: zhangshouchang
  * @Date: 2024-12-16 09:29:27
@@ -21,7 +21,7 @@ class CustomError extends Error {
   constructor({
     httpStatus = 500,
     messageCode = ERROR_CODES.SERVER_ERROR,
-    messageType = "error",
+    messageType = 'error',
     refreshable,
     details,
     public: publicFields,
@@ -29,20 +29,20 @@ class CustomError extends Error {
     ...extraFields
   } = {}) {
     // super调用Error的构造函数，它只接受一个参数:message
-    super(message);
+    super(message)
 
     // 设置类的属性
-    this.httpStatus = httpStatus; // HTTP 状态码
-    this.messageCode = messageCode; // 业务逻辑的错误代码
-    this.messageType = messageType; // 前端的消息类型（用于前端控制弹框的样式）
-    if (refreshable !== undefined) this.refreshable = refreshable; // 是否可刷新jwt token
-    if (details !== undefined) this.details = details; // 内部上下文
-    if (publicFields !== undefined) this.public = publicFields; // 允许额外给前端返回的字段集合
-    Object.assign(this, extraFields); // 透传其它未来可能传入的字段
+    this.httpStatus = httpStatus // HTTP 状态码
+    this.messageCode = messageCode // 业务逻辑的错误代码
+    this.messageType = messageType // 前端的消息类型（用于前端控制弹框的样式）
+    if (refreshable !== undefined) this.refreshable = refreshable // 是否可刷新jwt token
+    if (details !== undefined) this.details = details // 内部上下文
+    if (publicFields !== undefined) this.public = publicFields // 允许额外给前端返回的字段集合
+    Object.assign(this, extraFields) // 透传其它未来可能传入的字段
 
     // 捕获错误调用栈，排除 constructor
-    Error.captureStackTrace(this, this.constructor);
+    Error.captureStackTrace(this, this.constructor)
   }
 }
 
-module.exports = CustomError;
+module.exports = CustomError

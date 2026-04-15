@@ -5,111 +5,111 @@
  * @Description: 独立图片处理worker模块
  */
 
-const logger = require("../utils/logger");
-const { saveNewMedia } = require("../services/mediaService");
-const trashService = require("../services/trashService");
-const { getRedisClient } = require("../services/redisClient");
-const { userSetKey } = require("./userMediaHashset");
-const { mediaMetaQueue } = require("../queues/mediaMetaQueue");
-const { QUEUE_JOB_ATTEMPTS } = require("../config/queueConfig");
-const storageService = require("../services/storageService");
-const videoProcessingService = require("../services/videoProcessingService");
-const timeIt = require("../utils/timeIt");
-const { updateProgress } = require("../services/mediaProcessingProgressService");
+const logger = require('../utils/logger')
+const { saveNewMedia } = require('../services/mediaService')
+const trashService = require('../services/trashService')
+const { getRedisClient } = require('../services/redisClient')
+const { userSetKey } = require('./userMediaHashset')
+const { mediaMetaQueue } = require('../queues/mediaMetaQueue')
+const { QUEUE_JOB_ATTEMPTS } = require('../config/queueConfig')
+const storageService = require('../services/storageService')
+const videoProcessingService = require('../services/videoProcessingService')
+const timeIt = require('../utils/timeIt')
+const { updateProgress } = require('../services/mediaProcessingProgressService')
 
 /** Redis 命中但库内仅回收站记录时：静默恢复并计 uploadedCount，删除临时上传文件 */
 async function _restoreTrashIfApplicableAndSkipUpload(fileInfo) {
-  const { userId, imageHash } = fileInfo;
-  const { restored } = await trashService.restoreTrashMediaByHashIfApplicable({ userId, imageHash });
-  if (!restored) return false;
+  const { userId, imageHash } = fileInfo
+  const { restored } = await trashService.restoreTrashMediaByHashIfApplicable({ userId, imageHash })
+  if (!restored) return false
   logger.info({
-    message: "Worker：Redis 命中但仅回收站有记录，已恢复并结束上传",
-    details: { imageHash, userId, fileName: fileInfo.fileName },
-  });
+    message: 'Worker：Redis 命中但仅回收站有记录，已恢复并结束上传',
+    details: { imageHash, userId, fileName: fileInfo.fileName }
+  })
   if (fileInfo.sessionId) {
-    await updateProgress({ sessionId: fileInfo.sessionId, status: "uploadedCount" });
-    await updateProgress({ sessionId: fileInfo.sessionId, status: "ingestDoneCount" });
+    await updateProgress({ sessionId: fileInfo.sessionId, status: 'uploadedCount' })
+    await updateProgress({ sessionId: fileInfo.sessionId, status: 'ingestDoneCount' })
   }
-  await storageService.deleteFile(fileInfo);
-  return true;
+  await storageService.deleteFile(fileInfo)
+  return true
 }
 
 // 原子化：先查集合 → 抢锁 → 失败则再查集合 → 再决定 busy/重复
 async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
-  const { userId, imageHash } = fileInfo;
-  const setKey = userSetKey(userId);
+  const { userId, imageHash } = fileInfo
+  const setKey = userSetKey(userId)
 
   // 1) 快路径：集合命中，立即按重复处理
-  const already = await redisClient.sismember(setKey, imageHash);
+  const already = await redisClient.sismember(setKey, imageHash)
   if (already === 1) {
     if (await _restoreTrashIfApplicableAndSkipUpload(fileInfo)) {
-      return { proceed: false };
+      return { proceed: false }
     }
 
     logger.info({
-      message: "Worker检测到重复图片，跳过处理",
+      message: 'Worker检测到重复图片，跳过处理',
       details: {
         imageHash,
         userId,
         fileName: fileInfo.fileName,
-        action: "duplicate_skipped_in_worker",
-      },
-    });
+        action: 'duplicate_skipped_in_worker'
+      }
+    })
 
     // 更新 Worker 层跳过计数（已加入队列但被跳过）
     if (fileInfo.sessionId) {
       await updateProgress({
         sessionId: fileInfo.sessionId,
-        status: "workerSkippedCount",
-      });
+        status: 'workerSkippedCount'
+      })
     }
 
-    await storageService.deleteFile(fileInfo);
-    return { proceed: false }; // 不继续处理
+    await storageService.deleteFile(fileInfo)
+    return { proceed: false } // 不继续处理
   }
 
   // 2) 抢占锁（避免同图并发重复处理）
-  const lockKey = `${process.env.MEDIA_HASH_LOCK_KEY_PREFIX}${imageHash}`;
-  const ttlMs = Number(process.env.MEDIA_HASH_LOCK_TTL_MS) || 10 * 60 * 1000; //10分钟后释放锁 避免因为忘记释放锁导致死锁
+  const lockKey = `${process.env.MEDIA_HASH_LOCK_KEY_PREFIX}${imageHash}`
+  const ttlMs = Number(process.env.MEDIA_HASH_LOCK_TTL_MS) || 10 * 60 * 1000 //10分钟后释放锁 避免因为忘记释放锁导致死锁
   //NX：仅当 key 不存在 时才设置（Not eXists） PX <ms>：给这个 key 设置 过期时间（毫秒）（eXPIRE in ms）
-  const lockOk = await redisClient.set(lockKey, "1", "NX", "PX", ttlMs);
+  const lockOk = await redisClient.set(lockKey, '1', 'NX', 'PX', ttlMs)
   if (!lockOk) {
     // 3) 抢锁失败：复查集合（可能另一 worker 已经完成并写入）
-    const nowExists = await redisClient.sismember(setKey, imageHash);
+    const nowExists = await redisClient.sismember(setKey, imageHash)
     if (nowExists === 1) {
       if (await _restoreTrashIfApplicableAndSkipUpload(fileInfo)) {
-        return { proceed: false };
+        return { proceed: false }
       }
 
       logger.info({
-        message: "抢锁失败后检测到重复图片，跳过处理",
+        message: '抢锁失败后检测到重复图片，跳过处理',
         details: {
           imageHash,
           userId,
           fileName: fileInfo.fileName,
-          action: "duplicate_skipped_after_lock_failed",
-        },
-      });
+          action: 'duplicate_skipped_after_lock_failed'
+        }
+      })
 
       // 更新 Worker 层跳过计数
       if (fileInfo.sessionId) {
         await updateProgress({
           sessionId: fileInfo.sessionId,
-          status: "workerSkippedCount",
-        });
+          status: 'workerSkippedCount'
+        })
       }
 
-      await storageService.deleteFile(fileInfo);
-      return { proceed: false };
+      await storageService.deleteFile(fileInfo)
+      return { proceed: false }
     }
     // 仍不存在：说明别人正在处理，抛“忙”让队列重试
-    const busyErr = new Error("image_processing_in_progress");
-    busyErr.code = "IMG_BUSY";
-    throw busyErr;
+    const busyErr = new Error('image_processing_in_progress')
+    busyErr.code = 'IMG_BUSY'
+    throw busyErr
   }
 
   // 抢锁成功：把锁 key 返回给调用者以便 finally 里释放
-  return { proceed: true, lockKey };
+  return { proceed: true, lockKey }
 }
 
 /**
@@ -124,27 +124,27 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
  * @param {string} [params.thumbnailStorageKey] - 缩略图存储键（可选）
  */
 async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHash, userId, thumbnailStorageKey }) {
-  const maxAttempts = job?.opts?.attempts || QUEUE_JOB_ATTEMPTS;
-  const attemptsMade = job?.attemptsMade || 0;
+  const maxAttempts = job?.opts?.attempts || QUEUE_JOB_ATTEMPTS
+  const attemptsMade = job?.attemptsMade || 0
   // 修复：判断失败后 BullMQ 是否还会重试
   // BullMQ 会在失败后将 attemptsMade 递增，然后判断是否 < maxAttempts
-  const willRetry = attemptsMade + 1 < maxAttempts;
+  const willRetry = attemptsMade + 1 < maxAttempts
 
   if (!willRetry) {
     // 没有重试机会了，执行最终清理
     try {
       // 1. 如果有缩略图，先删除
       if (thumbnailStorageKey) {
-        await storageService.storage.deleteFile(thumbnailStorageKey);
+        await storageService.storage.deleteFile(thumbnailStorageKey)
       }
 
       // 2. 移动源文件到失败目录
-      const failedType = process.env.MEDIA_STORAGE_KEY_FAILED || "failed";
-      const failedStorageKey = storageService.storage.generateStorageKey(failedType, fileName);
-      await storageService.storage.moveFile(storageKey, failedStorageKey);
+      const failedType = process.env.MEDIA_STORAGE_KEY_FAILED || 'failed'
+      const failedStorageKey = storageService.storage.generateStorageKey(failedType, fileName)
+      await storageService.storage.moveFile(storageKey, failedStorageKey)
 
       logger.info({
-        message: "Failed image moved to failed directory after all retries exhausted",
+        message: 'Failed image moved to failed directory after all retries exhausted',
         details: {
           imageHash,
           userId,
@@ -153,25 +153,25 @@ async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHas
           thumbnailCleaned: thumbnailStorageKey,
           reason,
           attemptsMade,
-          maxAttempts,
-        },
-      });
+          maxAttempts
+        }
+      })
     } catch (cleanupError) {
       logger.warn({
-        message: "Failed to cleanup files after all retries exhausted",
+        message: 'Failed to cleanup files after all retries exhausted',
         details: {
           thumbnailStorageKey,
           sourceStorageKey: storageKey,
           cleanupError: cleanupError.message,
-          fallbackAction: "manual_cleanup_required",
-        },
-      });
+          fallbackAction: 'manual_cleanup_required'
+        }
+      })
     }
   } else {
     // 还有重试机会，只清理缩略图（如果有），保留源文件
     if (thumbnailStorageKey) {
       try {
-        await storageService.storage.deleteFile(thumbnailStorageKey);
+        await storageService.storage.deleteFile(thumbnailStorageKey)
         logger.info({
           message: `${reason}, will retry - thumbnail cleaned`,
           details: {
@@ -181,17 +181,17 @@ async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHas
             thumbnailCleaned: thumbnailStorageKey,
             attemptsMade,
             maxAttempts,
-            nextAttempt: attemptsMade + 1,
-          },
-        });
+            nextAttempt: attemptsMade + 1
+          }
+        })
       } catch (cleanupError) {
         logger.warn({
-          message: "Failed to cleanup thumbnail before retry",
+          message: 'Failed to cleanup thumbnail before retry',
           details: {
             thumbnailStorageKey,
-            cleanupError: cleanupError.message,
-          },
-        });
+            cleanupError: cleanupError.message
+          }
+        })
       }
     } else {
       logger.info({
@@ -202,9 +202,9 @@ async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHas
           fileName,
           attemptsMade,
           maxAttempts,
-          nextAttempt: attemptsMade + 1,
-        },
-      });
+          nextAttempt: attemptsMade + 1
+        }
+      })
     }
   }
 }
@@ -214,39 +214,39 @@ async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHas
  * @param {Object} job - BullMQ job对象
  */
 async function processAndSaveSingleMedia(job) {
-  let fileInfo = job.data;
-  const { fileName, storageKey, userId, imageHash, fileSize, extension, mediaType = "image" } = fileInfo;
-  logger.info({ message: "处理文件", details: { fileName, mediaType } });
-  const redisClient = getRedisClient();
-  let lockKey;
-  let thumbnailStorageKey;
+  let fileInfo = job.data
+  const { fileName, storageKey, userId, imageHash, fileSize, extension, mediaType = 'image' } = fileInfo
+  logger.info({ message: '处理文件', details: { fileName, mediaType } })
+  const redisClient = getRedisClient()
+  let lockKey
+  let thumbnailStorageKey
 
   try {
     // 去重 + 分布式锁
     // const { proceed, lockKey: key } = await timeIt("dedupeAndLock", async () => _ensureProcessRightOrShortCircuit(fileInfo, redisClient));
-    const { proceed, lockKey: key } = await _ensureProcessRightOrShortCircuit(fileInfo, redisClient);
-    if (!proceed) return;
-    lockKey = key;
+    const { proceed, lockKey: key } = await _ensureProcessRightOrShortCircuit(fileInfo, redisClient)
+    if (!proceed) return
+    lockKey = key
 
     // ======== 快路径：仅产出 preview 缩略图 ========
     // 使用适配器生成存储键名，避免硬编码路径
-    const thumbnailType = process.env.MEDIA_STORAGE_KEY_THUMBNAIL || "thumbnail";
-    thumbnailStorageKey = storageService.storage.generateStorageKey(thumbnailType, fileName, extension);
+    const thumbnailType = process.env.MEDIA_STORAGE_KEY_THUMBNAIL || 'thumbnail'
+    thumbnailStorageKey = storageService.storage.generateStorageKey(thumbnailType, fileName, extension)
 
     try {
-      if (mediaType === "video") {
+      if (mediaType === 'video') {
         // 视频：FFmpeg 抽首帧 → Sharp 转 webp → 写入存储
         await timeIt(
-          "storeVideoThumbnail",
+          'storeVideoThumbnail',
           async () => {
-            await videoProcessingService.storeVideoThumbnail(storageKey, thumbnailStorageKey, storageService.storage, { extension });
+            await videoProcessingService.storeVideoThumbnail(storageKey, thumbnailStorageKey, storageService.storage, { extension })
           },
-          imageHash,
-        );
+          imageHash
+        )
       } else {
         // 图片：沿用 Sharp 处理
         await timeIt(
-          "processAndStoreImage",
+          'processAndStoreImage',
           async () => {
             await storageService.processAndStoreImage({
               fileSize,
@@ -254,50 +254,50 @@ async function processAndSaveSingleMedia(job) {
               targetStorageKey: thumbnailStorageKey,
               extension,
               quality: 65,
-              resizeWidth: 600,
-            });
+              resizeWidth: 600
+            })
           },
-          imageHash,
-        );
+          imageHash
+        )
       }
     } catch (error) {
       // 缩略图处理失败
       logger.error({
-        message: "Thumbnail generation failed",
+        message: 'Thumbnail generation failed',
         details: {
           imageHash,
           userId,
           fileName,
           sourceStorageKey: storageKey,
           thumbnailStorageKey,
-          error: error.message,
-        },
-      });
+          error: error.message
+        }
+      })
 
       // 处理重试失败逻辑
       await _handleRetryFailure({
         job,
-        reason: "thumbnail_generation_failed",
+        reason: 'thumbnail_generation_failed',
         storageKey,
         fileName,
         imageHash,
-        userId,
-      });
+        userId
+      })
 
-      throw error;
+      throw error
     }
 
     // ======== 将源文件移动到 original 存储位置（确保后续 meta / 重试都有稳定路径）========
-    const originalType = process.env.MEDIA_STORAGE_KEY_ORIGINAL || "original";
-    let originalStorageKey = storageService.storage.generateStorageKey(originalType, fileName);
+    const originalType = process.env.MEDIA_STORAGE_KEY_ORIGINAL || 'original'
+    let originalStorageKey = storageService.storage.generateStorageKey(originalType, fileName)
     try {
-      await storageService.storage.moveFile(storageKey, originalStorageKey);
+      await storageService.storage.moveFile(storageKey, originalStorageKey)
     } catch (e) {
       logger.warn({
-        message: "Upload worker: move original file failed, fallback to temp storageKey",
-        details: { imageHash, userId, sourceStorageKey: storageKey, targetStorageKey: originalStorageKey, error: e.message },
-      });
-      originalStorageKey = storageKey;
+        message: 'Upload worker: move original file failed, fallback to temp storageKey',
+        details: { imageHash, userId, sourceStorageKey: storageKey, targetStorageKey: originalStorageKey, error: e.message }
+      })
+      originalStorageKey = storageKey
     }
 
     // ======== 先写库（仅必要字段，其他走默认值）========
@@ -306,62 +306,62 @@ async function processAndSaveSingleMedia(job) {
       imageHash,
       thumbnailStorageKey,
       fileSizeBytes: fileSize,
-      mediaType: mediaType === "video" ? "video" : "image",
-      originalStorageKey,
-    };
+      mediaType: mediaType === 'video' ? 'video' : 'image',
+      originalStorageKey
+    }
 
     try {
-      await saveNewMedia(imageData);
-      await redisClient.sadd(userSetKey(userId), imageHash);
+      await saveNewMedia(imageData)
+      await redisClient.sadd(userSetKey(userId), imageHash)
     } catch (error) {
       // 数据库保存失败
       logger.error({
-        message: "Database save failed",
+        message: 'Database save failed',
         details: {
           imageHash,
           userId,
           thumbnailStorageKey,
           sourceStorageKey: storageKey,
-          error: error.message,
-        },
-      });
+          error: error.message
+        }
+      })
 
       // 处理重试失败逻辑
       await _handleRetryFailure({
         job,
-        reason: "database_save_failed",
+        reason: 'database_save_failed',
         storageKey,
         fileName,
         imageHash,
         userId,
-        thumbnailStorageKey, // 数据库保存失败时，需要清理已生成的缩略图
-      });
+        thumbnailStorageKey // 数据库保存失败时，需要清理已生成的缩略图
+      })
 
-      throw error;
+      throw error
     }
 
     // ======== 入 Meta 阶段队列做"慢活"（EXIF + 高清 AVIF + DB 更新）========
     await mediaMetaQueue.add(
-      process.env.MEDIA_META_QUEUE_NAME || "media-meta",
+      process.env.MEDIA_META_QUEUE_NAME || 'media-meta',
       {
         userId,
         imageHash,
         fileName,
         originalStorageKey,
         mediaType, // 透传，供 imageMetaIngestor 分支判断
-        extension: process.env.MEDIA_HIGHRES_EXTENSION || "avif",
+        extension: process.env.MEDIA_HIGHRES_EXTENSION || 'avif',
         fileSize,
-        sessionId: fileInfo.sessionId,
+        sessionId: fileInfo.sessionId
       },
       {
-        jobId: `${userId}:${imageHash}`, // 添加 jobId 防止重复加入队列
-      },
-    );
+        jobId: `${userId}:${imageHash}` // 添加 jobId 防止重复加入队列
+      }
+    )
   } catch (error) {
     // 最外层错误处理 - 记录完整的失败信息
     // 注意：内层catch已经处理了重试逻辑，这里只记录日志
     logger.error({
-      message: "Image processing failed completely",
+      message: 'Image processing failed completely',
       details: {
         imageHash,
         userId,
@@ -369,26 +369,26 @@ async function processAndSaveSingleMedia(job) {
         sourceStorageKey: storageKey,
         thumbnailStorageKey,
         error: error.message,
-        stack: error.stack,
-      },
-    });
+        stack: error.stack
+      }
+    })
 
-    throw error; // 重新抛出，让 Worker 处理重试逻辑
+    throw error // 重新抛出，让 Worker 处理重试逻辑
   } finally {
     // 清理分布式锁
     if (lockKey) {
       try {
-        await redisClient.del(lockKey);
+        await redisClient.del(lockKey)
       } catch (lockCleanupError) {
         logger.warn({
-          message: "Failed to cleanup distributed lock",
-          details: { lockKey, error: lockCleanupError.message },
-        });
+          message: 'Failed to cleanup distributed lock',
+          details: { lockKey, error: lockCleanupError.message }
+        })
       }
     }
   }
 }
 
 module.exports = {
-  processAndSaveSingleMedia,
-};
+  processAndSaveSingleMedia
+}

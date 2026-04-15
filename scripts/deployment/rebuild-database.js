@@ -8,14 +8,14 @@
  *        similar_groups, similar_group_members, media_search, media_search_fts, media_search_terms
  */
 
-const path = require("path");
-const scriptDir = path.dirname(__filename);
-const projectRoot = path.resolve(scriptDir, "..", "..");
+const path = require('path')
+const scriptDir = path.dirname(__filename)
+const projectRoot = path.resolve(scriptDir, '..', '..')
 
-process.chdir(projectRoot);
+process.chdir(projectRoot)
 
-require("dotenv").config();
-const { db } = require(path.join(projectRoot, "src", "services", "database"));
+require('dotenv').config()
+const { db } = require(path.join(projectRoot, 'src', 'services', 'database'))
 const {
   createTableUsers,
   createTableAppConfig,
@@ -31,94 +31,94 @@ const {
   createTableSimilarGroupMembersMediaVersion,
   createTableMediaSearch,
   createTableMediaSearchFts,
-  createTableMediaSearchTerms,
-} = require(path.join(projectRoot, "src", "models", "initTableModel"));
+  createTableMediaSearchTerms
+} = require(path.join(projectRoot, 'src', 'models', 'initTableModel'))
 
 /** 按外键依赖顺序：先删被引用表，再删主表 */
 const TABLES_TO_DROP = [
-  "album_media",
-  "albums",
-  "media_search_fts",
-  "media_fts",
-  "media_search_terms",
-  "media_search",
-  "media_analysis",
-  "similar_group_members",
-  "similar_groups",
-  "face_cluster_representatives",
-  "face_cluster_meta",
-  "face_clusters",
-  "media_face_embeddings",
-  "media_embeddings",
-  "media",
-  "app_config",
-  "app_settings",
-  "users",
-];
+  'album_media',
+  'albums',
+  'media_search_fts',
+  'media_fts',
+  'media_search_terms',
+  'media_search',
+  'media_analysis',
+  'similar_group_members',
+  'similar_groups',
+  'face_cluster_representatives',
+  'face_cluster_meta',
+  'face_clusters',
+  'media_face_embeddings',
+  'media_embeddings',
+  'media',
+  'app_config',
+  'app_settings',
+  'users'
+]
 
 function tableExists(name) {
-  return db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(name) != null;
+  return db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(name) != null
 }
 
 async function rebuildDatabase() {
   try {
-    console.log("🚀 开始重建数据库...");
-    console.log("⚠️  警告：此操作将删除所有现有业务表及数据！");
+    console.log('🚀 开始重建数据库...')
+    console.log('⚠️  警告：此操作将删除所有现有业务表及数据！')
 
-    const existing = TABLES_TO_DROP.filter((t) => tableExists(t));
+    const existing = TABLES_TO_DROP.filter((t) => tableExists(t))
     if (existing.length === 0) {
-      console.log("ℹ️  未发现现有业务表，将直接创建新表...");
+      console.log('ℹ️  未发现现有业务表，将直接创建新表...')
     } else {
-      console.log("📊 发现现有表，准备删除并重建:", existing.join(", "));
+      console.log('📊 发现现有表，准备删除并重建:', existing.join(', '))
     }
 
-    db.prepare("BEGIN TRANSACTION").run();
+    db.prepare('BEGIN TRANSACTION').run()
 
     try {
-      console.log("🗑️  删除现有表...");
+      console.log('🗑️  删除现有表...')
       for (const name of TABLES_TO_DROP) {
         if (tableExists(name)) {
-          db.prepare(`DROP TABLE IF EXISTS ${name}`).run();
-          console.log("   ✅ 删除", name);
+          db.prepare(`DROP TABLE IF EXISTS ${name}`).run()
+          console.log('   ✅ 删除', name)
         }
       }
 
-      console.log("📝 创建新表（与 initTableModel 一致）...");
+      console.log('📝 创建新表（与 initTableModel 一致）...')
 
-      createTableUsers();
-      createTableAppConfig();
-      createTableMedia();
-      createTableMediaFaceEmbeddings();
-      createTableMediaEmbeddings();
-      createTableAlbumsMediaVersion();
-      createTableAlbumMedia();
-      createTableFaceClustersMediaVersion();
-      createTableFaceClusterRepresentatives();
-      createTableFaceClusterMeta();
-      createTableSimilarGroupsMediaVersion();
-      createTableSimilarGroupMembersMediaVersion();
-      createTableMediaSearch();
-      createTableMediaSearchFts();
-      createTableMediaSearchTerms();
+      createTableUsers()
+      createTableAppConfig()
+      createTableMedia()
+      createTableMediaFaceEmbeddings()
+      createTableMediaEmbeddings()
+      createTableAlbumsMediaVersion()
+      createTableAlbumMedia()
+      createTableFaceClustersMediaVersion()
+      createTableFaceClusterRepresentatives()
+      createTableFaceClusterMeta()
+      createTableSimilarGroupsMediaVersion()
+      createTableSimilarGroupMembersMediaVersion()
+      createTableMediaSearch()
+      createTableMediaSearchFts()
+      createTableMediaSearchTerms()
 
-      db.prepare("COMMIT").run();
+      db.prepare('COMMIT').run()
 
-      console.log("🎉 数据库重建完成！");
+      console.log('🎉 数据库重建完成！')
       console.log(
-        "📋 已创建表：users, app_config, media, media_face_embeddings, media_embeddings, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_search_fts, media_search_terms",
-      );
+        '📋 已创建表：users, app_config, media, media_face_embeddings, media_embeddings, albums, album_media, face_clusters, face_cluster_representatives, face_cluster_meta, similar_groups, similar_group_members, media_search, media_search_fts, media_search_terms'
+      )
     } catch (err) {
-      db.prepare("ROLLBACK").run();
-      throw err;
+      db.prepare('ROLLBACK').run()
+      throw err
     }
   } catch (error) {
-    console.error("❌ 数据库重建失败:", error.message);
-    process.exit(1);
+    console.error('❌ 数据库重建失败:', error.message)
+    process.exit(1)
   }
 }
 
 if (require.main === module) {
-  rebuildDatabase().then(() => process.exit(0));
+  rebuildDatabase().then(() => process.exit(0))
 }
 
-module.exports = { rebuildDatabase };
+module.exports = { rebuildDatabase }

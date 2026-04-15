@@ -4,19 +4,19 @@
  * @Description: 存储适配器工厂 - 根据配置创建对应的存储适配器实例
  */
 
-const LocalStorageAdapter = require("../adapters/LocalStorageAdapter");
-const AliyunOSSAdapter = require("../adapters/AliyunOSSAdapter");
-const logger = require("../../utils/logger");
-const { STORAGE_TYPES, getStorageConfig } = require("../constants/StorageTypes");
+const LocalStorageAdapter = require('../adapters/LocalStorageAdapter')
+const AliyunOSSAdapter = require('../adapters/AliyunOSSAdapter')
+const logger = require('../../utils/logger')
+const { STORAGE_TYPES, getStorageConfig } = require('../constants/StorageTypes')
 
 let adapterContainer = {
   [STORAGE_TYPES.LOCAL]: LocalStorageAdapter,
-  [STORAGE_TYPES.ALIYUN_OSS]: AliyunOSSAdapter,
-};
+  [STORAGE_TYPES.ALIYUN_OSS]: AliyunOSSAdapter
+}
 
 class StorageAdapterFactory {
-  static currentAdapter = null;
-  static storageConfig = null;
+  static currentAdapter = null
+  static storageConfig = null
 
   /**
    * 创建或获取存储适配器实例（单例模式）
@@ -54,30 +54,30 @@ class StorageAdapterFactory {
   static createAdapter() {
     // 如果已有适配器，直接返回
     if (StorageAdapterFactory.currentAdapter) {
-      return StorageAdapterFactory.currentAdapter;
+      return StorageAdapterFactory.currentAdapter
     }
 
     // 设置配置对象
-    const storageConfig = getStorageConfig();
-    StorageAdapterFactory.storageConfig = storageConfig;
-    let Adapter = adapterContainer[storageConfig.storageType];
-    let options = storageConfig[storageConfig.storageType];
+    const storageConfig = getStorageConfig()
+    StorageAdapterFactory.storageConfig = storageConfig
+    let Adapter = adapterContainer[storageConfig.storageType]
+    let options = storageConfig[storageConfig.storageType]
 
-    let adapter = new Adapter(options || {});
+    let adapter = new Adapter(options || {})
 
     // 根据配置对象创建存储适配器
-    StorageAdapterFactory.currentAdapter = adapter;
+    StorageAdapterFactory.currentAdapter = adapter
 
-    return adapter;
+    return adapter
   }
 
   /**
    * 清空当前适配器实例（用于配置变更时强制重新初始化）
    */
   static clearAdapter() {
-    StorageAdapterFactory.currentAdapter = null;
-    logger.info({ message: "Storage adapter cleared, will be re-initialized on next access" });
+    StorageAdapterFactory.currentAdapter = null
+    logger.info({ message: 'Storage adapter cleared, will be re-initialized on next access' })
   }
 }
 
-module.exports = StorageAdapterFactory;
+module.exports = StorageAdapterFactory

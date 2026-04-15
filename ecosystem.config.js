@@ -12,99 +12,86 @@ module.exports = {
   apps: [
     // ========== Node.js 服务 ==========
     {
-      name: "app-service",
-      script: "server.js",
+      name: 'app-service',
+      script: 'server.js',
       // cwd: "/var/www/photos.bingbingcloud.com/backend", // 绝对路径
-      cwd: ".", // 相对路径
+      cwd: '.', // 相对路径
       watch: false,
       max_restarts: 5,
       env: {
-        NODE_ENV: "production",
-      },
+        NODE_ENV: 'production'
+      }
     },
     {
-      name: "media-upload-worker",
-      script: "src/workers/mediaUploadWorker.js",
+      name: 'media-upload-worker',
+      script: 'src/workers/mediaUploadWorker.js',
       // cwd: "/var/www/photos.bingbingcloud.com/backend", // 绝对路径
-      cwd: ".", // 相对路径
+      cwd: '.', // 相对路径
       watch: false,
       max_restarts: 5,
       env: {
-        NODE_ENV: "production",
-      },
+        NODE_ENV: 'production'
+      }
     },
     {
-      name: "media-meta-worker",
-      script: "src/workers/mediaMetaWorker.js",
+      name: 'media-meta-worker',
+      script: 'src/workers/mediaMetaWorker.js',
       // cwd: "/var/www/photos.bingbingcloud.com/backend", // 绝对路径
-      cwd: ".", // 相对路径
+      cwd: '.', // 相对路径
       watch: false,
       max_restarts: 5,
       env: {
-        NODE_ENV: "production",
-      },
+        NODE_ENV: 'production'
+      }
     },
     {
-      name: "cloud-caption-worker",
-      script: "src/workers/cloudCaptionWorker.js",
-      cwd: ".",
+      name: 'cloud-caption-worker',
+      script: 'src/workers/cloudCaptionWorker.js',
+      cwd: '.',
       watch: false,
       max_restarts: 5,
       env: {
-        NODE_ENV: "production",
-      },
+        NODE_ENV: 'production'
+      }
     },
     {
-      name: "map-regeo-worker",
-      script: "src/workers/mapRegeoWorker.js",
-      cwd: ".",
+      name: 'map-regeo-worker',
+      script: 'src/workers/mapRegeoWorker.js',
+      cwd: '.',
       watch: false,
       max_restarts: 5,
       env: {
-        NODE_ENV: "production",
-      },
+        NODE_ENV: 'production'
+      }
     },
     // ========== 定时任务 ==========
     {
-      name: "cleanup-rebuild-all",
-      script: "scripts/development/rebuild-similar-groups.js",
-      cwd: ".",
+      name: 'cleanup-rebuild-all',
+      script: 'scripts/development/rebuild-similar-groups.js',
+      cwd: '.',
       // 定时执行：每天凌晨 3 点执行一次
-      cron: "0 3 * * *",
+      cron: '0 3 * * *',
       // 执行完成后自动退出，不常驻
       autorestart: false,
       watch: false,
       // 实例数：只运行一个实例
       instances: 1,
       // 执行模式：fork 模式（适合一次性脚本）
-      exec_mode: "fork",
+      exec_mode: 'fork',
       env: {
-        NODE_ENV: "production",
+        NODE_ENV: 'production'
       },
       // 日志配置（如果 logs 目录不存在，PM2 会自动创建）
-      error_file: "./logs/cleanup-rebuild-all-error.log",
-      out_file: "./logs/cleanup-rebuild-all-out.log",
-      log_date_format: "YYYY-MM-DD HH:mm:ss Z",
+      error_file: './logs/cleanup-rebuild-all-error.log',
+      out_file: './logs/cleanup-rebuild-all-out.log',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
       // 保留最近 10 天的日志
-      log_file: "./logs/cleanup-rebuild-all-combined.log",
-      time: true,
-    },
-
-    // ========== Python AI 服务 ==========
-    // {
-    //   name: "python-ai-service",
-    //   script: "start.py",
-    //   interpreter: "./python-ai-service/venv/bin/python",
-    //   cwd: "./python-ai-service",
-    //   watch: false,
-    //   max_restarts: 5,
-    //   env: {
-    //     // 其他环境变量从 .env 文件读取
-    //   },
-    // },
-  ],
-};
+      log_file: './logs/cleanup-rebuild-all-combined.log',
+      time: true
+    }
+  ]
+}
 
 /*
 🚀 使用说明:

@@ -124,7 +124,7 @@ log "🛠️ 服务器环境准备..."
 
 # 创建必要的目录结构
 log "📁 创建目录结构..."
-mkdir -p localStorage/processed/original localStorage/processed/highres localStorage/processed/thumbnail localStorage/processing/failed localStorage/upload logs
+mkdir -p storage-local/processed/original storage-local/processed/highres storage-local/processed/thumbnail storage-local/processing/failed storage-local/upload logs
 
 # 检查并安装Redis
 log "🔍 检查Redis服务..."

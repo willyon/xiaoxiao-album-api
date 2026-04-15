@@ -3,13 +3,13 @@
  * @Date: 2025-01-27
  * @Description: 搜索业务逻辑服务
  */
-const searchModel = require("../models/searchModel");
-const mediaModel = require("../models/mediaModel");
-const { listVisualTextEmbeddingRowsForRecall } = require("../models/mediaEmbeddingModel");
-const { makeSearchRankCacheKey, getSearchRankCache, setSearchRankCache } = require("../utils/searchRankCacheStore");
-const { FTS_RANKING, SEARCH_TERM_FIELD_WEIGHTS, CHINESE_QUERY_TERM_BOOST } = require("../config/searchRankingWeights");
-const { parseQueryIntent, mergeFilters } = require("../utils/queryIntentParser");
-const { buildSearchQueryParts } = require("../utils/buildSearchQueryParts");
+const searchModel = require('../models/searchModel')
+const mediaModel = require('../models/mediaModel')
+const { listVisualTextEmbeddingRowsForRecall } = require('../models/mediaEmbeddingModel')
+const { makeSearchRankCacheKey, getSearchRankCache, setSearchRankCache } = require('../utils/searchRankCacheStore')
+const { FTS_RANKING, SEARCH_TERM_FIELD_WEIGHTS, CHINESE_QUERY_TERM_BOOST } = require('../config/searchRankingWeights')
+const { parseQueryIntent, mergeFilters } = require('../utils/queryIntentParser')
+const { buildSearchQueryParts } = require('../utils/buildSearchQueryParts')
 
 /**
  * 根据 source + scope 构建列表/筛选用的 WHERE 片段（表别名 i.），供搜索与筛选项 scope 共用。
@@ -18,64 +18,62 @@ const { buildSearchQueryParts } = require("../utils/buildSearchQueryParts");
  * @returns {{ scopeConditions: string[], scopeParams: any[] }}
  */
 function buildScopeConditions(scope, userId) {
-  const scopeConditions = [];
-  const scopeParams = [];
-  if (!scope || !scope.source) return { scopeConditions, scopeParams };
+  const scopeConditions = []
+  const scopeParams = []
+  if (!scope || !scope.source) return { scopeConditions, scopeParams }
 
-  const { source, type, albumId, clusterId } = scope;
+  const { source, type, albumId, clusterId } = scope
 
   switch (source) {
-    case "favorites":
-      scopeConditions.push("i.is_favorite = 1");
-      break;
-    case "timeline":
-      if (type === "year" && albumId != null) {
-        scopeConditions.push("i.year_key = ?");
-        scopeParams.push(String(albumId));
-      } else if (type === "month" && albumId != null) {
-        scopeConditions.push("i.month_key = ?");
-        scopeParams.push(String(albumId));
-      } else if (type === "day" && albumId != null) {
-        scopeConditions.push("i.date_key = ?");
-        scopeParams.push(String(albumId));
-      } else if (type === "unknown") {
-        scopeConditions.push(
-          "(i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown')",
-        );
+    case 'favorites':
+      scopeConditions.push('i.is_favorite = 1')
+      break
+    case 'timeline':
+      if (type === 'year' && albumId != null) {
+        scopeConditions.push('i.year_key = ?')
+        scopeParams.push(String(albumId))
+      } else if (type === 'month' && albumId != null) {
+        scopeConditions.push('i.month_key = ?')
+        scopeParams.push(String(albumId))
+      } else if (type === 'day' && albumId != null) {
+        scopeConditions.push('i.date_key = ?')
+        scopeParams.push(String(albumId))
+      } else if (type === 'unknown') {
+        scopeConditions.push("(i.year_key = 'unknown' AND i.month_key = 'unknown' AND i.date_key = 'unknown' AND i.day_key = 'unknown')")
       }
-      break;
-    case "album":
-      if (albumId != null && albumId !== "") {
-        const aid = parseInt(albumId, 10);
+      break
+    case 'album':
+      if (albumId != null && albumId !== '') {
+        const aid = parseInt(albumId, 10)
         if (!Number.isNaN(aid)) {
-          scopeConditions.push("i.id IN (SELECT media_id FROM album_media WHERE album_id = ?)");
-          scopeParams.push(aid);
+          scopeConditions.push('i.id IN (SELECT media_id FROM album_media WHERE album_id = ?)')
+          scopeParams.push(aid)
         }
       }
-      break;
-    case "location":
-      if (albumId == null || albumId === "") break;
-      if (albumId === "unknown") {
-        scopeConditions.push(mediaModel.sqlLocationIsUnknown("i"));
+      break
+    case 'location':
+      if (albumId == null || albumId === '') break
+      if (albumId === 'unknown') {
+        scopeConditions.push(mediaModel.sqlLocationIsUnknown('i'))
       } else {
-        scopeConditions.push(`(${mediaModel.sqlLocationKeyNullable("i")}) = ?`);
-        scopeParams.push(String(albumId));
+        scopeConditions.push(`(${mediaModel.sqlLocationKeyNullable('i')}) = ?`)
+        scopeParams.push(String(albumId))
       }
-      break;
-    case "people":
+      break
+    case 'people':
       if (clusterId != null && !Number.isNaN(Number(clusterId)) && userId != null) {
         scopeConditions.push(
-          "i.id IN (SELECT mfe.media_id FROM media_face_embeddings mfe INNER JOIN face_clusters fc ON mfe.id = fc.face_embedding_id WHERE fc.user_id = ? AND fc.cluster_id = ?)",
-        );
-        scopeParams.push(userId, Number(clusterId));
+          'i.id IN (SELECT mfe.media_id FROM media_face_embeddings mfe INNER JOIN face_clusters fc ON mfe.id = fc.face_embedding_id WHERE fc.user_id = ? AND fc.cluster_id = ?)'
+        )
+        scopeParams.push(userId, Number(clusterId))
       }
-      break;
-    case "search":
+      break
+    case 'search':
     default:
-      break;
+      break
   }
 
-  return { scopeConditions, scopeParams };
+  return { scopeConditions, scopeParams }
 }
 
 /**
@@ -84,111 +82,110 @@ function buildScopeConditions(scope, userId) {
 function buildFilterQueryParts(filters, filterOptions) {
   return buildSearchQueryParts(filters, {
     ...filterOptions,
-    locationKeyExpr: mediaModel.sqlLocationKeyNullable("i"),
-  });
+    locationKeyExpr: mediaModel.sqlLocationKeyNullable('i')
+  })
 }
-const { containsChinese, segmentLengthUnits } = require("../utils/searchTermUtils");
-const { generateTextEmbeddingForQuery } = require("./embeddingProvider");
-const { SEARCH_TERMS_SPLIT_REGEX } = require("../utils/chineseSegmenter");
+const { containsChinese, segmentLengthUnits } = require('../utils/searchTermUtils')
+const { generateTextEmbeddingForQuery } = require('./embeddingProvider')
+const { SEARCH_TERMS_SPLIT_REGEX } = require('../utils/chineseSegmenter')
 const {
   passLexicalGate,
   getCoreTokensOnlyForResidual,
   isStopWordWholeSegment,
   extractActionGroups,
-  calcRequiredGroupHits,
-} = require("../utils/embeddingLexicalGate");
-const { expandTermsWithSynonyms } = require("../utils/searchSynonymExpansion");
-const { buildVisualEmbeddingGateLexicalSpec } = require("../utils/visualEmbeddingLexicalGate");
+  calcRequiredGroupHits
+} = require('../utils/embeddingLexicalGate')
+const { expandTermsWithSynonyms } = require('../utils/searchSynonymExpansion')
+const { buildVisualEmbeddingGateLexicalSpec } = require('../utils/visualEmbeddingLexicalGate')
 
-const _minSimParsed = parseFloat(process.env.VISUAL_EMBEDDING_MIN_SIMILARITY);
+const _minSimParsed = parseFloat(process.env.VISUAL_EMBEDDING_MIN_SIMILARITY)
 /** 与 query 向量点积（已归一化即余弦），低于则不进候选；默认 0.88，`.env` 的 VISUAL_EMBEDDING_MIN_SIMILARITY 覆盖 */
-const VISUAL_EMBEDDING_MIN_SIMILARITY = Math.min(1, Math.max(0, Number.isFinite(_minSimParsed) ? _minSimParsed : 0.88));
+const VISUAL_EMBEDDING_MIN_SIMILARITY = Math.min(1, Math.max(0, Number.isFinite(_minSimParsed) ? _minSimParsed : 0.88))
 
-const _topKParsed = parseInt(process.env.VISUAL_EMBEDDING_RECALL_TOP_K, 10);
+const _topKParsed = parseInt(process.env.VISUAL_EMBEDDING_RECALL_TOP_K, 10)
 /** 语义召回最多前 K 条；未设或无效则 null（不截断），`.env` 的 VISUAL_EMBEDDING_RECALL_TOP_K 设正整数可限制 */
-const VISUAL_EMBEDDING_RECALL_TOP_K = Number.isFinite(_topKParsed) && _topKParsed > 0 ? _topKParsed : null;
+const VISUAL_EMBEDDING_RECALL_TOP_K = Number.isFinite(_topKParsed) && _topKParsed > 0 ? _topKParsed : null
 
-const VISUAL_EMBEDDING_SCORE_SCALE = 120;
+const VISUAL_EMBEDDING_SCORE_SCALE = 120
 
 function sanitizeFtsToken(token) {
-  const value = String(token || "").trim();
-  if (!value) return "";
+  const value = String(token || '').trim()
+  if (!value) return ''
   if (/^[\p{L}\p{N}_\u3400-\u9fff*]+$/u.test(value)) {
-    return value;
+    return value
   }
-  return `"${value.replace(/"/g, '""')}"`;
+  return `"${value.replace(/"/g, '""')}"`
 }
 
 /** 长句视觉 FTS：已分好内容词时直接 sanitize 拼接，避免对整句再 jieba 一遍 */
 function buildVisualFtsInnerFromCoreTokens(coreTokens) {
-  const parts = (coreTokens || []).map((t) => sanitizeFtsToken(t)).filter(Boolean);
-  return parts.length > 0 ? parts.join(" ") : null;
+  const parts = (coreTokens || []).map((t) => sanitizeFtsToken(t)).filter(Boolean)
+  return parts.length > 0 ? parts.join(' ') : null
 }
 
 /** 向量查询文本：仅使用 core tokens，空则不查向量。 */
 function buildEmbeddingQueryFromCoreTokens(coreTokens) {
-  const parts = (coreTokens || []).map((t) => String(t || "").trim()).filter(Boolean);
-  return parts.length > 0 ? parts.join(" ") : null;
+  const parts = (coreTokens || []).map((t) => String(t || '').trim()).filter(Boolean)
+  return parts.length > 0 ? parts.join(' ') : null
 }
 
 /** 图片理解 FTS：caption_search_terms 为 description/标签 等 jieba，不含 OCR/转写；OCR 检索单独走 ocr_text LIKE。 */
-const VISUAL_FTS5_COLUMN_GROUP =
-  "{description_text keywords_text subject_tags_text action_tags_text scene_tags_text caption_search_terms}";
+const VISUAL_FTS5_COLUMN_GROUP = '{description_text keywords_text subject_tags_text action_tags_text scene_tags_text caption_search_terms}'
 
 function wrapFtsQueryForVisualColumnsOnly(innerQuery) {
-  const inner = String(innerQuery || "").trim();
-  if (!inner) return null;
-  return `${VISUAL_FTS5_COLUMN_GROUP} : (${inner})`;
+  const inner = String(innerQuery || '').trim()
+  if (!inner) return null
+  return `${VISUAL_FTS5_COLUMN_GROUP} : (${inner})`
 }
 
 /** 用户输入 → LOWER 后对 SQLite LIKE 转义 % _ \\，再包前后 %（与 recallMediaIdsByOcrTextLike 的 ESCAPE '\\\\' 配合）。 */
 function buildOcrTextLikePattern(segment) {
-  const raw = String(segment || "").trim();
-  if (!raw) return null;
-  const lower = raw.toLowerCase();
-  const escaped = lower.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
-  return `%${escaped}%`;
+  const raw = String(segment || '').trim()
+  if (!raw) return null
+  const lower = raw.toLowerCase()
+  const escaped = lower.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+  return `%${escaped}%`
 }
 
 // SQLite 单语句绑定变量有上限（常见为 999），大批量 id 的 IN 查询需分批。
-const SQLITE_IN_CLAUSE_CHUNK = 900;
+const SQLITE_IN_CLAUSE_CHUNK = 900
 
 /**
  * 按 rankedIds 顺序从 offset 起凑满一页；跳过已删除/不可见的媒体，避免缓存命中后出现空洞。
  */
 function buildOrderedPageMedias(userId, rankedIds, offset, pageSize) {
-  const list = [];
-  let readHead = offset;
+  const list = []
+  let readHead = offset
   while (list.length < pageSize && readHead < rankedIds.length) {
-    const remaining = rankedIds.length - readHead;
-    const batchLen = Math.min(SQLITE_IN_CLAUSE_CHUNK, remaining, Math.max(pageSize - list.length + 24, pageSize));
-    const batchIds = rankedIds.slice(readHead, readHead + batchLen);
-    readHead += batchLen;
-    const rows = fetchMediasByIdsChunked(userId, batchIds);
-    const map = new Map(rows.map((item) => [item.mediaId, item]));
+    const remaining = rankedIds.length - readHead
+    const batchLen = Math.min(SQLITE_IN_CLAUSE_CHUNK, remaining, Math.max(pageSize - list.length + 24, pageSize))
+    const batchIds = rankedIds.slice(readHead, readHead + batchLen)
+    readHead += batchLen
+    const rows = fetchMediasByIdsChunked(userId, batchIds)
+    const map = new Map(rows.map((item) => [item.mediaId, item]))
     for (const id of batchIds) {
-      const row = map.get(id);
+      const row = map.get(id)
       if (row) {
-        list.push(row);
-        if (list.length >= pageSize) return list;
+        list.push(row)
+        if (list.length >= pageSize) return list
       }
     }
   }
-  return list;
+  return list
 }
 
 function fetchMediasByIdsChunked(userId, imageIds) {
-  if (!imageIds.length) return [];
-  const rows = [];
+  if (!imageIds.length) return []
+  const rows = []
   for (let i = 0; i < imageIds.length; i += SQLITE_IN_CLAUSE_CHUNK) {
     rows.push(
       ...searchModel.getMediasByIds({
         userId,
-        imageIds: imageIds.slice(i, i + SQLITE_IN_CLAUSE_CHUNK),
-      }),
-    );
+        imageIds: imageIds.slice(i, i + SQLITE_IN_CLAUSE_CHUNK)
+      })
+    )
   }
-  return rows;
+  return rows
 }
 
 function ensureCandidate(candidates, mediaId) {
@@ -207,197 +204,197 @@ function ensureCandidate(candidates, mediaId) {
       roleSignals: {
         subject: false,
         action: false,
-        scene: false,
-      },
-    });
+        scene: false
+      }
+    })
   }
-  return candidates.get(mediaId);
+  return candidates.get(mediaId)
 }
 
 /** media_search_terms 精确命中（短中文 1～2 字为主）；OCR 仅走 ocr_text LIKE，不入 terms 表。 */
 function scoreChineseTermHits(termRows, queryTerms) {
-  const candidates = new Map();
-  const boostByTerm = new Map(queryTerms.map((item) => [item.term, item]));
+  const candidates = new Map()
+  const boostByTerm = new Map(queryTerms.map((item) => [item.term, item]))
 
   for (const row of termRows || []) {
-    const mediaId = Number(row.media_id);
-    if (!Number.isFinite(mediaId)) continue;
-    const queryTerm = boostByTerm.get(row.term);
-    if (!queryTerm) continue;
+    const mediaId = Number(row.media_id)
+    if (!Number.isFinite(mediaId)) continue
+    const queryTerm = boostByTerm.get(row.term)
+    if (!queryTerm) continue
 
-    const candidate = ensureCandidate(candidates, mediaId);
-    const fieldWeight = SEARCH_TERM_FIELD_WEIGHTS[row.field_type] || 40;
-    candidate.score += fieldWeight + queryTerm.boost;
-    candidate.chineseHits += 1;
-    candidate.hasVisualMatch = true;
-    candidate.matchedFields.add(row.field_type);
+    const candidate = ensureCandidate(candidates, mediaId)
+    const fieldWeight = SEARCH_TERM_FIELD_WEIGHTS[row.field_type] || 40
+    candidate.score += fieldWeight + queryTerm.boost
+    candidate.chineseHits += 1
+    candidate.hasVisualMatch = true
+    candidate.matchedFields.add(row.field_type)
     if (!candidate.matchedTermsByField.has(row.field_type)) {
-      candidate.matchedTermsByField.set(row.field_type, new Set());
+      candidate.matchedTermsByField.set(row.field_type, new Set())
     }
-    candidate.matchedTermsByField.get(row.field_type).add(row.term);
+    candidate.matchedTermsByField.get(row.field_type).add(row.term)
   }
 
-  return candidates;
+  return candidates
 }
 
 function mergeFtsScores(candidates, ftsRows, hasChineseQuery) {
-  const baseScore = hasChineseQuery ? FTS_RANKING.chineseBaseScore : FTS_RANKING.nonChineseBaseScore;
+  const baseScore = hasChineseQuery ? FTS_RANKING.chineseBaseScore : FTS_RANKING.nonChineseBaseScore
   for (let index = 0; index < (ftsRows || []).length; index += 1) {
-    const row = ftsRows[index];
-    const mediaId = Number(row.media_id);
-    if (!Number.isFinite(mediaId)) continue;
-    const candidate = ensureCandidate(candidates, mediaId);
-    candidate.score += Math.max(FTS_RANKING.minScore, baseScore - index);
-    candidate.ftsRank = index + 1;
-    candidate.hasVisualMatch = true;
+    const row = ftsRows[index]
+    const mediaId = Number(row.media_id)
+    if (!Number.isFinite(mediaId)) continue
+    const candidate = ensureCandidate(candidates, mediaId)
+    candidate.score += Math.max(FTS_RANKING.minScore, baseScore - index)
+    candidate.ftsRank = index + 1
+    candidate.hasVisualMatch = true
   }
 }
 
 function dotProduct(a = [], b = []) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length === 0 || a.length !== b.length) {
-    return 0;
+    return 0
   }
-  let score = 0;
+  let score = 0
   for (let i = 0; i < a.length; i += 1) {
-    score += (Number(a[i]) || 0) * (Number(b[i]) || 0);
+    score += (Number(a[i]) || 0) * (Number(b[i]) || 0)
   }
-  return score;
+  return score
 }
 
 function recallMediaIdsByVisualEmbedding({ userId, queryText, whereConditions, whereParams, topK } = {}) {
-  const limit = topK !== undefined ? topK : VISUAL_EMBEDDING_RECALL_TOP_K;
-  const text = String(queryText || "").trim();
+  const limit = topK !== undefined ? topK : VISUAL_EMBEDDING_RECALL_TOP_K
+  const text = String(queryText || '').trim()
   if (!text) {
-    return [];
+    return []
   }
   return generateTextEmbeddingForQuery(text).then((queryVector) => {
     if (!Array.isArray(queryVector) || queryVector.length === 0) {
-      return [];
+      return []
     }
     const rows = listVisualTextEmbeddingRowsForRecall({
       userId,
       whereConditions,
-      whereParams,
-    });
-    const scored = [];
+      whereParams
+    })
+    const scored = []
     for (const row of rows) {
-      const mediaId = Number(row.media_id);
-      if (!Number.isFinite(mediaId)) continue;
-      const similarity = dotProduct(queryVector, row.vector || []);
-      if (!Number.isFinite(similarity) || similarity < VISUAL_EMBEDDING_MIN_SIMILARITY) continue;
+      const mediaId = Number(row.media_id)
+      if (!Number.isFinite(mediaId)) continue
+      const similarity = dotProduct(queryVector, row.vector || [])
+      if (!Number.isFinite(similarity) || similarity < VISUAL_EMBEDDING_MIN_SIMILARITY) continue
       scored.push({
         media_id: mediaId,
         similarity,
-        description_text: row.description_text,
-      });
+        description_text: row.description_text
+      })
     }
-    scored.sort((a, b) => b.similarity - a.similarity || b.media_id - a.media_id);
+    scored.sort((a, b) => b.similarity - a.similarity || b.media_id - a.media_id)
     if (Number.isFinite(limit) && limit > 0) {
-      return scored.slice(0, limit);
+      return scored.slice(0, limit)
     }
-    return scored;
-  });
+    return scored
+  })
 }
 
 function mergeVisualSemanticScores(candidates, embeddingRows) {
   for (const row of embeddingRows || []) {
-    const mediaId = Number(row.media_id);
-    if (!Number.isFinite(mediaId)) continue;
-    const similarity = Number(row.similarity);
-    if (!Number.isFinite(similarity)) continue;
-    const candidate = ensureCandidate(candidates, mediaId);
-    candidate.visualSemanticScore = Math.max(candidate.visualSemanticScore || 0, similarity);
-    candidate.score += similarity * VISUAL_EMBEDDING_SCORE_SCALE;
-    candidate.hasVisualMatch = true;
+    const mediaId = Number(row.media_id)
+    if (!Number.isFinite(mediaId)) continue
+    const similarity = Number(row.similarity)
+    if (!Number.isFinite(similarity)) continue
+    const candidate = ensureCandidate(candidates, mediaId)
+    candidate.visualSemanticScore = Math.max(candidate.visualSemanticScore || 0, similarity)
+    candidate.score += similarity * VISUAL_EMBEDDING_SCORE_SCALE
+    candidate.hasVisualMatch = true
   }
 }
 
 function scoreOcrTextLikeHits(candidates, ocrRows) {
   for (const row of ocrRows || []) {
-    const mediaId = Number(row.media_id);
-    if (!Number.isFinite(mediaId)) continue;
-    const candidate = ensureCandidate(candidates, mediaId);
-    candidate.hasOcrMatch = true;
-    candidate.score += SEARCH_TERM_FIELD_WEIGHTS.ocrLikeHit;
+    const mediaId = Number(row.media_id)
+    if (!Number.isFinite(mediaId)) continue
+    const candidate = ensureCandidate(candidates, mediaId)
+    candidate.hasOcrMatch = true
+    candidate.score += SEARCH_TERM_FIELD_WEIGHTS.ocrLikeHit
   }
 }
 
 /** 大类：双命中 > 仅 OCR > 仅图片理解 > 其它；同类内再比 score。 */
 function candidateRankTier(c) {
-  if (c.hasOcrMatch && c.hasVisualMatch) return 3;
-  if (c.hasOcrMatch) return 2;
-  if (c.hasVisualMatch) return 1;
-  return 0;
+  if (c.hasOcrMatch && c.hasVisualMatch) return 3
+  if (c.hasOcrMatch) return 2
+  if (c.hasVisualMatch) return 1
+  return 0
 }
 
 function sortCandidates(candidates, mediaMap) {
   return Array.from(candidates.values()).sort((a, b) => {
-    const tierA = candidateRankTier(a);
-    const tierB = candidateRankTier(b);
+    const tierA = candidateRankTier(a)
+    const tierB = candidateRankTier(b)
     if (tierB !== tierA) {
-      return tierB - tierA;
+      return tierB - tierA
     }
     if (b.score !== a.score) {
-      return b.score - a.score;
+      return b.score - a.score
     }
-    const mediaA = mediaMap.get(a.mediaId);
-    const mediaB = mediaMap.get(b.mediaId);
-    const capturedA = Number(mediaA?.capturedAt || 0);
-    const capturedB = Number(mediaB?.capturedAt || 0);
+    const mediaA = mediaMap.get(a.mediaId)
+    const mediaB = mediaMap.get(b.mediaId)
+    const capturedA = Number(mediaA?.capturedAt || 0)
+    const capturedB = Number(mediaB?.capturedAt || 0)
     if (capturedB !== capturedA) {
-      return capturedB - capturedA;
+      return capturedB - capturedA
     }
-    return b.mediaId - a.mediaId;
-  });
+    return b.mediaId - a.mediaId
+  })
 }
 
 /** 短句 terms：与 `chineseSegmenter` 分隔符一致，切段后多词 AND（每段内中文才做同义词扩展）。 */
 function splitResidualSegmentsForShortTerms(residual) {
-  const raw = String(residual || "").trim();
-  if (!raw) return [];
+  const raw = String(residual || '').trim()
+  if (!raw) return []
   return raw
     .split(SEARCH_TERMS_SPLIT_REGEX)
     .map((s) => s.trim())
-    .filter(Boolean);
+    .filter(Boolean)
 }
 
 function filterStopWordSegmentsForTerms(segments) {
-  return (segments || []).filter((s) => s && !isStopWordWholeSegment(s));
+  return (segments || []).filter((s) => s && !isStopWordWholeSegment(s))
 }
 
 /** 单段 → 同义词扩展后的 term 列表；仅中文扩展，英文/数字为小写单 token。 */
 function expandSegmentTermsForChineseTermsAnd(residualSegment) {
-  const seg = String(residualSegment || "").trim();
-  if (!seg) return [];
+  const seg = String(residualSegment || '').trim()
+  if (!seg) return []
   if (containsChinese(seg)) {
-    return expandTermsWithSynonyms([seg]);
+    return expandTermsWithSynonyms([seg])
   }
   if (/^[\x00-\x7f]+$/.test(seg)) {
-    return [seg.toLowerCase()];
+    return [seg.toLowerCase()]
   }
-  return [seg];
+  return [seg]
 }
 
 function intersectMediaIdSets(a, b) {
-  const out = new Set();
+  const out = new Set()
   for (const id of a) {
-    if (b.has(id)) out.add(id);
+    if (b.has(id)) out.add(id)
   }
-  return out;
+  return out
 }
 
 function mergeScopeWhere(scopeConditions, scopeParams, built) {
   return {
     whereConditions: [...(scopeConditions || []), ...built.whereConditions],
-    whereParams: [...(scopeParams || []), ...built.whereParams],
-  };
+    whereParams: [...(scopeParams || []), ...built.whereParams]
+  }
 }
 
 function cloneCandidate(c) {
-  const m = new Map();
+  const m = new Map()
   c.matchedTermsByField.forEach((set, k) => {
-    m.set(k, new Set(set));
-  });
+    m.set(k, new Set(set))
+  })
   return {
     mediaId: c.mediaId,
     score: c.score,
@@ -408,34 +405,34 @@ function cloneCandidate(c) {
     matchedFields: new Set(c.matchedFields),
     matchedTermsByField: m,
     roleSignals: { ...c.roleSignals },
-    visualSemanticScore: c.visualSemanticScore || 0,
-  };
+    visualSemanticScore: c.visualSemanticScore || 0
+  }
 }
 
 function mergeCandidateInto(target, src) {
-  target.score += src.score;
-  target.hasOcrMatch = target.hasOcrMatch || src.hasOcrMatch;
-  target.hasVisualMatch = Boolean((target.hasVisualMatch ?? false) || (src.hasVisualMatch ?? false));
-  target.chineseHits += src.chineseHits;
-  for (const f of src.matchedFields) target.matchedFields.add(f);
+  target.score += src.score
+  target.hasOcrMatch = target.hasOcrMatch || src.hasOcrMatch
+  target.hasVisualMatch = Boolean((target.hasVisualMatch ?? false) || (src.hasVisualMatch ?? false))
+  target.chineseHits += src.chineseHits
+  for (const f of src.matchedFields) target.matchedFields.add(f)
   src.matchedTermsByField.forEach((set, key) => {
-    if (!target.matchedTermsByField.has(key)) target.matchedTermsByField.set(key, new Set());
-    set.forEach((term) => target.matchedTermsByField.get(key).add(term));
-  });
-  target.roleSignals.subject = target.roleSignals.subject || src.roleSignals.subject;
-  target.roleSignals.action = target.roleSignals.action || src.roleSignals.action;
-  target.roleSignals.scene = target.roleSignals.scene || src.roleSignals.scene;
-  target.visualSemanticScore = Math.max(target.visualSemanticScore || 0, src.visualSemanticScore || 0);
+    if (!target.matchedTermsByField.has(key)) target.matchedTermsByField.set(key, new Set())
+    set.forEach((term) => target.matchedTermsByField.get(key).add(term))
+  })
+  target.roleSignals.subject = target.roleSignals.subject || src.roleSignals.subject
+  target.roleSignals.action = target.roleSignals.action || src.roleSignals.action
+  target.roleSignals.scene = target.roleSignals.scene || src.roleSignals.scene
+  target.visualSemanticScore = Math.max(target.visualSemanticScore || 0, src.visualSemanticScore || 0)
 }
 
 function mergeCandidateMapsInto(global, segMap) {
   for (const [mediaId, cand] of segMap) {
-    const id = Number(mediaId);
-    if (!Number.isFinite(id)) continue;
+    const id = Number(mediaId)
+    if (!Number.isFinite(id)) continue
     if (!global.has(id)) {
-      global.set(id, cloneCandidate(cand));
+      global.set(id, cloneCandidate(cand))
     } else {
-      mergeCandidateInto(global.get(id), cand);
+      mergeCandidateInto(global.get(id), cand)
     }
   }
 }
@@ -445,154 +442,154 @@ function mergeCandidateMapsInto(global, segMap) {
  * 无空白时等价于整句一次 LIKE。英文不区分大小写。
  */
 function applyOcrRecallForSegment({ segment, userId, whereConditions, whereParams }, segCands) {
-  const trimmed = String(segment || "").trim();
+  const trimmed = String(segment || '').trim()
   if (!trimmed) {
-    return { likeRows: 0 };
+    return { likeRows: 0 }
   }
-  const chunks = trimmed.split(/\s+/).filter(Boolean);
-  const byId = new Map();
+  const chunks = trimmed.split(/\s+/).filter(Boolean)
+  const byId = new Map()
   for (const chunk of chunks) {
-    const likePattern = buildOcrTextLikePattern(chunk);
-    if (!likePattern) continue;
+    const likePattern = buildOcrTextLikePattern(chunk)
+    if (!likePattern) continue
     const rows = searchModel.recallMediaIdsByOcrTextLike({
       userId,
       likePattern,
       whereConditions,
-      whereParams,
-    });
+      whereParams
+    })
     for (const row of rows) {
-      const mediaId = Number(row.media_id);
-      if (!Number.isFinite(mediaId)) continue;
+      const mediaId = Number(row.media_id)
+      if (!Number.isFinite(mediaId)) continue
       if (!byId.has(mediaId)) {
-        byId.set(mediaId, row);
+        byId.set(mediaId, row)
       }
     }
   }
-  const ocrRows = Array.from(byId.values());
-  scoreOcrTextLikeHits(segCands, ocrRows);
-  return { likeRows: ocrRows.length };
+  const ocrRows = Array.from(byId.values())
+  scoreOcrTextLikeHits(segCands, ocrRows)
+  return { likeRows: ocrRows.length }
 }
 
 /**
  * 仅图片理解：筛选 / 视觉列 FTS / 向量（任意 residual 长度都走 FTS + embedding）；短句额外走 term + 同义词。
  */
 async function applyVisualRecallForSegment({ segment, residual, hasStructured, userId, whereConditions, whereParams }, segCands) {
-  let termRows = 0;
-  let ftsRows = 0;
-  let semanticRows = 0;
+  let termRows = 0
+  let ftsRows = 0
+  let semanticRows = 0
 
   if (!residual && hasStructured) {
     const filterRows = searchModel.recallMediaIdsByFiltersOnly({
       userId,
       whereConditions,
-      whereParams,
-    });
+      whereParams
+    })
     mergeFtsScores(
       segCands,
       filterRows.map((r) => ({ media_id: r.media_id })),
-      containsChinese(segment),
-    );
-    ftsRows += filterRows.length;
+      containsChinese(segment)
+    )
+    ftsRows += filterRows.length
   } else if (residual) {
-    const residualUnits = segmentLengthUnits(residual);
+    const residualUnits = segmentLengthUnits(residual)
 
     if (residualUnits <= 2) {
-      const segments = filterStopWordSegmentsForTerms(splitResidualSegmentsForShortTerms(residual));
-      const groups = segments.map((s) => expandSegmentTermsForChineseTermsAnd(s)).filter((g) => g.length > 0);
+      const segments = filterStopWordSegmentsForTerms(splitResidualSegmentsForShortTerms(residual))
+      const groups = segments.map((s) => expandSegmentTermsForChineseTermsAnd(s)).filter((g) => g.length > 0)
 
       if (groups.length > 0) {
-        let allowedIds = null;
+        let allowedIds = null
         for (const terms of groups) {
           const rows = searchModel.recallMediaIdsByChineseTerms({
             userId,
             terms,
             whereConditions,
-            whereParams,
-          });
-          const ids = new Set();
+            whereParams
+          })
+          const ids = new Set()
           for (const r of rows) {
-            const mid = Number(r.media_id);
-            if (Number.isFinite(mid)) ids.add(mid);
+            const mid = Number(r.media_id)
+            if (Number.isFinite(mid)) ids.add(mid)
           }
-          allowedIds = allowedIds === null ? ids : intersectMediaIdSets(allowedIds, ids);
-          if (allowedIds.size === 0) break;
+          allowedIds = allowedIds === null ? ids : intersectMediaIdSets(allowedIds, ids)
+          if (allowedIds.size === 0) break
         }
 
-        const allTermsFlat = [...new Set(groups.flat())];
+        const allTermsFlat = [...new Set(groups.flat())]
         const queryTerms = allTermsFlat
           .map((term) => {
-            const termLen = Array.from(term).length;
-            const boost = termLen >= 2 ? CHINESE_QUERY_TERM_BOOST.multiChar : CHINESE_QUERY_TERM_BOOST.singleChar;
-            return { term, termLen, boost };
+            const termLen = Array.from(term).length
+            const boost = termLen >= 2 ? CHINESE_QUERY_TERM_BOOST.multiChar : CHINESE_QUERY_TERM_BOOST.singleChar
+            return { term, termLen, boost }
           })
-          .sort((a, b) => b.termLen - a.termLen || a.term.localeCompare(b.term, "zh-Hans-CN"));
+          .sort((a, b) => b.termLen - a.termLen || a.term.localeCompare(b.term, 'zh-Hans-CN'))
 
         if (queryTerms.length > 0 && allowedIds && allowedIds.size > 0) {
           const termRowsDataAll = searchModel.recallMediaIdsByChineseTerms({
             userId,
             terms: queryTerms.map((item) => item.term),
             whereConditions,
-            whereParams,
-          });
-          const termRowsData = termRowsDataAll.filter((r) => allowedIds.has(Number(r.media_id)));
-          mergeCandidateMapsInto(segCands, scoreChineseTermHits(termRowsData, queryTerms));
-          termRows += termRowsData.length;
+            whereParams
+          })
+          const termRowsData = termRowsDataAll.filter((r) => allowedIds.has(Number(r.media_id)))
+          mergeCandidateMapsInto(segCands, scoreChineseTermHits(termRowsData, queryTerms))
+          termRows += termRowsData.length
         }
       }
     }
 
-    const ftsCoreTokens = getCoreTokensOnlyForResidual(residual);
-    const inner = buildVisualFtsInnerFromCoreTokens(ftsCoreTokens);
-    const wrapped = inner ? wrapFtsQueryForVisualColumnsOnly(inner) : null;
-    const visualFtsIds = new Set();
+    const ftsCoreTokens = getCoreTokensOnlyForResidual(residual)
+    const inner = buildVisualFtsInnerFromCoreTokens(ftsCoreTokens)
+    const wrapped = inner ? wrapFtsQueryForVisualColumnsOnly(inner) : null
+    const visualFtsIds = new Set()
     if (wrapped) {
       const rows = searchModel.recallMediaIdsByFts({
         userId,
         ftsQuery: wrapped,
         whereConditions,
-        whereParams,
-      });
+        whereParams
+      })
       for (const r of rows) {
-        const id = Number(r.media_id);
-        if (Number.isFinite(id)) visualFtsIds.add(id);
+        const id = Number(r.media_id)
+        if (Number.isFinite(id)) visualFtsIds.add(id)
       }
-      mergeFtsScores(segCands, rows, containsChinese(residual));
-      ftsRows += rows.length;
+      mergeFtsScores(segCands, rows, containsChinese(residual))
+      ftsRows += rows.length
     }
-    const lexicalSpec = buildVisualEmbeddingGateLexicalSpec(residual);
-    const lexicalTokens = lexicalSpec.tokens;
-    const actionGroups = extractActionGroups(lexicalSpec.groups);
-    const requiredGroupHits = calcRequiredGroupHits(lexicalSpec.groups.length);
-    const embeddingQueryText = buildEmbeddingQueryFromCoreTokens(ftsCoreTokens);
+    const lexicalSpec = buildVisualEmbeddingGateLexicalSpec(residual)
+    const lexicalTokens = lexicalSpec.tokens
+    const actionGroups = extractActionGroups(lexicalSpec.groups)
+    const requiredGroupHits = calcRequiredGroupHits(lexicalSpec.groups.length)
+    const embeddingQueryText = buildEmbeddingQueryFromCoreTokens(ftsCoreTokens)
     const embeddingRowsRaw = embeddingQueryText
       ? await recallMediaIdsByVisualEmbedding({
           userId,
           queryText: embeddingQueryText,
           whereConditions,
-          whereParams,
+          whereParams
         })
-      : [];
+      : []
     const embeddingRows = embeddingRowsRaw.filter((row) => {
-      const id = Number(row.media_id);
-      if (!Number.isFinite(id)) return false;
-      if (visualFtsIds.has(id)) return true;
+      const id = Number(row.media_id)
+      if (!Number.isFinite(id)) return false
+      if (visualFtsIds.has(id)) return true
       return passLexicalGate(row.description_text, lexicalTokens, {
         minHits: 1,
         synonymGroups: lexicalSpec.groups,
         requiredGroupHits,
-        actionGroups,
-      });
-    });
+        actionGroups
+      })
+    })
     if (embeddingRows.length > 0) {
       mergeVisualSemanticScores(
         segCands,
-        embeddingRows.map((r) => ({ media_id: r.media_id, similarity: r.similarity })),
-      );
-      semanticRows += embeddingRows.length;
+        embeddingRows.map((r) => ({ media_id: r.media_id, similarity: r.similarity }))
+      )
+      semanticRows += embeddingRows.length
     }
   }
 
-  return { termRows, ftsRows, semanticRows };
+  return { termRows, ftsRows, semanticRows }
 }
 
 async function searchMediaResults({
@@ -605,11 +602,11 @@ async function searchMediaResults({
   scopeConditions = [],
   scopeParams = [],
   pageNo = 1,
-  pageSize = 20,
+  pageSize = 20
 }) {
-  const offset = Math.max(0, (pageNo - 1) * pageSize);
-  const normalizedQuery = typeof query === "string" ? query.trim() : "";
-  const hasQuery = normalizedQuery !== "" && normalizedQuery !== "*";
+  const offset = Math.max(0, (pageNo - 1) * pageSize)
+  const normalizedQuery = typeof query === 'string' ? query.trim() : ''
+  const hasQuery = normalizedQuery !== '' && normalizedQuery !== '*'
 
   if (!hasQuery) {
     const [list, total] = await Promise.all([
@@ -619,28 +616,28 @@ async function searchMediaResults({
         whereConditions,
         whereParams,
         limit: pageSize,
-        offset,
+        offset
       }),
       searchModel.countMediaSearchResults({
         userId,
         ftsQuery: null,
         whereConditions,
-        whereParams,
-      }),
-    ]);
+        whereParams
+      })
+    ])
     return {
       list,
       total,
-      stats: { termCount: 0, ftsCount: list.length, ocrCount: 0, semanticCount: 0 },
-    };
+      stats: { termCount: 0, ftsCount: list.length, ocrCount: 0, semanticCount: 0 }
+    }
   }
 
   if (baseFilters == null || filterOptions == null) {
-    throw new Error("searchMediaResults: keyword search requires baseFilters and filterOptions");
+    throw new Error('searchMediaResults: keyword search requires baseFilters and filterOptions')
   }
 
   // 整句一次召回：空格仅作句内多线索，不再拆成多段循环
-  const segment = normalizedQuery;
+  const segment = normalizedQuery
 
   const rankCacheKey = makeSearchRankCacheKey({
     userId,
@@ -650,31 +647,31 @@ async function searchMediaResults({
     baseFilters,
     filterOptions,
     scopeConditions,
-    scopeParams,
-  });
+    scopeParams
+  })
 
   if (rankCacheKey) {
-    const cached = getSearchRankCache(rankCacheKey);
+    const cached = getSearchRankCache(rankCacheKey)
     if (cached?.rankedIds?.length) {
       return {
         list: buildOrderedPageMedias(userId, cached.rankedIds, offset, pageSize),
         total: cached.rankedIds.length,
-        stats: cached.stats,
-      };
+        stats: cached.stats
+      }
     }
   }
 
-  const globalCandidates = new Map();
+  const globalCandidates = new Map()
 
-  const parsedIntent = parseQueryIntent(segment);
-  const mergedFilters = mergeFilters(baseFilters, parsedIntent);
-  const built = buildFilterQueryParts(mergedFilters, filterOptions);
-  const { whereConditions: wc, whereParams: wp } = mergeScopeWhere(scopeConditions, scopeParams, built);
+  const parsedIntent = parseQueryIntent(segment)
+  const mergedFilters = mergeFilters(baseFilters, parsedIntent)
+  const built = buildFilterQueryParts(mergedFilters, filterOptions)
+  const { whereConditions: wc, whereParams: wp } = mergeScopeWhere(scopeConditions, scopeParams, built)
 
-  const residual = (parsedIntent.residualQuery || "").trim();
+  const residual = (parsedIntent.residualQuery || '').trim()
   const hasStructured = Boolean(
-    parsedIntent.filters?.timeDimension || parsedIntent.filters?.customDateRange || parsedIntent.filters?.location?.length,
-  );
+    parsedIntent.filters?.timeDimension || parsedIntent.filters?.customDateRange || parsedIntent.filters?.location?.length
+  )
 
   // 先 segment 按空白拆段各自 ocr_text LIKE（并集去重），再以 residual 做视觉 FTS + 向量；≤2 单位另加 term+同义词。
   const ocrStats = applyOcrRecallForSegment(
@@ -682,11 +679,11 @@ async function searchMediaResults({
       segment,
       userId,
       whereConditions: wc,
-      whereParams: wp,
+      whereParams: wp
     },
-    globalCandidates,
-  );
-  const totalOcrRows = ocrStats.likeRows;
+    globalCandidates
+  )
+  const totalOcrRows = ocrStats.likeRows
 
   const visualStats = await applyVisualRecallForSegment(
     {
@@ -695,15 +692,15 @@ async function searchMediaResults({
       hasStructured,
       userId,
       whereConditions: wc,
-      whereParams: wp,
+      whereParams: wp
     },
-    globalCandidates,
-  );
-  const totalTermRows = visualStats.termRows;
-  const totalFtsRows = visualStats.ftsRows;
-  const totalSemanticRows = visualStats.semanticRows;
+    globalCandidates
+  )
+  const totalTermRows = visualStats.termRows
+  const totalFtsRows = visualStats.ftsRows
+  const totalSemanticRows = visualStats.semanticRows
 
-  const mergedIds = Array.from(globalCandidates.keys());
+  const mergedIds = Array.from(globalCandidates.keys())
   if (mergedIds.length === 0) {
     return {
       list: [],
@@ -712,36 +709,36 @@ async function searchMediaResults({
         termCount: totalTermRows,
         ftsCount: totalFtsRows,
         ocrCount: totalOcrRows,
-        semanticCount: totalSemanticRows,
-      },
-    };
+        semanticCount: totalSemanticRows
+      }
+    }
   }
 
-  const mediaRows = fetchMediasByIdsChunked(userId, mergedIds);
-  const mediaMap = new Map(mediaRows.map((item) => [item.mediaId, item]));
-  const ranked = sortCandidates(globalCandidates, mediaMap).filter((item) => mediaMap.has(item.mediaId));
-  const pagedIds = ranked.slice(offset, offset + pageSize).map((item) => item.mediaId);
-  const list = pagedIds.map((mediaId) => mediaMap.get(mediaId)).filter(Boolean);
-  const total = ranked.length;
+  const mediaRows = fetchMediasByIdsChunked(userId, mergedIds)
+  const mediaMap = new Map(mediaRows.map((item) => [item.mediaId, item]))
+  const ranked = sortCandidates(globalCandidates, mediaMap).filter((item) => mediaMap.has(item.mediaId))
+  const pagedIds = ranked.slice(offset, offset + pageSize).map((item) => item.mediaId)
+  const list = pagedIds.map((mediaId) => mediaMap.get(mediaId)).filter(Boolean)
+  const total = ranked.length
   const stats = {
     termCount: totalTermRows,
     ftsCount: totalFtsRows,
     ocrCount: totalOcrRows,
-    semanticCount: totalSemanticRows,
-  };
+    semanticCount: totalSemanticRows
+  }
 
   if (rankCacheKey && ranked.length > 0) {
     setSearchRankCache(rankCacheKey, {
       rankedIds: ranked.map((item) => item.mediaId),
-      stats,
-    });
+      stats
+    })
   }
 
   return {
     list,
     total,
-    stats,
-  };
+    stats
+  }
 }
 
 /**
@@ -751,13 +748,12 @@ async function searchMediaResults({
  * @param {string} params.type - 选项类型: 'city' | 'year' | 'month' | 'weekday'
  * @param {number} params.pageNo - 页码（从1开始）
  * @param {number} params.pageSize - 每页数量（默认20）
- * @param {string} params.timeDimension - 时间维度（可选）
  * @param {string[]} [params.scopeConditions] - 范围条件（与统一列表 scope 一致，用于当前维度下选项）
  * @param {any[]} [params.scopeParams] - 范围条件参数
  * @returns {Object} { list: [], total: number }
  */
 async function getFilterOptionsPaginated(params) {
-  return searchModel.getFilterOptionsPaginated(params);
+  return searchModel.getFilterOptionsPaginated(params)
 }
 
 /**
@@ -768,7 +764,7 @@ async function getFilterOptionsPaginated(params) {
  * @returns {Array} 图片信息列表
  */
 async function getMediasByIds(params) {
-  return searchModel.getMediasByIds(params);
+  return searchModel.getMediasByIds(params)
 }
 
 module.exports = {
@@ -776,5 +772,5 @@ module.exports = {
   getFilterOptionsPaginated,
   getMediasByIds,
   buildScopeConditions,
-  buildFilterQueryParts,
-};
+  buildFilterQueryParts
+}

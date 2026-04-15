@@ -3,7 +3,7 @@
  * @Date: 2025-01-08
  * @Description: OSS签名工具函数
  */
-const crypto = require("crypto");
+const crypto = require('crypto')
 
 /**
  * 生成OSS回调签名
@@ -14,11 +14,11 @@ const crypto = require("crypto");
  */
 function generateCallbackSignature(callbackBody, callbackUrl, accessKeySecret) {
   if (!accessKeySecret) {
-    throw new Error("AccessKeySecret is required for callback signature generation");
+    throw new Error('AccessKeySecret is required for callback signature generation')
   }
 
-  const stringToSign = callbackBody + callbackUrl;
-  return crypto.createHmac("sha1", accessKeySecret).update(stringToSign).digest("base64");
+  const stringToSign = callbackBody + callbackUrl
+  return crypto.createHmac('sha1', accessKeySecret).update(stringToSign).digest('base64')
 }
 
 /**
@@ -31,11 +31,11 @@ function generateCallbackSignature(callbackBody, callbackUrl, accessKeySecret) {
  */
 function verifyCallbackSignature(callbackBody, callbackUrl, receivedSignature, accessKeySecret) {
   if (!accessKeySecret) {
-    return false; // 没有密钥时验证失败
+    return false // 没有密钥时验证失败
   }
 
-  const expectedSignature = generateCallbackSignature(callbackBody, callbackUrl, accessKeySecret);
-  return expectedSignature === receivedSignature;
+  const expectedSignature = generateCallbackSignature(callbackBody, callbackUrl, accessKeySecret)
+  return expectedSignature === receivedSignature
 }
 
 /**
@@ -46,15 +46,15 @@ function verifyCallbackSignature(callbackBody, callbackUrl, receivedSignature, a
  */
 function generatePolicySignature(policyString, accessKeySecret) {
   if (!accessKeySecret) {
-    throw new Error("AccessKeySecret is required for policy signature generation");
+    throw new Error('AccessKeySecret is required for policy signature generation')
   }
 
   // 阿里云OSS的策略签名验证强制要求使用SHA-1
-  return crypto.createHmac("sha1", accessKeySecret).update(policyString).digest("base64");
+  return crypto.createHmac('sha1', accessKeySecret).update(policyString).digest('base64')
 }
 
 module.exports = {
   generateCallbackSignature,
   verifyCallbackSignature,
-  generatePolicySignature,
-};
+  generatePolicySignature
+}

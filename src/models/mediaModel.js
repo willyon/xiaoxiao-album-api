@@ -37,19 +37,6 @@ function sqlLocationIsUnknown(alias) {
   return `(${sqlLocationKeyNullable(alias)} IS NULL)`;
 }
 
-function parseCommaTags(input) {
-  if (!input || typeof input !== "string") return [];
-  return input
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function toJsonArrayString(input) {
-  const arr = parseCommaTags(input);
-  return arr.length > 0 ? JSON.stringify(arr) : null;
-}
-
 function normalizeTextArray(input) {
   if (!Array.isArray(input)) return [];
   const seen = new Set();
@@ -216,7 +203,7 @@ function rebuildMediaSearchDoc(mediaId) {
     updatedAt,
   );
 
-  const { ocr: _ocrSkipTerms, ...fieldsWithoutOcrForTerms } = fields;
+  const { ocr: _ocr, ...fieldsWithoutOcrForTerms } = fields;
   const termRows = replaceMediaSearchTermsForDocument({
     mediaId: media.id,
     userId: media.user_id,

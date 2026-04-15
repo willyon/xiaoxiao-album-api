@@ -33,56 +33,49 @@
  */
 
 function toInt(value) {
-  return Number.parseInt(value, 10) || 0;
+  return Number.parseInt(value, 10) || 0
 }
 
 function hasMediaSignal(progressData) {
-  const {
-    uploadedCount,
-    ingestDoneCount,
-    ingestErrorCount,
-    duplicateCount,
-    workerSkippedCount,
-    existingFiles,
-  } = progressData;
+  const { uploadedCount, ingestDoneCount, ingestErrorCount, duplicateCount, workerSkippedCount, existingFiles } = progressData
 
-  return uploadedCount + ingestDoneCount + ingestErrorCount + duplicateCount + workerSkippedCount + existingFiles > 0;
+  return uploadedCount + ingestDoneCount + ingestErrorCount + duplicateCount + workerSkippedCount + existingFiles > 0
 }
 
 function computeMediaStageDone(progressData) {
-  const { uploadedCount, ingestDoneCount, ingestErrorCount, workerSkippedCount } = progressData;
-  return uploadedCount === 0 || ingestDoneCount + ingestErrorCount + workerSkippedCount >= uploadedCount;
+  const { uploadedCount, ingestDoneCount, ingestErrorCount, workerSkippedCount } = progressData
+  return uploadedCount === 0 || ingestDoneCount + ingestErrorCount + workerSkippedCount >= uploadedCount
 }
 
 function computeAiStageDone(progressData) {
-  const { aiEligibleCount, aiDoneCount, aiErrorCount } = progressData;
-  return aiEligibleCount === 0 || aiDoneCount + aiErrorCount >= aiEligibleCount;
+  const { aiEligibleCount, aiDoneCount, aiErrorCount } = progressData
+  return aiEligibleCount === 0 || aiDoneCount + aiErrorCount >= aiEligibleCount
 }
 
 function computeCompleted(progressData) {
-  return computeMediaStageDone(progressData) && computeAiStageDone(progressData);
+  return computeMediaStageDone(progressData) && computeAiStageDone(progressData)
 }
 
 function computePhase(progressData) {
-  if (progressData.completed) return "completed";
+  if (progressData.completed) return 'completed'
 
   if (!hasMediaSignal(progressData) && progressData.aiEligibleCount === 0 && progressData.aiDoneCount === 0 && progressData.aiErrorCount === 0) {
-    return "uploading";
+    return 'uploading'
   }
 
   if (!computeMediaStageDone(progressData)) {
-    return "mediaProcessing";
+    return 'mediaProcessing'
   }
 
   if (!computeAiStageDone(progressData)) {
-    return "aiAnalyzing";
+    return 'aiAnalyzing'
   }
 
-  return "completed";
+  return 'completed'
 }
 
 function normalizeProgressData(sessionId, redisData = {}) {
-  const ingestDoneCount = toInt(redisData.ingestDoneCount);
+  const ingestDoneCount = toInt(redisData.ingestDoneCount)
   const normalized = {
     sessionId,
     uploadedCount: toInt(redisData.uploadedCount),
@@ -93,14 +86,14 @@ function normalizeProgressData(sessionId, redisData = {}) {
     existingFiles: toInt(redisData.existingFiles),
     aiEligibleCount: toInt(redisData.aiEligibleCount),
     aiDoneCount: toInt(redisData.aiDoneCount),
-    aiErrorCount: toInt(redisData.aiErrorCount),
-  };
+    aiErrorCount: toInt(redisData.aiErrorCount)
+  }
 
-  normalized.completed = computeCompleted(normalized);
-  normalized.phase = computePhase(normalized);
-  normalized.timestamp = Date.now();
+  normalized.completed = computeCompleted(normalized)
+  normalized.phase = computePhase(normalized)
+  normalized.timestamp = Date.now()
 
-  return normalized;
+  return normalized
 }
 
 function hasAnyProgressData(progressData) {
@@ -115,7 +108,7 @@ function hasAnyProgressData(progressData) {
       progressData.aiDoneCount +
       progressData.aiErrorCount >
     0
-  );
+  )
 }
 
 module.exports = {
@@ -123,5 +116,5 @@ module.exports = {
   computeMediaStageDone,
   computeAiStageDone,
   computeCompleted,
-  hasAnyProgressData,
-};
+  hasAnyProgressData
+}

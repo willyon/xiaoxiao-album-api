@@ -22,17 +22,17 @@
  *   });
  */
 
-const logger = require("./logger");
+const logger = require('./logger')
 
 module.exports = function initGracefulShutdown({ server, getRedisClient, extraClosers = [], timeoutMs = 10000 } = {}) {
-  let shuttingDown = false;
+  let shuttingDown = false
 
   async function shutdown(signal) {
-    if (shuttingDown) return;
-    shuttingDown = true;
+    if (shuttingDown) return
+    shuttingDown = true
 
-    const start = Date.now();
-    const tag = `[graceful-shutdown:${signal}]`;
+    const start = Date.now()
+    const tag = `[graceful-shutdown:${signal}]`
 
     // 超时兜底：到时强制退出，避免卡死。在node环境中settimeout()的返回对象会有一个unref的方法，
     // 用于将这个定时器从事件循环里“摘掉引用”，这样如果进程里只剩下这个定时器在等，进程可以直接退出，
@@ -41,86 +41,86 @@ module.exports = function initGracefulShutdown({ server, getRedisClient, extraCl
       try {
         logger.error({
           message: `${tag} force exit after timeout ${timeoutMs}ms`,
-          details: { elapsed: Date.now() - start }, //真实的超时时长
-        });
+          details: { elapsed: Date.now() - start } //真实的超时时长
+        })
       } catch {}
-      process.exit(1); //0表示正常退出 1表示一般性错误，异常退出
-    }, timeoutMs).unref?.();
+      process.exit(1) //0表示正常退出 1表示一般性错误，异常退出
+    }, timeoutMs).unref?.()
 
     try {
       // 1) 停止接收新的 HTTP 连接
-      if (server && typeof server.close === "function") {
+      if (server && typeof server.close === 'function') {
         await new Promise((resolve) => {
           try {
-            server.close(() => resolve());
-          } catch (_) {
-            resolve();
+            server.close(() => resolve())
+          } catch {
+            resolve()
           }
-        });
+        })
       }
 
       // 2) 关闭 Redis（如果提供了 getRedisClient）
-      if (typeof getRedisClient === "function") {
+      if (typeof getRedisClient === 'function') {
         try {
-          const redis = getRedisClient();
-          if (redis && typeof redis.quit === "function") {
-            await redis.quit();
-          } else if (redis && typeof redis.disconnect === "function") {
-            await redis.disconnect();
+          const redis = getRedisClient()
+          if (redis && typeof redis.quit === 'function') {
+            await redis.quit()
+          } else if (redis && typeof redis.disconnect === 'function') {
+            await redis.disconnect()
           }
         } catch (e) {
-          logger.warn({ message: `${tag} redis close failed`, details: { error: String(e) } });
+          logger.warn({ message: `${tag} redis close failed`, details: { error: String(e) } })
         }
       }
 
       // 3) 执行额外的清理动作（可选）
       for (const closer of extraClosers) {
         try {
-          const ret = closer?.();
-          if (ret && typeof ret.then === "function") await ret;
+          const ret = closer?.()
+          if (ret && typeof ret.then === 'function') await ret
         } catch (e) {
-          logger.warn({ message: `${tag} extra closer failed`, details: { error: String(e) } });
+          logger.warn({ message: `${tag} extra closer failed`, details: { error: String(e) } })
         }
       }
 
       // 4) 记录完成与耗时
       try {
-        logger.info({ message: `${tag} completed`, details: { elapsed: Date.now() - start } });
+        logger.info({ message: `${tag} completed`, details: { elapsed: Date.now() - start } })
       } catch {}
 
       //关闭日志写入(关闭前会将尚未处理的日志写进日志文件中)
       try {
-        await logger.close();
+        await logger.close()
       } catch {}
       // 正常退出
-      process.exit(0);
+      process.exit(0)
     } catch (e) {
       try {
-        logger.error({ message: `${tag} failed`, details: { error: String(e) } });
+        logger.error({ message: `${tag} failed`, details: { error: String(e) } })
       } catch {}
       try {
-        await logger.close();
+        await logger.close()
       } catch {}
       // 异常退出
-      process.exit(1);
+      process.exit(1)
     } finally {
-      clearTimeout(forceTimer);
+      clearTimeout(forceTimer)
     }
   }
 
   // 仅注册一次信号 系统级 退出应用进程的信号
-  ["SIGINT", "SIGTERM"].forEach((sig) => {
-    process.on(sig, () => shutdown(sig));
-  });
+  ;['SIGINT', 'SIGTERM'].forEach((sig) => {
+    process.on(sig, () => shutdown(sig))
+  })
 
   //node应用事件 beforeExit事件：事件循环将空时触发，非 SIGINT/SIGTERM 触发的自然退出兜底,
   // 可做最后一次清理（前提是在shutdown里没有主动process.exit()，否则不会进入这个事件里）
-  process.on("beforeExit", () => {
+  process.on('beforeExit', () => {
     try {
-      logger.info({ message: "[graceful-shutdown:beforeExit] flushing final tasks" });
+      logger.info({ message: '[graceful-shutdown:beforeExit] flushing final tasks' })
     } catch {}
     try {
-      logger.close().catch(() => {});
+      logger.close().catch(() => {})
     } catch {}
-  });
-};
+  })
+}

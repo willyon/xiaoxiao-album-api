@@ -3,29 +3,28 @@
  * @Date: 2025-01-XX
  * @Description: 相册API控制器
  */
-const albumService = require("../services/albumService");
-const mediaService = require("../services/mediaService");
-const CustomError = require("../errors/customError");
-const { ERROR_CODES } = require("../constants/messageCodes");
-const logger = require("../utils/logger");
+const albumService = require('../services/albumService')
+const mediaService = require('../services/mediaService')
+const CustomError = require('../errors/customError')
+const { ERROR_CODES } = require('../constants/messageCodes')
 
 /**
  * 创建相册
  */
 async function createAlbum(req, res, next) {
   try {
-    const userId = req.user.userId;
-    const { name, description } = req.body;
+    const userId = req.user.userId
+    const { name, description } = req.body
 
     const album = await albumService.createAlbum({
       userId,
       name,
-      description,
-    });
+      description
+    })
 
-    res.sendResponse({ data: album });
+    res.sendResponse({ data: album })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
@@ -34,25 +33,25 @@ async function createAlbum(req, res, next) {
  */
 async function getAlbumById(req, res, next) {
   try {
-    const userId = req.user.userId;
-    const { albumId } = req.params;
+    const userId = req.user.userId
+    const { albumId } = req.params
 
     const album = await albumService.getAlbumById({
       albumId: parseInt(albumId),
-      userId,
-    });
+      userId
+    })
 
     if (!album) {
       throw new CustomError({
         httpStatus: 404,
         messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
-        messageType: "error",
-      });
+        messageType: 'error'
+      })
     }
 
-    res.sendResponse({ data: album });
+    res.sendResponse({ data: album })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
@@ -61,21 +60,21 @@ async function getAlbumById(req, res, next) {
  */
 async function updateAlbum(req, res, next) {
   try {
-    const userId = req.user.userId;
-    const { albumId } = req.params;
-    const { name, description, coverImageId } = req.body;
+    const userId = req.user.userId
+    const { albumId } = req.params
+    const { name, description, coverImageId } = req.body
 
     const album = await albumService.updateAlbum({
       userId,
       albumId: parseInt(albumId),
       name,
       description,
-      coverImageId: coverImageId ? parseInt(coverImageId) : undefined,
-    });
+      coverImageId: coverImageId ? parseInt(coverImageId) : undefined
+    })
 
-    res.sendResponse({ data: album });
+    res.sendResponse({ data: album })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
@@ -84,17 +83,17 @@ async function updateAlbum(req, res, next) {
  */
 async function deleteAlbum(req, res, next) {
   try {
-    const userId = req.user.userId;
-    const { albumId } = req.params;
+    const userId = req.user.userId
+    const { albumId } = req.params
 
     await albumService.deleteAlbum({
       userId,
-      albumId: parseInt(albumId),
-    });
+      albumId: parseInt(albumId)
+    })
 
-    res.sendResponse({ data: { success: true } });
+    res.sendResponse({ data: { success: true } })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
@@ -104,21 +103,21 @@ async function deleteAlbum(req, res, next) {
  */
 async function getCustomAlbums(req, res, next) {
   try {
-    const userId = req.user.userId;
-    const { pageNo, pageSize, search, excludeAlbumId } = req.query;
-    const excludeId = excludeAlbumId ? parseInt(excludeAlbumId, 10) : null;
+    const userId = req.user.userId
+    const { pageNo, pageSize, search, excludeAlbumId } = req.query
+    const excludeId = excludeAlbumId ? parseInt(excludeAlbumId, 10) : null
 
     const result = await albumService.getAlbumsList({
       userId,
       pageNo: pageNo || 1,
       pageSize: pageSize || 20,
       search: search || null,
-      excludeAlbumId: Number.isNaN(excludeId) ? null : excludeId,
-    });
+      excludeAlbumId: Number.isNaN(excludeId) ? null : excludeId
+    })
 
-    res.sendResponse({ data: result });
+    res.sendResponse({ data: result })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
@@ -128,18 +127,18 @@ async function getCustomAlbums(req, res, next) {
  */
 async function getRecentAlbums(req, res, next) {
   try {
-    const userId = req.user.userId;
-    const limit = Math.min(parseInt(req.query.limit, 10) || 8, 20);
-    const excludeAlbumId = req.query.excludeAlbumId ? parseInt(req.query.excludeAlbumId, 10) : null;
+    const userId = req.user.userId
+    const limit = Math.min(parseInt(req.query.limit, 10) || 8, 20)
+    const excludeAlbumId = req.query.excludeAlbumId ? parseInt(req.query.excludeAlbumId, 10) : null
 
     const result = await albumService.getRecentAlbumsList({
       userId,
       limit,
-      excludeAlbumId: Number.isNaN(excludeAlbumId) ? null : excludeAlbumId,
-    });
-    res.sendResponse({ data: result });
+      excludeAlbumId: Number.isNaN(excludeAlbumId) ? null : excludeAlbumId
+    })
+    res.sendResponse({ data: result })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
@@ -151,76 +150,76 @@ async function getRecentAlbums(req, res, next) {
  */
 async function queryAlbumPhotos(req, res, next) {
   try {
-    const userId = req.user.userId;
-    const { albumId } = req.params;
+    const userId = req.user.userId
+    const { albumId } = req.params
     // GET 请求：type、clusterId 和分页参数都从 query 获取
-    const { type, pageNo, pageSize, clusterId } = req.query;
+    const { type, pageNo, pageSize, clusterId } = req.query
 
     // 验证 type 参数
-    if (!type || !["year", "month", "date", "custom", "location", "unknown"].includes(type)) {
+    if (!type || !['year', 'month', 'date', 'custom', 'location', 'unknown'].includes(type)) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: "error",
-      });
+        messageType: 'error'
+      })
     }
 
-    let result;
+    let result
 
-    if (type === "custom") {
+    if (type === 'custom') {
       // 自定义相册：albumId 是数字，暂不支持 clusterId 过滤
       result = await albumService.getAlbumMediasList({
         userId,
         albumId: parseInt(albumId),
         pageNo,
-        pageSize,
-      });
-      res.sendResponse({ data: { list: result.list, total: result.total } });
+        pageSize
+      })
+      res.sendResponse({ data: { list: result.list, total: result.total } })
     } else {
       // 时间相册（year/month/date）：albumId 是 year_key/month_key/date_key（字符串）
       // 支持可选的 clusterId 参数
-      let queryResult;
-      const clusterIdParam = clusterId ? parseInt(clusterId) : null;
+      let queryResult
+      const clusterIdParam = clusterId ? parseInt(clusterId) : null
 
-      if (type === "year") {
+      if (type === 'year') {
         queryResult = await mediaService.getMediasByYear({
           userId,
           pageNo,
           pageSize,
           albumId,
-          clusterId: clusterIdParam,
-        });
-      } else if (type === "month") {
+          clusterId: clusterIdParam
+        })
+      } else if (type === 'month') {
         queryResult = await mediaService.getMediasByMonth({
           userId,
           pageNo,
           pageSize,
           albumId,
-          clusterId: clusterIdParam,
-        });
-      } else if (type === "date") {
-        queryResult = await mediaService.getMediasByDate({ userId, pageNo, pageSize, albumId });
-      } else if (type === "location") {
-        queryResult = await mediaService.getMediasByCity({ userId, pageNo, pageSize, albumId });
-      } else if (type === "unknown") {
+          clusterId: clusterIdParam
+        })
+      } else if (type === 'date') {
+        queryResult = await mediaService.getMediasByDate({ userId, pageNo, pageSize, albumId })
+      } else if (type === 'location') {
+        queryResult = await mediaService.getMediasByCity({ userId, pageNo, pageSize, albumId })
+      } else if (type === 'unknown') {
         queryResult = await mediaService.getMediasByYear({
           userId,
           pageNo,
           pageSize,
-          albumId: "unknown",
-        });
+          albumId: 'unknown'
+        })
       }
 
       // 为每条数据添加 albumId 字段（统一返回格式）
       const listWithAlbumId = queryResult.data.map((item) => ({
         ...item,
-        albumId: albumId, // 将 year_key/month_key/date_key 作为 albumId 返回
-      }));
+        albumId: albumId // 将 year_key/month_key/date_key 作为 albumId 返回
+      }))
 
-      res.sendResponse({ data: { list: listWithAlbumId, total: queryResult.total } });
+      res.sendResponse({ data: { list: listWithAlbumId, total: queryResult.total } })
     }
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
@@ -230,36 +229,36 @@ async function queryAlbumPhotos(req, res, next) {
  */
 async function addMediasToAlbum(req, res, next) {
   try {
-    const userId = req.user.userId;
-    const { albumId } = req.params;
-    const { mediaIds } = req.body;
+    const userId = req.user.userId
+    const { albumId } = req.params
+    const { mediaIds } = req.body
 
-    const albumIdNum = parseInt(albumId, 10);
+    const albumIdNum = parseInt(albumId, 10)
     if (Number.isNaN(albumIdNum)) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: "error",
-      });
+        messageType: 'error'
+      })
     }
 
     if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: "error",
-      });
+        messageType: 'error'
+      })
     }
 
     const result = await albumService.addMediasToAlbum({
       userId,
       albumId: albumIdNum,
-      mediaIds: mediaIds.map((id) => parseInt(id, 10)),
-    });
+      mediaIds: mediaIds.map((id) => parseInt(id, 10))
+    })
 
-    res.sendResponse({ data: result });
+    res.sendResponse({ data: result })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
@@ -269,36 +268,36 @@ async function addMediasToAlbum(req, res, next) {
  */
 async function removeMediasFromAlbum(req, res, next) {
   try {
-    const userId = req.user.userId;
-    const { albumId } = req.params;
-    const { mediaIds } = req.body;
+    const userId = req.user.userId
+    const { albumId } = req.params
+    const { mediaIds } = req.body
 
-    const albumIdNum = parseInt(albumId, 10);
+    const albumIdNum = parseInt(albumId, 10)
     if (Number.isNaN(albumIdNum)) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: "error",
-      });
+        messageType: 'error'
+      })
     }
 
     if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: "error",
-      });
+        messageType: 'error'
+      })
     }
 
     const result = await albumService.removeMediasFromAlbum({
       userId,
       albumId: albumIdNum,
-      mediaIds: mediaIds.map((id) => parseInt(id, 10)),
-    });
+      mediaIds: mediaIds.map((id) => parseInt(id, 10))
+    })
 
-    res.sendResponse({ data: result });
+    res.sendResponse({ data: result })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
@@ -307,27 +306,27 @@ async function removeMediasFromAlbum(req, res, next) {
  */
 async function setAlbumCover(req, res, next) {
   try {
-    const userId = req.user.userId;
-    const { albumId } = req.params;
-    const { mediaId } = req.body;
-    const mediaIdNum = parseInt(mediaId, 10);
+    const userId = req.user.userId
+    const { albumId } = req.params
+    const { mediaId } = req.body
+    const mediaIdNum = parseInt(mediaId, 10)
     if (!Number.isInteger(mediaIdNum) || mediaIdNum < 1) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: "error",
-      });
+        messageType: 'error'
+      })
     }
 
     const result = await albumService.setAlbumCover({
       userId,
       albumId: parseInt(albumId),
-      mediaId: mediaIdNum,
-    });
+      mediaId: mediaIdNum
+    })
 
-    res.sendResponse({ data: result });
+    res.sendResponse({ data: result })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
@@ -337,25 +336,25 @@ async function setAlbumCover(req, res, next) {
  */
 async function restoreAlbumCover(req, res, next) {
   try {
-    const userId = req.user.userId;
-    const { albumId } = req.params;
-    const albumIdNum = parseInt(albumId, 10);
+    const userId = req.user.userId
+    const { albumId } = req.params
+    const albumIdNum = parseInt(albumId, 10)
     if (Number.isNaN(albumIdNum)) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: "error",
-      });
+        messageType: 'error'
+      })
     }
 
     const result = await albumService.restoreAlbumCover({
       userId,
-      albumId: albumIdNum,
-    });
+      albumId: albumIdNum
+    })
 
-    res.sendResponse({ data: result });
+    res.sendResponse({ data: result })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
@@ -370,5 +369,5 @@ module.exports = {
   addMediasToAlbum,
   removeMediasFromAlbum,
   setAlbumCover,
-  restoreAlbumCover,
-};
+  restoreAlbumCover
+}

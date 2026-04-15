@@ -3,8 +3,8 @@
  * @Date: 2025-01-XX
  * @Description: 相册路由
  */
-const express = require("express");
-const router = express.Router();
+const express = require('express')
+const router = express.Router()
 const {
   createAlbum,
   getAlbumById,
@@ -16,43 +16,43 @@ const {
   addMediasToAlbum,
   removeMediasFromAlbum,
   setAlbumCover,
-  restoreAlbumCover,
-} = require("../controllers/albumController");
+  restoreAlbumCover
+} = require('../controllers/albumController')
 
 // ========== 相册列表接口 ========== //
 // 获取自定义相册列表
-router.get("/", getCustomAlbums);
+router.get('/', getCustomAlbums)
 
 // 获取最近使用的相册（须在 /:albumId 之前注册）
-router.get("/recent", getRecentAlbums);
+router.get('/recent', getRecentAlbums)
 
 // ========== 相册 CRUD 接口 ========== //
 // 创建相册
-router.post("/", createAlbum);
+router.post('/', createAlbum)
 
 // 获取相册详情
-router.get("/:albumId", getAlbumById);
+router.get('/:albumId', getAlbumById)
 
 // 完整更新相册
-router.put("/:albumId", updateAlbum);
+router.put('/:albumId', updateAlbum)
 
 // 删除相册
-router.delete("/:albumId", deleteAlbum);
+router.delete('/:albumId', deleteAlbum)
 
 // ========== 相册媒体管理接口 ========== //
 // 获取相册媒体列表（移除 type 参数，直接从 albumId 判断类型）
-router.get("/:albumId/media", queryAlbumPhotos);
+router.get('/:albumId/media', queryAlbumPhotos)
 
 // 添加媒体到相册
-router.post("/:albumId/media", addMediasToAlbum);
+router.post('/:albumId/media', addMediasToAlbum)
 
 // 从相册中移除媒体
-router.delete("/:albumId/media", removeMediasFromAlbum);
+router.delete('/:albumId/media', removeMediasFromAlbum)
 
 // 设置相册封面图片
-router.put("/:albumId/cover", setAlbumCover);
+router.put('/:albumId/cover', setAlbumCover)
 
 // 恢复相册默认封面
-router.delete("/:albumId/cover", restoreAlbumCover);
+router.delete('/:albumId/cover', restoreAlbumCover)
 
-module.exports = router;
+module.exports = router

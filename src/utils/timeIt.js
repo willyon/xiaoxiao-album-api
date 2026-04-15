@@ -6,14 +6,14 @@
  * @Description: File description
  */
 // 放在各文件顶部（worker/ingestor/hashset都可复用）
-const logger = require("../utils/logger");
-const { performance } = require("perf_hooks");
-const PROFILE = process.env.PROFILE_UPLOAD === "1";
+const logger = require('../utils/logger')
+const { performance } = require('perf_hooks')
+const PROFILE = process.env.PROFILE_UPLOAD === '1'
 
 // const times = [];
 
 function tNow() {
-  return performance.now();
+  return performance.now()
 }
 
 // function mark(label, ms) {
@@ -22,20 +22,20 @@ function tNow() {
 
 // 异步计时器：await timeIt('标签', async () => { ... })
 async function timeIt(label, fn, imageHash) {
-  let ret;
+  let ret
   try {
-    const s = tNow();
-    console.log("timeit这里开始啦", label, s);
-    ret = await fn();
-    const ms = tNow() - s;
-    console.log("timeit这里执行完啦", label, ms, "毫秒");
+    const s = tNow()
+    console.log('timeit这里开始啦', label, s)
+    ret = await fn()
+    const ms = tNow() - s
+    console.log('timeit这里执行完啦', label, ms, '毫秒')
     if (PROFILE) {
-      logger.info({ message: `[埋点计时]${label}:jobId:${imageHash || 0}:${ms}毫秒` });
+      logger.info({ message: `[埋点计时]${label}:jobId:${imageHash || 0}:${ms}毫秒` })
     }
   } catch (error) {
-    throw error;
+    throw error
   }
-  return ret;
+  return ret
 }
 
-module.exports = timeIt;
+module.exports = timeIt

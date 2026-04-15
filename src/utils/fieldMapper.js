@@ -11,116 +11,116 @@
 const FIELD_MAPPING = {
   // users表字段映射
   users: {
-    verified_status: "verifiedStatus",
-    verification_token: "verificationToken",
-    created_at: "createdAt",
+    verified_status: 'verifiedStatus',
+    verification_token: 'verificationToken',
+    created_at: 'createdAt'
   },
 
   // images表字段映射
   images: {
-    id: "imageId", // 图片ID映射为 imageId
-    original_storage_key: "originalStorageKey",
-    high_res_storage_key: "highResStorageKey",
-    thumbnail_storage_key: "thumbnailStorageKey",
-    image_created_at: "creationDate",
-    created_at: "createdAt", // 缩略图入库时间（毫秒）
-    year_key: "yearKey",
-    month_key: "monthKey",
-    date_key: "dateKey",
-    day_key: "dayKey",
-    album_id: "albumId", // 统一映射：album_id -> albumId（时间相册的 albumId 就是 year_key/month_key/date_key）
-    gps_latitude: "gpsLatitude",
-    gps_longitude: "gpsLongitude",
-    gps_altitude: "gpsAltitude",
-    gps_location: "gpsLocation",
-    file_size_bytes: "fileSizeBytes",
-    image_hash: "imageHash",
-    width_px: "widthPx",
-    height_px: "heightPx",
-    aspect_ratio: "aspectRatio",
-    raw_orientation: "rawOrientation",
-    hd_width_px: "hdWidthPx",
-    hd_height_px: "hdHeightPx",
-    thumb_width_px: "thumbWidthPx",
-    thumb_height_px: "thumbHeightPx",
-    mime: "mime",
-    country: "country",
-    province: "province",
-    city: "city",
-    person_count: "personCount", // 新增：人物数量（YOLOv10检测）
-    added_at: "addedAt", // 添加到相册的时间
-    is_favorite: "isFavorite", // 是否已喜欢
-    is_blurry: "isBlurry", // 是否模糊图（清理用）
-    media_type: "mediaType", // 'image' | 'video'
-    duration_sec: "durationSec", // 视频时长（秒）
-    video_codec: "videoCodec", // 视频编码
+    id: 'imageId', // 图片ID映射为 imageId
+    original_storage_key: 'originalStorageKey',
+    high_res_storage_key: 'highResStorageKey',
+    thumbnail_storage_key: 'thumbnailStorageKey',
+    image_created_at: 'creationDate',
+    created_at: 'createdAt', // 缩略图入库时间（毫秒）
+    year_key: 'yearKey',
+    month_key: 'monthKey',
+    date_key: 'dateKey',
+    day_key: 'dayKey',
+    album_id: 'albumId', // 统一映射：album_id -> albumId（时间相册的 albumId 就是 year_key/month_key/date_key）
+    gps_latitude: 'gpsLatitude',
+    gps_longitude: 'gpsLongitude',
+    gps_altitude: 'gpsAltitude',
+    gps_location: 'gpsLocation',
+    file_size_bytes: 'fileSizeBytes',
+    image_hash: 'imageHash',
+    width_px: 'widthPx',
+    height_px: 'heightPx',
+    aspect_ratio: 'aspectRatio',
+    raw_orientation: 'rawOrientation',
+    hd_width_px: 'hdWidthPx',
+    hd_height_px: 'hdHeightPx',
+    thumb_width_px: 'thumbWidthPx',
+    thumb_height_px: 'thumbHeightPx',
+    mime: 'mime',
+    country: 'country',
+    province: 'province',
+    city: 'city',
+    person_count: 'personCount', // 新增：人物数量（YOLOv10检测）
+    added_at: 'addedAt', // 添加到相册的时间
+    is_favorite: 'isFavorite', // 是否已喜欢
+    is_blurry: 'isBlurry', // 是否模糊图（清理用）
+    media_type: 'mediaType', // 'image' | 'video'
+    duration_sec: 'durationSec', // 视频时长（秒）
+    video_codec: 'videoCodec' // 视频编码
   },
 
   // albums表字段映射
   albums: {
-    id: "albumId",
-    user_id: "userId",
-    name: "name",
-    description: "description",
-    cover_image_id: "coverImageId",
-    cover_media_id: "coverImageId",
-    media_count: "mediaCount",
-    created_at: "createdAt",
-    updated_at: "updatedAt",
-    last_used_at: "lastUsedAt",
-    deleted_at: "deletedAt",
+    id: 'albumId',
+    user_id: 'userId',
+    name: 'name',
+    description: 'description',
+    cover_image_id: 'coverImageId',
+    cover_media_id: 'coverImageId',
+    media_count: 'mediaCount',
+    created_at: 'createdAt',
+    updated_at: 'updatedAt',
+    last_used_at: 'lastUsedAt',
+    deleted_at: 'deletedAt'
   },
 
   // media表字段映射（重构后主表）
   media: {
-    id: "mediaId",
-    original_storage_key: "originalStorageKey",
-    high_res_storage_key: "highResStorageKey",
-    thumbnail_storage_key: "thumbnailStorageKey",
-    captured_at: "capturedAt",
-    created_at: "createdAt",
-    year_key: "yearKey",
-    month_key: "monthKey",
-    date_key: "dateKey",
-    day_key: "dayKey",
-    album_id: "albumId",
-    gps_latitude: "gpsLatitude",
-    gps_longitude: "gpsLongitude",
-    gps_altitude: "gpsAltitude",
-    gps_location: "gpsLocation",
-    file_size_bytes: "fileSizeBytes",
-    file_hash: "fileHash",
-    width_px: "widthPx",
-    height_px: "heightPx",
-    aspect_ratio: "aspectRatio",
-    raw_orientation: "rawOrientation",
-    hd_width_px: "hdWidthPx",
-    hd_height_px: "hdHeightPx",
-    mime: "mime",
-    country: "country",
-    province: "province",
-    city: "city",
-    is_favorite: "isFavorite",
-    media_type: "mediaType",
-    duration_sec: "durationSec",
-    video_codec: "videoCodec",
-    person_count: "personCount",
-    face_count: "faceCount",
-    expression_tags: "expressionTags",
-    age_tags: "ageTags",
-    gender_tags: "genderTags",
-    is_blurry: "isBlurry",
-    aesthetic_score: "aestheticScore",
-    sharpness_score: "sharpnessScore",
-    preferred_face_quality: "preferredFaceQuality",
-    ai_description: "aiDescription",
-    ai_keywords_json: "aiKeywordsJson",
-    ai_subject_tags_json: "aiSubjectTagsJson",
-    ai_action_tags_json: "aiActionTagsJson",
-    ai_scene_tags_json: "aiSceneTagsJson",
-    ai_ocr: "aiOcr",
-  },
-};
+    id: 'mediaId',
+    original_storage_key: 'originalStorageKey',
+    high_res_storage_key: 'highResStorageKey',
+    thumbnail_storage_key: 'thumbnailStorageKey',
+    captured_at: 'capturedAt',
+    created_at: 'createdAt',
+    year_key: 'yearKey',
+    month_key: 'monthKey',
+    date_key: 'dateKey',
+    day_key: 'dayKey',
+    album_id: 'albumId',
+    gps_latitude: 'gpsLatitude',
+    gps_longitude: 'gpsLongitude',
+    gps_altitude: 'gpsAltitude',
+    gps_location: 'gpsLocation',
+    file_size_bytes: 'fileSizeBytes',
+    file_hash: 'fileHash',
+    width_px: 'widthPx',
+    height_px: 'heightPx',
+    aspect_ratio: 'aspectRatio',
+    raw_orientation: 'rawOrientation',
+    hd_width_px: 'hdWidthPx',
+    hd_height_px: 'hdHeightPx',
+    mime: 'mime',
+    country: 'country',
+    province: 'province',
+    city: 'city',
+    is_favorite: 'isFavorite',
+    media_type: 'mediaType',
+    duration_sec: 'durationSec',
+    video_codec: 'videoCodec',
+    person_count: 'personCount',
+    face_count: 'faceCount',
+    expression_tags: 'expressionTags',
+    age_tags: 'ageTags',
+    gender_tags: 'genderTags',
+    is_blurry: 'isBlurry',
+    aesthetic_score: 'aestheticScore',
+    sharpness_score: 'sharpnessScore',
+    preferred_face_quality: 'preferredFaceQuality',
+    ai_description: 'aiDescription',
+    ai_keywords_json: 'aiKeywordsJson',
+    ai_subject_tags_json: 'aiSubjectTagsJson',
+    ai_action_tags_json: 'aiActionTagsJson',
+    ai_scene_tags_json: 'aiSceneTagsJson',
+    ai_ocr: 'aiOcr'
+  }
+}
 
 /**
  * 将下划线字段名转换为驼峰字段名（备用方法）
@@ -128,7 +128,7 @@ const FIELD_MAPPING = {
  * @returns {string} 驼峰格式的字段名
  */
 function snakeToCamel(snakeCase) {
-  return snakeCase.replace(/_([a-z])/g, (match, letter) => letter.toUpperCase());
+  return snakeCase.replace(/_([a-z])/g, (match, letter) => letter.toUpperCase())
 }
 
 /**
@@ -139,32 +139,32 @@ function snakeToCamel(snakeCase) {
  */
 function mapFields(tableName, data) {
   // 如果没有数据，直接返回
-  if (!data) return data;
+  if (!data) return data
 
   // 获取映射配置
-  const mapping = FIELD_MAPPING[tableName];
+  const mapping = FIELD_MAPPING[tableName]
   if (!mapping) {
     // 如果没有配置映射，使用通用转换
-    return mapGenericFields(data);
+    return mapGenericFields(data)
   }
 
   // 处理数组
   if (Array.isArray(data)) {
-    return data.map((item) => mapFields(tableName, item));
+    return data.map((item) => mapFields(tableName, item))
   }
 
   // 处理对象
-  if (typeof data === "object") {
-    const result = {};
+  if (typeof data === 'object') {
+    const result = {}
     for (const [key, value] of Object.entries(data)) {
       // 使用预定义的映射，如果没有则使用通用转换
-      const mappedKey = mapping[key] || snakeToCamel(key);
-      result[mappedKey] = value;
+      const mappedKey = mapping[key] || snakeToCamel(key)
+      result[mappedKey] = value
     }
-    return result;
+    return result
   }
 
-  return data;
+  return data
 }
 
 /**
@@ -174,22 +174,22 @@ function mapFields(tableName, data) {
  */
 function mapGenericFields(data) {
   if (Array.isArray(data)) {
-    return data.map((item) => mapGenericFields(item));
+    return data.map((item) => mapGenericFields(item))
   }
 
-  if (data && typeof data === "object") {
-    const result = {};
+  if (data && typeof data === 'object') {
+    const result = {}
     for (const [key, value] of Object.entries(data)) {
-      const camelKey = snakeToCamel(key);
-      result[camelKey] = value;
+      const camelKey = snakeToCamel(key)
+      result[camelKey] = value
     }
-    return result;
+    return result
   }
 
-  return data;
+  return data
 }
 
 module.exports = {
   mapFields,
-  FIELD_MAPPING,
-};
+  FIELD_MAPPING
+}

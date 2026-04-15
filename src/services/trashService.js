@@ -4,15 +4,15 @@
  * @Description: 回收站业务逻辑层 - 处理已删除图片的查询、恢复、彻底删除等操作
  */
 
-const CustomError = require("../errors/customError");
-const { ERROR_CODES } = require("../constants/messageCodes");
-const trashModel = require("../models/trashModel");
-const albumModel = require("../models/albumModel");
-const cleanupModel = require("../models/cleanupModel");
-const mediaModel = require("../models/mediaModel");
-const storageService = require("./storageService");
-const logger = require("../utils/logger");
-const { removeHashesFromUserSet } = require("../workers/userMediaHashset");
+const CustomError = require('../errors/customError')
+const { ERROR_CODES } = require('../constants/messageCodes')
+const trashModel = require('../models/trashModel')
+const albumModel = require('../models/albumModel')
+const cleanupModel = require('../models/cleanupModel')
+const mediaModel = require('../models/mediaModel')
+const storageService = require('./storageService')
+const logger = require('../utils/logger')
+const { removeHashesFromUserSet } = require('../workers/userMediaHashset')
 
 /**
  * 规范化ID列表
@@ -20,25 +20,25 @@ const { removeHashesFromUserSet } = require("../workers/userMediaHashset");
  * @returns {Array<number>} 规范化后的ID数组
  */
 function _normalizeIdList(ids) {
-  if (!Array.isArray(ids)) return [];
+  if (!Array.isArray(ids)) return []
   return ids
     .map((value) => {
-      const numeric = Number(value);
-      return Number.isFinite(numeric) ? numeric : null;
+      const numeric = Number(value)
+      return Number.isFinite(numeric) ? numeric : null
     })
-    .filter((value) => value !== null);
+    .filter((value) => value !== null)
 }
 
 async function _removeRedisHashesForDeletedMedias(userId, images) {
-  const hashes = (images || []).map((row) => row.file_hash).filter((h) => h != null && String(h).length > 0);
-  if (hashes.length === 0) return;
+  const hashes = (images || []).map((row) => row.file_hash).filter((h) => h != null && String(h).length > 0)
+  if (hashes.length === 0) return
   try {
-    await removeHashesFromUserSet(userId, hashes);
+    await removeHashesFromUserSet(userId, hashes)
   } catch (error) {
     logger.warn({
-      message: "彻底删除媒体后清理 Redis 去重集合失败",
-      details: { userId, hashCount: hashes.length, error: error.message },
-    });
+      message: '彻底删除媒体后清理 Redis 去重集合失败',
+      details: { userId, hashCount: hashes.length, error: error.message }
+    })
   }
 }
 
@@ -49,102 +49,102 @@ async function _removeRedisHashesForDeletedMedias(userId, images) {
  */
 async function _deleteMediasFiles(images) {
   if (!images || images.length === 0) {
-    return { total: 0, success: 0, failed: 0, details: [] };
+    return { total: 0, success: 0, failed: 0, details: [] }
   }
 
-  const adapter = storageService.storage;
-  const allStorageKeys = [];
-  const keyToImageMap = {};
+  const adapter = storageService.storage
+  const allStorageKeys = []
+  const keyToImageMap = {}
 
   images.forEach((image) => {
-    const keys = [];
-    if (image.thumbnail_storage_key) keys.push(image.thumbnail_storage_key);
-    if (image.high_res_storage_key) keys.push(image.high_res_storage_key);
-    if (image.original_storage_key) keys.push(image.original_storage_key);
+    const keys = []
+    if (image.thumbnail_storage_key) keys.push(image.thumbnail_storage_key)
+    if (image.high_res_storage_key) keys.push(image.high_res_storage_key)
+    if (image.original_storage_key) keys.push(image.original_storage_key)
 
     keys.forEach((key) => {
-      allStorageKeys.push(key);
+      allStorageKeys.push(key)
       if (!keyToImageMap[key]) {
-        keyToImageMap[key] = [];
+        keyToImageMap[key] = []
       }
-      keyToImageMap[key].push(image.id);
-    });
-  });
+      keyToImageMap[key].push(image.id)
+    })
+  })
 
   if (allStorageKeys.length === 0) {
-    return { total: 0, success: 0, failed: 0, details: [] };
+    return { total: 0, success: 0, failed: 0, details: [] }
   }
 
-  const allResults = [];
-  let successFiles = 0;
-  let failedFiles = 0;
-  const totalFiles = allStorageKeys.length;
+  const allResults = []
+  let successFiles = 0
+  let failedFiles = 0
+  const totalFiles = allStorageKeys.length
 
   try {
     if (adapter.deleteFiles) {
-      const deleteResults = await adapter.deleteFiles(allStorageKeys);
+      const deleteResults = await adapter.deleteFiles(allStorageKeys)
       deleteResults.forEach((result) => {
         allResults.push({
           imageIds: keyToImageMap[result.key] || [],
           key: result.key,
           success: result.success,
-          error: result.error,
-        });
+          error: result.error
+        })
         if (result.success) {
-          successFiles++;
+          successFiles++
         } else {
-          failedFiles++;
+          failedFiles++
         }
-      });
+      })
     } else {
       for (const key of allStorageKeys) {
         try {
-          await adapter.deleteFile(key);
+          await adapter.deleteFile(key)
           allResults.push({
             imageIds: keyToImageMap[key] || [],
             key,
-            success: true,
-          });
-          successFiles++;
+            success: true
+          })
+          successFiles++
         } catch (error) {
           logger.error({
-            message: "Failed to delete file",
-            details: { key, error: error.message },
-          });
+            message: 'Failed to delete file',
+            details: { key, error: error.message }
+          })
           allResults.push({
             imageIds: keyToImageMap[key] || [],
             key,
             success: false,
-            error: error.message,
-          });
-          failedFiles++;
+            error: error.message
+          })
+          failedFiles++
         }
       }
     }
   } catch (error) {
     logger.error({
-      message: "Failed to delete files batch",
-      details: { count: allStorageKeys.length, error: error.message },
-    });
-    allResults.length = 0;
+      message: 'Failed to delete files batch',
+      details: { count: allStorageKeys.length, error: error.message }
+    })
+    allResults.length = 0
     allStorageKeys.forEach((key) => {
       allResults.push({
         imageIds: keyToImageMap[key] || [],
         key,
         success: false,
-        error: error.message,
-      });
-    });
-    successFiles = 0;
-    failedFiles = totalFiles;
+        error: error.message
+      })
+    })
+    successFiles = 0
+    failedFiles = totalFiles
   }
 
   return {
     total: totalFiles,
     success: successFiles,
     failed: failedFiles,
-    details: allResults,
-  };
+    details: allResults
+  }
 }
 
 /**
@@ -162,65 +162,65 @@ async function getDeletedMedias({ userId, pageNo, pageSize, mediaType }) {
       userId,
       pageNo,
       pageSize,
-      mediaType,
-    });
+      mediaType
+    })
 
     // 生成图片URL并精简返回字段
     const list = await Promise.all(
       result.data.map(async (item) => {
         // 生成缩略图URL
-        let thumbnailUrl = null;
+        let thumbnailUrl = null
         if (item.thumbnailStorageKey) {
           try {
-            thumbnailUrl = await storageService.getFileUrl(item.thumbnailStorageKey);
+            thumbnailUrl = await storageService.getFileUrl(item.thumbnailStorageKey)
           } catch (error) {
             logger.warn({
-              message: "获取缩略图URL失败",
+              message: '获取缩略图URL失败',
               details: {
                 storageKey: item.thumbnailStorageKey,
-                error: error.message,
-              },
-            });
+                error: error.message
+              }
+            })
           }
         }
 
         // 生成高清图URL（图片有，视频无）
-        let highResUrl = null;
+        let highResUrl = null
         if (item.highResStorageKey) {
           try {
-            highResUrl = await storageService.getFileUrl(item.highResStorageKey);
+            highResUrl = await storageService.getFileUrl(item.highResStorageKey)
           } catch (error) {
             logger.warn({
-              message: "获取高清图URL失败",
+              message: '获取高清图URL失败',
               details: {
                 storageKey: item.highResStorageKey,
-                error: error.message,
-              },
-            });
+                error: error.message
+              }
+            })
           }
         }
 
         // 视频需要 originalUrl
-        let originalUrl = null;
-        const needsOriginalUrl = item.mediaType === "video" || !item.highResStorageKey;
+        let originalUrl = null
+        const needsOriginalUrl = item.mediaType === 'video' || !item.highResStorageKey
         if (needsOriginalUrl && item.originalStorageKey) {
           try {
-            originalUrl = await storageService.getFileUrl(item.originalStorageKey);
+            originalUrl = await storageService.getFileUrl(item.originalStorageKey)
           } catch (error) {
             logger.warn({
-              message: "获取原片URL失败",
+              message: '获取原片URL失败',
               details: {
                 storageKey: item.originalStorageKey,
-                error: error.message,
-              },
-            });
+                error: error.message
+              }
+            })
           }
         }
 
         // 返回精简后的字段（只包含前端需要的）
         return {
           mediaId: item.mediaId,
-          mediaType: item.mediaType || "image",
+          mediaType: item.mediaType || 'image',
           thumbnailUrl,
           highResUrl,
           originalUrl,
@@ -233,25 +233,25 @@ async function getDeletedMedias({ userId, pageNo, pageSize, mediaType }) {
           aspectRatio: item.aspectRatio,
           layoutType: item.layoutType,
           fileSizeBytes: item.fileSizeBytes,
-          durationSec: item.durationSec,
-        };
-      }),
-    );
+          durationSec: item.durationSec
+        }
+      })
+    )
 
     return {
       list,
-      total: result.total,
-    };
+      total: result.total
+    }
   } catch (error) {
     logger.error({
-      message: "Failed to get deleted images",
-      details: { userId, pageNo, pageSize, error: error.message },
-    });
+      message: 'Failed to get deleted images',
+      details: { userId, pageNo, pageSize, error: error.message }
+    })
     throw new CustomError({
       httpStatus: 500,
       messageCode: ERROR_CODES.INTERNAL_SERVER_ERROR,
-      messageType: "error",
-    });
+      messageType: 'error'
+    })
   }
 }
 
@@ -263,65 +263,65 @@ async function getDeletedMedias({ userId, pageNo, pageSize, mediaType }) {
  * @returns {Promise<Object>} 恢复结果
  */
 async function restoreMedias({ userId, imageIds }) {
-  const normalizedIds = _normalizeIdList(imageIds);
+  const normalizedIds = _normalizeIdList(imageIds)
 
   if (normalizedIds.length === 0) {
     throw new CustomError({
       httpStatus: 400,
       messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: "warning",
-    });
+      messageType: 'warning'
+    })
   }
 
   // 验证图片权限和状态
-  const images = trashModel.selectDeletedMediasByIds(userId, normalizedIds);
+  const images = trashModel.selectDeletedMediasByIds(userId, normalizedIds)
   if (images.length !== normalizedIds.length) {
     throw new CustomError({
       httpStatus: 404,
       messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
-      messageType: "warning",
-    });
+      messageType: 'warning'
+    })
   }
 
-  const unauthorized = images.some((image) => image.user_id !== userId);
+  const unauthorized = images.some((image) => image.user_id !== userId)
   if (unauthorized) {
     throw new CustomError({
       httpStatus: 403,
       messageCode: ERROR_CODES.UNAUTHORIZED,
-      messageType: "error",
-    });
+      messageType: 'error'
+    })
   }
 
   // 执行恢复操作
-  const result = trashModel.restoreMedias(normalizedIds);
+  const result = trashModel.restoreMedias(normalizedIds)
 
   // 恢复后重建 media_search 文档
   normalizedIds.forEach((id) => {
     try {
-      mediaModel.rebuildMediaSearchDoc(id);
+      mediaModel.rebuildMediaSearchDoc(id)
     } catch (error) {
       logger.warn({
-        message: "恢复回收站媒体后同步搜索索引失败",
-        details: { imageId: id, error: error.message },
-      });
+        message: '恢复回收站媒体后同步搜索索引失败',
+        details: { imageId: id, error: error.message }
+      })
     }
-  });
+  })
 
   // 更新包含这些图片的相册统计（图片数量、封面）
-  albumModel.updateAlbumsStatsForMedias(normalizedIds);
+  albumModel.updateAlbumsStatsForMedias(normalizedIds)
 
   logger.info({
-    message: "trash.restore.completed",
+    message: 'trash.restore.completed',
     details: {
       userId,
       imageIds: normalizedIds,
-      restoredCount: result.changes,
-    },
-  });
+      restoredCount: result.changes
+    }
+  })
 
   return {
-    restoredCount: result.changes,
-  };
+    restoredCount: result.changes
+  }
 }
 
 /**
@@ -329,12 +329,12 @@ async function restoreMedias({ userId, imageIds }) {
  * @returns {Promise<{ restored: boolean, mediaId?: number }>}
  */
 async function restoreTrashMediaByHashIfApplicable({ userId, imageHash }) {
-  const row = mediaModel.selectMediaRowByHashForUser({ userId, imageHash });
+  const row = mediaModel.selectMediaRowByHashForUser({ userId, imageHash })
   if (!row || row.deleted_at == null) {
-    return { restored: false };
+    return { restored: false }
   }
-  await restoreMedias({ userId, imageIds: [row.id] });
-  return { restored: true, mediaId: row.id };
+  await restoreMedias({ userId, imageIds: [row.id] })
+  return { restored: true, mediaId: row.id }
 }
 
 /**
@@ -345,74 +345,74 @@ async function restoreTrashMediaByHashIfApplicable({ userId, imageHash }) {
  * @returns {Promise<Object>} 删除结果
  */
 async function permanentlyDeleteMedias({ userId, imageIds }) {
-  const normalizedIds = _normalizeIdList(imageIds);
+  const normalizedIds = _normalizeIdList(imageIds)
 
   if (normalizedIds.length === 0) {
     throw new CustomError({
       httpStatus: 400,
       messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: "warning",
-    });
+      messageType: 'warning'
+    })
   }
 
   // 获取图片信息（用于删除文件）
-  const images = trashModel.selectMediasForFileDeletion(userId, normalizedIds);
+  const images = trashModel.selectMediasForFileDeletion(userId, normalizedIds)
   if (images.length !== normalizedIds.length) {
     throw new CustomError({
       httpStatus: 404,
       messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
-      messageType: "warning",
-    });
+      messageType: 'warning'
+    })
   }
 
-  const unauthorized = images.some((image) => image.user_id !== userId);
+  const unauthorized = images.some((image) => image.user_id !== userId)
   if (unauthorized) {
     throw new CustomError({
       httpStatus: 403,
       messageCode: ERROR_CODES.UNAUTHORIZED,
-      messageType: "error",
-    });
+      messageType: 'error'
+    })
   }
 
   // 在物理删除之前，获取包含这些图片的相册和分组ID
   // 注意：需要在 CASCADE 删除之前获取ID
-  const albumIds = albumModel.getAlbumsContainingMedias(normalizedIds);
-  const groupIds = cleanupModel.getGroupsContainingMedias(normalizedIds);
+  const albumIds = albumModel.getAlbumsContainingMedias(normalizedIds)
+  const groupIds = cleanupModel.getGroupsContainingMedias(normalizedIds)
 
   // 删除存储文件
-  const fileDeleteResult = await _deleteMediasFiles(images);
+  const fileDeleteResult = await _deleteMediasFiles(images)
 
   // 物理删除数据库记录（会触发 CASCADE 删除 album_media 和 similar_group_members）
-  const dbResult = trashModel.permanentlyDeleteMedias(normalizedIds);
+  const dbResult = trashModel.permanentlyDeleteMedias(normalizedIds)
 
   // 更新相册统计（图片数量、封面）
   // 注意：album_media 已被 CASCADE 删除，所以需要更新相册统计
   if (albumIds.length > 0) {
     albumIds.forEach((albumId) => {
-      albumModel.updateAlbumMediaCount(albumId);
-      albumModel.updateAlbumCover(albumId);
-    });
+      albumModel.updateAlbumMediaCount(albumId)
+      albumModel.updateAlbumCover(albumId)
+    })
   }
 
   // 更新 cleanup 分组统计（member_count、primary_image_id）
   // 注意：similar_group_members 已被 CASCADE 删除，所以需要更新分组统计
   if (groupIds.length > 0) {
-    const now = Date.now();
+    const now = Date.now()
     groupIds.forEach((groupId) => {
       try {
-        cleanupModel.refreshGroupStats(groupId, { updatedAt: now });
+        cleanupModel.refreshGroupStats(groupId, { updatedAt: now })
       } catch (error) {
         // 如果分组已被删除（refreshGroupStats 会删除空分组），忽略错误
         logger.warn({
-          message: "更新 cleanup 分组统计失败",
-          details: { groupId, error: error.message },
-        });
+          message: '更新 cleanup 分组统计失败',
+          details: { groupId, error: error.message }
+        })
       }
-    });
+    })
   }
 
   logger.info({
-    message: "trash.permanentlyDelete.completed",
+    message: 'trash.permanentlyDelete.completed',
     details: {
       userId,
       imageIds: normalizedIds,
@@ -420,19 +420,19 @@ async function permanentlyDeleteMedias({ userId, imageIds }) {
       fileDeleteResult: {
         total: fileDeleteResult.total,
         success: fileDeleteResult.success,
-        failed: fileDeleteResult.failed,
-      },
-    },
-  });
+        failed: fileDeleteResult.failed
+      }
+    }
+  })
 
   return {
     deletedCount: dbResult.changes,
     fileDeleteResult: {
       total: fileDeleteResult.total,
       success: fileDeleteResult.success,
-      failed: fileDeleteResult.failed,
-    },
-  };
+      failed: fileDeleteResult.failed
+    }
+  }
 }
 
 /**
@@ -443,37 +443,37 @@ async function permanentlyDeleteMedias({ userId, imageIds }) {
  */
 async function clearTrash({ userId }) {
   // 获取所有需要删除文件的图片信息
-  const images = trashModel.selectTrashMediasForFileDeletion(userId);
+  const images = trashModel.selectTrashMediasForFileDeletion(userId)
 
   // 删除存储文件
-  const fileDeleteResult = await _deleteMediasFiles(images);
+  const fileDeleteResult = await _deleteMediasFiles(images)
 
   // 物理删除数据库记录
-  const dbResult = trashModel.clearTrash(userId);
+  const dbResult = trashModel.clearTrash(userId)
 
-  await _removeRedisHashesForDeletedMedias(userId, images);
+  await _removeRedisHashesForDeletedMedias(userId, images)
 
   logger.info({
-    message: "trash.clear.completed",
+    message: 'trash.clear.completed',
     details: {
       userId,
       deletedCount: dbResult.changes,
       fileDeleteResult: {
         total: fileDeleteResult.total,
         success: fileDeleteResult.success,
-        failed: fileDeleteResult.failed,
-      },
-    },
-  });
+        failed: fileDeleteResult.failed
+      }
+    }
+  })
 
   return {
     deletedCount: dbResult.changes,
     fileDeleteResult: {
       total: fileDeleteResult.total,
       success: fileDeleteResult.success,
-      failed: fileDeleteResult.failed,
-    },
-  };
+      failed: fileDeleteResult.failed
+    }
+  }
 }
 
 module.exports = {
@@ -481,5 +481,5 @@ module.exports = {
   restoreMedias,
   restoreTrashMediaByHashIfApplicable,
   permanentlyDeleteMedias,
-  clearTrash,
-};
+  clearTrash
+}

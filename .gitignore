@@ -1,7 +1,7 @@
 node_modules/
 .env
 
-localStorage/
+storage-local/
 logs/
 test/
 # 数据库与备份（避免误提交，含 database copy 2.db 等变体）

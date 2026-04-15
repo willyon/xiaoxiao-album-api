@@ -4,30 +4,30 @@
  * @Description: 图片元数据分析服务 - 统一处理所有图片元数据提取、分析和处理逻辑
  */
 
-const logger = require("../utils/logger");
-const sharp = require("sharp");
-const exifr = require("exifr");
-const exiftool = require("exiftool-vendored").exiftool;
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
-const { randomUUID } = require("crypto");
-const { stringToTimestamp } = require("../utils/formatTime");
-const { getMimeTypeByMagicBytes } = require("../utils/fileUtils");
-const { getLocationFromCoordinates } = require("./geocodingService");
-const mediaModel = require("../models/mediaModel");
+const logger = require('../utils/logger')
+const sharp = require('sharp')
+const exifr = require('exifr')
+const exiftool = require('exiftool-vendored').exiftool
+const fs = require('fs')
+const path = require('path')
+const os = require('os')
+const { randomUUID } = require('crypto')
+const { stringToTimestamp } = require('../utils/formatTime')
+const { getMimeTypeByMagicBytes } = require('../utils/fileUtils')
+const { getLocationFromCoordinates } = require('./geocodingService')
+const mediaModel = require('../models/mediaModel')
 
 // EXIF Orientation 字符串 → 数值映射（exiftool 常见输出）
 const ORIENTATION_MAP = {
-  "Horizontal (normal)": 1,
-  "Mirror horizontal": 2,
-  "Rotate 180": 3,
-  "Mirror vertical": 4,
-  "Mirror horizontal and rotate 270 CW": 5,
-  "Rotate 90 CW": 6,
-  "Mirror horizontal and rotate 90 CW": 7,
-  "Rotate 270 CW": 8,
-};
+  'Horizontal (normal)': 1,
+  'Mirror horizontal': 2,
+  'Rotate 180': 3,
+  'Mirror vertical': 4,
+  'Mirror horizontal and rotate 270 CW': 5,
+  'Rotate 90 CW': 6,
+  'Mirror horizontal and rotate 90 CW': 7,
+  'Rotate 270 CW': 8
+}
 
 /**
  * 图片元数据分析服务
@@ -44,25 +44,25 @@ class MediaMetadataService {
   async analyzeMediaMetadata(fileData, options = {}) {
     try {
       // 1. 基础元数据分析（EXIF、尺寸、方向等）
-      const basicMetadata = await this.extractMediaMetadata(fileData);
+      const basicMetadata = await this.extractMediaMetadata(fileData)
 
       // 2. 方向和尺寸计算
-      const orientationInfo = this.calculateOrientationInfo(basicMetadata.width, basicMetadata.height, basicMetadata.orientation);
+      const orientationInfo = this.calculateOrientationInfo(basicMetadata.width, basicMetadata.height, basicMetadata.orientation)
 
       // 3. 地理位置分析（可选）
-      let locationInfo = {};
+      let locationInfo = {}
       if (options.includeLocation && basicMetadata.latitude && basicMetadata.longitude) {
-        locationInfo = await this.analyzeLocationInfo(basicMetadata.latitude, basicMetadata.longitude, options.userId);
+        locationInfo = await this.analyzeLocationInfo(basicMetadata.latitude, basicMetadata.longitude, options.userId)
       }
 
       return {
         ...basicMetadata,
         ...orientationInfo,
-        ...locationInfo,
-      };
+        ...locationInfo
+      }
     } catch (error) {
-      logger.error({ message: "图片元数据分析失败", details: { error: error.message } });
-      throw error;
+      logger.error({ message: '图片元数据分析失败', details: { error: error.message } })
+      throw error
     }
   }
 
@@ -81,19 +81,19 @@ class MediaMetadataService {
    */
   async extractMediaMetadata(input) {
     try {
-      let tempFilePath = null;
+      let tempFilePath = null
       // 统一处理输入，都转为 Buffer 给 exifr 使用
-      let buffer = null;
-      let filePath = null;
-      let std = null;
+      let buffer = null
+      let filePath = null
+      let std = null
 
       if (Buffer.isBuffer(input)) {
-        buffer = input;
-      } else if (typeof input === "string") {
-        buffer = fs.readFileSync(input);
-        filePath = input; // 保存文件路径给 exiftool 使用
+        buffer = input
+      } else if (typeof input === 'string') {
+        buffer = fs.readFileSync(input)
+        filePath = input // 保存文件路径给 exiftool 使用
       } else {
-        throw new Error("INPUT_NOT_SUPPORTED: input must be Buffer or file path string");
+        throw new Error('INPUT_NOT_SUPPORTED: input must be Buffer or file path string')
       }
 
       // 首先尝试使用 exifr 解析（性能更好）
@@ -104,73 +104,73 @@ class MediaMetadataService {
           gps: true, // GPS信息：纬度、经度、海拔、GPS时间戳等
           xmp: false, // Adobe扩展元数据：编辑历史、版权信息、关键词等（通常不需要）
           icc: false, // 颜色配置文件：颜色空间定义（文件较大，影响性能）
-          iptc: false, // 新闻摄影元数据：标题、描述、关键词、作者等（通常不需要）
-        });
+          iptc: false // 新闻摄影元数据：标题、描述、关键词、作者等（通常不需要）
+        })
         if (data && Object.keys(data).length > 0) {
-          logger.info({ message: "exifr 解析成功", details: { fieldsCount: Object.keys(data).length } });
-          std = this._standardizeMetadata(data);
+          logger.info({ message: 'exifr 解析成功', details: { fieldsCount: Object.keys(data).length } })
+          std = this._standardizeMetadata(data)
         }
       } catch (exifrError) {
         // exifr 解析失败，记录日志
-        logger.warn({ message: "exifr 解析失败，尝试 exiftool", details: { error: exifrError.message } });
+        logger.warn({ message: 'exifr 解析失败，尝试 exiftool', details: { error: exifrError.message } })
       }
 
       // exifr 失败时，使用 exiftool 作为备用方案（兼容性更好 例如可以读取到一些exifr库无法读取的部分heic格式的图片内容）
       try {
-        let exiftoolData = null;
+        let exiftoolData = null
         if (!std) {
           if (filePath) {
             // 有文件路径，直接使用
-            exiftoolData = await exiftool.read(filePath);
+            exiftoolData = await exiftool.read(filePath)
           } else {
             // 只有 Buffer，写入临时文件
-            const unique = `${Date.now()}_${randomUUID()}`;
-            tempFilePath = path.join(os.tmpdir(), `temp_image_${unique}.tmp`);
-            fs.writeFileSync(tempFilePath, buffer);
-            exiftoolData = await exiftool.read(tempFilePath);
+            const unique = `${Date.now()}_${randomUUID()}`
+            tempFilePath = path.join(os.tmpdir(), `temp_image_${unique}.tmp`)
+            fs.writeFileSync(tempFilePath, buffer)
+            exiftoolData = await exiftool.read(tempFilePath)
           }
-          logger.info({ message: "exiftool 解析成功", details: { fieldsCount: Object.keys(exiftoolData).length } });
-          std = this._standardizeMetadata(exiftoolData);
+          logger.info({ message: 'exiftool 解析成功', details: { fieldsCount: Object.keys(exiftoolData).length } })
+          std = this._standardizeMetadata(exiftoolData)
         }
       } finally {
         // 清理临时文件
         if (tempFilePath) {
           try {
-            fs.unlinkSync(tempFilePath);
+            fs.unlinkSync(tempFilePath)
           } catch (cleanupError) {
-            logger.warn({ message: "清理临时文件失败", details: { error: cleanupError.message } });
+            logger.warn({ message: '清理临时文件失败', details: { error: cleanupError.message } })
           }
         }
       }
 
       // ===== 统一后处理：仅当缺少关键字段时，才读取一次 Sharp 元数据进行兜底 sharp能获取到的有用的字段有限 只能兜底以下这几个 =====
       try {
-        if (!std) std = {};
+        if (!std) std = {}
 
-        const needMime = !std.mime;
-        const needWidth = !std.width;
-        const needHeight = !std.height;
+        const needMime = !std.mime
+        const needWidth = !std.width
+        const needHeight = !std.height
 
         if (needMime || needWidth || needHeight) {
-          const sharpMeta = await sharp(buffer).metadata();
+          const sharpMeta = await sharp(buffer).metadata()
 
-          if (needWidth && sharpMeta?.width) std.width = sharpMeta.width;
-          if (needHeight && sharpMeta?.height) std.height = sharpMeta.height;
+          if (needWidth && sharpMeta?.width) std.width = sharpMeta.width
+          if (needHeight && sharpMeta?.height) std.height = sharpMeta.height
 
           if (needMime) {
             // 优先使用魔数检测（buffer 已在内存，零开销）
             // Sharp 的 format 对 AVIF/HEIC/HEIF 不够精确（统一返回 heif）
-            std.mime = getMimeTypeByMagicBytes(buffer);
+            std.mime = getMimeTypeByMagicBytes(buffer)
           }
         }
 
-        return std;
-      } catch (postErr) {
-        return std || {};
+        return std
+      } catch {
+        return std || {}
       }
     } catch (error) {
-      logger.error({ message: "EXIF解析完全失败", details: { error: error.message } });
-      throw error;
+      logger.error({ message: 'EXIF解析完全失败', details: { error: error.message } })
+      throw error
     }
   }
 
@@ -185,20 +185,20 @@ class MediaMetadataService {
    * - 尺寸、方向、MIME: 两个库字段名相同，直接使用
    */
   _standardizeMetadata(rawData) {
-    const result = {};
+    const result = {}
 
     // 拍摄时间
     if (rawData.DateTimeOriginal) {
       // 统一转换为时间戳
       if (rawData.DateTimeOriginal instanceof Date) {
         // exifr 返回 Date 对象，转换为时间戳
-        result.captureTime = rawData.DateTimeOriginal.getTime();
+        result.captureTime = rawData.DateTimeOriginal.getTime()
       } else if (rawData.DateTimeOriginal.rawValue) {
         // exiftool 返回对象，使用 rawValue 字段
-        result.captureTime = stringToTimestamp(rawData.DateTimeOriginal.rawValue);
-      } else if (typeof rawData.DateTimeOriginal === "string") {
+        result.captureTime = stringToTimestamp(rawData.DateTimeOriginal.rawValue)
+      } else if (typeof rawData.DateTimeOriginal === 'string') {
         // 兜底策略：如果是字符串，尝试直接转换
-        result.captureTime = stringToTimestamp(rawData.DateTimeOriginal);
+        result.captureTime = stringToTimestamp(rawData.DateTimeOriginal)
       }
       // 其他情况（对象、数字、null等）直接忽略，不设置 captureTime
     }
@@ -206,39 +206,39 @@ class MediaMetadataService {
     // GPS信息
     if (rawData.latitude !== undefined) {
       // exifr 成功时，直接提供 latitude 字段（数字类型）
-      result.latitude = rawData.latitude;
+      result.latitude = rawData.latitude
     } else if (rawData.GPSLatitude !== undefined) {
       // exiftool 回退时，GPSLatitude 是数字类型
-      result.latitude = rawData.GPSLatitude;
+      result.latitude = rawData.GPSLatitude
     }
 
     if (rawData.longitude !== undefined) {
       // exifr 成功时，直接提供 longitude 字段（数字类型）
-      result.longitude = rawData.longitude;
+      result.longitude = rawData.longitude
     } else if (rawData.GPSLongitude !== undefined) {
       // exiftool 回退时，GPSLongitude 是数字类型
-      result.longitude = rawData.GPSLongitude;
+      result.longitude = rawData.GPSLongitude
     }
 
     if (rawData.GPSAltitude !== undefined) {
-      result.altitude = rawData.GPSAltitude;
+      result.altitude = rawData.GPSAltitude
     }
 
     // MIME类型
-    result.mime = rawData.MIMEType ?? rawData.ContentType ?? rawData.FileTypeMime;
+    result.mime = rawData.MIMEType ?? rawData.ContentType ?? rawData.FileTypeMime
 
     // 宽高统一提取（含兜底）
-    result.width = rawData.ExifImageWidth ?? rawData.PixelXDimension ?? rawData.ImageWidth ?? rawData.Width;
-    result.height = rawData.ExifImageHeight ?? rawData.PixelYDimension ?? rawData.ImageHeight ?? rawData.Height;
+    result.width = rawData.ExifImageWidth ?? rawData.PixelXDimension ?? rawData.ImageWidth ?? rawData.Width
+    result.height = rawData.ExifImageHeight ?? rawData.PixelYDimension ?? rawData.ImageHeight ?? rawData.Height
 
     // Orientation 兜底与规范化
-    const o = rawData.Orientation;
-    if (typeof o === "number") result.orientation = o;
-    else if (typeof o?.value === "number") result.orientation = o.value;
-    else if (typeof o === "string") {
-      result.orientation = ORIENTATION_MAP[o] || null;
+    const o = rawData.Orientation
+    if (typeof o === 'number') result.orientation = o
+    else if (typeof o?.value === 'number') result.orientation = o.value
+    else if (typeof o === 'string') {
+      result.orientation = ORIENTATION_MAP[o] || null
     }
-    return result;
+    return result
   }
 
   /**
@@ -262,41 +262,41 @@ class MediaMetadataService {
         layoutType: null,
         aspectRatio: null,
         displayWidth: width,
-        displayHeight: height,
-      };
+        displayHeight: height
+      }
     }
 
     // 根据EXIF orientation计算旋正后的显示尺寸
-    let displayWidth = width;
-    let displayHeight = height;
+    let displayWidth = width
+    let displayHeight = height
 
     // EXIF orientation 5,6,7,8 需要交换宽高（涉及90°/270°旋转）
     if ([5, 6, 7, 8].includes(rawOrientation)) {
-      displayWidth = height;
-      displayHeight = width;
+      displayWidth = height
+      displayHeight = width
     }
 
     // 计算宽高比（基于旋正后的尺寸）
-    const aspectRatio = displayWidth / displayHeight;
+    const aspectRatio = displayWidth / displayHeight
 
     // 根据宽高比确定方向分类
-    let orientationType;
+    let orientationType
     if (aspectRatio > 2.5) {
-      orientationType = "panorama"; // 全景图
+      orientationType = 'panorama' // 全景图
     } else if (aspectRatio > 1.2) {
-      orientationType = "landscape"; // 横图
+      orientationType = 'landscape' // 横图
     } else if (aspectRatio < 0.8) {
-      orientationType = "portrait"; // 竖图
+      orientationType = 'portrait' // 竖图
     } else {
-      orientationType = "square"; // 正方形
+      orientationType = 'square' // 正方形
     }
 
     return {
       layoutType: orientationType,
       aspectRatio: Math.round(aspectRatio * 1000) / 1000, // 保留3位小数
       displayWidth,
-      displayHeight,
-    };
+      displayHeight
+    }
   }
 
   /**
@@ -307,31 +307,31 @@ class MediaMetadataService {
    */
   async analyzeLocationInfo(latitude, longitude, userId) {
     try {
-      const { location, mapRegeoStatus } = await getLocationFromCoordinates(latitude, longitude, userId);
+      const { location, mapRegeoStatus } = await getLocationFromCoordinates(latitude, longitude, userId)
 
       return {
         gpsLocation: location?.formattedAddress || null,
         country: location?.country || null,
         province: location?.province || null,
         city: location?.city || null,
-        mapRegeoStatus: mapRegeoStatus ?? undefined,
-      };
+        mapRegeoStatus: mapRegeoStatus ?? undefined
+      }
     } catch (error) {
       logger.warn({
-        message: "地理位置分析失败",
+        message: '地理位置分析失败',
         details: {
           latitude,
           longitude,
-          error: error.message,
-        },
-      });
+          error: error.message
+        }
+      })
 
       return {
         gpsLocation: null,
         country: null,
         province: null,
-        city: null,
-      };
+        city: null
+      }
     }
   }
 
@@ -344,30 +344,30 @@ class MediaMetadataService {
    */
   async analyzeLocationInfoAsync(latitude, longitude, imageId, userId) {
     try {
-      const locationInfo = await this.analyzeLocationInfo(latitude, longitude, userId);
+      const locationInfo = await this.analyzeLocationInfo(latitude, longitude, userId)
 
       // 更新数据库
-      await this.updateLocationInfo(imageId, locationInfo);
+      await this.updateLocationInfo(imageId, locationInfo)
 
       logger.info({
-        message: "地理位置信息异步分析完成",
+        message: '地理位置信息异步分析完成',
         details: {
           imageId,
           latitude,
           longitude,
-          gpsLocation: locationInfo.gpsLocation,
-        },
-      });
+          gpsLocation: locationInfo.gpsLocation
+        }
+      })
     } catch (error) {
       logger.warn({
-        message: "地理位置信息异步分析失败",
+        message: '地理位置信息异步分析失败',
         details: {
           imageId,
           latitude,
           longitude,
-          error: error.message,
-        },
-      });
+          error: error.message
+        }
+      })
     }
   }
 
@@ -378,19 +378,19 @@ class MediaMetadataService {
    */
   async updateLocationInfo(imageId, locationInfo) {
     try {
-      await mediaModel.updateLocationInfo(imageId, locationInfo);
+      await mediaModel.updateLocationInfo(imageId, locationInfo)
     } catch (error) {
       logger.error({
-        message: "更新位置信息失败",
+        message: '更新位置信息失败',
         details: {
           imageId,
           locationInfo,
-          error: error.message,
-        },
-      });
-      throw error;
+          error: error.message
+        }
+      })
+      throw error
     }
   }
 }
 
-module.exports = new MediaMetadataService();
+module.exports = new MediaMetadataService()

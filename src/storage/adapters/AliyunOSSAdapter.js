@@ -4,16 +4,16 @@
  * @Description: 阿里云OSS存储适配器
  */
 
-const OSS = require("ali-oss");
-const fsExtra = require("fs-extra");
-const multer = require("multer");
-const BaseStorageAdapter = require("./BaseStorageAdapter");
-const logger = require("../../utils/logger");
-const { generatePolicySignature } = require("../../utils/ossSignature");
-const { buildOSSCallbackUrl } = require("../../utils/ossCallbackUtils");
-const { OSS_AUTH_TYPES } = require("../constants/StorageTypes");
-const Credential = require("@alicloud/credentials").default;
-const { getMimeTypeByMagicBytes } = require("../../utils/fileUtils");
+const OSS = require('ali-oss')
+const fsExtra = require('fs-extra')
+const multer = require('multer')
+const BaseStorageAdapter = require('./BaseStorageAdapter')
+const logger = require('../../utils/logger')
+const { generatePolicySignature } = require('../../utils/ossSignature')
+const { buildOSSCallbackUrl } = require('../../utils/ossCallbackUtils')
+const { OSS_AUTH_TYPES } = require('../constants/StorageTypes')
+const Credential = require('@alicloud/credentials').default
+const { getMimeTypeByMagicBytes } = require('../../utils/fileUtils')
 
 /**
  * 阿里云OSS存储适配器
@@ -125,12 +125,12 @@ const { getMimeTypeByMagicBytes } = require("../../utils/fileUtils");
  */
 class AliyunOSSAdapter extends BaseStorageAdapter {
   constructor(config = {}) {
-    super(config);
-    this.type = config.storageType;
-    this.config = config[config.ossAuthType];
+    super(config)
+    this.type = config.storageType
+    this.config = config[config.ossAuthType]
 
     // 异步初始化：构造后立即启动初始化流程
-    this._initPromise = this._initClient();
+    this._initPromise = this._initClient()
   }
 
   /**
@@ -139,21 +139,21 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    */
   async _initClient() {
     // 认证上下文
-    const authCtx = this._prepareAuthContext();
+    const authCtx = this._prepareAuthContext()
 
     // 基础配置
-    const baseConfig = this._buildBaseConfig();
+    const baseConfig = this._buildBaseConfig()
 
     // 实例化客户端（可能需要异步获取 STS）
-    this.client = await this._createClientByAuthType(baseConfig, authCtx);
+    this.client = await this._createClientByAuthType(baseConfig, authCtx)
 
     // 若配置了自定义域名，则在初始化阶段就创建签名用的客户端
-    await this._maybeInitSigner(authCtx);
+    await this._maybeInitSigner(authCtx)
 
     logger.info({
-      message: "阿里云OSS已连接(异步初始化)",
-      details: { region: this.region, bucket: this.bucket, endpoint: baseConfig.endpoint || "(public by region)", authType: authCtx.mode },
-    });
+      message: '阿里云OSS已连接(异步初始化)',
+      details: { region: this.region, bucket: this.bucket, endpoint: baseConfig.endpoint || '(public by region)', authType: authCtx.mode }
+    })
   }
 
   /**
@@ -163,22 +163,22 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    */
   async _maybeInitSigner(authCtx) {
     // 如果没有endpoint 则直接返回 代表了没有自定义域名 以及client实例没有走内网 走了默认的公网
-    if (!this.config.customDomain && !this.config.preferInternal) return;
-    let configObj = {};
+    if (!this.config.customDomain && !this.config.preferInternal) return
+    let configObj = {}
     if (!!this.config.customDomain) {
       // 自定义域名，必须 cname:true
-      configObj.endpoint = this.config.customDomain.startsWith("http")
-        ? this.config.customDomain.replace(/\/+$/, "")
-        : `https://${this.config.customDomain}`;
-      configObj.cname = true;
+      configObj.endpoint = this.config.customDomain.startsWith('http')
+        ? this.config.customDomain.replace(/\/+$/, '')
+        : `https://${this.config.customDomain}`
+      configObj.cname = true
     }
 
-    const baseConfig = { region: this.region, bucket: this.bucket, ...configObj };
+    const baseConfig = { region: this.region, bucket: this.bucket, ...configObj }
 
     if (authCtx.mode === OSS_AUTH_TYPES.ROLE) {
       // 复用主 client 的 RAM 角色凭证提供器
-      const credClient = this.credential; // 已在 _createClientByAuthType 中赋值
-      const s = await credClient.getCredential();
+      const credClient = this.credential // 已在 _createClientByAuthType 中赋值
+      const s = await credClient.getCredential()
 
       this.signer = new OSS({
         ...baseConfig,
@@ -186,31 +186,31 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
         accessKeySecret: s.accessKeySecret,
         stsToken: s.securityToken,
         refreshSTSToken: async () => {
-          const r = await credClient.getCredential();
+          const r = await credClient.getCredential()
           return {
             accessKeyId: r.accessKeyId,
             accessKeySecret: r.accessKeySecret,
-            stsToken: r.securityToken,
-          };
+            stsToken: r.securityToken
+          }
         },
-        refreshSTSTokenInterval: 10 * 60 * 1000, // 可按需调整
-      });
-      return;
+        refreshSTSTokenInterval: 10 * 60 * 1000 // 可按需调整
+      })
+      return
     } else if (authCtx.mode === OSS_AUTH_TYPES.ACCESS_KEY) {
       this.signer = new OSS({
         ...baseConfig,
         accessKeyId: authCtx.accessKeyId,
-        accessKeySecret: authCtx.accessKeySecret,
-      });
-      return;
+        accessKeySecret: authCtx.accessKeySecret
+      })
+      return
     } else if (authCtx.mode === OSS_AUTH_TYPES.STS) {
       this.signer = new OSS({
         ...baseConfig,
         accessKeyId: authCtx.accessKeyId,
         accessKeySecret: authCtx.accessKeySecret,
-        stsToken: authCtx.stsToken,
-      });
-      return;
+        stsToken: authCtx.stsToken
+      })
+      return
     }
   }
 
@@ -221,14 +221,14 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
   async _ensureClient() {
     if (!this.client) {
       // 没有正在进行的初始化就开一个
-      if (!this._initPromise) this._initPromise = this._initClient();
+      if (!this._initPromise) this._initPromise = this._initClient()
 
       try {
-        await this._initPromise;
+        await this._initPromise
       } catch (e) {
         // 让后续有机会重新触发初始化
-        this._initPromise = null;
-        throw e;
+        this._initPromise = null
+        throw e
       }
     }
   }
@@ -241,20 +241,20 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     const baseConfig = {
       region: this.region,
       bucket: this.bucket,
-      timeout: this.config.timeout || 300000,
-    };
+      timeout: this.config.timeout || 300000
+    }
 
     // baseUrl 仅用于拼公共 URL 的显示域名；签名 URL 由 signer 决定 Host
-    this.baseUrl = this.config.customDomain || this._getBucketPublicHost();
+    this.baseUrl = this.config.customDomain || this._getBucketPublicHost()
 
     // 配置 preferInternal=true 时，按约定拼装内网域名（要求同地域）
     if (this.config.preferInternal) {
-      baseConfig.internal = true;
-      return baseConfig;
+      baseConfig.internal = true
+      return baseConfig
     }
 
     // 默认：不设置 endpoint，默认走公网
-    return baseConfig;
+    return baseConfig
   }
 
   /**
@@ -262,33 +262,33 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @private
    */
   _prepareAuthContext() {
-    const required = ["region", "bucket"];
-    const missing = required.filter((k) => !this.config[k]);
-    if (missing.length) throw new Error(`AliyunOSS config missing required fields: ${missing.join(", ")}`);
+    const required = ['region', 'bucket']
+    const missing = required.filter((k) => !this.config[k])
+    if (missing.length) throw new Error(`AliyunOSS config missing required fields: ${missing.join(', ')}`)
     // 设置 bucket 和 region 属性
-    this.bucket = this.config.bucket;
-    this.region = this.config.region;
+    this.bucket = this.config.bucket
+    this.region = this.config.region
 
-    const mode = (this?.config?.authType || OSS_AUTH_TYPES.ROLE).toLowerCase();
+    const mode = (this?.config?.authType || OSS_AUTH_TYPES.ROLE).toLowerCase()
 
     if (mode === OSS_AUTH_TYPES.ACCESS_KEY) {
-      const need = ["accessKeyId", "accessKeySecret"];
-      const lack = need.filter((k) => !this.config[k]);
-      if (lack.length) throw new Error(`AccessKey authentication missing required fields: ${lack.join(", ")}`);
-      this.accessKeyId = this.config.accessKeyId;
-      this.accessKeySecret = this.config.accessKeySecret;
-      return { mode, accessKeyId: this.accessKeyId, accessKeySecret: this.accessKeySecret };
+      const need = ['accessKeyId', 'accessKeySecret']
+      const lack = need.filter((k) => !this.config[k])
+      if (lack.length) throw new Error(`AccessKey authentication missing required fields: ${lack.join(', ')}`)
+      this.accessKeyId = this.config.accessKeyId
+      this.accessKeySecret = this.config.accessKeySecret
+      return { mode, accessKeyId: this.accessKeyId, accessKeySecret: this.accessKeySecret }
     } else if (mode === OSS_AUTH_TYPES.STS) {
-      const need = ["accessKeyId", "accessKeySecret", "stsToken"];
-      const lack = need.filter((k) => !this.config[k]);
-      if (lack.length) throw new Error(`STS authentication missing required fields: ${lack.join(", ")}`);
-      this.accessKeyId = this.config.accessKeyId;
-      this.accessKeySecret = this.config.accessKeySecret;
-      this.stsToken = this.config.stsToken;
-      return { mode, accessKeyId: this.accessKeyId, accessKeySecret: this.accessKeySecret, stsToken: this.stsToken };
+      const need = ['accessKeyId', 'accessKeySecret', 'stsToken']
+      const lack = need.filter((k) => !this.config[k])
+      if (lack.length) throw new Error(`STS authentication missing required fields: ${lack.join(', ')}`)
+      this.accessKeyId = this.config.accessKeyId
+      this.accessKeySecret = this.config.accessKeySecret
+      this.stsToken = this.config.stsToken
+      return { mode, accessKeyId: this.accessKeyId, accessKeySecret: this.accessKeySecret, stsToken: this.stsToken }
     }
 
-    return { mode: OSS_AUTH_TYPES.ROLE };
+    return { mode: OSS_AUTH_TYPES.ROLE }
   }
 
   /**
@@ -296,7 +296,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @private
    */
   async _createClientByAuthType(baseConfig, authCtx) {
-    const mode = authCtx.mode;
+    const mode = authCtx.mode
 
     if (mode === OSS_AUTH_TYPES.ROLE) {
       // 使用 ECS RAM 角色：先取 STS，再把三元组交给 ali-oss，并配置自动续期
@@ -306,10 +306,10 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
           type: this.config.authType, // 应为 'ecs_ram_role'
           roleName: this.config.ramRoleName, // 可选
           disableIMDSv1: true,
-          timeout: 3000,
-        });
+          timeout: 3000
+        })
 
-      const s = await credClient.getCredential();
+      const s = await credClient.getCredential()
 
       const client = new OSS({
         ...baseConfig,
@@ -317,39 +317,39 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
         accessKeySecret: s.accessKeySecret,
         stsToken: s.securityToken,
         refreshSTSToken: async () => {
-          const r = await credClient.getCredential();
+          const r = await credClient.getCredential()
           return {
             accessKeyId: r.accessKeyId,
             accessKeySecret: r.accessKeySecret,
-            stsToken: r.securityToken,
-          };
+            stsToken: r.securityToken
+          }
         },
         // 每 10 分钟刷新一次（可按需调整）
-        refreshSTSTokenInterval: 10 * 60 * 1000,
-      });
+        refreshSTSTokenInterval: 10 * 60 * 1000
+      })
 
-      this.credential = credClient;
-      return client;
+      this.credential = credClient
+      return client
     } else if (mode === OSS_AUTH_TYPES.ACCESS_KEY) {
       // 长期 AK 明文传入（开发/测试）
       return new OSS({
         ...baseConfig,
         accessKeyId: authCtx.accessKeyId,
-        accessKeySecret: authCtx.accessKeySecret,
-      });
+        accessKeySecret: authCtx.accessKeySecret
+      })
     } else if (mode === OSS_AUTH_TYPES.STS) {
       // 显式 STS：调用方提供的临时凭证
       return new OSS({
         ...baseConfig,
         accessKeyId: authCtx.accessKeyId,
         accessKeySecret: authCtx.accessKeySecret,
-        stsToken: authCtx.stsToken,
-      });
+        stsToken: authCtx.stsToken
+      })
     }
 
     throw new Error(
-      `Unsupported authentication type: ${mode}. Supported types: ${OSS_AUTH_TYPES.ROLE}, ${OSS_AUTH_TYPES.ACCESS_KEY}, ${OSS_AUTH_TYPES.STS}`,
-    );
+      `Unsupported authentication type: ${mode}. Supported types: ${OSS_AUTH_TYPES.ROLE}, ${OSS_AUTH_TYPES.ACCESS_KEY}, ${OSS_AUTH_TYPES.STS}`
+    )
   }
 
   /**
@@ -362,13 +362,13 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
   generateStorageKey(type, fileName, extension) {
     // 如果没有传extension，直接使用fileName本身
     if (!extension) {
-      return `${type}/${fileName}`;
+      return `${type}/${fileName}`
     }
 
     // 传了extension，保持路径结构，只替换文件扩展名
-    const lastDotIndex = fileName.lastIndexOf(".");
-    const fileNameWithoutExt = lastDotIndex !== -1 ? fileName.substring(0, lastDotIndex) : fileName;
-    return `${type}/${fileNameWithoutExt}.${extension}`;
+    const lastDotIndex = fileName.lastIndexOf('.')
+    const fileNameWithoutExt = lastDotIndex !== -1 ? fileName.substring(0, lastDotIndex) : fileName
+    return `${type}/${fileNameWithoutExt}.${extension}`
   }
 
   /**
@@ -377,7 +377,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @private
    */
   _getBucketPublicHost() {
-    return `https://${this.bucket}.${this.region}.aliyuncs.com`;
+    return `https://${this.bucket}.${this.region}.aliyuncs.com`
   }
 
   /**
@@ -395,10 +395,10 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
         message: error.message,
         status: error.status,
         requestId: error.requestId,
-        ...context,
-      },
-    });
-    throw error;
+        ...context
+      }
+    })
+    throw error
   }
 
   // ========== 基础文件操作实现 ==========
@@ -411,51 +411,51 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<string>} 返回文件访问URL
    */
   async storeFile(fileData, ossKey, options = {}) {
-    await this._ensureClient();
+    await this._ensureClient()
     try {
       // 智能检测 Content-Type（优先魔数，降级扩展名）
-      let contentType = options.contentType;
+      let contentType = options.contentType
       if (!contentType) {
         // Buffer → 魔数检测（零开销，准确）
         // String → 扩展名检测（兼容本地文件路径）
-        contentType = getMimeTypeByMagicBytes(Buffer.isBuffer(fileData) ? fileData : ossKey);
+        contentType = getMimeTypeByMagicBytes(Buffer.isBuffer(fileData) ? fileData : ossKey)
       }
 
       const uploadOptions = {
         // 设置Content-Type
         headers: {
-          "Content-Type": contentType,
+          'Content-Type': contentType,
           // 设置缓存控制
-          "Cache-Control": options.cacheControl || "public, max-age=31536000", // 默认公共缓存(允许任何浏览器、cdn、代理服务器存储这个文件) 1年有效期
-          ...options.headers,
-        },
-      };
+          'Cache-Control': options.cacheControl || 'public, max-age=31536000', // 默认公共缓存(允许任何浏览器、cdn、代理服务器存储这个文件) 1年有效期
+          ...options.headers
+        }
+      }
 
       // 如果有元数据，添加到headers中
       if (options.metadata) {
         Object.keys(options.metadata).forEach((metaKey) => {
-          uploadOptions.headers[`x-oss-meta-${metaKey}`] = options.metadata[metaKey];
-        });
+          uploadOptions.headers[`x-oss-meta-${metaKey}`] = options.metadata[metaKey]
+        })
       }
 
       if (Buffer.isBuffer(fileData)) {
         // 上传Buffer数据
-        await this.client.put(ossKey, fileData, uploadOptions);
-      } else if (typeof fileData === "string") {
+        await this.client.put(ossKey, fileData, uploadOptions)
+      } else if (typeof fileData === 'string') {
         // 上传本地文件
-        const exists = await fsExtra.pathExists(fileData);
+        const exists = await fsExtra.pathExists(fileData)
         if (!exists) {
-          throw new Error(`Source file not found: ${fileData}`);
+          throw new Error(`Source file not found: ${fileData}`)
         }
-        await this.client.put(ossKey, fileData, uploadOptions);
+        await this.client.put(ossKey, fileData, uploadOptions)
       } else {
-        throw new Error("fileData must be Buffer or file path string");
+        throw new Error('fileData must be Buffer or file path string')
       }
 
       // 上传成功，返回存储键（不生成URL）
-      return ossKey;
+      return ossKey
     } catch (error) {
-      this._handleOSSError(error, "upload", { ossKey });
+      this._handleOSSError(error, 'upload', { ossKey })
     }
   }
 
@@ -465,15 +465,15 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<void>}
    */
   async deleteFile(ossKey) {
-    await this._ensureClient();
+    await this._ensureClient()
     try {
-      await this.client.delete(ossKey);
+      await this.client.delete(ossKey)
     } catch (error) {
       // 如果文件不存在，OSS会返回204状态码，不算错误
       if (error.status === 404) {
-        return; // 文件不存在，认为删除成功
+        return // 文件不存在，认为删除成功
       }
-      this._handleOSSError(error, "delete", { ossKey });
+      this._handleOSSError(error, 'delete', { ossKey })
     }
   }
 
@@ -484,22 +484,22 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<boolean>} 移动成功返回true
    */
   async moveFile(sourceKey, targetKey) {
-    await this._ensureClient();
+    await this._ensureClient()
     try {
       // OSS没有原生的move操作，需要通过copy + delete实现
-      await this.client.copy(targetKey, sourceKey);
+      await this.client.copy(targetKey, sourceKey)
       logger.info({
         message: `OSS文件复制成功: ${sourceKey} -> ${targetKey}`,
-        details: { sourceKey, targetKey },
-      });
+        details: { sourceKey, targetKey }
+      })
 
-      await this.client.delete(sourceKey);
-      logger.info({ message: `OSS源文件删除成功: ${sourceKey}` });
+      await this.client.delete(sourceKey)
+      logger.info({ message: `OSS源文件删除成功: ${sourceKey}` })
 
-      return true;
+      return true
     } catch (error) {
-      this._handleOSSError(error, "moveFile", { sourceKey, targetKey });
-      return false;
+      this._handleOSSError(error, 'moveFile', { sourceKey, targetKey })
+      return false
     }
   }
 
@@ -509,15 +509,15 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<boolean>}
    */
   async fileExists(ossKey) {
-    await this._ensureClient();
+    await this._ensureClient()
     try {
-      await this.client.head(ossKey);
-      return true;
+      await this.client.head(ossKey)
+      return true
     } catch (error) {
       if (error.status === 404) {
-        return false;
+        return false
       }
-      this._handleOSSError(error, "exists check", { ossKey });
+      this._handleOSSError(error, 'exists check', { ossKey })
     }
   }
 
@@ -528,17 +528,17 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<string>} 返回文件访问URL
    */
   async storeProcessedImage(pipeline, ossKey) {
-    await this._ensureClient();
+    await this._ensureClient()
     try {
       // OSS必须先转换为Buffer再上传
-      const buffer = await pipeline.toBuffer();
-      return await this.storeFile(buffer, ossKey);
+      const buffer = await pipeline.toBuffer()
+      return await this.storeFile(buffer, ossKey)
     } catch (error) {
       logger.error(`OSS存储处理后图片失败: ${error.message}`, {
         ossKey,
-        error: error.stack,
-      });
-      throw error;
+        error: error.stack
+      })
+      throw error
     }
   }
 
@@ -548,7 +548,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<Buffer>} 文件Buffer数据
    */
   async getFileData(ossKey) {
-    return await this.getFileBuffer(ossKey);
+    return await this.getFileBuffer(ossKey)
   }
 
   /**
@@ -556,9 +556,9 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @param {Function} generateFilename - 文件名生成函数（OSS模式下会在中间件中使用）
    * @returns {Object} Multer memoryStorage配置
    */
-  getMulterStorage(generateFilename) {
+  getMulterStorage(_generateFilename) {
     // OSS模式使用内存存储，文件名会在upload中间件中生成
-    return multer.memoryStorage();
+    return multer.memoryStorage()
   }
 
   /**
@@ -567,24 +567,24 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<number>} 文件大小（字节）
    */
   async getFileSize(input) {
-    await this._ensureClient();
+    await this._ensureClient()
     if (Buffer.isBuffer(input)) {
-      return input.length;
-    } else if (typeof input === "string") {
+      return input.length
+    } else if (typeof input === 'string') {
       try {
         // OSS键名，获取对象信息
-        const result = await this.client.head(input);
-        return parseInt(result.res.headers["content-length"]) || 0;
+        const result = await this.client.head(input)
+        return parseInt(result.res.headers['content-length']) || 0
       } catch (error) {
         logger.error(`获取OSS文件大小失败: ${error.message}`, {
           ossKey: input,
-          error: error.stack,
-        });
+          error: error.stack
+        })
         // 返回默认大小
-        return 1 * 1024 * 1024; // 1MB
+        return 1 * 1024 * 1024 // 1MB
       }
     }
-    return 1 * 1024 * 1024; // 默认1MB
+    return 1 * 1024 * 1024 // 默认1MB
   }
 
   /**
@@ -593,12 +593,12 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<Buffer>} 文件内容的Buffer
    */
   async getFileBuffer(ossKey) {
-    await this._ensureClient();
+    await this._ensureClient()
     try {
-      const result = await this.client.get(ossKey);
-      return result.content;
+      const result = await this.client.get(ossKey)
+      return result.content
     } catch (error) {
-      this._handleOSSError(error, "get file buffer", { ossKey });
+      this._handleOSSError(error, 'get file buffer', { ossKey })
     }
   }
 
@@ -613,33 +613,33 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<string|null>} 文件访问URL，如果ossKey为空则返回null
    */
   async getFileUrl(ossKey, options = {}) {
-    await this._ensureClient();
+    await this._ensureClient()
     // 如果ossKey为空，直接返回null
-    if (!ossKey || typeof ossKey !== "string" || ossKey.trim() === "") {
+    if (!ossKey || typeof ossKey !== 'string' || ossKey.trim() === '') {
       logger.info({
-        message: "拼接图片URL时发现ossKey为空，跳过URL生成",
+        message: '拼接图片URL时发现ossKey为空，跳过URL生成',
         details: {
           ossKey,
-          step: "getFileUrl",
-          action: "skip_url_generation",
-        },
-      });
-      return null;
+          step: 'getFileUrl',
+          action: 'skip_url_generation'
+        }
+      })
+      return null
     }
 
-    const { expiresIn = 3600 } = options;
+    const { expiresIn = 3600 } = options
 
     // 对于私有存储桶，使用签名URL
     try {
-      const signedUrl = await this._getSignedUrl(ossKey, expiresIn);
-      return signedUrl;
+      const signedUrl = await this._getSignedUrl(ossKey, expiresIn)
+      return signedUrl
     } catch (error) {
       // 如果签名URL生成失败，回退到公共URL
       logger.warn({
-        message: "Failed to generate signed URL, falling back to public URL",
-        details: { ossKey, error: error.message },
-      });
-      return `${this.baseUrl}/${ossKey}`;
+        message: 'Failed to generate signed URL, falling back to public URL',
+        details: { ossKey, error: error.message }
+      })
+      return `${this.baseUrl}/${ossKey}`
     }
   }
 
@@ -650,12 +650,12 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<string>} 签名URL
    */
   async _getSignedUrl(ossKey, expiresIn = 3600) {
-    await this._ensureClient();
+    await this._ensureClient()
     try {
-      const signer = this.signer || this.client; // 有自定义域名则优先用 signer
-      return signer.signatureUrl(ossKey, { expires: expiresIn, method: "GET" });
+      const signer = this.signer || this.client // 有自定义域名则优先用 signer
+      return signer.signatureUrl(ossKey, { expires: expiresIn, method: 'GET' })
     } catch (error) {
-      this._handleOSSError(error, "generate signed URL", { ossKey, expiresIn });
+      this._handleOSSError(error, 'generate signed URL', { ossKey, expiresIn })
     }
   }
 
@@ -681,96 +681,96 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
   async getUploadSignature({ storageKey, contentType, contentLength, userId, sessionId }) {
     try {
       // 生成回调URL
-      const callbackUrl = buildOSSCallbackUrl();
+      const callbackUrl = buildOSSCallbackUrl()
 
       // 生成回调参数 - JSON格式
       const callbackBody = JSON.stringify({
         userId,
         storageKey,
         fileSize: contentLength,
-        imageHash: storageKey.split("/").pop().split(".")[0],
-        sessionId: sessionId, // 包含会话ID
-      });
+        imageHash: storageKey.split('/').pop().split('.')[0],
+        sessionId: sessionId // 包含会话ID
+      })
 
       // 记录回调参数详情
       logger.info({
-        message: "OSS回调参数详情",
+        message: 'OSS回调参数详情',
         details: {
           callbackUrl,
-          callbackBody,
-        },
-      });
+          callbackBody
+        }
+      })
 
       // 生成上传策略
       const policy = {
         expiration: new Date(Date.now() + 3600 * 1000).toISOString(), // 1小时后过期
         conditions: [
-          ["content-length-range", 0, contentLength],
-          ["eq", "$bucket", this.bucket],
-          ["eq", "$key", storageKey],
-          ["eq", "$Content-Type", contentType],
-        ],
-      };
+          ['content-length-range', 0, contentLength],
+          ['eq', '$bucket', this.bucket],
+          ['eq', '$key', storageKey],
+          ['eq', '$Content-Type', contentType]
+        ]
+      }
 
-      const policyString = Buffer.from(JSON.stringify(policy)).toString("base64");
+      const policyString = Buffer.from(JSON.stringify(policy)).toString('base64')
 
-      let signature, accessKeyId, securityToken;
+      let signature, accessKeyId, securityToken
 
-      const mode = (this.config.authType || OSS_AUTH_TYPES.ROLE).toLowerCase();
+      const mode = (this.config.authType || OSS_AUTH_TYPES.ROLE).toLowerCase()
       if (mode === OSS_AUTH_TYPES.ROLE) {
-        const sts = await this.credential.getCredential();
-        accessKeyId = sts.accessKeyId;
-        securityToken = sts.securityToken;
-        const accessKeySecret = sts.accessKeySecret;
-        signature = generatePolicySignature(policyString, accessKeySecret);
+        const sts = await this.credential.getCredential()
+        accessKeyId = sts.accessKeyId
+        securityToken = sts.securityToken
+        const accessKeySecret = sts.accessKeySecret
+        signature = generatePolicySignature(policyString, accessKeySecret)
 
         logger.info({
-          message: "使用 ECS 角色 STS 临时凭证生成签名",
+          message: '使用 ECS 角色 STS 临时凭证生成签名',
           details: {
-            accessKeyId: accessKeyId ? accessKeyId.substring(0, 8) + "..." : undefined,
-            expiresAt: sts.expiration,
-          },
-        });
+            accessKeyId: accessKeyId ? accessKeyId.substring(0, 8) + '...' : undefined,
+            expiresAt: sts.expiration
+          }
+        })
       } else if (mode === OSS_AUTH_TYPES.STS) {
         // 显式 STS：使用传入的临时凭证
-        accessKeyId = this.accessKeyId;
-        securityToken = this.config.stsToken;
-        signature = generatePolicySignature(policyString, this.accessKeySecret);
+        accessKeyId = this.accessKeyId
+        securityToken = this.config.stsToken
+        signature = generatePolicySignature(policyString, this.accessKeySecret)
       } else {
         // AccessKey：长期密钥（无 securityToken）
-        accessKeyId = this.accessKeyId;
-        signature = generatePolicySignature(policyString, this.accessKeySecret);
+        accessKeyId = this.accessKeyId
+        signature = generatePolicySignature(policyString, this.accessKeySecret)
       }
 
       // 构建OSS回调参数
       const callbackParam = {
         callbackUrl: callbackUrl,
         callbackBody: callbackBody,
-        callbackBodyType: "application/json",
-      };
+        callbackBodyType: 'application/json'
+      }
 
-      const callbackBase64 = Buffer.from(JSON.stringify(callbackParam)).toString("base64");
+      const callbackBase64 = Buffer.from(JSON.stringify(callbackParam)).toString('base64')
 
       const resp = {
         storageKey,
         policy: policyString,
         signature,
         accessKeyId, // 固定字段名
-        successActionStatus: "200",
+        successActionStatus: '200',
         contentType, // 在 policy 里做了 eq 限制，表单必须带
         callback: callbackBase64,
-        host: this._getBucketPublicHost(), // 直传建议走官方桶域名
-      };
-      if (securityToken) {
-        resp.securityToken = securityToken;
+        host: this._getBucketPublicHost() // 直传建议走官方桶域名
       }
-      return resp;
+      if (securityToken) {
+        resp.securityToken = securityToken
+      }
+      return resp
     } catch (error) {
       logger.error({
-        message: "Failed to generate upload signature",
-        details: { storageKey, contentType, contentLength, userId, error: error.message },
-      });
-      throw error;
+        message: 'Failed to generate upload signature',
+        details: { storageKey, contentType, contentLength, userId, error: error.message }
+      })
+      throw error
     }
   }
 
@@ -782,20 +782,20 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<Array<string>>} 文件键名数组
    */
   async listFiles(prefix) {
-    await this._ensureClient();
+    await this._ensureClient()
     try {
       const result = await this.client.list({
         prefix: prefix,
-        "max-keys": 1000, // 限制返回数量，可根据需要调整
-      });
+        'max-keys': 1000 // 限制返回数量，可根据需要调整
+      })
 
       if (!result.objects) {
-        return [];
+        return []
       }
 
-      return result.objects.map((obj) => obj.name);
+      return result.objects.map((obj) => obj.name)
     } catch (error) {
-      this._handleOSSError(error, "list files", { prefix });
+      this._handleOSSError(error, 'list files', { prefix })
     }
   }
 
@@ -807,42 +807,42 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<Array<{success: boolean, key: string, url?: string, error?: string}>>}
    */
   async storeFiles(files) {
-    await this._ensureClient();
-    const results = [];
+    await this._ensureClient()
+    const results = []
 
     // OSS支持并发上传，但要控制并发数避免过载
-    const concurrency = this.config.uploadConcurrency || 5;
-    const chunks = [];
+    const concurrency = this.config.uploadConcurrency || 5
+    const chunks = []
 
     for (let i = 0; i < files.length; i += concurrency) {
-      chunks.push(files.slice(i, i + concurrency));
+      chunks.push(files.slice(i, i + concurrency))
     }
 
     for (const chunk of chunks) {
       const promises = chunk.map(async (file) => {
         try {
-          const url = await this.storeFile(file.fileData, file.key, file.options || {});
-          return { success: true, key: file.key, url };
+          const url = await this.storeFile(file.fileData, file.key, file.options || {})
+          return { success: true, key: file.key, url }
         } catch (error) {
-          return { success: false, key: file.key, error: error.message };
+          return { success: false, key: file.key, error: error.message }
         }
-      });
+      })
 
-      const chunkResults = await Promise.allSettled(promises);
+      const chunkResults = await Promise.allSettled(promises)
       chunkResults.forEach((result) => {
-        if (result.status === "fulfilled") {
-          results.push(result.value);
+        if (result.status === 'fulfilled') {
+          results.push(result.value)
         } else {
           results.push({
             success: false,
-            key: "unknown",
-            error: result.reason?.message || "Unknown error",
-          });
+            key: 'unknown',
+            error: result.reason?.message || 'Unknown error'
+          })
         }
-      });
+      })
     }
 
-    return results;
+    return results
   }
 
   /**
@@ -851,25 +851,25 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
    * @returns {Promise<Array<{key: string, success: boolean, error?: string}>>}
    */
   async deleteFiles(keys) {
-    await this._ensureClient();
+    await this._ensureClient()
     try {
       // OSS支持批量删除，最多1000个对象
-      const results = [];
-      const batchSize = 1000;
+      const results = []
+      const batchSize = 1000
 
       for (let i = 0; i < keys.length; i += batchSize) {
-        const batch = keys.slice(i, i + batchSize);
+        const batch = keys.slice(i, i + batchSize)
 
         try {
           const result = await this.client.deleteMulti(batch, {
-            quiet: false, // 返回删除结果详情
-          });
+            quiet: false // 返回删除结果详情
+          })
 
           // 处理成功删除的文件
           if (result.deleted) {
             result.deleted.forEach((obj) => {
-              results.push({ key: obj.Key, success: true });
-            });
+              results.push({ key: obj.Key, success: true })
+            })
           }
 
           // 处理删除失败的文件
@@ -878,30 +878,30 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
               results.push({
                 key: obj.Key,
                 success: false,
-                error: `${obj.Code}: ${obj.Message}`,
-              });
-            });
+                error: `${obj.Code}: ${obj.Message}`
+              })
+            })
           }
 
           // 如果没有返回详情，认为批次中所有文件都成功删除
           if (!result.deleted && !result.failed) {
             batch.forEach((key) => {
-              results.push({ key, success: true });
-            });
+              results.push({ key, success: true })
+            })
           }
         } catch (error) {
           // 批次删除失败，标记这批次中的所有文件为失败
           batch.forEach((key) => {
-            results.push({ key, success: false, error: error.message });
-          });
+            results.push({ key, success: false, error: error.message })
+          })
         }
       }
 
-      return results;
+      return results
     } catch (error) {
-      this._handleOSSError(error, "batch delete", { count: keys.length });
+      this._handleOSSError(error, 'batch delete', { count: keys.length })
     }
   }
 }
 
-module.exports = AliyunOSSAdapter;
+module.exports = AliyunOSSAdapter

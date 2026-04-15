@@ -4,7 +4,7 @@
  * @Description: 查询意图解析器
  * 从自然语言查询中提取必须走字段过滤的结构化信息（时间、地点）；residual 仅去掉上述片段。
  */
-const { parseQuerySemanticSignals } = require("./querySemanticParser");
+const { parseQuerySemanticSignals } = require('./querySemanticParser')
 
 /**
  * 解析查询意图，提取时间、地点等结构化信息
@@ -15,21 +15,21 @@ function parseQueryIntent(query) {
   if (!query || !query.trim()) {
     return {
       filters: {},
-      residualQuery: "",
-    };
+      residualQuery: ''
+    }
   }
 
-  const normalizedQuery = query.trim();
-  const parsed = parseQuerySemanticSignals(normalizedQuery);
+  const normalizedQuery = query.trim()
+  const parsed = parseQuerySemanticSignals(normalizedQuery)
   const filters = {
     ...(parsed?.primaryTimeFilter || {}),
-    ...(parsed?.primaryLocationFilter || {}),
-  };
+    ...(parsed?.primaryLocationFilter || {})
+  }
 
   return {
     filters,
-    residualQuery: parsed?.residualQuery || "",
-  };
+    residualQuery: parsed?.residualQuery || ''
+  }
 }
 
 /**
@@ -39,26 +39,26 @@ function parseQueryIntent(query) {
  * @returns {Object} 合并后的筛选条件
  */
 function mergeFilters(existingFilters, parsedFilters) {
-  const merged = { ...existingFilters };
-  const normalizedParsed = parsedFilters?.filters || parsedFilters || {};
+  const merged = { ...existingFilters }
+  const normalizedParsed = parsedFilters?.filters || parsedFilters || {}
 
   // 只合并用户未设置的字段。侧栏默认「全部」为 timeDimension === 'all'，视为未指定时间轴，仍允许合并搜索框内自然语言时间。
-  const timeDimensionUnset = !merged.timeDimension || merged.timeDimension === "all";
+  const timeDimensionUnset = !merged.timeDimension || merged.timeDimension === 'all'
   if (timeDimensionUnset && normalizedParsed.timeDimension) {
-    merged.timeDimension = normalizedParsed.timeDimension;
-    merged.selectedTimeValues = normalizedParsed.selectedTimeValues;
+    merged.timeDimension = normalizedParsed.timeDimension
+    merged.selectedTimeValues = normalizedParsed.selectedTimeValues
   }
   if (!merged.customDateRange && normalizedParsed.customDateRange) {
-    merged.customDateRange = normalizedParsed.customDateRange;
+    merged.customDateRange = normalizedParsed.customDateRange
   }
   if (!merged.location?.length && normalizedParsed.location?.length) {
-    merged.location = normalizedParsed.location;
+    merged.location = normalizedParsed.location
   }
 
-  return merged;
+  return merged
 }
 
 module.exports = {
   parseQueryIntent,
-  mergeFilters,
-};
+  mergeFilters
+}

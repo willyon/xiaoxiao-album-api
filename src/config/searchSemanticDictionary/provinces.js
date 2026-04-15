@@ -5,5 +5,5 @@
 
 module.exports = [
   /** 逆地理常只有省无市时地点键落在「台湾」 */
-  { label: "台湾", aliases: ["台湾省", "Taiwan", "TW", "Formosa"] },
-];
+  { label: '台湾', aliases: ['台湾省', 'Taiwan', 'TW', 'Formosa'] }
+]

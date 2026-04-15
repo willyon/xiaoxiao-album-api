@@ -5,13 +5,13 @@
  * @LastEditTime: 2025-01-20 10:00:00
  * @Description: 上传会话管理服务
  */
-const { v4: uuidv4 } = require("uuid");
-const { getRedisClient } = require("./redisClient");
-const logger = require("../utils/logger");
-const { normalizeProgressData, hasAnyProgressData } = require("../utils/uploadProgressSnapshot");
+const { v4: uuidv4 } = require('uuid')
+const { getRedisClient } = require('./redisClient')
+const logger = require('../utils/logger')
+const { normalizeProgressData, hasAnyProgressData } = require('../utils/uploadProgressSnapshot')
 
 // 获取 Redis 客户端实例
-const redisClient = getRedisClient();
+const redisClient = getRedisClient()
 
 /**
  * 创建上传会话
@@ -20,7 +20,7 @@ const redisClient = getRedisClient();
  */
 async function createSession(userId) {
   // 生成会话ID
-  const sessionId = uuidv4();
+  const sessionId = uuidv4()
 
   // 在 Redis 中创建会话 Hash（九字段语义见 ../utils/uploadProgressSnapshot.js 文件头）
   await redisClient.hset(`upload:session:${sessionId}`, {
@@ -32,15 +32,15 @@ async function createSession(userId) {
     existingFiles: 0,
     aiEligibleCount: 0,
     aiDoneCount: 0,
-    aiErrorCount: 0,
-  });
+    aiErrorCount: 0
+  })
 
   // 设置用户的最新会话ID（覆盖之前的会话）
-  await redisClient.set(`user:latest:session:${userId}`, sessionId);
+  await redisClient.set(`user:latest:session:${userId}`, sessionId)
 
   // 设置过期时间（1天）
-  await redisClient.expire(`upload:session:${sessionId}`, 1 * 24 * 3600);
-  await redisClient.expire(`user:latest:session:${userId}`, 1 * 24 * 3600);
+  await redisClient.expire(`upload:session:${sessionId}`, 1 * 24 * 3600)
+  await redisClient.expire(`user:latest:session:${userId}`, 1 * 24 * 3600)
 
   return {
     sessionId,
@@ -53,10 +53,10 @@ async function createSession(userId) {
     aiEligibleCount: 0,
     aiDoneCount: 0,
     aiErrorCount: 0,
-    phase: "uploading",
+    phase: 'uploading',
     completed: false,
-    timestamp: Date.now(),
-  };
+    timestamp: Date.now()
+  }
 }
 
 /**
@@ -66,68 +66,68 @@ async function createSession(userId) {
  */
 async function getActiveSession(userId) {
   // 获取用户的最新会话ID
-  const activeSessionId = await redisClient.get(`user:latest:session:${userId}`);
+  const activeSessionId = await redisClient.get(`user:latest:session:${userId}`)
 
   if (!activeSessionId) {
-    return null;
+    return null
   }
 
   try {
     // 直接获取最新会话的详细信息
-    const redisData = await redisClient.hgetall(`upload:session:${activeSessionId}`);
+    const redisData = await redisClient.hgetall(`upload:session:${activeSessionId}`)
 
     if (redisData && Object.keys(redisData).length > 0) {
-      const snapshot = normalizeProgressData(activeSessionId, redisData);
-      const isActive = hasAnyProgressData(snapshot) && !snapshot.completed;
+      const snapshot = normalizeProgressData(activeSessionId, redisData)
+      const isActive = hasAnyProgressData(snapshot) && !snapshot.completed
 
       if (!isActive) {
-        return null;
+        return null
       }
 
-      return snapshot;
+      return snapshot
     }
 
-    return null;
+    return null
   } catch (redisError) {
     logger.warn({
-      message: "Redis数据获取失败",
-      details: { sessionId: activeSessionId, error: redisError.message },
-    });
-    return null;
+      message: 'Redis数据获取失败',
+      details: { sessionId: activeSessionId, error: redisError.message }
+    })
+    return null
   }
 }
 
 async function getCurrentProgressSnapshot(userId) {
-  const activeSessionId = await redisClient.get(`user:latest:session:${userId}`);
+  const activeSessionId = await redisClient.get(`user:latest:session:${userId}`)
   if (!activeSessionId) {
-    return { active: false, session: null };
+    return { active: false, session: null }
   }
 
-  const redisData = await redisClient.hgetall(`upload:session:${activeSessionId}`);
+  const redisData = await redisClient.hgetall(`upload:session:${activeSessionId}`)
   if (!redisData || Object.keys(redisData).length === 0) {
-    return { active: false, session: null };
+    return { active: false, session: null }
   }
 
-  const snapshot = normalizeProgressData(activeSessionId, redisData);
-  const active = hasAnyProgressData(snapshot) && !snapshot.completed;
+  const snapshot = normalizeProgressData(activeSessionId, redisData)
+  const active = hasAnyProgressData(snapshot) && !snapshot.completed
 
   if (!active) {
-    return { active: false, session: null };
+    return { active: false, session: null }
   }
 
-  return { active: true, session: snapshot };
+  return { active: true, session: snapshot }
 }
 
 async function addMediaToSession({ sessionId, mediaId }) {
-  if (!sessionId || !mediaId) return;
-  const sessionMediaSetKey = `upload:session:${sessionId}:media_ids`;
-  await redisClient.sadd(sessionMediaSetKey, String(mediaId));
-  await redisClient.expire(sessionMediaSetKey, 1 * 24 * 3600);
+  if (!sessionId || !mediaId) return
+  const sessionMediaSetKey = `upload:session:${sessionId}:media_ids`
+  await redisClient.sadd(sessionMediaSetKey, String(mediaId))
+  await redisClient.expire(sessionMediaSetKey, 1 * 24 * 3600)
 }
 
 module.exports = {
   createSession,
   getActiveSession,
   getCurrentProgressSnapshot,
-  addMediaToSession,
-};
+  addMediaToSession
+}

@@ -1,6 +1,6 @@
 /**
  * 筛选条件映射配置
- * 
+ *
  * 用于将前端选择的值转换为后端数据库查询需要的值
  */
 
@@ -15,8 +15,8 @@ const AGE_GROUP_FRONTEND_TO_BACKEND = {
   teenager: ['10-19'], // 青少年
   adult: ['20-29', '30-39', '40-49', '50-59'], // 成人
   senior: ['60-69', '70+'] // 老年人
-};
+}
 
 module.exports = {
   AGE_GROUP_FRONTEND_TO_BACKEND
-};
+}

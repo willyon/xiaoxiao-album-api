@@ -1158,7 +1158,7 @@ function moveFacesToCluster(userId, sourceClusterId, faceEmbeddingIds, targetClu
     const now = Date.now();
     let insertedCount = 0;
 
-    faceEmbeddingIds.forEach((faceEmbeddingId, index) => {
+    faceEmbeddingIds.forEach((faceEmbeddingId) => {
       try {
         const result = insertStmt.run(
           userId,

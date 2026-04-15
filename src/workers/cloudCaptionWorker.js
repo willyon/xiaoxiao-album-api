@@ -1,31 +1,31 @@
 /*
  * @Description: 云 Caption 队列 BullMQ Worker（业务逻辑见 cloudCaptionIngestor.js）
  */
-require("dotenv").config();
-const { Worker } = require("bullmq");
-const IORedis = require("ioredis");
+require('dotenv').config()
+const { Worker } = require('bullmq')
+const IORedis = require('ioredis')
 
-const logger = require("../utils/logger");
-const initGracefulShutdown = require("../utils/gracefulShutdown");
-const { processCloudCaptionJob } = require("./cloudCaptionIngestor");
+const logger = require('../utils/logger')
+const initGracefulShutdown = require('../utils/gracefulShutdown')
+const { processCloudCaptionJob } = require('./cloudCaptionIngestor')
 
-const connection = new IORedis({ maxRetriesPerRequest: null });
-const QUEUE_NAME = process.env.CLOUD_CAPTION_QUEUE_NAME || "cloudCaptionQueue";
+const connection = new IORedis({ maxRetriesPerRequest: null })
+const QUEUE_NAME = process.env.CLOUD_CAPTION_QUEUE_NAME || 'cloudCaptionQueue'
 
 const worker = new Worker(QUEUE_NAME, processCloudCaptionJob, {
-  connection,
-});
+  connection
+})
 
-logger.info({ message: `cloudCaptionWorker 已启动，队列名=${QUEUE_NAME}` });
+logger.info({ message: `cloudCaptionWorker 已启动，队列名=${QUEUE_NAME}` })
 
-worker.on("stalled", (jobId) => {
-  logger.warn({ message: "cloudCaptionWorker.stalled", details: { jobId } });
-});
+worker.on('stalled', (jobId) => {
+  logger.warn({ message: 'cloudCaptionWorker.stalled', details: { jobId } })
+})
 
 initGracefulShutdown({
-  extraClosers: [async () => worker.close(), async () => connection.quit()],
-});
+  extraClosers: [async () => worker.close(), async () => connection.quit()]
+})
 
 module.exports = {
-  worker,
-};
+  worker
+}

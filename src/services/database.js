@@ -5,24 +5,24 @@
  * @LastEditTime: 2025-08-04 22:38:11
  * @Description: File description
  */
-const Database = require("better-sqlite3");
-const path = require("path");
+const Database = require('better-sqlite3')
+const path = require('path')
 
 // 创建并导出数据库连接
-const db = new Database(path.resolve(__dirname, "../../database.db"));
+const db = new Database(path.resolve(__dirname, '../../database.db'))
 
 // 开启外键支持
-db.pragma("foreign_keys = ON");
+db.pragma('foreign_keys = ON')
 
 // 优化 SQLite 性能配置
 // WAL 模式：提高并发性能，减少锁竞争
-db.pragma("journal_mode = WAL");
+db.pragma('journal_mode = WAL')
 // 同步模式：NORMAL 平衡性能和安全性
-db.pragma("synchronous = NORMAL");
+db.pragma('synchronous = NORMAL')
 // 缓存大小：64MB，提高查询性能
-db.pragma("cache_size = -65536");
+db.pragma('cache_size = -65536')
 // 临时存储：内存，提高临时表操作性能
-db.pragma("temp_store = MEMORY");
+db.pragma('temp_store = MEMORY')
 
 //用于执行查询的函数
 // function runQuery(query, params = []) {
@@ -30,4 +30,4 @@ db.pragma("temp_store = MEMORY");
 //   return stmt.run(...params);
 // }
 
-module.exports = { db };
+module.exports = { db }

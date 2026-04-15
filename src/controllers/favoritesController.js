@@ -1,9 +1,9 @@
 /*
  * @Description: 收藏（喜欢）接口控制器
  */
-const favoriteService = require("../services/favoriteService");
-const CustomError = require("../errors/customError");
-const { ERROR_CODES } = require("../constants/messageCodes");
+const favoriteService = require('../services/favoriteService')
+const CustomError = require('../errors/customError')
+const { ERROR_CODES } = require('../constants/messageCodes')
 
 /**
  * 批量添加图片到收藏
@@ -11,24 +11,24 @@ const { ERROR_CODES } = require("../constants/messageCodes");
  */
 async function addToFavorites(req, res, next) {
   try {
-    const userId = req.user.userId;
-    const { mediaIds } = req.body;
+    const userId = req.user.userId
+    const { mediaIds } = req.body
 
     if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: "error",
-      });
+        messageType: 'error'
+      })
     }
 
     const result = await favoriteService.addMediasToFavorites({
       userId,
-      imageIds: mediaIds.map((id) => parseInt(id)),
-    });
-    res.sendResponse({ data: result });
+      imageIds: mediaIds.map((id) => parseInt(id))
+    })
+    res.sendResponse({ data: result })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
@@ -38,28 +38,28 @@ async function addToFavorites(req, res, next) {
  */
 async function removeFromFavorites(req, res, next) {
   try {
-    const userId = req.user.userId;
-    const { mediaIds } = req.body;
+    const userId = req.user.userId
+    const { mediaIds } = req.body
 
     if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
       throw new CustomError({
         httpStatus: 400,
         messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: "error",
-      });
+        messageType: 'error'
+      })
     }
 
     const result = await favoriteService.removeMediasFromFavorites({
       userId,
-      imageIds: mediaIds.map((id) => parseInt(id)),
-    });
-    res.sendResponse({ data: result });
+      imageIds: mediaIds.map((id) => parseInt(id))
+    })
+    res.sendResponse({ data: result })
   } catch (error) {
-    next(error);
+    next(error)
   }
 }
 
 module.exports = {
   addToFavorites,
-  removeFromFavorites,
-};
+  removeFromFavorites
+}

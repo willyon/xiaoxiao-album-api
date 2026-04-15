@@ -170,7 +170,7 @@ fi
 log "✅ SSH连接测试成功"
 
 log "📦 上传代码文件..."
-rsync -avz --progress --delete --no-times --exclude ".DS_Store" --exclude "database.db" --exclude "localStorage/" --exclude "logs/" --exclude "node_modules/" -e "ssh -i $SSH_KEY -o BatchMode=yes" backend-dist/ "$SERVER_USER@$SERVER_HOST:$SERVER_PATH/"
+rsync -avz --progress --delete --no-times --exclude ".DS_Store" --exclude "database.db" --exclude "storage-local/" --exclude "logs/" --exclude "node_modules/" -e "ssh -i $SSH_KEY -o BatchMode=yes" backend-dist/ "$SERVER_USER@$SERVER_HOST:$SERVER_PATH/"
 
 log "🔑 设置脚本执行权限..."
 ssh -i "$SSH_KEY" -o BatchMode=yes "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && chmod +x scripts/deployment/fix-sharp-complete.sh"

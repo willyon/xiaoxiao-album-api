@@ -1,10 +1,10 @@
 /*
  * @Description: 地点路由
  */
-const express = require("express");
-const router = express.Router();
-const { getLocations } = require("../controllers/locationsController");
+const express = require('express')
+const router = express.Router()
+const { getLocations } = require('../controllers/locationsController')
 
-router.get("/", getLocations);
+router.get('/', getLocations)
 
-module.exports = router;
+module.exports = router

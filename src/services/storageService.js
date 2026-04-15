@@ -4,11 +4,11 @@
  * @Description: 统一存储服务 - 提供统一的文件存储接口，支持本地存储和云存储
  */
 
-const fs = require("fs-extra");
-const StorageAdapterFactory = require("../storage/factory/StorageAdapterFactory");
-const { STORAGE_TYPES } = require("../storage/constants/StorageTypes");
-const logger = require("../utils/logger");
-const sharp = require("sharp");
+const fs = require('fs-extra')
+const StorageAdapterFactory = require('../storage/factory/StorageAdapterFactory')
+const { STORAGE_TYPES } = require('../storage/constants/StorageTypes')
+const logger = require('../utils/logger')
+const sharp = require('sharp')
 
 // Sharp 预设配置
 const SHARP_CONFIG = {
@@ -16,15 +16,15 @@ const SHARP_CONFIG = {
   sequentialRead: true, // 顺序读取，减少磁盘随机 I/O
   limitInputPixels: false, // 不限制像素避免超大图被强制拒绝（如需要可设上限）
   // 性能优化配置
-  density: 72, // 设置DPI(像素密度) 降低内存占用 提升处理速度 72位标准屏dpi 对web显示来说 72dpi就够了 对最终图片质量影响很小
-};
+  density: 72 // 设置DPI(像素密度) 降低内存占用 提升处理速度 72位标准屏dpi 对web显示来说 72dpi就够了 对最终图片质量影响很小
+}
 
 // 文件大小阈值
 const FILE_SIZE_THRESHOLDS = {
   SMALL: 1 * 1024 * 1024, // 1MB
   MEDIUM: 5 * 1024 * 1024, // 5MB
-  LARGE: 10 * 1024 * 1024, // 10MB
-};
+  LARGE: 10 * 1024 * 1024 // 10MB
+}
 
 /**
  * 获取自适应质量参数
@@ -35,14 +35,14 @@ const FILE_SIZE_THRESHOLDS = {
 function _getAdaptiveQuality(quality, fileSize) {
   // 根据文件大小调整质量
   if (fileSize >= FILE_SIZE_THRESHOLDS.LARGE) {
-    return Math.max(quality - 5, 50); // 大文件降低质量
+    return Math.max(quality - 5, 50) // 大文件降低质量
   } else if (fileSize >= FILE_SIZE_THRESHOLDS.MEDIUM) {
-    return Math.max(quality - 5, 50); // 中等文件稍微降低质量
+    return Math.max(quality - 5, 50) // 中等文件稍微降低质量
   } else if (fileSize <= FILE_SIZE_THRESHOLDS.SMALL) {
-    return Math.min(quality + 5, 95); // 小文件可以提高质量
+    return Math.min(quality + 5, 95) // 小文件可以提高质量
   }
 
-  return quality;
+  return quality
 }
 
 /**
@@ -53,25 +53,25 @@ function _getAdaptiveQuality(quality, fileSize) {
  */
 function _getOptimalEffort(fileSize, format) {
   // 正确的逻辑：大文件用高effort（时间换空间），小文件用低effort（速度优先）
-  if (format === "avif") {
+  if (format === 'avif') {
     // AVIF格式压缩效率高，effort影响明显
     if (fileSize >= FILE_SIZE_THRESHOLDS.LARGE) {
-      return 6; // 大文件用最高effort，压缩收益最大
+      return 6 // 大文件用最高effort，压缩收益最大
     } else if (fileSize >= FILE_SIZE_THRESHOLDS.MEDIUM) {
-      return 4; // 中等文件平衡处理
+      return 4 // 中等文件平衡处理
     }
-    return 2; // 小文件快速处理，避免浪费时间
-  } else if (format === "webp") {
+    return 2 // 小文件快速处理，避免浪费时间
+  } else if (format === 'webp') {
     // WebP格式effort影响相对较小，但仍遵循同样原则
     if (fileSize >= FILE_SIZE_THRESHOLDS.LARGE) {
-      return 5; // 大文件高effort，优化存储
+      return 5 // 大文件高effort，优化存储
     } else if (fileSize >= FILE_SIZE_THRESHOLDS.MEDIUM) {
-      return 4; // 中等文件适度优化
+      return 4 // 中等文件适度优化
     }
-    return 3; // 小文件适中effort
+    return 3 // 小文件适中effort
   }
 
-  return 3; // 默认effort
+  return 3 // 默认effort
 }
 
 /**
@@ -84,63 +84,63 @@ function _getOptimalEffort(fileSize, format) {
  * @returns {Object} 配置好的pipeline
  */
 function _applyEncoderByExt(pipeline, ext, quality = 80, fileSize = FILE_SIZE_THRESHOLDS.MEDIUM, options = {}) {
-  const { enableAdaptiveQuality, enableDynamicEffort } = options;
+  const { enableAdaptiveQuality, enableDynamicEffort } = options
 
   // 获取自适应质量和effort
-  const adaptiveQuality = enableAdaptiveQuality ? _getAdaptiveQuality(quality, fileSize) : quality;
-  const optimalEffort = enableDynamicEffort ? _getOptimalEffort(fileSize, ext) : 1;
+  const adaptiveQuality = enableAdaptiveQuality ? _getAdaptiveQuality(quality, fileSize) : quality
+  const optimalEffort = enableDynamicEffort ? _getOptimalEffort(fileSize, ext) : 1
   switch (ext) {
-    case "jpg":
-    case "jpeg":
+    case 'jpg':
+    case 'jpeg':
       return pipeline.jpeg({
         quality: adaptiveQuality,
         mozjpeg: true, // 使用 mozjpeg 优化器，体积更小
-        chromaSubsampling: "4:2:0", // 色度抽样，压缩更好（人眼对色敏感度低于亮度）
+        chromaSubsampling: '4:2:0', // 色度抽样，压缩更好（人眼对色敏感度低于亮度）
         trellisQuantisation: true, // 网格量化，进一步优化率失真
-        overshootDeringing: true, // 去振铃伪影，边缘更干净
-      });
-    case "png":
+        overshootDeringing: true // 去振铃伪影，边缘更干净
+      })
+    case 'png':
       // PNG压缩级别根据文件大小调整
-      const compressionLevel = fileSize >= FILE_SIZE_THRESHOLDS.LARGE ? 9 : 6;
+      const compressionLevel = fileSize >= FILE_SIZE_THRESHOLDS.LARGE ? 9 : 6
       return pipeline.png({
         compressionLevel,
         palette: true, // 尝试索引色调色板
-        adaptiveFiltering: true, // 自适应过滤
-      });
-    case "webp":
+        adaptiveFiltering: true // 自适应过滤
+      })
+    case 'webp':
       return pipeline.webp({
         quality: adaptiveQuality,
         smartSubsample: true, // 智能抽样，减少色彩伪影
         effort: optimalEffort, // 动态调整effort
-        nearLossless: false,
-      });
-    case "avif":
+        nearLossless: false
+      })
+    case 'avif':
       return pipeline.avif({
         quality: adaptiveQuality,
         effort: optimalEffort, // 动态调整effort
-        chromaSubsampling: "4:2:0", // 色度抽样，减小体积
-      });
-    case "heic":
-    case "heif":
+        chromaSubsampling: '4:2:0' // 色度抽样，减小体积
+      })
+    case 'heic':
+    case 'heif':
       return pipeline.heif({
         quality: adaptiveQuality,
-        compression: "hevc", // 编码器使用 HEVC
-        chromaSubsampling: "4:2:0",
-      });
+        compression: 'hevc', // 编码器使用 HEVC
+        chromaSubsampling: '4:2:0'
+      })
     default:
       return pipeline.webp({
         quality: adaptiveQuality,
         smartSubsample: true,
         effort: optimalEffort,
-        nearLossless: false,
-      });
+        nearLossless: false
+      })
   }
 }
 
 /** libvips 无法确定 interpretation / 色彩空间时可能抛出，可经 PNG 栅格化再编码 */
 function _isColourspaceRecoverableError(err) {
-  const msg = err && err.message ? String(err.message) : "";
-  return msg.includes("colourspace") || msg.includes("parameter space not set");
+  const msg = err && err.message ? String(err.message) : ''
+  return msg.includes('colourspace') || msg.includes('parameter space not set')
 }
 
 /**
@@ -148,66 +148,54 @@ function _isColourspaceRecoverableError(err) {
  * @param {boolean} alreadyRotated 为 true 时跳过 rotate（用于 PNG 回退后的二次管线）
  */
 function _sharpPipelineSrgb(inputData, { alreadyRotated }) {
-  let p = sharp(inputData, SHARP_CONFIG).pipelineColourspace("srgb");
+  let p = sharp(inputData, SHARP_CONFIG).pipelineColourspace('srgb')
   if (!alreadyRotated) {
-    p = p.rotate();
+    p = p.rotate()
   }
-  return p.toColorspace("srgb");
+  return p.toColorspace('srgb')
 }
 
 /** 无调色板 PNG 强制像素落到标准 interpretation，再交给 WebP/AVIF 等 */
 async function _rasterizeToPngBuffer(inputData) {
-  return _sharpPipelineSrgb(inputData, { alreadyRotated: false })
-    .png({ palette: false, compressionLevel: 6 })
-    .toBuffer();
+  return _sharpPipelineSrgb(inputData, { alreadyRotated: false }).png({ palette: false, compressionLevel: 6 }).toBuffer()
 }
 
 /**
  * 旋正、缩放、编码并 toBuffer；遇色彩空间类错误时先 PNG 栅格化再重试（不重做 rotate）
  */
 async function _encodeImageToBuffer(inputData, options, logContext) {
-  const {
-    alreadyRotated,
-    resizeWidth,
-    fit,
-    withoutEnlargement,
-    fastShrinkOnLoad,
-    extension,
-    quality,
-    fileSize,
-    finalOptions,
-  } = options;
+  const { alreadyRotated, resizeWidth, fit, withoutEnlargement, fastShrinkOnLoad, extension, quality, fileSize, finalOptions } = options
 
-  let pipeline = _sharpPipelineSrgb(inputData, { alreadyRotated });
+  let pipeline = _sharpPipelineSrgb(inputData, { alreadyRotated })
   if (resizeWidth) {
     pipeline = pipeline.resize({
       width: resizeWidth,
       fit,
       withoutEnlargement,
-      fastShrinkOnLoad,
-    });
+      fastShrinkOnLoad
+    })
   }
-  pipeline = _applyEncoderByExt(pipeline, extension, quality, fileSize, finalOptions);
+  pipeline = _applyEncoderByExt(pipeline, extension, quality, fileSize, finalOptions)
 
   try {
-    return await pipeline.toBuffer({ resolveWithObject: true });
+    return await pipeline.toBuffer({ resolveWithObject: true })
   } catch (err) {
     if (!_isColourspaceRecoverableError(err) || alreadyRotated) {
-      throw err;
+      throw err
     }
     logger.warn({
-      message: "image colourspace fallback: rasterize PNG then re-encode",
-      details: { ...logContext, error: err.message },
-    });
-    const normalized = await _rasterizeToPngBuffer(inputData);
+      message: 'image colourspace fallback: rasterize PNG then re-encode',
+      details: { ...logContext, error: err.message }
+    })
+    const normalized = await _rasterizeToPngBuffer(inputData)
     return _encodeImageToBuffer(
       normalized,
       {
         ...options,
-        alreadyRotated: true,
+        alreadyRotated: true
       },
-      logContext,
-    );
+      logContext
+    )
   }
 }
 
@@ -219,8 +207,8 @@ class StorageService {
    * 创建存储服务实例
    */
   constructor() {
-    this.storage = StorageAdapterFactory.createAdapter();
-    this._currentStorageType = this.storage.type;
+    this.storage = StorageAdapterFactory.createAdapter()
+    this._currentStorageType = this.storage.type
   }
 
   /**
@@ -237,16 +225,16 @@ class StorageService {
       // 只有OSS适配器支持签名生成
       if (this._currentStorageType !== STORAGE_TYPES.ALIYUN_OSS) {
         logger.error({
-          message: "Only OSS storage supports upload signature generation",
+          message: 'Only OSS storage supports upload signature generation',
           details: {
             currentStorageType: this._currentStorageType,
             storageKey,
             contentType,
             contentLength,
-            userId,
-          },
-        });
-        throw new Error("Only OSS storage supports upload signature generation");
+            userId
+          }
+        })
+        throw new Error('Only OSS storage supports upload signature generation')
       }
 
       return await this.storage.getUploadSignature({
@@ -254,20 +242,20 @@ class StorageService {
         contentType,
         contentLength,
         userId,
-        sessionId,
-      });
+        sessionId
+      })
     } catch (error) {
       logger.error({
-        message: "获取上传签名失败",
+        message: '获取上传签名失败',
         details: {
           storageKey,
           contentType,
           contentLength,
           userId,
-          error: error.message,
-        },
-      });
-      throw error;
+          error: error.message
+        }
+      })
+      throw error
     }
   }
 
@@ -279,16 +267,16 @@ class StorageService {
    */
   async getFileUrl(storageKey, options = {}) {
     try {
-      return await this.storage.getFileUrl(storageKey, options);
+      return await this.storage.getFileUrl(storageKey, options)
     } catch (error) {
       logger.error({
-        message: "获取文件访问URL失败",
+        message: '获取文件访问URL失败',
         details: {
           storageKey,
-          error: error.message,
-        },
-      });
-      return null;
+          error: error.message
+        }
+      })
+      return null
     }
   }
 
@@ -298,21 +286,21 @@ class StorageService {
    */
   async getLocalFilePath(storageKey) {
     if (this._currentStorageType !== STORAGE_TYPES.LOCAL || !storageKey) {
-      return null;
+      return null
     }
-    if (typeof this.storage.getFullPath !== "function") {
-      return null;
+    if (typeof this.storage.getFullPath !== 'function') {
+      return null
     }
     try {
-      const fullPath = this.storage.getFullPath(storageKey);
-      const exists = await fs.pathExists(fullPath);
-      return exists ? fullPath : null;
+      const fullPath = this.storage.getFullPath(storageKey)
+      const exists = await fs.pathExists(fullPath)
+      return exists ? fullPath : null
     } catch (e) {
       logger.warn({
-        message: "getLocalFilePath failed",
-        details: { storageKey, error: e.message },
-      });
-      return null;
+        message: 'getLocalFilePath failed',
+        details: { storageKey, error: e.message }
+      })
+      return null
     }
   }
 
@@ -376,16 +364,16 @@ class StorageService {
     resizeWidth,
     quality = 80,
     withoutEnlargement = true,
-    fit = "inside",
+    fit = 'inside',
     fastShrinkOnLoad = true,
-    optimizationOptions = {},
+    optimizationOptions = {}
   }) {
     // 获取适配器的输入数据（本地：绝对文件路径，OSS：Buffer）
-    const inputData = await this.storage.getFileData(sourceStorageKey);
-    fileSize = fileSize || (await this.storage.getFileSize(inputData));
+    const inputData = await this.storage.getFileData(sourceStorageKey)
+    fileSize = fileSize || (await this.storage.getFileSize(inputData))
 
-    const defaultOptions = { enableAdaptiveQuality: false, enableDynamicEffort: false };
-    const finalOptions = { ...defaultOptions, ...optimizationOptions };
+    const defaultOptions = { enableAdaptiveQuality: false, enableDynamicEffort: false }
+    const finalOptions = { ...defaultOptions, ...optimizationOptions }
 
     const { data, info } = await _encodeImageToBuffer(
       inputData,
@@ -398,19 +386,19 @@ class StorageService {
         extension,
         quality,
         fileSize,
-        finalOptions,
+        finalOptions
       },
-      { sourceStorageKey, targetStorageKey, extension },
-    );
+      { sourceStorageKey, targetStorageKey, extension }
+    )
 
     // 通过适配器上传 Buffer（OSS/本地均支持），Content-Type 由适配器按 key 推断
-    await this.storage.storeFile(data, targetStorageKey);
+    await this.storage.storeFile(data, targetStorageKey)
 
     // 直接返回派生图真实尺寸（已旋正+已缩放）
     return {
       width: info.width,
-      height: info.height,
-    };
+      height: info.height
+    }
   }
 
   /**
@@ -432,13 +420,13 @@ class StorageService {
     quality = 80,
     resizeWidth,
     withoutEnlargement = true,
-    fit = "inside",
+    fit = 'inside',
     fastShrinkOnLoad = true,
-    optimizationOptions = {},
+    optimizationOptions = {}
   }) {
-    const fileSize = buffer.length;
-    const defaultOptions = { enableAdaptiveQuality: false, enableDynamicEffort: false };
-    const finalOptions = { ...defaultOptions, ...optimizationOptions };
+    const fileSize = buffer.length
+    const defaultOptions = { enableAdaptiveQuality: false, enableDynamicEffort: false }
+    const finalOptions = { ...defaultOptions, ...optimizationOptions }
 
     const { data, info } = await _encodeImageToBuffer(
       buffer,
@@ -451,15 +439,15 @@ class StorageService {
         extension,
         quality,
         fileSize,
-        finalOptions,
+        finalOptions
       },
-      { context: "processImageBuffer" },
-    );
+      { context: 'processImageBuffer' }
+    )
     return {
       data,
       width: info.width,
-      height: info.height,
-    };
+      height: info.height
+    }
   }
 
   /**
@@ -473,35 +461,35 @@ class StorageService {
     try {
       // 记录重复图片信息到日志
       logger.info({
-        message: "image detected and removed",
+        message: 'image detected and removed',
         details: {
           fileName,
           storageKey,
           timestamp: Date.now(),
-          action: "deleted",
-        },
-      });
+          action: 'deleted'
+        }
+      })
 
       // 通过适配器删除文件
-      await this.storage.deleteFile(storageKey);
+      await this.storage.deleteFile(storageKey)
 
       logger.info({
-        message: "image file deleted successfully",
-        details: { fileName, storageKey },
-      });
+        message: 'image file deleted successfully',
+        details: { fileName, storageKey }
+      })
     } catch (error) {
       logger.error({
         message: `Failed to delete image file: ${error?.message}`,
         stack: error?.stack,
-        details: { storageKey, fileName },
-      });
+        details: { storageKey, fileName }
+      })
       // 即使删除失败也不要抛出错误，避免影响主流程
     }
   }
 }
 
 // 单例模式：避免重复创建StorageService实例
-let storageServiceInstance = null;
+let storageServiceInstance = null
 
 /**
  * 获取StorageService单例实例
@@ -509,10 +497,10 @@ let storageServiceInstance = null;
  */
 function getStorageService() {
   if (!storageServiceInstance) {
-    storageServiceInstance = new StorageService();
+    storageServiceInstance = new StorageService()
   }
-  return storageServiceInstance;
+  return storageServiceInstance
 }
 
 // 导出单例实例，而不是类
-module.exports = getStorageService();
+module.exports = getStorageService()

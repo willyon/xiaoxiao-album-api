@@ -4,24 +4,24 @@
  * @Description: 本地文件系统存储适配器
  */
 
-const path = require("path");
-const fsExtra = require("fs-extra");
-const multer = require("multer");
-const BaseStorageAdapter = require("./BaseStorageAdapter");
-const logger = require("../../utils/logger");
+const path = require('path')
+const fsExtra = require('fs-extra')
+const multer = require('multer')
+const BaseStorageAdapter = require('./BaseStorageAdapter')
+const logger = require('../../utils/logger')
 
 class LocalStorageAdapter extends BaseStorageAdapter {
   constructor(config = {}) {
-    super(config);
-    this.type = config.storageType;
+    super(config)
+    this.type = config.storageType
 
     // 设置默认的 baseUrl，优先使用配置，其次使用环境变量，最后使用默认值
     // 默认端口使用常见的开发端口，可通过环境变量 PORT 动态调整
-    const defaultPort = process.env.PORT || 3000;
-    this.baseUrl = config.baseUrl || process.env.API_BASE_URL_LOCAL || `http://localhost:${defaultPort}`;
+    const defaultPort = process.env.PORT || 3000
+    this.baseUrl = config.baseUrl || process.env.API_BASE_URL_LOCAL || `http://localhost:${defaultPort}`
 
     // 设置基础目录为项目根目录
-    this.baseDir = path.join(__dirname, "..", "..", "..");
+    this.baseDir = path.join(__dirname, '..', '..', '..')
   }
 
   /**
@@ -30,7 +30,7 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    * @returns {string} 完整路径
    */
   getFullPath(filePath) {
-    return path.isAbsolute(filePath) ? filePath : path.join(this.baseDir, filePath);
+    return path.isAbsolute(filePath) ? filePath : path.join(this.baseDir, filePath)
   }
 
   /**
@@ -44,41 +44,41 @@ class LocalStorageAdapter extends BaseStorageAdapter {
     // 如果没有传extension，直接使用fileName本身
     if (!extension) {
       switch (type) {
-        case process.env.MEDIA_STORAGE_KEY_THUMBNAIL || "thumbnail":
-          const thumbnailDir = process.env.PROCESSED_THUMBNAIL_MEDIA_DIR || "localStorage/processed/thumbnails";
-          return `${thumbnailDir}/${fileName}`;
-        case process.env.MEDIA_STORAGE_KEY_HIGHRES || "highres":
-          const highResDir = process.env.PROCESSED_HIGH_RES_MEDIA_DIR || "localStorage/processed/highres";
-          return `${highResDir}/${fileName}`;
-        case process.env.MEDIA_STORAGE_KEY_ORIGINAL || "original":
-          const originalDir = process.env.PROCESSED_ORIGINAL_MEDIA_DIR || "localStorage/processed/original";
-          return `${originalDir}/${fileName}`;
-        case process.env.MEDIA_STORAGE_KEY_FAILED || "failed":
-          const failedDir = process.env.FAILED_MEDIA_DIR || "localStorage/processing/failed";
-          return `${failedDir}/${fileName}`;
+        case process.env.MEDIA_STORAGE_KEY_THUMBNAIL || 'thumbnail':
+          const thumbnailDir = process.env.PROCESSED_THUMBNAIL_MEDIA_DIR || 'storage-local/processed/thumbnails'
+          return `${thumbnailDir}/${fileName}`
+        case process.env.MEDIA_STORAGE_KEY_HIGHRES || 'highres':
+          const highResDir = process.env.PROCESSED_HIGH_RES_MEDIA_DIR || 'storage-local/processed/highres'
+          return `${highResDir}/${fileName}`
+        case process.env.MEDIA_STORAGE_KEY_ORIGINAL || 'original':
+          const originalDir = process.env.PROCESSED_ORIGINAL_MEDIA_DIR || 'storage-local/processed/original'
+          return `${originalDir}/${fileName}`
+        case process.env.MEDIA_STORAGE_KEY_FAILED || 'failed':
+          const failedDir = process.env.FAILED_MEDIA_DIR || 'storage-local/processing/failed'
+          return `${failedDir}/${fileName}`
         default:
-          throw new Error(`Unknown media type: ${type}`);
+          throw new Error(`Unknown media type: ${type}`)
       }
     }
 
     // 传了extension，则使用原来的逻辑
-    const baseName = path.basename(fileName, path.extname(fileName));
+    const baseName = path.basename(fileName, path.extname(fileName))
 
     switch (type) {
-      case process.env.MEDIA_STORAGE_KEY_THUMBNAIL || "thumbnail":
-        const thumbnailDir = process.env.PROCESSED_THUMBNAIL_MEDIA_DIR || "localStorage/processed/thumbnails";
-        return `${thumbnailDir}/${baseName}.${extension}`;
-      case process.env.MEDIA_STORAGE_KEY_HIGHRES || "highres":
-        const highResDir = process.env.PROCESSED_HIGH_RES_MEDIA_DIR || "localStorage/processed/highres";
-        return `${highResDir}/${baseName}.${extension}`;
-      case process.env.MEDIA_STORAGE_KEY_ORIGINAL || "original":
-        const originalDir = process.env.PROCESSED_ORIGINAL_MEDIA_DIR || "localStorage/processed/original";
-        return `${originalDir}/${baseName}.${extension}`;
-      case process.env.MEDIA_STORAGE_KEY_FAILED || "failed":
-        const failedDir = process.env.FAILED_MEDIA_DIR || "localStorage/processing/failed";
-        return `${failedDir}/${baseName}.${extension}`;
+      case process.env.MEDIA_STORAGE_KEY_THUMBNAIL || 'thumbnail':
+        const thumbnailDir = process.env.PROCESSED_THUMBNAIL_MEDIA_DIR || 'storage-local/processed/thumbnails'
+        return `${thumbnailDir}/${baseName}.${extension}`
+      case process.env.MEDIA_STORAGE_KEY_HIGHRES || 'highres':
+        const highResDir = process.env.PROCESSED_HIGH_RES_MEDIA_DIR || 'storage-local/processed/highres'
+        return `${highResDir}/${baseName}.${extension}`
+      case process.env.MEDIA_STORAGE_KEY_ORIGINAL || 'original':
+        const originalDir = process.env.PROCESSED_ORIGINAL_MEDIA_DIR || 'storage-local/processed/original'
+        return `${originalDir}/${baseName}.${extension}`
+      case process.env.MEDIA_STORAGE_KEY_FAILED || 'failed':
+        const failedDir = process.env.FAILED_MEDIA_DIR || 'storage-local/processing/failed'
+        return `${failedDir}/${baseName}.${extension}`
       default:
-        throw new Error(`Unknown media type: ${type}`);
+        throw new Error(`Unknown media type: ${type}`)
     }
   }
 
@@ -92,23 +92,23 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    */
   async storeProcessedImage(pipeline, targetPath) {
     try {
-      const fullPath = this.getFullPath(targetPath);
+      const fullPath = this.getFullPath(targetPath)
 
       // 确保目标目录存在
-      await fsExtra.ensureDir(path.dirname(fullPath));
+      await fsExtra.ensureDir(path.dirname(fullPath))
 
       // 直接写入文件，避免Buffer中转
-      await pipeline.toFile(fullPath);
+      await pipeline.toFile(fullPath)
 
       // 上传成功，返回存储路径（不生成URL）
-      return targetPath;
+      return targetPath
     } catch (error) {
       logger.error(`本地存储直接写入失败: ${error.message}`, {
         targetPath,
         fullPath: this.getFullPath(targetPath),
-        error: error.stack,
-      });
-      throw error;
+        error: error.stack
+      })
+      throw error
     }
   }
 
@@ -118,7 +118,7 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    * @returns {Promise<string>} 绝对文件路径
    */
   async getFileData(targetPath) {
-    return this.getFullPath(targetPath);
+    return this.getFullPath(targetPath)
   }
 
   /**
@@ -127,16 +127,16 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    * @returns {Object} Multer diskStorage配置
    */
   getMulterStorage(generateFilename) {
-    const uploadFolder = path.join(__dirname, "..", "..", "..", process.env.UPLOADS_DIR);
+    const uploadFolder = path.join(__dirname, '..', '..', '..', process.env.UPLOADS_DIR)
 
     return multer.diskStorage({
       destination: function (req, file, cb) {
-        cb(null, `${uploadFolder}/`);
+        cb(null, `${uploadFolder}/`)
       },
       filename: function (req, file, cb) {
-        cb(null, generateFilename(req, file));
-      },
-    });
+        cb(null, generateFilename(req, file))
+      }
+    })
   }
 
   /**
@@ -146,56 +146,56 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    */
   async getFileSize(input) {
     if (Buffer.isBuffer(input)) {
-      return input.length;
-    } else if (typeof input === "string") {
+      return input.length
+    } else if (typeof input === 'string') {
       try {
         // 如果是相对路径，转换为绝对路径
-        const fullPath = path.isAbsolute(input) ? input : this.getFullPath(input);
-        const stats = await fsExtra.stat(fullPath);
-        return stats.size;
+        const fullPath = path.isAbsolute(input) ? input : this.getFullPath(input)
+        const stats = await fsExtra.stat(fullPath)
+        return stats.size
       } catch (error) {
         logger.error(`获取本地文件大小失败: ${error.message}`, {
           input,
-          error: error.stack,
-        });
+          error: error.stack
+        })
         // 返回默认大小
-        return 1 * 1024 * 1024; // 1MB
+        return 1 * 1024 * 1024 // 1MB
       }
     }
-    return 1 * 1024 * 1024; // 默认1MB
+    return 1 * 1024 * 1024 // 默认1MB
   }
 
   /**
    * 上传文件到本地存储
    * @param {Buffer|string} fileData - 文件数据(Buffer)或源文件路径(string)
-   * @param {string} targetPath - 目标文件路径（如: localStorage/processed/highres/user123-20250829-143022-photo.png）
+   * @param {string} targetPath - 目标文件路径（如: storage-local/processed/highres/user123-20250829-143022-photo.png）
    * @returns {Promise<string>} 返回文件访问URL
    */
   async storeFile(fileData, targetPath) {
     try {
-      const fullPath = this.getFullPath(targetPath);
+      const fullPath = this.getFullPath(targetPath)
 
       // 确保目标目录存在 path.dirname返回文件路径的目录部分
-      await fsExtra.ensureDir(path.dirname(fullPath));
+      await fsExtra.ensureDir(path.dirname(fullPath))
 
       if (Buffer.isBuffer(fileData)) {
         // 如果是Buffer，直接写入
-        await fsExtra.writeFile(fullPath, fileData);
-      } else if (typeof fileData === "string") {
+        await fsExtra.writeFile(fullPath, fileData)
+      } else if (typeof fileData === 'string') {
         // 如果是文件路径，复制文件
-        await fsExtra.copy(fileData, fullPath, { overwrite: true });
+        await fsExtra.copy(fileData, fullPath, { overwrite: true })
       } else {
-        throw new Error("fileData must be Buffer or file path string");
+        throw new Error('fileData must be Buffer or file path string')
       }
 
       // 上传成功，返回存储路径（不生成URL）
-      return fullPath;
+      return fullPath
     } catch (error) {
       logger.error({
-        message: "Local storage upload failed",
-        details: { targetPath, error: error.message },
-      });
-      throw error;
+        message: 'Local storage upload failed',
+        details: { targetPath, error: error.message }
+      })
+      throw error
     }
   }
 
@@ -206,18 +206,18 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    */
   async deleteFile(key) {
     try {
-      const fullPath = this.getFullPath(key);
-      await fsExtra.remove(fullPath);
+      const fullPath = this.getFullPath(key)
+      await fsExtra.remove(fullPath)
     } catch (error) {
-      if (error.code === "ENOENT") {
+      if (error.code === 'ENOENT') {
         // 文件不存在，认为删除成功
-        return;
+        return
       }
       logger.error({
-        message: "Local storage delete failed",
-        details: { key, error: error.message },
-      });
-      throw error;
+        message: 'Local storage delete failed',
+        details: { key, error: error.message }
+      })
+      throw error
     }
   }
 
@@ -229,19 +229,19 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    */
   async moveFile(fromKey, toKey) {
     try {
-      const fromPath = this.getFullPath(fromKey);
-      const toPath = this.getFullPath(toKey);
+      const fromPath = this.getFullPath(fromKey)
+      const toPath = this.getFullPath(toKey)
 
       // 确保目标目录存在
-      await fsExtra.ensureDir(path.dirname(toPath));
+      await fsExtra.ensureDir(path.dirname(toPath))
 
-      await fsExtra.move(fromPath, toPath, { overwrite: true });
+      await fsExtra.move(fromPath, toPath, { overwrite: true })
     } catch (error) {
       logger.error({
-        message: "Local storage move failed",
-        details: { fromKey, toKey, error: error.message },
-      });
-      throw error;
+        message: 'Local storage move failed',
+        details: { fromKey, toKey, error: error.message }
+      })
+      throw error
     }
   }
 
@@ -252,14 +252,14 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    */
   async fileExists(key) {
     try {
-      const fullPath = this.getFullPath(key);
-      return await fsExtra.pathExists(fullPath);
+      const fullPath = this.getFullPath(key)
+      return await fsExtra.pathExists(fullPath)
     } catch (error) {
       logger.error({
-        message: "Local storage exists check failed",
-        details: { key, error: error.message },
-      });
-      return false;
+        message: 'Local storage exists check failed',
+        details: { key, error: error.message }
+      })
+      return false
     }
   }
 
@@ -270,14 +270,14 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    */
   async getFileBuffer(key) {
     try {
-      const fullPath = this.getFullPath(key);
-      return await fsExtra.readFile(fullPath);
+      const fullPath = this.getFullPath(key)
+      return await fsExtra.readFile(fullPath)
     } catch (error) {
       logger.error({
-        message: "Local storage read file failed",
-        details: { key, fullPath: this.getFullPath(key), error: error.message },
-      });
-      throw error;
+        message: 'Local storage read file failed',
+        details: { key, fullPath: this.getFullPath(key), error: error.message }
+      })
+      throw error
     }
   }
 
@@ -291,20 +291,20 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    */
   getFileUrl(fullPath) {
     // 如果fullPath为空，直接返回null
-    if (!fullPath || typeof fullPath !== "string" || fullPath.trim() === "") {
+    if (!fullPath || typeof fullPath !== 'string' || fullPath.trim() === '') {
       logger.info({
-        message: "拼接图片URL时发现fullPath为空，跳过URL生成",
+        message: '拼接图片URL时发现fullPath为空，跳过URL生成',
         details: {
           fullPath,
-          step: "getFileUrl",
-          action: "skip_url_generation",
-        },
-      });
-      return null;
+          step: 'getFileUrl',
+          action: 'skip_url_generation'
+        }
+      })
+      return null
     }
 
     // 本地存储直接返回相对URL
-    return `${this.baseUrl}/${fullPath}`;
+    return `${this.baseUrl}/${fullPath}`
   }
 
   // ========== 目录操作实现 ==========
@@ -316,14 +316,14 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    */
   async ensureDirectory(dirPath) {
     try {
-      const fullDirPath = this.getFullPath(dirPath);
-      await fsExtra.ensureDir(fullDirPath);
+      const fullDirPath = this.getFullPath(dirPath)
+      await fsExtra.ensureDir(fullDirPath)
     } catch (error) {
       logger.error({
-        message: "Local storage ensure directory failed",
-        details: { dirPath, error: error.message },
-      });
-      throw error;
+        message: 'Local storage ensure directory failed',
+        details: { dirPath, error: error.message }
+      })
+      throw error
     }
   }
 
@@ -334,42 +334,42 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    */
   async listFiles(prefix) {
     try {
-      const prefixPath = this.getFullPath(prefix);
-      const exists = await fsExtra.pathExists(prefixPath);
+      const prefixPath = this.getFullPath(prefix)
+      const exists = await fsExtra.pathExists(prefixPath)
 
       if (!exists) {
-        return [];
+        return []
       }
 
-      const stat = await fsExtra.stat(prefixPath);
+      const stat = await fsExtra.stat(prefixPath)
       if (stat.isFile()) {
-        return [prefix];
+        return [prefix]
       }
 
       // 如果是目录，递归读取所有文件
-      const files = [];
-      const items = await fsExtra.readdir(prefixPath);
+      const files = []
+      const items = await fsExtra.readdir(prefixPath)
 
       for (const item of items) {
-        const itemPath = path.join(prefixPath, item);
-        const itemStat = await fsExtra.stat(itemPath);
-        const itemKey = path.join(prefix, item);
+        const itemPath = path.join(prefixPath, item)
+        const itemStat = await fsExtra.stat(itemPath)
+        const itemKey = path.join(prefix, item)
 
         if (itemStat.isFile()) {
-          files.push(itemKey);
+          files.push(itemKey)
         } else if (itemStat.isDirectory()) {
-          const subFiles = await this.listFiles(itemKey);
-          files.push(...subFiles);
+          const subFiles = await this.listFiles(itemKey)
+          files.push(...subFiles)
         }
       }
 
-      return files;
+      return files
     } catch (error) {
       logger.error({
-        message: "Local storage list files failed",
-        details: { prefix, error: error.message },
-      });
-      throw error;
+        message: 'Local storage list files failed',
+        details: { prefix, error: error.message }
+      })
+      throw error
     }
   }
 
@@ -381,33 +381,33 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    * @returns {Promise<Array<{success: boolean, key: string, url?: string, error?: string}>>}
    */
   async storeFiles(files) {
-    const results = [];
+    const results = []
 
     // 并行处理提高效率
     const promises = files.map(async (file) => {
       try {
-        const url = await this.storeFile(file.fileData, file.key, file.options || {});
-        return { success: true, key: file.key, url };
+        const url = await this.storeFile(file.fileData, file.key, file.options || {})
+        return { success: true, key: file.key, url }
       } catch (error) {
-        return { success: false, key: file.key, error: error.message };
+        return { success: false, key: file.key, error: error.message }
       }
-    });
+    })
 
-    const settled = await Promise.allSettled(promises);
+    const settled = await Promise.allSettled(promises)
 
     settled.forEach((result) => {
-      if (result.status === "fulfilled") {
-        results.push(result.value);
+      if (result.status === 'fulfilled') {
+        results.push(result.value)
       } else {
         results.push({
           success: false,
-          key: "unknown",
-          error: result.reason?.message || "Unknown error",
-        });
+          key: 'unknown',
+          error: result.reason?.message || 'Unknown error'
+        })
       }
-    });
+    })
 
-    return results;
+    return results
   }
 
   /**
@@ -416,36 +416,36 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    * @returns {Promise<Array<{key: string, success: boolean, error?: string}>>}
    */
   async deleteFiles(keys) {
-    const results = [];
+    const results = []
 
     // 并行处理提高效率
     const promises = keys.map(async (key) => {
       try {
-        await this.deleteFile(key);
-        return { key, success: true };
+        await this.deleteFile(key)
+        return { key, success: true }
       } catch (error) {
-        return { key, success: false, error: error.message };
+        return { key, success: false, error: error.message }
       }
-    });
+    })
 
-    const settled = await Promise.allSettled(promises);
+    const settled = await Promise.allSettled(promises)
 
     settled.forEach((result) => {
-      if (result.status === "fulfilled") {
-        results.push(result.value);
+      if (result.status === 'fulfilled') {
+        results.push(result.value)
       } else {
         results.push({
-          key: "unknown",
+          key: 'unknown',
           success: false,
-          error: result.reason?.message || "Unknown error",
-        });
+          error: result.reason?.message || 'Unknown error'
+        })
       }
-    });
+    })
 
-    return results;
+    return results
   }
 
   // ========== 元数据提取 ==========
 }
 
-module.exports = LocalStorageAdapter;
+module.exports = LocalStorageAdapter

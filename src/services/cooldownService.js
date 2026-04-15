@@ -13,8 +13,8 @@ class CooldownManager {
    * @param {number} options.defaultCooldown - 默认冷却时间（单位：秒）
    */
   constructor(redisClient, options = {}) {
-    this.redis = redisClient;
-    this.defaultCooldown = options.defaultCooldown || 60; // 默认60秒
+    this.redis = redisClient
+    this.defaultCooldown = options.defaultCooldown || 60 // 默认60秒
   }
 
   /**
@@ -24,7 +24,7 @@ class CooldownManager {
    * @returns {string}
    */
   getKey(type, identifier) {
-    return `${type}_cooldown_${identifier}`;
+    return `${type}_cooldown_${identifier}`
   }
 
   /**
@@ -34,14 +34,14 @@ class CooldownManager {
    * @returns {Promise<boolean>}
    */
   async isCoolingDown(type, identifier) {
-    const key = this.getKey(type, identifier);
+    const key = this.getKey(type, identifier)
     try {
-      const exists = await this.redis.get(key);
-      return !!exists;
+      const exists = await this.redis.get(key)
+      return !!exists
     } catch (err) {
-      console.warn(`[CooldownManager] Redis check failed for ${key}:`, err);
+      console.warn(`[CooldownManager] Redis check failed for ${key}:`, err)
       // 如果 Redis 异常，默认不拦截，返回 false
-      return false;
+      return false
     }
   }
 
@@ -52,11 +52,11 @@ class CooldownManager {
    * @param {number} [duration] - 可选自定义冷却时间
    */
   async setCooldown(type, identifier, duration = this.defaultCooldown) {
-    const key = this.getKey(type, identifier);
+    const key = this.getKey(type, identifier)
     try {
-      await this.redis.set(key, "1", "EX", duration);
+      await this.redis.set(key, '1', 'EX', duration)
     } catch (err) {
-      console.warn(`[CooldownManager] Redis set failed for ${key}:`, err);
+      console.warn(`[CooldownManager] Redis set failed for ${key}:`, err)
     }
   }
   /**
@@ -66,14 +66,14 @@ class CooldownManager {
    * @returns {Promise<number | null>} 返回剩余秒数，或 null 表示无冷却
    */
   async getRemainingCooldown(type, identifier) {
-    const key = this.getKey(type, identifier);
+    const key = this.getKey(type, identifier)
     try {
-      const ttl = await this.redis.ttl(key);
-      if (ttl > 0) return ttl;
-      return null;
+      const ttl = await this.redis.ttl(key)
+      if (ttl > 0) return ttl
+      return null
     } catch (err) {
-      console.warn(`[CooldownManager] TTL check failed for ${key}:`, err);
-      return null;
+      console.warn(`[CooldownManager] TTL check failed for ${key}:`, err)
+      return null
     }
   }
 
@@ -83,13 +83,13 @@ class CooldownManager {
    * @param {string} identifier
    */
   async clearCooldown(type, identifier) {
-    const key = this.getKey(type, identifier);
+    const key = this.getKey(type, identifier)
     try {
-      await this.redis.del(key);
+      await this.redis.del(key)
     } catch (err) {
-      console.warn(`[CooldownManager] Redis delete failed for ${key}:`, err);
+      console.warn(`[CooldownManager] Redis delete failed for ${key}:`, err)
     }
   }
 }
 
-module.exports = CooldownManager;
+module.exports = CooldownManager

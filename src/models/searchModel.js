@@ -407,122 +407,12 @@ function getMediasByIds({ userId, imageIds }) {
 }
 
 /**
- * 获取筛选选项的可用值（优化版：合并查询）
- * 用于筛选侧栏初始化时获取所有可用的筛选选项及其统计信息
- */
-function getFilterOptions(userId) {
-  try {
-    // 注：城市和时间选项已改为分页获取，此接口不再返回这些数据
-    // 请使用 getFilterOptionsPaginated 接口获取分页数据
-
-    // 3. 一次性获取所有统计数据（使用单个查询优化性能）
-    const stats = db
-      .prepare(
-        `
-      SELECT 
-        SUM(CASE WHEN COALESCE(i.person_count, 0) > 0 THEN 1 ELSE 0 END) as has_person,
-        SUM(CASE WHEN COALESCE(i.person_count, 0) = 0 THEN 1 ELSE 0 END) as no_person,
-        
-        SUM(CASE WHEN COALESCE(i.face_count, 0) = 0 THEN 1 ELSE 0 END) as face_zero,
-        SUM(CASE WHEN COALESCE(i.face_count, 0) = 1 THEN 1 ELSE 0 END) as face_one,
-        SUM(CASE WHEN COALESCE(i.face_count, 0) = 2 THEN 1 ELSE 0 END) as face_two,
-        SUM(CASE WHEN COALESCE(i.face_count, 0) >= 3 THEN 1 ELSE 0 END) as face_three_plus,
-        
-        -- 版式统计（使用 MAX 聚合函数配合 CASE 获取各类型数量）
-        SUM(CASE WHEN layout_type = 'portrait' THEN 1 ELSE 0 END) as layout_portrait,
-        SUM(CASE WHEN layout_type = 'landscape' THEN 1 ELSE 0 END) as layout_landscape,
-        SUM(CASE WHEN layout_type = 'square' THEN 1 ELSE 0 END) as layout_square,
-        SUM(CASE WHEN layout_type = 'panorama' THEN 1 ELSE 0 END) as layout_panorama,
-        
-        -- 分辨率统计（与搜索条件保持一致：同时满足宽和高，支持横向/纵向）
-        SUM(CASE WHEN ((width_px >= 7680 AND height_px >= 4320) OR (width_px >= 4320 AND height_px >= 7680)) THEN 1 ELSE 0 END) as res_8k,
-        SUM(CASE WHEN ((width_px >= 3840 AND height_px >= 2160) OR (width_px >= 2160 AND height_px >= 3840)) THEN 1 ELSE 0 END) as res_4k,
-        SUM(CASE WHEN ((width_px >= 1920 AND height_px >= 1080) OR (width_px >= 1080 AND height_px >= 1920)) THEN 1 ELSE 0 END) as res_fhd,
-        SUM(CASE WHEN (NOT ((width_px >= 1920 AND height_px >= 1080) OR (width_px >= 1080 AND height_px >= 1920))) THEN 1 ELSE 0 END) as res_hd
-      FROM media i
-      WHERE i.user_id = ?
-    `,
-      )
-      .get(userId);
-
-    // 4. 从 expression_tags（逗号分隔）解析用户库中实际出现过的表情（与 buildSearchQueryParts 白名单一致）
-    const ALLOWED_EXPRESSION = new Set(["happy", "sad", "anger", "surprise", "neutral"]);
-    const expressionTagRows = db
-      .prepare(
-        `
-      SELECT i.expression_tags
-      FROM media i
-      WHERE i.user_id = ?
-        AND i.expression_tags IS NOT NULL
-        AND TRIM(i.expression_tags) != ''
-      LIMIT 2000
-    `,
-      )
-      .all(userId);
-
-    const expressionSet = new Set();
-    expressionTagRows.forEach((row) => {
-      String(row.expression_tags)
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean)
-        .forEach((t) => {
-          if (ALLOWED_EXPRESSION.has(t)) expressionSet.add(t);
-        });
-    });
-    const expressionOrder = ["happy", "sad", "anger", "surprise", "neutral"];
-    const expressionsSorted = expressionOrder.filter((e) => expressionSet.has(e));
-
-    // 5. 组装返回数据（不再包含cities和years，改用分页接口）
-    return {
-      // 是否有人统计
-      hasPersonStats: {
-        withPerson: stats.has_person || 0,
-        withoutPerson: stats.no_person || 0,
-      },
-
-      // 人脸数量统计
-      faceCountStats: {
-        zero: stats.face_zero || 0,
-        one: stats.face_one || 0,
-        two: stats.face_two || 0,
-        threePlus: stats.face_three_plus || 0,
-      },
-
-      // 表情选项（实际存在的表情）
-      expressions: expressionsSorted,
-
-      // 分辨率统计
-      resolutionStats: {
-        sd: stats.res_hd || 0,
-        fhd: stats.res_fhd || 0,
-        uhd4k: stats.res_4k || 0,
-        uhd8k: stats.res_8k || 0,
-      },
-
-      // 图片版式统计
-      layoutStats: {
-        portrait: stats.layout_portrait || 0,
-        landscape: stats.layout_landscape || 0,
-        square: stats.layout_square || 0,
-        panorama: stats.layout_panorama || 0,
-      },
-
-    };
-  } catch (error) {
-    console.error("获取筛选选项失败:", error);
-    throw error;
-  }
-}
-
-/**
  * 分页获取筛选选项列表（支持 scope：在当前维度下的选项）
  * @param {Object} params
  * @param {number} params.userId - 用户ID
  * @param {string} params.type - 选项类型: 'city' | 'year' | 'month' | 'weekday'
  * @param {number} params.pageNo - 页码（从1开始）
  * @param {number} params.pageSize - 每页数量（默认20）
- * @param {string} params.timeDimension - 时间维度（可选）
  * @param {string|null} [params.mediaType] - 媒体类型：'image' | 'video'，null 或 'all' 表示不过滤
  * @param {string[]} [params.scopeConditions] - 范围条件（表别名 i.，内部会转为 images.）
  * @param {any[]} [params.scopeParams] - 范围条件参数
@@ -533,7 +423,6 @@ function getFilterOptionsPaginated({
   type,
   pageNo = 1,
   pageSize = 20,
-  timeDimension = null,
   mediaType = null,
   scopeConditions = null,
   scopeParams = null,

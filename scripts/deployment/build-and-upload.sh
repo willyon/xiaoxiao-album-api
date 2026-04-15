@@ -56,7 +56,7 @@ echo "✅ 本地打包完成"
 echo "📤 第二步：上传文件到服务器..."
 
 echo "📦 上传代码文件..."
-rsync -avz --progress --delete --no-times --exclude ".DS_Store" --exclude "database.db" --exclude "localStorage/" --exclude "logs/" --exclude "node_modules/" -e "ssh -i $SSH_KEY" "$PROJECT_ROOT/backend-dist/" "$SERVER_USER@$SERVER_HOST:$SERVER_PATH/"
+rsync -avz --progress --delete --no-times --exclude ".DS_Store" --exclude "database.db" --exclude "storage-local/" --exclude "logs/" --exclude "node_modules/" -e "ssh -i $SSH_KEY" "$PROJECT_ROOT/backend-dist/" "$SERVER_USER@$SERVER_HOST:$SERVER_PATH/"
 
 echo "🔑 设置脚本执行权限..."
 ssh -i "$SSH_KEY" "$SERVER_USER@$SERVER_HOST" "cd $SERVER_PATH && chmod +x scripts/deployment/fix-sharp-complete.sh"

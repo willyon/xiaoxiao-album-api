@@ -5,12 +5,12 @@
  * - 无可用 Key：同上本地 → 全球
  */
 
-const logger = require("../utils/logger");
-const { wgs84ToGcj02 } = require("../utils/coordinateTransform");
-const { getAmapApiKeyForGeocode } = require("./amapSettingsService");
-const { getLocationFromCoordinatesAmap } = require("./amapReverseGeocodeService");
-const { getLocationFromCoordinatesLocal } = require("./localReverseGeocodeService");
-const { getLocationFromCoordinatesGlobal } = require("./globalReverseGeocodeService");
+const logger = require('../utils/logger')
+const { wgs84ToGcj02 } = require('../utils/coordinateTransform')
+const { getAmapApiKeyForGeocode } = require('./amapSettingsService')
+const { getLocationFromCoordinatesAmap } = require('./amapReverseGeocodeService')
+const { getLocationFromCoordinatesLocal } = require('./localReverseGeocodeService')
+const { getLocationFromCoordinatesGlobal } = require('./globalReverseGeocodeService')
 
 /**
  * 先中国本地行政区划（GCJ），未命中再全球国家/地区（WGS）
@@ -19,40 +19,40 @@ const { getLocationFromCoordinatesGlobal } = require("./globalReverseGeocodeServ
 function fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, fallbackReason) {
   if (fallbackReason) {
     logger.info({
-      message: "逆地理降级：使用本地数据",
-      details: { reason: fallbackReason, latitude, longitude },
-    });
+      message: '逆地理降级：使用本地数据',
+      details: { reason: fallbackReason, latitude, longitude }
+    })
   }
 
-  const local = getLocationFromCoordinatesLocal(gcj02Coords.lat, gcj02Coords.lng);
+  const local = getLocationFromCoordinatesLocal(gcj02Coords.lat, gcj02Coords.lng)
   if (local) {
     logger.info({
-      message: fallbackReason ? "本地行政区划逆地理编码成功（高德降级）" : "本地行政区划逆地理编码成功",
+      message: fallbackReason ? '本地行政区划逆地理编码成功（高德降级）' : '本地行政区划逆地理编码成功',
       details: {
         latitude,
         longitude,
         formattedAddress: local.formattedAddress,
         province: local.province,
         city: local.city,
-        district: local.district,
-      },
-    });
-    return local;
+        district: local.district
+      }
+    })
+    return local
   }
 
-  const globalLoc = getLocationFromCoordinatesGlobal(latitude, longitude);
+  const globalLoc = getLocationFromCoordinatesGlobal(latitude, longitude)
   if (globalLoc) {
     logger.info({
-      message: fallbackReason ? "本地全球国家/地区逆地理编码成功（高德降级）" : "本地全球国家/地区逆地理编码成功",
+      message: fallbackReason ? '本地全球国家/地区逆地理编码成功（高德降级）' : '本地全球国家/地区逆地理编码成功',
       details: {
         latitude,
         longitude,
         formattedAddress: globalLoc.formattedAddress,
-        country: globalLoc.country,
-      },
-    });
+        country: globalLoc.country
+      }
+    })
   }
-  return globalLoc;
+  return globalLoc
 }
 
 /**
@@ -70,42 +70,42 @@ function fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, fallbackReaso
  */
 async function getLocationFromCoordinates(latitude, longitude, userId) {
   if (!latitude || !longitude) {
-    return { location: null, mapRegeoStatus: null };
+    return { location: null, mapRegeoStatus: null }
   }
 
-  const gcj02Coords = wgs84ToGcj02(longitude, latitude);
+  const gcj02Coords = wgs84ToGcj02(longitude, latitude)
 
-  const apiKey = getAmapApiKeyForGeocode(userId);
+  const apiKey = getAmapApiKeyForGeocode(userId)
   if (!apiKey) {
-    const location = fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, null);
-    return { location, mapRegeoStatus: "skipped" };
+    const location = fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, null)
+    return { location, mapRegeoStatus: 'skipped' }
   }
 
   try {
     logger.info({
-      message: "坐标转换完成",
+      message: '坐标转换完成',
       details: {
-        original: { longitude, latitude, system: "WGS-84" },
-        converted: { longitude: gcj02Coords.lng, latitude: gcj02Coords.lat, system: "GCJ-02" },
-      },
-    });
+        original: { longitude, latitude, system: 'WGS-84' },
+        converted: { longitude: gcj02Coords.lng, latitude: gcj02Coords.lat, system: 'GCJ-02' }
+      }
+    })
 
-    const out = await getLocationFromCoordinatesAmap(apiKey, gcj02Coords, latitude, longitude);
+    const out = await getLocationFromCoordinatesAmap(apiKey, gcj02Coords, latitude, longitude)
     if (out.success) {
-      return { location: out.result, mapRegeoStatus: "success" };
+      return { location: out.result, mapRegeoStatus: 'success' }
     }
-    const location = fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, out.fallbackReason);
-    return { location, mapRegeoStatus: "failed" };
+    const location = fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, out.fallbackReason)
+    return { location, mapRegeoStatus: 'failed' }
   } catch (error) {
     logger.warn({
-      message: "高德逆地理编码失败，尝试本地降级",
-      details: { latitude, longitude, error: error.message },
-    });
-    const location = fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, error.message);
-    return { location, mapRegeoStatus: "failed" };
+      message: '高德逆地理编码失败，尝试本地降级',
+      details: { latitude, longitude, error: error.message }
+    })
+    const location = fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, error.message)
+    return { location, mapRegeoStatus: 'failed' }
   }
 }
 
 module.exports = {
-  getLocationFromCoordinates,
-};
+  getLocationFromCoordinates
+}

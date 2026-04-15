@@ -1,0 +1,13 @@
+node_modules/
+backend-dist/
+build/
+dist/
+logs/
+storage-local/
+database/
+*.db
+*.db-wal
+*.db-shm
+.env
+python-ai-service/
+models/

@@ -1,12 +1,12 @@
-const logger = require("../utils/logger");
-const { mapRegeoQueue } = require("../queues/mapRegeoQueue");
-const { selectPendingMapRegeoBatch, countMapRegeoSkippedForUser } = require("../models/mediaModel");
+const logger = require('../utils/logger')
+const { mapRegeoQueue } = require('../queues/mapRegeoQueue')
+const { selectPendingMapRegeoBatch, countMapRegeoSkippedForUser } = require('../models/mediaModel')
 
 /** 设置页展示：map_regeo_status 为 skipped 或 failed、且含 GPS 的条数 */
 function getMapRegeoSkippedCount(userId) {
   return {
-    skippedCount: countMapRegeoSkippedForUser(userId),
-  };
+    skippedCount: countMapRegeoSkippedForUser(userId)
+  }
 }
 
 /**
@@ -14,54 +14,51 @@ function getMapRegeoSkippedCount(userId) {
  * jobId: map-regeo:{userId}:{mediaId}
  */
 async function enqueueMapRegeoRebuildAll(limitPerBatch = 500, userId) {
-  const envIter = Number(process.env.MAP_REGEO_REBUILD_MAX_ITERATIONS);
-  const maxIter = Math.max(
-    1,
-    Math.min(Number.isFinite(envIter) && envIter > 0 ? envIter : 40, 100_000_000),
-  );
-  let totalEnqueued = 0;
-  let cursorBeforeId = null;
+  const envIter = Number(process.env.MAP_REGEO_REBUILD_MAX_ITERATIONS)
+  const maxIter = Math.max(1, Math.min(Number.isFinite(envIter) && envIter > 0 ? envIter : 40, 100_000_000))
+  let totalEnqueued = 0
+  let cursorBeforeId = null
 
   for (let i = 0; i < maxIter; i++) {
-    const rows = selectPendingMapRegeoBatch(limitPerBatch, userId, cursorBeforeId);
+    const rows = selectPendingMapRegeoBatch(limitPerBatch, userId, cursorBeforeId)
     if (!rows || rows.length === 0) {
-      return totalEnqueued;
+      return totalEnqueued
     }
 
     const jobs = rows.map((row) => {
-      const uid = row.userId;
-      const mid = row.mediaId;
+      const uid = row.userId
+      const mid = row.mediaId
       return {
         name: `map-regeo-${mid}`,
         data: {
           mediaId: mid,
           userId: uid,
           latitude: row.latitude,
-          longitude: row.longitude,
+          longitude: row.longitude
         },
         opts: {
-          jobId: `map-regeo:${uid}:${mid}`,
-        },
-      };
-    });
+          jobId: `map-regeo:${uid}:${mid}`
+        }
+      }
+    })
 
-    await mapRegeoQueue.addBulk(jobs);
-    totalEnqueued += rows.length;
-    cursorBeforeId = rows[rows.length - 1].mediaId;
+    await mapRegeoQueue.addBulk(jobs)
+    totalEnqueued += rows.length
+    cursorBeforeId = rows[rows.length - 1].mediaId
   }
 
-  const pendingLeft = countMapRegeoSkippedForUser(userId);
+  const pendingLeft = countMapRegeoSkippedForUser(userId)
   logger.error({
-    message: "enqueueMapRegeoRebuildAll: iteration cap reached (check MAP_REGEO_REBUILD_MAX_ITERATIONS)",
+    message: 'enqueueMapRegeoRebuildAll: iteration cap reached (check MAP_REGEO_REBUILD_MAX_ITERATIONS)',
     totalEnqueued,
     pendingLeft,
     maxIter,
-    limitPerBatch,
-  });
-  return totalEnqueued;
+    limitPerBatch
+  })
+  return totalEnqueued
 }
 
 module.exports = {
   getMapRegeoSkippedCount,
-  enqueueMapRegeoRebuildAll,
-};
+  enqueueMapRegeoRebuildAll
+}

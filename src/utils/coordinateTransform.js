@@ -8,9 +8,9 @@
  * - BD-09: 百度坐标系，百度地图使用
  */
 
-const PI = Math.PI;
-const A = 6378245.0; // 长半轴
-const EE = 0.00669342162296594323; // 偏心率平方
+const PI = Math.PI
+const A = 6378245.0 // 长半轴
+const EE = 0.00669342162296594323 // 偏心率平方
 
 /**
  * 判断坐标是否在中国境内
@@ -19,7 +19,7 @@ const EE = 0.00669342162296594323; // 偏心率平方
  * @returns {boolean} 是否在中国境内
  */
 function isInChina(lng, lat) {
-  return lng >= 72.004 && lng <= 137.8347 && lat >= 0.8293 && lat <= 55.8271;
+  return lng >= 72.004 && lng <= 137.8347 && lat >= 0.8293 && lat <= 55.8271
 }
 
 /**
@@ -29,11 +29,11 @@ function isInChina(lng, lat) {
  * @returns {number} 转换后的纬度偏移
  */
 function transformLat(lng, lat) {
-  let ret = -100.0 + 2.0 * lng + 3.0 * lat + 0.2 * lat * lat + 0.1 * lng * lat + 0.2 * Math.sqrt(Math.abs(lng));
-  ret += ((20.0 * Math.sin(6.0 * lng * PI) + 20.0 * Math.sin(2.0 * lng * PI)) * 2.0) / 3.0;
-  ret += ((20.0 * Math.sin(lat * PI) + 40.0 * Math.sin((lat / 3.0) * PI)) * 2.0) / 3.0;
-  ret += ((160.0 * Math.sin((lat / 12.0) * PI) + 320 * Math.sin((lat * PI) / 30.0)) * 2.0) / 3.0;
-  return ret;
+  let ret = -100.0 + 2.0 * lng + 3.0 * lat + 0.2 * lat * lat + 0.1 * lng * lat + 0.2 * Math.sqrt(Math.abs(lng))
+  ret += ((20.0 * Math.sin(6.0 * lng * PI) + 20.0 * Math.sin(2.0 * lng * PI)) * 2.0) / 3.0
+  ret += ((20.0 * Math.sin(lat * PI) + 40.0 * Math.sin((lat / 3.0) * PI)) * 2.0) / 3.0
+  ret += ((160.0 * Math.sin((lat / 12.0) * PI) + 320 * Math.sin((lat * PI) / 30.0)) * 2.0) / 3.0
+  return ret
 }
 
 /**
@@ -43,11 +43,11 @@ function transformLat(lng, lat) {
  * @returns {number} 转换后的经度偏移
  */
 function transformLng(lng, lat) {
-  let ret = 300.0 + lng + 2.0 * lat + 0.1 * lng * lng + 0.1 * lng * lat + 0.1 * Math.sqrt(Math.abs(lng));
-  ret += ((20.0 * Math.sin(6.0 * lng * PI) + 20.0 * Math.sin(2.0 * lng * PI)) * 2.0) / 3.0;
-  ret += ((20.0 * Math.sin(lng * PI) + 40.0 * Math.sin((lng / 3.0) * PI)) * 2.0) / 3.0;
-  ret += ((150.0 * Math.sin((lng / 12.0) * PI) + 300.0 * Math.sin((lng / 30.0) * PI)) * 2.0) / 3.0;
-  return ret;
+  let ret = 300.0 + lng + 2.0 * lat + 0.1 * lng * lng + 0.1 * lng * lat + 0.1 * Math.sqrt(Math.abs(lng))
+  ret += ((20.0 * Math.sin(6.0 * lng * PI) + 20.0 * Math.sin(2.0 * lng * PI)) * 2.0) / 3.0
+  ret += ((20.0 * Math.sin(lng * PI) + 40.0 * Math.sin((lng / 3.0) * PI)) * 2.0) / 3.0
+  ret += ((150.0 * Math.sin((lng / 12.0) * PI) + 300.0 * Math.sin((lng / 30.0) * PI)) * 2.0) / 3.0
+  return ret
 }
 
 /**
@@ -59,24 +59,24 @@ function transformLng(lng, lat) {
 function wgs84ToGcj02(wgsLng, wgsLat) {
   if (!isInChina(wgsLng, wgsLat)) {
     // 不在中国境内，直接返回原坐标
-    return { lng: wgsLng, lat: wgsLat };
+    return { lng: wgsLng, lat: wgsLat }
   }
 
-  let dLat = transformLat(wgsLng - 105.0, wgsLat - 35.0);
-  let dLng = transformLng(wgsLng - 105.0, wgsLat - 35.0);
+  let dLat = transformLat(wgsLng - 105.0, wgsLat - 35.0)
+  let dLng = transformLng(wgsLng - 105.0, wgsLat - 35.0)
 
-  const radLat = (wgsLat / 180.0) * PI;
-  let magic = Math.sin(radLat);
-  magic = 1 - EE * magic * magic;
-  const sqrtMagic = Math.sqrt(magic);
+  const radLat = (wgsLat / 180.0) * PI
+  let magic = Math.sin(radLat)
+  magic = 1 - EE * magic * magic
+  const sqrtMagic = Math.sqrt(magic)
 
-  dLat = (dLat * 180.0) / (((A * (1 - EE)) / (magic * sqrtMagic)) * PI);
-  dLng = (dLng * 180.0) / ((A / sqrtMagic) * Math.cos(radLat) * PI);
+  dLat = (dLat * 180.0) / (((A * (1 - EE)) / (magic * sqrtMagic)) * PI)
+  dLng = (dLng * 180.0) / ((A / sqrtMagic) * Math.cos(radLat) * PI)
 
-  const gcjLat = wgsLat + dLat;
-  const gcjLng = wgsLng + dLng;
+  const gcjLat = wgsLat + dLat
+  const gcjLng = wgsLng + dLng
 
-  return { lng: gcjLng, lat: gcjLat };
+  return { lng: gcjLng, lat: gcjLat }
 }
 
 /**
@@ -88,24 +88,24 @@ function wgs84ToGcj02(wgsLng, wgsLat) {
 function gcj02ToWgs84(gcjLng, gcjLat) {
   if (!isInChina(gcjLng, gcjLat)) {
     // 不在中国境内，直接返回原坐标
-    return { lng: gcjLng, lat: gcjLat };
+    return { lng: gcjLng, lat: gcjLat }
   }
 
-  let dLat = transformLat(gcjLng - 105.0, gcjLat - 35.0);
-  let dLng = transformLng(gcjLng - 105.0, gcjLat - 35.0);
+  let dLat = transformLat(gcjLng - 105.0, gcjLat - 35.0)
+  let dLng = transformLng(gcjLng - 105.0, gcjLat - 35.0)
 
-  const radLat = (gcjLat / 180.0) * PI;
-  let magic = Math.sin(radLat);
-  magic = 1 - EE * magic * magic;
-  const sqrtMagic = Math.sqrt(magic);
+  const radLat = (gcjLat / 180.0) * PI
+  let magic = Math.sin(radLat)
+  magic = 1 - EE * magic * magic
+  const sqrtMagic = Math.sqrt(magic)
 
-  dLat = (dLat * 180.0) / (((A * (1 - EE)) / (magic * sqrtMagic)) * PI);
-  dLng = (dLng * 180.0) / ((A / sqrtMagic) * Math.cos(radLat) * PI);
+  dLat = (dLat * 180.0) / (((A * (1 - EE)) / (magic * sqrtMagic)) * PI)
+  dLng = (dLng * 180.0) / ((A / sqrtMagic) * Math.cos(radLat) * PI)
 
-  const wgsLat = gcjLat - dLat;
-  const wgsLng = gcjLng - dLng;
+  const wgsLat = gcjLat - dLat
+  const wgsLng = gcjLng - dLng
 
-  return { lng: wgsLng, lat: wgsLat };
+  return { lng: wgsLng, lat: wgsLat }
 }
 
 /**
@@ -115,13 +115,13 @@ function gcj02ToWgs84(gcjLng, gcjLat) {
  * @returns {Object} BD-09坐标 {lng, lat}
  */
 function gcj02ToBd09(gcjLng, gcjLat) {
-  const z = Math.sqrt(gcjLng * gcjLng + gcjLat * gcjLat) + 0.00002 * Math.sin((gcjLat * PI * 3000.0) / 180.0);
-  const theta = Math.atan2(gcjLat, gcjLng) + 0.000003 * Math.cos((gcjLng * PI * 3000.0) / 180.0);
+  const z = Math.sqrt(gcjLng * gcjLng + gcjLat * gcjLat) + 0.00002 * Math.sin((gcjLat * PI * 3000.0) / 180.0)
+  const theta = Math.atan2(gcjLat, gcjLng) + 0.000003 * Math.cos((gcjLng * PI * 3000.0) / 180.0)
 
-  const bdLng = z * Math.cos(theta) + 0.0065;
-  const bdLat = z * Math.sin(theta) + 0.006;
+  const bdLng = z * Math.cos(theta) + 0.0065
+  const bdLat = z * Math.sin(theta) + 0.006
 
-  return { lng: bdLng, lat: bdLat };
+  return { lng: bdLng, lat: bdLat }
 }
 
 /**
@@ -131,15 +131,15 @@ function gcj02ToBd09(gcjLng, gcjLat) {
  * @returns {Object} GCJ-02坐标 {lng, lat}
  */
 function bd09ToGcj02(bdLng, bdLat) {
-  const x = bdLng - 0.0065;
-  const y = bdLat - 0.006;
-  const z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin((y * PI * 3000.0) / 180.0);
-  const theta = Math.atan2(y, x) - 0.000003 * Math.cos((x * PI * 3000.0) / 180.0);
+  const x = bdLng - 0.0065
+  const y = bdLat - 0.006
+  const z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin((y * PI * 3000.0) / 180.0)
+  const theta = Math.atan2(y, x) - 0.000003 * Math.cos((x * PI * 3000.0) / 180.0)
 
-  const gcjLng = z * Math.cos(theta);
-  const gcjLat = z * Math.sin(theta);
+  const gcjLng = z * Math.cos(theta)
+  const gcjLat = z * Math.sin(theta)
 
-  return { lng: gcjLng, lat: gcjLat };
+  return { lng: gcjLng, lat: gcjLat }
 }
 
 /**
@@ -149,8 +149,8 @@ function bd09ToGcj02(bdLng, bdLat) {
  * @returns {Object} BD-09坐标 {lng, lat}
  */
 function wgs84ToBd09(wgsLng, wgsLat) {
-  const gcj = wgs84ToGcj02(wgsLng, wgsLat);
-  return gcj02ToBd09(gcj.lng, gcj.lat);
+  const gcj = wgs84ToGcj02(wgsLng, wgsLat)
+  return gcj02ToBd09(gcj.lng, gcj.lat)
 }
 
 /**
@@ -160,8 +160,8 @@ function wgs84ToBd09(wgsLng, wgsLat) {
  * @returns {Object} WGS-84坐标 {lng, lat}
  */
 function bd09ToWgs84(bdLng, bdLat) {
-  const gcj = bd09ToGcj02(bdLng, bdLat);
-  return gcj02ToWgs84(gcj.lng, gcj.lat);
+  const gcj = bd09ToGcj02(bdLng, bdLat)
+  return gcj02ToWgs84(gcj.lng, gcj.lat)
 }
 
 module.exports = {
@@ -171,5 +171,5 @@ module.exports = {
   bd09ToGcj02,
   wgs84ToBd09,
   bd09ToWgs84,
-  isInChina,
-};
+  isInChina
+}

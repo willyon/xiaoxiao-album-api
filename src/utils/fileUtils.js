@@ -9,51 +9,51 @@
  * 统一管理扩展名 ↔ MIME 类型的双向映射
  */
 const IMAGE_FORMAT_MAP = {
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  gif: "image/gif",
-  webp: "image/webp",
-  avif: "image/avif",
-  bmp: "image/bmp",
-  tiff: "image/tiff",
-  heic: "image/heic",
-  heif: "image/heif",
-  svg: "image/svg+xml",
-};
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  avif: 'image/avif',
+  bmp: 'image/bmp',
+  tiff: 'image/tiff',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  svg: 'image/svg+xml'
+}
 
 /**
  * 支持的图片文件扩展名列表（从映射表派生）
  */
-const SUPPORTED_IMAGE_EXTENSIONS = new Set(Object.keys(IMAGE_FORMAT_MAP));
+const SUPPORTED_IMAGE_EXTENSIONS = new Set(Object.keys(IMAGE_FORMAT_MAP))
 
 /**
  * 支持的图片MIME类型列表（从映射表派生）
  */
-const SUPPORTED_IMAGE_MIME_TYPES = new Set(Object.values(IMAGE_FORMAT_MAP));
+const SUPPORTED_IMAGE_MIME_TYPES = new Set(Object.values(IMAGE_FORMAT_MAP))
 
 /**
  * 视频格式映射表（扩展名 → MIME，用于入库、校验）
  */
 const VIDEO_FORMAT_MAP = {
-  mp4: "video/mp4",
-  mov: "video/quicktime",
-  webm: "video/webm",
-  avi: "video/x-msvideo",
-  mkv: "video/x-matroska",
-  m4v: "video/x-m4v",
-  "3gp": "video/3gpp",
-  mpeg: "video/mpeg",
-  mpg: "video/mpeg",
-  mts: "video/mp2t",
-  m2ts: "video/mp2t",
-  ts: "video/mp2t",
-  flv: "video/x-flv",
-  wmv: "video/x-ms-wmv",
-};
+  mp4: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+  avi: 'video/x-msvideo',
+  mkv: 'video/x-matroska',
+  m4v: 'video/x-m4v',
+  '3gp': 'video/3gpp',
+  mpeg: 'video/mpeg',
+  mpg: 'video/mpeg',
+  mts: 'video/mp2t',
+  m2ts: 'video/mp2t',
+  ts: 'video/mp2t',
+  flv: 'video/x-flv',
+  wmv: 'video/x-ms-wmv'
+}
 
-const SUPPORTED_VIDEO_EXTENSIONS = new Set(Object.keys(VIDEO_FORMAT_MAP));
-const SUPPORTED_VIDEO_MIME_TYPES = new Set(Object.values(VIDEO_FORMAT_MAP));
+const SUPPORTED_VIDEO_EXTENSIONS = new Set(Object.keys(VIDEO_FORMAT_MAP))
+const SUPPORTED_VIDEO_MIME_TYPES = new Set(Object.values(VIDEO_FORMAT_MAP))
 
 /**
  * 从视频文件名解析 MIME（与 VIDEO_FORMAT_MAP 一致；未知扩展名返回 null）
@@ -61,10 +61,10 @@ const SUPPORTED_VIDEO_MIME_TYPES = new Set(Object.values(VIDEO_FORMAT_MAP));
  * @returns {string|null}
  */
 function getVideoMimeTypeFromFileName(fileName) {
-  if (!fileName || typeof fileName !== "string") return null;
-  const ext = fileName.toLowerCase().trim().split(".").pop();
-  if (!ext) return null;
-  return VIDEO_FORMAT_MAP[ext] ?? null;
+  if (!fileName || typeof fileName !== 'string') return null
+  const ext = fileName.toLowerCase().trim().split('.').pop()
+  if (!ext) return null
+  return VIDEO_FORMAT_MAP[ext] ?? null
 }
 
 /**
@@ -86,17 +86,17 @@ function getVideoMimeTypeFromFileName(fileName) {
 function isImageFile(file) {
   // 1. 优先检查multer提供的MIME类型
   if (file.mimetype && SUPPORTED_IMAGE_MIME_TYPES.has(file.mimetype)) {
-    return true;
+    return true
   }
 
   // 2. 降级检查：基于文件扩展名（处理HEIC等格式）
   if (file.originalname) {
-    const extension = file.originalname.toLowerCase().split(".").pop();
-    return SUPPORTED_IMAGE_EXTENSIONS.has(extension);
+    const extension = file.originalname.toLowerCase().split('.').pop()
+    return SUPPORTED_IMAGE_EXTENSIONS.has(extension)
   }
 
   // 3. 无法判断时返回false
-  return false;
+  return false
 }
 
 /**
@@ -106,13 +106,13 @@ function isImageFile(file) {
  */
 function isVideoFile(file) {
   if (file.mimetype && SUPPORTED_VIDEO_MIME_TYPES.has(file.mimetype)) {
-    return true;
+    return true
   }
   if (file.originalname) {
-    const extension = file.originalname.toLowerCase().split(".").pop();
-    return SUPPORTED_VIDEO_EXTENSIONS.has(extension);
+    const extension = file.originalname.toLowerCase().split('.').pop()
+    return SUPPORTED_VIDEO_EXTENSIONS.has(extension)
   }
-  return false;
+  return false
 }
 
 /**
@@ -121,7 +121,7 @@ function isVideoFile(file) {
  * @returns {boolean} 是否为支持的媒体文件
  */
 function isMediaFile(file) {
-  return isImageFile(file) || isVideoFile(file);
+  return isImageFile(file) || isVideoFile(file)
 }
 
 /**
@@ -131,11 +131,11 @@ function isMediaFile(file) {
  * @returns {'video'|'image'}
  */
 function getMediaTypeFromFile(file) {
-  if (file.mimetype?.startsWith("video/")) return "video";
-  const fileName = file.originalname || file.filename || "";
-  const ext = fileName.toLowerCase().split(".").pop();
-  if (SUPPORTED_VIDEO_EXTENSIONS.has(ext)) return "video";
-  return "image";
+  if (file.mimetype?.startsWith('video/')) return 'video'
+  const fileName = file.originalname || file.filename || ''
+  const ext = fileName.toLowerCase().split('.').pop()
+  if (SUPPORTED_VIDEO_EXTENSIONS.has(ext)) return 'video'
+  return 'image'
 }
 
 /**
@@ -149,12 +149,12 @@ function getMediaTypeFromFile(file) {
  */
 function detectImageFormatFromBuffer(buffer) {
   if (!buffer || buffer.length < 4) {
-    return null;
+    return null
   }
 
   // JPEG: FF D8 FF
   if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-    return "jpeg";
+    return 'jpeg'
   }
 
   // PNG: 89 50 4E 47 0D 0A 1A 0A
@@ -169,7 +169,7 @@ function detectImageFormatFromBuffer(buffer) {
     buffer[6] === 0x1a &&
     buffer[7] === 0x0a
   ) {
-    return "png";
+    return 'png'
   }
 
   // GIF: GIF87a 或 GIF89a
@@ -182,12 +182,12 @@ function detectImageFormatFromBuffer(buffer) {
     (buffer[4] === 0x37 || buffer[4] === 0x39) && // 7 或 9
     buffer[5] === 0x61 // a
   ) {
-    return "gif";
+    return 'gif'
   }
 
   // BMP: BM
   if (buffer[0] === 0x42 && buffer[1] === 0x4d) {
-    return "bmp";
+    return 'bmp'
   }
 
   // TIFF: II*\0 (little-endian) 或 MM\0* (big-endian)
@@ -196,7 +196,7 @@ function detectImageFormatFromBuffer(buffer) {
       (buffer[0] === 0x49 && buffer[1] === 0x49 && buffer[2] === 0x2a && buffer[3] === 0x00) || // II*\0
       (buffer[0] === 0x4d && buffer[1] === 0x4d && buffer[2] === 0x00 && buffer[3] === 0x2a) // MM\0*
     ) {
-      return "tiff";
+      return 'tiff'
     }
   }
 
@@ -212,14 +212,14 @@ function detectImageFormatFromBuffer(buffer) {
     buffer[10] === 0x42 && // B
     buffer[11] === 0x50 // P
   ) {
-    return "webp";
+    return 'webp'
   }
 
   // SVG: 文本格式，检查开头是否为 <svg 或 <?xml
   if (buffer.length >= 5) {
-    const text = buffer.slice(0, Math.min(100, buffer.length)).toString("utf-8");
-    if (text.includes("<svg") || text.includes("<?xml")) {
-      return "svg";
+    const text = buffer.slice(0, Math.min(100, buffer.length)).toString('utf-8')
+    if (text.includes('<svg') || text.includes('<?xml')) {
+      return 'svg'
     }
   }
 
@@ -232,25 +232,25 @@ function detectImageFormatFromBuffer(buffer) {
     buffer[7] === 0x70 // p
   ) {
     // 检查 brand（偏移8-11）
-    const brand = buffer.slice(8, 12).toString("ascii");
+    const brand = buffer.slice(8, 12).toString('ascii')
 
     // AVIF 格式
-    if (brand === "avif" || brand === "avis" || brand === "MA1A" || brand === "MA1B") {
-      return "avif";
+    if (brand === 'avif' || brand === 'avis' || brand === 'MA1A' || brand === 'MA1B') {
+      return 'avif'
     }
 
     // HEIC 格式（Apple HEVC）
-    if (["heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs"].includes(brand)) {
-      return "heic";
+    if (['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs'].includes(brand)) {
+      return 'heic'
     }
 
     // HEIF 格式（通用）
-    if (brand === "mif1" || brand === "msf1") {
-      return "heif";
+    if (brand === 'mif1' || brand === 'msf1') {
+      return 'heif'
     }
   }
 
-  return null;
+  return null
 }
 
 /**
@@ -263,14 +263,14 @@ function detectImageFormatFromBuffer(buffer) {
  */
 function getStandardMimeType(input) {
   // 支持文件名（如 "test.jpg"）和扩展名（如 "jpg" 或 ".jpg"）
-  let extension = input.toLowerCase().trim();
+  let extension = input.toLowerCase().trim()
 
   // 如果包含点号，提取扩展名
-  if (extension.includes(".")) {
-    extension = extension.split(".").pop();
+  if (extension.includes('.')) {
+    extension = extension.split('.').pop()
   }
 
-  return IMAGE_FORMAT_MAP[extension] || "image/jpeg";
+  return IMAGE_FORMAT_MAP[extension] || 'image/jpeg'
 }
 
 /**
@@ -283,11 +283,11 @@ function getExtensionFromMimeType(mimeType) {
   // 从主映射表中查找（反向查找）
   for (const [ext, mime] of Object.entries(IMAGE_FORMAT_MAP)) {
     if (mime === mimeType) {
-      return ext;
+      return ext
     }
   }
 
-  return "jpg"; // 默认值
+  return 'jpg' // 默认值
 }
 
 /**
@@ -300,10 +300,10 @@ function getExtensionFromMimeType(mimeType) {
 function getMimeTypeByMagicBytes(input) {
   // 如果输入是 Buffer，使用魔数检测
   if (Buffer.isBuffer(input)) {
-    const format = detectImageFormatFromBuffer(input);
+    const format = detectImageFormatFromBuffer(input)
     if (format) {
       // 直接从主映射表获取 MIME 类型（避免重复定义）
-      return IMAGE_FORMAT_MAP[format] || "image/jpeg";
+      return IMAGE_FORMAT_MAP[format] || 'image/jpeg'
     }
     // ⚠️ 魔数检测失败（Buffer 场景）
     // 可能原因：
@@ -311,15 +311,15 @@ function getMimeTypeByMagicBytes(input) {
     // 2. 非标准编码
     // 3. 不支持的格式
     // 策略：返回默认值，让后续处理（Sharp/OpenCV）自然失败
-    return "image/jpeg";
+    return 'image/jpeg'
   }
 
   // 降级：使用扩展名判断（String 场景，如文件路径）
-  if (typeof input === "string") {
-    return getStandardMimeType(input);
+  if (typeof input === 'string') {
+    return getStandardMimeType(input)
   }
 
-  return "image/jpeg";
+  return 'image/jpeg'
 }
 
 module.exports = {
@@ -337,5 +337,5 @@ module.exports = {
   SUPPORTED_IMAGE_MIME_TYPES,
   VIDEO_FORMAT_MAP,
   SUPPORTED_VIDEO_EXTENSIONS,
-  SUPPORTED_VIDEO_MIME_TYPES,
-};
+  SUPPORTED_VIDEO_MIME_TYPES
+}

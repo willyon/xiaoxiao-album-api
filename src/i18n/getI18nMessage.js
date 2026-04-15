@@ -5,25 +5,25 @@
  * @LastEditTime: 2025-08-09 21:04:17
  * @Description: File description
  */
-const zhMessages = require("./zh");
-const enMessages = require("./en");
+const zhMessages = require('./zh')
+const enMessages = require('./en')
 
-function getI18nMessage(messageCode, lang = "zh", params) {
-  const safeParams = params || {};
-  const messages = lang === "zh" ? zhMessages : enMessages;
-  let messageTemplate = messages[messageCode] || "Unknown response";
+function getI18nMessage(messageCode, lang = 'zh', params) {
+  const safeParams = params || {}
+  const messages = lang === 'zh' ? zhMessages : enMessages
+  let messageTemplate = messages[messageCode] || 'Unknown response'
 
   // 替换模板中的 {xxx}
   Object.entries(safeParams).forEach(([key, value]) => {
-    messageTemplate = messageTemplate.replace(new RegExp(`{${key}}`, "g"), value);
-  });
+    messageTemplate = messageTemplate.replace(new RegExp(`{${key}}`, 'g'), value)
+  })
 
   // 如果需要执行break continue 就用这种写法
   // for (const [key, value] of Object.entries(params)) {
   //     messageTemplate = messageTemplate.replace(new RegExp(`{${key}}`, "g"), value);
   // }
 
-  return messageTemplate;
+  return messageTemplate
 }
 
-module.exports = getI18nMessage;
+module.exports = getI18nMessage

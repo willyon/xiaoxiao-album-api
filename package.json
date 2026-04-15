@@ -6,7 +6,10 @@
     "dev": "NODE_ENV=development node server.js",
     "prod": "NODE_ENV=production node server.js",
     "build": "mkdir -p backend-dist && cp -r src backend-dist/ && cp server.js backend-dist/ && cp package.json backend-dist/ && cp package-lock.json backend-dist/ && cp ecosystem.config.js backend-dist/ && cp .npmrc backend-dist/ && cp README.md backend-dist/ && cp -r scripts backend-dist/ && node scripts/deployment/sanitize-env-for-dist.js && echo 'Package built in backend-dist/ directory'",
-    "test": "mocha"
+    "test": "mocha",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "@alicloud/credentials": "^2.4.4",
@@ -48,8 +51,11 @@
     "xss": "^1.0.14"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "chai": "^5.1.1",
-    "eslint": "^9.9.1",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.5.0",
     "mocha": "^10.7.3",
     "node-addon-api": "^7.1.1",
     "prettier": "^3.3.3"

@@ -94,7 +94,7 @@ function deleteGroupsByUser(userId) {
   stmt.run(userId);
 }
 
-function insertSimilarGroup({ userId, primaryImageId, score, memberCount, createdAt, updatedAt }) {
+function insertSimilarGroup({ userId, primaryImageId, memberCount, createdAt, updatedAt }) {
   const stmt = db.prepare(`
     INSERT INTO similar_groups (
       user_id,

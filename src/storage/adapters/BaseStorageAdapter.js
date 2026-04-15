@@ -6,9 +6,12 @@
 
 class BaseStorageAdapter {
   constructor(config = {}) {
-    this.config = config;
-    this.type = "base";
+    this.config = config
+    this.type = 'base'
   }
+
+  // 说明：本类为抽象接口层，方法参数命名为 _xxx 表示“基类不直接使用”。
+  // 这些参数仍然保留在签名中，用于约束子类实现的统一契约。
 
   // ========== 基础文件操作 ==========
 
@@ -19,8 +22,8 @@ class BaseStorageAdapter {
    * @param {Object} options - 上传选项 {contentType, metadata}
    * @returns {Promise<string>} 返回文件的访问URL或存储路径
    */
-  async storeFile(fileData, key, options = {}) {
-    throw new Error(`storeFile method must be implemented in ${this.constructor.name}`);
+  async storeFile(_fileData, _key, _options = {}) {
+    throw new Error(`storeFile method must be implemented in ${this.constructor.name}`)
   }
 
   /**
@@ -28,8 +31,8 @@ class BaseStorageAdapter {
    * @param {string} key - 存储键名
    * @returns {Promise<void>}
    */
-  async deleteFile(key) {
-    throw new Error(`deleteFile method must be implemented in ${this.constructor.name}`);
+  async deleteFile(_key) {
+    throw new Error(`deleteFile method must be implemented in ${this.constructor.name}`)
   }
 
   /**
@@ -40,8 +43,8 @@ class BaseStorageAdapter {
    * @param {string} toKey - 目标文件键名
    * @returns {Promise<void>}
    */
-  async moveFile(fromKey, toKey) {
-    throw new Error(`moveFile method must be implemented in ${this.constructor.name}`);
+  async moveFile(_fromKey, _toKey) {
+    throw new Error(`moveFile method must be implemented in ${this.constructor.name}`)
   }
 
   /**
@@ -49,8 +52,8 @@ class BaseStorageAdapter {
    * @param {string} key - 存储键名
    * @returns {Promise<boolean>}
    */
-  async fileExists(key) {
-    throw new Error(`fileExists method must be implemented in ${this.constructor.name}`);
+  async fileExists(_key) {
+    throw new Error(`fileExists method must be implemented in ${this.constructor.name}`)
   }
 
   /**
@@ -58,8 +61,8 @@ class BaseStorageAdapter {
    * @param {string} key - 存储键名
    * @returns {Promise<Buffer>} 文件内容的Buffer
    */
-  async getFileBuffer(key) {
-    throw new Error(`getFileBuffer method must be implemented in ${this.constructor.name}`);
+  async getFileBuffer(_key) {
+    throw new Error(`getFileBuffer method must be implemented in ${this.constructor.name}`)
   }
 
   /**
@@ -69,8 +72,8 @@ class BaseStorageAdapter {
    * @param {string} key - 存储键名
    * @returns {Promise<string>} 返回文件访问URL
    */
-  async storeProcessedImage(pipeline, key) {
-    throw new Error(`storeProcessedImage method must be implemented in ${this.constructor.name}`);
+  async storeProcessedImage(_pipeline, _key) {
+    throw new Error(`storeProcessedImage method must be implemented in ${this.constructor.name}`)
   }
 
   /**
@@ -79,8 +82,8 @@ class BaseStorageAdapter {
    * @param {string} key - 存储键名
    * @returns {Promise<string|Buffer>} 文件路径或Buffer数据
    */
-  async getFileData(key) {
-    throw new Error(`getFileData method must be implemented in ${this.constructor.name}`);
+  async getFileData(_key) {
+    throw new Error(`getFileData method must be implemented in ${this.constructor.name}`)
   }
 
   /**
@@ -88,8 +91,8 @@ class BaseStorageAdapter {
    * @param {string|Buffer} input - 输入数据，可以是存储键名或Buffer
    * @returns {Promise<number>} 文件大小（字节）
    */
-  async getFileSize(input) {
-    throw new Error(`getFileSize method must be implemented in ${this.constructor.name}`);
+  async getFileSize(_input) {
+    throw new Error(`getFileSize method must be implemented in ${this.constructor.name}`)
   }
 
   /**
@@ -97,8 +100,8 @@ class BaseStorageAdapter {
    * @param {Function} generateFilename - 文件名生成函数
    * @returns {Object} Multer存储配置对象
    */
-  getMulterStorage(generateFilename) {
-    throw new Error(`getMulterStorage method must be implemented in ${this.constructor.name}`);
+  getMulterStorage(_generateFilename) {
+    throw new Error(`getMulterStorage method must be implemented in ${this.constructor.name}`)
   }
 
   /**
@@ -108,8 +111,8 @@ class BaseStorageAdapter {
    * @param {string} [extension] - 图片格式扩展名 (如: 'webp', 'avif', 'jpg')，不传则使用fileName本身
    * @returns {string} 存储键名
    */
-  generateStorageKey(type, fileName, extension) {
-    throw new Error(`generateStorageKey method must be implemented in ${this.constructor.name}`);
+  generateStorageKey(_type, _fileName, _extension) {
+    throw new Error(`generateStorageKey method must be implemented in ${this.constructor.name}`)
   }
 
   // ========== URL 生成 ==========
@@ -120,8 +123,8 @@ class BaseStorageAdapter {
    * @param {Object} options - 选项参数
    * @returns {Promise<string>|string} 文件访问URL
    */
-  getFileUrl(key, options = {}) {
-    throw new Error(`getFileUrl method must be implemented in ${this.constructor.name}`);
+  getFileUrl(_key, _options = {}) {
+    throw new Error(`getFileUrl method must be implemented in ${this.constructor.name}`)
   }
 
   /**
@@ -131,10 +134,10 @@ class BaseStorageAdapter {
    * @param {number} expiresIn - 过期时间（秒）
    * @returns {Promise<string>} 签名URL
    */
-  async _getSignedUrl(key, expiresIn = 3600) {
+  async _getSignedUrl(key, _expiresIn = 3600) {
     // 默认实现：对于不需要签名的存储（如本地存储），直接返回普通URL
     // 子类（如OSS）可以覆盖此方法实现真正的签名逻辑
-    return await this.getFileUrl(key);
+    return await this.getFileUrl(key)
   }
 
   // ========== 批量操作 ==========
@@ -145,16 +148,16 @@ class BaseStorageAdapter {
    * @returns {Promise<Array<string>>} 返回所有文件的URL数组
    */
   async storeFiles(files) {
-    const results = [];
+    const results = []
     for (const file of files) {
       try {
-        const url = await this.storeFile(file.fileData, file.key, file.options || {});
-        results.push({ success: true, key: file.key, url });
+        const url = await this.storeFile(file.fileData, file.key, file.options || {})
+        results.push({ success: true, key: file.key, url })
       } catch (error) {
-        results.push({ success: false, key: file.key, error: error.message });
+        results.push({ success: false, key: file.key, error: error.message })
       }
     }
-    return results;
+    return results
   }
 
   /**
@@ -163,16 +166,16 @@ class BaseStorageAdapter {
    * @returns {Promise<Array<{key: string, success: boolean, error?: string}>>}
    */
   async deleteFiles(keys) {
-    const results = [];
+    const results = []
     for (const key of keys) {
       try {
-        await this.deleteFile(key);
-        results.push({ key, success: true });
+        await this.deleteFile(key)
+        results.push({ key, success: true })
       } catch (error) {
-        results.push({ key, success: false, error: error.message });
+        results.push({ key, success: false, error: error.message })
       }
     }
-    return results;
+    return results
   }
 
   // ========== 目录操作 ==========
@@ -182,9 +185,9 @@ class BaseStorageAdapter {
    * @param {string} dirPath - 目录路径
    * @returns {Promise<void>}
    */
-  async ensureDirectory(dirPath) {
+  async ensureDirectory(_dirPath) {
     // 默认实现：什么都不做（云存储通常不需要创建目录）
-    return Promise.resolve();
+    return Promise.resolve()
   }
 
   /**
@@ -192,8 +195,8 @@ class BaseStorageAdapter {
    * @param {string} prefix - 文件前缀
    * @returns {Promise<Array<string>>} 文件键名数组
    */
-  async listFiles(prefix) {
-    throw new Error(`listFiles method must be implemented in ${this.constructor.name}`);
+  async listFiles(_prefix) {
+    throw new Error(`listFiles method must be implemented in ${this.constructor.name}`)
   }
 
   // ========== 工具方法 ==========
@@ -204,7 +207,7 @@ class BaseStorageAdapter {
    * @returns {string} 文件名
    */
   extractFilename(key) {
-    return key.split("/").pop();
+    return key.split('/').pop()
   }
 
   /**
@@ -212,8 +215,8 @@ class BaseStorageAdapter {
    * @returns {string} 适配器类型
    */
   getType() {
-    return this.type;
+    return this.type
   }
 }
 
-module.exports = BaseStorageAdapter;
+module.exports = BaseStorageAdapter
