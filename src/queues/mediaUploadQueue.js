@@ -7,6 +7,7 @@
  */
 const { Queue } = require("bullmq");
 const Redis = require("ioredis");
+const { QUEUE_JOB_ATTEMPTS } = require("../config/queueConfig");
 
 const connection = new Redis({ maxRetriesPerRequest: null }); // 默认连接到本地 Redis
 
@@ -14,7 +15,7 @@ const connection = new Redis({ maxRetriesPerRequest: null }); // 默认连接到
 const mediaUploadQueue = new Queue(process.env.MEDIA_UPLOAD_QUEUE_NAME || "media-upload", {
   connection,
   defaultJobOptions: {
-    attempts: Number(process.env.MEDIA_UPLOAD_JOB_ATTEMPTS || 5), //最多尝试次数（包括第一次执行）
+    attempts: QUEUE_JOB_ATTEMPTS, // 最多尝试次数（包括第一次执行）
     //重试之间的延迟策略 如果错误是临时性（比如锁冲突、网络波动），用指数退避能减轻系统压力，避免疯狂重试。
     backoff: {
       type: "exponential", //每次重试的间隔时间按指数增长 第一次延迟delay毫秒 第二次延迟delay*2毫秒 第三次延迟delay*3毫秒 以此类推

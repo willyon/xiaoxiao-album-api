@@ -52,7 +52,7 @@ class MediaMetadataService {
       // 3. 地理位置分析（可选）
       let locationInfo = {};
       if (options.includeLocation && basicMetadata.latitude && basicMetadata.longitude) {
-        locationInfo = await this.analyzeLocationInfo(basicMetadata.latitude, basicMetadata.longitude);
+        locationInfo = await this.analyzeLocationInfo(basicMetadata.latitude, basicMetadata.longitude, options.userId);
       }
 
       return {
@@ -305,9 +305,9 @@ class MediaMetadataService {
    * @param {number} longitude - 经度
    * @returns {Promise<Object>} 位置信息
    */
-  async analyzeLocationInfo(latitude, longitude) {
+  async analyzeLocationInfo(latitude, longitude, userId) {
     try {
-      const { location, mapRegeoStatus } = await getLocationFromCoordinates(latitude, longitude);
+      const { location, mapRegeoStatus } = await getLocationFromCoordinates(latitude, longitude, userId);
 
       return {
         gpsLocation: location?.formattedAddress || null,
@@ -342,9 +342,9 @@ class MediaMetadataService {
    * @param {number} imageId - 图片ID
    * @returns {Promise<void>}
    */
-  async analyzeLocationInfoAsync(latitude, longitude, imageId) {
+  async analyzeLocationInfoAsync(latitude, longitude, imageId, userId) {
     try {
-      const locationInfo = await this.analyzeLocationInfo(latitude, longitude);
+      const locationInfo = await this.analyzeLocationInfo(latitude, longitude, userId);
 
       // 更新数据库
       await this.updateLocationInfo(imageId, locationInfo);

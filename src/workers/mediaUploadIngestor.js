@@ -11,6 +11,7 @@ const trashService = require("../services/trashService");
 const { getRedisClient } = require("../services/redisClient");
 const { userSetKey } = require("./userMediaHashset");
 const { mediaMetaQueue } = require("../queues/mediaMetaQueue");
+const { QUEUE_JOB_ATTEMPTS } = require("../config/queueConfig");
 const storageService = require("../services/storageService");
 const videoProcessingService = require("../services/videoProcessingService");
 const timeIt = require("../utils/timeIt");
@@ -123,7 +124,7 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
  * @param {string} [params.thumbnailStorageKey] - 缩略图存储键（可选）
  */
 async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHash, userId, thumbnailStorageKey }) {
-  const maxAttempts = job?.opts?.attempts || Number(process.env.MEDIA_UPLOAD_JOB_ATTEMPTS || 5);
+  const maxAttempts = job?.opts?.attempts || QUEUE_JOB_ATTEMPTS;
   const attemptsMade = job?.attemptsMade || 0;
   // 修复：判断失败后 BullMQ 是否还会重试
   // BullMQ 会在失败后将 attemptsMade 递增，然后判断是否 < maxAttempts

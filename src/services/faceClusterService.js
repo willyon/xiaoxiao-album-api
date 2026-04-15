@@ -45,6 +45,7 @@ const {
   computeAndUpsertClusterRepresentative,
   getUnassignedFaceEmbeddingsByUserId,
   getAllClusterRepresentativesByUserId,
+  getMaxClusterIdForUser,
 } = require("../models/faceClusterModel");
 const { getMediaStorageInfo } = require("../models/mediaModel");
 const storageService = require("../services/storageService");
@@ -59,7 +60,7 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_FACE_SERVICE_URL || "http://localh
 // 这是余弦距离阈值，范围 [0, 2]，0.42 是平衡阈值，既能减少不同人被误合并，又能减少同一人被过度分割
 const DEFAULT_CLUSTERING_THRESHOLD = 0.42;
 
-// 增量分配：新人脸与已有人物代表向量的最小余弦相似度，超过则自动归入该人物
+// 增量分配：新人脸与已有人物代表向量的最小余弦相似度（不低于此值才参与匹配，并在满足者中取最高相似度）
 const INCREMENTAL_ASSIGN_MIN_SIMILARITY = Number(process.env.FACE_INCREMENTAL_ASSIGN_MIN_SIMILARITY) || 0.75;
 
 /** 余弦相似度（向量需同维） */
@@ -78,7 +79,7 @@ function cosineSimilarity(a, b) {
 }
 
 /**
- * 增量分配：将未归属的人脸与已有人物代表向量比较，相似度超过阈值则归入该人物
+ * 增量分配：将未归属的人脸与已有人物代表向量比较，相似度不低于阈值者中取最高，归入该人物
  * 在 performFaceClustering 开始时调用，先分配再对剩余人脸做全量聚类
  * @param {number} userId - 用户ID
  * @returns {{ assigned: number, skipped: number }}
@@ -93,9 +94,10 @@ function incrementalAssignFacesToExistingClusters(userId) {
   let assigned = 0;
   for (const { id: faceEmbeddingId, embedding } of unassigned) {
     let bestClusterId = null;
-    let bestSim = INCREMENTAL_ASSIGN_MIN_SIMILARITY;
+    let bestSim = -Infinity;
     for (const { clusterId, embedding: repEmb } of representatives) {
       const sim = cosineSimilarity(embedding, repEmb);
+      if (sim < INCREMENTAL_ASSIGN_MIN_SIMILARITY) continue;
       if (sim > bestSim) {
         bestSim = sim;
         bestClusterId = clusterId;
@@ -125,10 +127,86 @@ function incrementalAssignFacesToExistingClusters(userId) {
 }
 
 /**
+ * 将 Python DBSCAN 结果转为待写入的 clusterData，并生成与之一致的缩略图用簇列表。
+ * - 噪声点（cluster_id = -1）：每人脸单独成簇（满足「人人有簇」）
+ * - 非噪声：按 Python 标签分组合并；cluster_id 使用 newClusterIdStart 起的连续新编号，避免与库内已有 cluster_id（如增量保留行）冲突
+ */
+function _buildClusterAssignmentsFromPython(clusters, faceEmbeddings, newClusterIdStart, userId) {
+  const clusterData = [];
+  const clustersForThumbnails = [];
+  let nextId = newClusterIdStart;
+  const pythonLabelToNewId = new Map();
+  let noiseSingletonCount = 0;
+
+  for (const cluster of clusters) {
+    const clusterId = cluster.cluster_id;
+    const faceIndices = cluster.face_indices || [];
+
+    if (clusterId === -1) {
+      for (const faceIndex of faceIndices) {
+        if (faceIndex < 0 || faceIndex >= faceEmbeddings.length) {
+          logger.warn({
+            message: `聚类结果索引越界: faceIndex=${faceIndex}, total=${faceEmbeddings.length}`,
+            details: { userId, clusterId: -1 },
+          });
+          continue;
+        }
+        const assignId = nextId++;
+        noiseSingletonCount++;
+        const faceEmbedding = faceEmbeddings[faceIndex];
+        clusterData.push({
+          clusterId: assignId,
+          faceEmbeddingId: faceEmbedding.id,
+          similarityScore: null,
+          isRepresentative: false,
+        });
+        clustersForThumbnails.push({ cluster_id: assignId, face_indices: [faceIndex] });
+      }
+      continue;
+    }
+
+    if (!pythonLabelToNewId.has(clusterId)) {
+      pythonLabelToNewId.set(clusterId, nextId++);
+    }
+    const mappedId = pythonLabelToNewId.get(clusterId);
+    const validIndices = [];
+    for (const faceIndex of faceIndices) {
+      if (faceIndex >= 0 && faceIndex < faceEmbeddings.length) {
+        const faceEmbedding = faceEmbeddings[faceIndex];
+        clusterData.push({
+          clusterId: mappedId,
+          faceEmbeddingId: faceEmbedding.id,
+          similarityScore: null,
+          isRepresentative: false,
+        });
+        validIndices.push(faceIndex);
+      } else {
+        logger.warn({
+          message: `聚类结果索引越界: faceIndex=${faceIndex}, total=${faceEmbeddings.length}`,
+          details: { userId, clusterId },
+        });
+      }
+    }
+    if (validIndices.length > 0) {
+      clustersForThumbnails.push({ cluster_id: mappedId, face_indices: validIndices });
+    }
+  }
+
+  if (noiseSingletonCount > 0) {
+    logger.info({
+      message: `DBSCAN 噪声点已拆为单人簇: ${noiseSingletonCount} 个`,
+      details: { userId, noiseSingletonCount },
+    });
+  }
+
+  return { clusterData, clustersForThumbnails, noiseSingletonCount };
+}
+
+/**
  * 执行人脸聚类
  * @param {Object} params - 参数对象
  * @param {number} params.userId - 用户ID
- * @param {number} [params.threshold] - 聚类阈值（可选，默认0.6，余弦距离）
+ * @param {number} [params.threshold] - 聚类阈值（可选；不传则 Python 使用配置中的默认余弦距离，见 FACE_CLUSTERING_THRESHOLD）
  * @param {boolean} [params.recluster] - 是否重新聚类（删除旧数据，默认false）
  * @returns {Object} 聚类结果统计
  */
@@ -139,7 +217,7 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       details: { threshold, recluster },
     });
 
-    // 0. 增量分配：未归属人脸与已有人物代表向量匹配，超过阈值则自动归入（对齐大厂方案）
+    // 0. 增量分配：未归属人脸与已有人物代表向量匹配，不低于阈值则归入相似度最高的人物
     incrementalAssignFacesToExistingClusters(userId);
 
     // 1. 获取用户的所有人脸 embedding（自动排除已经在手动聚类中的记录）
@@ -261,55 +339,7 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       },
     });
 
-    // 5. 解析聚类结果，建立映射关系
-    // Python 返回的格式：
-    // {
-    //   clusters: [
-    //     {
-    //       cluster_id: 0,
-    //       face_indices: [0, 1, 2],  // 这些是 embeddings 数组的索引
-    //       face_count: 3
-    //     },
-    //     ...
-    //   ]
-    // }
-    const clusterData = [];
-
-    for (const cluster of clusters) {
-      const clusterId = cluster.cluster_id;
-      const faceIndices = cluster.face_indices || [];
-
-      // 跳过噪声点（cluster_id = -1）
-      if (clusterId === -1) {
-        continue;
-      }
-
-      for (const faceIndex of faceIndices) {
-        // faceIndex 是 embeddings 数组的索引，对应 faceEmbeddings 数组
-        if (faceIndex >= 0 && faceIndex < faceEmbeddings.length) {
-          const faceEmbedding = faceEmbeddings[faceIndex];
-
-          clusterData.push({
-            clusterId: clusterId,
-            faceEmbeddingId: faceEmbedding.id,
-            similarityScore: null, // Python 服务未返回相似度分数
-            isRepresentative: false, // 默认不是代表人脸，后续可以优化选择
-          });
-        } else {
-          logger.warn({
-            message: `聚类结果索引越界: faceIndex=${faceIndex}, total=${faceEmbeddings.length}`,
-            details: { userId, clusterId },
-          });
-        }
-      }
-    }
-
-    logger.info({
-      message: `解析完成，准备插入 ${clusterData.length} 条聚类数据`,
-      details: { userId, clusterCount: clusters.length },
-    });
-
-    // 6. 如果重新聚类，先保存旧的缩略图路径、聚类名称映射和封面设置（用于后续清理和恢复）
+    // 5. 若重新聚类：先备份清理所需的映射并删除自动聚类行（保留手动/增量分配）
     let oldThumbnailPaths = [];
     let oldClusterNameMapping = null;
     let oldCoverMapping = null;
@@ -341,6 +371,25 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
         details: { userId },
       });
     }
+
+    // 6. 解析 Python 结果为 clusterData（人人有簇：DBSCAN 噪声 -1 拆为单人簇；cluster_id 自 MAX+1 起分配，避免与保留行冲突）
+    const nextClusterIdStart = getMaxClusterIdForUser(userId) + 1;
+    const { clusterData, clustersForThumbnails, noiseSingletonCount } = _buildClusterAssignmentsFromPython(
+      clusters,
+      faceEmbeddings,
+      nextClusterIdStart,
+      userId,
+    );
+
+    logger.info({
+      message: `解析完成，准备插入 ${clusterData.length} 条聚类数据`,
+      details: {
+        userId,
+        nextClusterIdStart,
+        pythonClusterGroupCount: clusters.length,
+        noiseSingletonClusters: noiseSingletonCount,
+      },
+    });
 
     // 7. 批量插入聚类结果
     const insertResult = insertFaceClusters(userId, clusterData);
@@ -400,14 +449,14 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       message: `✅ 人脸聚类完成`,
       details: {
         userId,
-        clusterCount: clusters.length,
+        distinctClusterCount: new Set(clusterData.map((d) => d.clusterId)).size,
         insertedRows: insertResult.affectedRows,
         totalFaces: faceEmbeddings.length,
       },
     });
 
-    // 9. 为每个cluster选择最佳人脸并生成缩略图（默认封面）
-    const generatedThumbnailPaths = await _generateThumbnailsForClusters(userId, clusters, faceEmbeddings);
+    // 9. 为每个cluster选择最佳人脸并生成缩略图（默认封面）（使用已偏移的 cluster_id，与入库一致）
+    const generatedThumbnailPaths = await _generateThumbnailsForClusters(userId, clustersForThumbnails, faceEmbeddings);
 
     // 9.0 聚类触发后同步自愈当前封面缩略图（仅在聚类流程触发，不影响日常列表接口）
     // - 目标：处理「数据库有 key 但磁盘文件丢失」场景
@@ -426,7 +475,7 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       });
     }
 
-    // 9.1. 如果重新聚类，为手动设置的封面（is_representative = 2）验证并生成缩略图（如果文件不存在）
+    // 9.1. 如果重新聚类，为手动设置的封面（representative_type = 2）验证并生成缩略图（如果文件不存在）
     if (recluster && oldCoverMapping && oldCoverMapping.size > 0) {
       // 获取所有手动设置封面的 face_embedding_id
       const manualCoverFaceIds = Array.from(oldCoverMapping.keys());
@@ -464,7 +513,7 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
 
     // 10. 如果重新聚类，清理不再使用的旧缩略图
     if (recluster && oldThumbnailPaths.length > 0) {
-      // 查询旧缩略图对应的 is_representative 状态
+      // 查询旧缩略图对应的 representative_type 状态
       const representativeStatusMap = getRepresentativeStatusByThumbnailKeys(userId, oldThumbnailPaths);
 
       // 新生成的默认封面缩略图集合（用于快速查找）
@@ -472,7 +521,8 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
 
       // 确定哪些缩略图需要删除：
       // 1. 在新生成的默认封面列表中 -> 保留（已在使用）
-      // 2. is_representative = 2（手动设置的封面）-> 保留
+      // 2. representative_type = 1/2（默认封面或手动封面）-> 保留
+      //    说明：重聚类后默认封面可能沿用旧 key（未重新生成），必须保留，避免误删导致人物无封面
       // 3. 其他 -> 删除
       const thumbnailsToDelete = oldThumbnailPaths.filter((path) => {
         // 如果在新生成的默认封面列表中，保留
@@ -480,9 +530,9 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
           return false;
         }
 
-        // 如果 is_representative = 2（手动设置的封面），保留
+        // 如果 representative_type = 1/2（默认封面/手动封面），保留
         const isRepresentative = representativeStatusMap.get(path);
-        if (isRepresentative === 2) {
+        if (isRepresentative === 1 || isRepresentative === 2) {
           return false;
         }
 
@@ -630,14 +680,17 @@ async function _generateThumbnailsForClusters(userId, clusters, faceEmbeddings) 
         continue;
       }
 
-      // 3. 构建图片信息映射表（用于获取清晰度）
+      // 3. 构建图片清晰度映射 + 媒体类型（优先在图片上选封面、再尝试裁剪）
       const imageIds = [...new Set(clusterFaces.map((f) => f.image_id))];
       const imagesMap = getMediasSharpnessByIds(imageIds);
+      const mediaTypeByImageId = new Map();
+      for (const iid of imageIds) {
+        const info = getMediaStorageInfo(iid);
+        mediaTypeByImageId.set(iid, info?.mediaType || "image");
+      }
 
-      // 4. 选择最佳人脸（动态计算，多级排序）
-      const bestFace = _selectBestFace(clusterFaces, imagesMap);
-
-      if (!bestFace) {
+      const ranked = _rankFacesForCover(clusterFaces, imagesMap, mediaTypeByImageId);
+      if (ranked.length === 0) {
         logger.warn({
           message: `未找到最佳人脸: clusterId=${clusterId}`,
           details: { userId, clusterId, faceCount: clusterFaces.length },
@@ -645,7 +698,30 @@ async function _generateThumbnailsForClusters(userId, clusters, faceEmbeddings) 
         continue;
       }
 
-      // 5. 获取图片/视频数据（封面仅支持图片，视频人脸只参与聚类，不生成缩略图）
+      let bestFace = null;
+      let bbox = null;
+      for (const face of ranked) {
+        if (mediaTypeByImageId.get(face.image_id) === "video") continue;
+        const nb = _normalizeBboxFromFace(face);
+        if (nb) {
+          bestFace = face;
+          bbox = nb;
+          break;
+        }
+      }
+
+      if (!bestFace) {
+        const repFace = ranked.find((f) => mediaTypeByImageId.get(f.image_id) !== "video") || ranked[0];
+        clearOtherDefaultCoverRepresentative(userId, clusterId, repFace.id);
+        updateFaceClusterRepresentative(userId, clusterId, repFace.id);
+        logger.info({
+          message: `簇内无人脸小图可用（视频或 bbox 无效），已标记默认封面，列表使用整图缩略图`,
+          details: { userId, clusterId, faceEmbeddingId: repFace.id },
+        });
+        continue;
+      }
+
+      // 4. 获取图片数据（bestFace 已保证为图片媒体且 bbox 合法）
       const imageInfo = getMediaStorageInfo(bestFace.image_id);
       if (!imageInfo) {
         logger.warn({
@@ -655,17 +731,8 @@ async function _generateThumbnailsForClusters(userId, clusters, faceEmbeddings) 
         continue;
       }
 
-      if (imageInfo.mediaType && imageInfo.mediaType !== "image") {
-        logger.warn({
-          message: `跳过非图片媒体的聚类封面缩略图生成`,
-          details: { userId, clusterId, imageId: bestFace.image_id, mediaType: imageInfo.mediaType },
-        });
-        continue;
-      }
-
-      // 6. 获取图片buffer（优先高清图）
       let imageData = null;
-      let storageKey = imageInfo.highResStorageKey || imageInfo.originalStorageKey;
+      const storageKey = imageInfo.highResStorageKey || imageInfo.originalStorageKey;
 
       if (storageKey) {
         try {
@@ -687,27 +754,7 @@ async function _generateThumbnailsForClusters(userId, clusters, faceEmbeddings) 
         continue;
       }
 
-      // 7. 调用Python服务生成缩略图
-      // 确保bbox是数组格式（可能从数据库读取时是JSON字符串）
-      let bbox = bestFace.bbox;
-      if (typeof bbox === "string") {
-        try {
-          bbox = JSON.parse(bbox);
-        } catch (e) {
-          logger.error({
-            message: `bbox JSON解析失败: clusterId=${clusterId}`,
-            details: { userId, clusterId, faceEmbeddingId: bestFace.id, imageId: bestFace.image_id },
-          });
-          continue;
-        }
-      }
-
-      // 检查bbox格式
-      if (!bbox || !Array.isArray(bbox) || bbox.length !== 4) {
-        // 跳过bbox无效的cluster（历史数据或格式错误）
-        continue;
-      }
-
+      // 5. 调用 Python 裁剪人脸缩略图（bbox 已在上方解析）
       if (!imageData || !Buffer.isBuffer(imageData)) {
         logger.error({
           message: `图片数据格式错误: clusterId=${clusterId}`,
@@ -813,31 +860,33 @@ async function _generateThumbnailsForClusters(userId, clusters, faceEmbeddings) 
   return generatedThumbnailPaths;
 }
 
-/**
- * 选择最佳人脸（动态计算，多级排序策略）
- *
- * 🎯 设计理念：
- * - 不存储 cover_quality_score 字段，采用动态计算
- * - 灵活性强：可以随时调整选择策略，无需重新计算数据
- * - 性能影响小：选择封面是低频操作，计算开销可忽略
- *
- * 📊 选择策略（优先级从高到低）：
- * 1. quality_score（基础质量，权重最高）
- * 2. 表情（开心优先，如果有表情信息）
- * 3. pose得分（正面优先，yaw和pitch的绝对值越小越好）
- * 4. bbox面积（大脸优先）
- * 5. 清晰度（通过JOIN images表获取，可选）
- *
- * @param {Array} faces - 该cluster的所有人脸数据
- * @param {Map} imagesMap - 图片信息映射表（imageId -> {sharpness_score, ...}）
- * @returns {Object|null} 最佳人脸对象
- */
-function _selectBestFace(faces, imagesMap = new Map()) {
-  if (!faces || faces.length === 0) {
+/** @returns {number[]|null} 合法 bbox 数组或 null */
+function _normalizeBboxFromFace(face) {
+  let bbox = face.bbox;
+  if (typeof bbox === "string" && bbox.trim()) {
+    try {
+      bbox = JSON.parse(bbox);
+    } catch (e) {
+      return null;
+    }
+  }
+  if (!bbox || !Array.isArray(bbox) || bbox.length !== 4) {
     return null;
   }
+  return bbox;
+}
 
-  // 解析bbox和pose（如果是JSON字符串）
+/**
+ * 按封面策略排序人脸（前者更优）。可选 mediaTypeByImageId：优先图片媒体，其次视频帧人脸。
+ *
+ * @param {Map} [mediaTypeByImageId] - image_id -> 'image'|'video'
+ * @returns {Array} 已排序人脸列表（可能为空）
+ */
+function _rankFacesForCover(faces, imagesMap = new Map(), mediaTypeByImageId = null) {
+  if (!faces || faces.length === 0) {
+    return [];
+  }
+
   const facesWithMetrics = faces.map((face) => {
     let bbox = face.bbox;
     let pose = face.pose;
@@ -893,8 +942,13 @@ function _selectBestFace(faces, imagesMap = new Map()) {
     };
   });
 
-  // 多级排序：先按表情硬分桶（happy > neutral > 其他），桶内再看质量/pose/大小/清晰度/时间
   facesWithMetrics.sort((a, b) => {
+    if (mediaTypeByImageId) {
+      const aV = mediaTypeByImageId.get(a.image_id) === "video" ? 1 : 0;
+      const bV = mediaTypeByImageId.get(b.image_id) === "video" ? 1 : 0;
+      if (aV !== bV) return aV - bV;
+    }
+
     // 第一优先级：表情分桶（happy > neutral > 其他）
     if (a.expressionScore !== b.expressionScore) {
       return b.expressionScore - a.expressionScore;
@@ -924,7 +978,13 @@ function _selectBestFace(faces, imagesMap = new Map()) {
     return (b.image_created_at || 0) - (a.image_created_at || 0);
   });
 
-  return facesWithMetrics[0];
+  return facesWithMetrics;
+}
+
+/** @param {Map} [mediaTypeByImageId] - 传入时优先选图片媒体上的人脸 */
+function _selectBestFace(faces, imagesMap = new Map(), mediaTypeByImageId = null) {
+  const ranked = _rankFacesForCover(faces, imagesMap, mediaTypeByImageId);
+  return ranked[0] ?? null;
 }
 
 /**
@@ -937,19 +997,69 @@ function getFaceClusterStats(userId) {
 }
 
 /**
- * 恢复聚类默认封面：清除手动设置的封面（is_representative = 2），恢复默认封面（is_representative = 1）
+ * 簇内没有 representative_type=1 时（例如重聚类只恢复了手动封面 2、或缩略图步骤未写入默认行），按封面策略补选一人并标记为默认封面。
+ * @returns {Promise<number|null>} face_embedding_id
+ */
+async function _ensureDefaultCoverRepresentative(userId, clusterId) {
+  const ids = getFaceEmbeddingIdsByClusterId(userId, clusterId);
+  if (!ids || ids.length === 0) return null;
+
+  const faces = getFaceEmbeddingsByIds(ids);
+  if (faces.length === 0) return null;
+
+  const imageIds = [...new Set(faces.map((f) => f.image_id))];
+  const imagesMap = getMediasSharpnessByIds(imageIds);
+  const mediaTypeByImageId = new Map();
+  for (const iid of imageIds) {
+    const info = getMediaStorageInfo(iid);
+    mediaTypeByImageId.set(iid, info?.mediaType || "image");
+  }
+
+  const ranked = _rankFacesForCover(faces, imagesMap, mediaTypeByImageId);
+  if (ranked.length === 0) return null;
+
+  let pickId = null;
+  for (const f of ranked) {
+    const v = getFaceEmbeddingRepresentativeValue(userId, clusterId, f.id);
+    if (v !== 2) {
+      pickId = f.id;
+      break;
+    }
+  }
+  if (pickId == null) {
+    pickId = ranked[0].id;
+  }
+
+  clearOtherDefaultCoverRepresentative(userId, clusterId, pickId);
+  updateFaceClusterRepresentative(userId, clusterId, pickId, 1);
+  await generateThumbnailForFaceEmbedding(pickId, false);
+
+  logger.info({
+    message: `已补写默认封面行（原无 representative_type=1）: clusterId=${clusterId}`,
+    details: { userId, clusterId, faceEmbeddingId: pickId },
+  });
+
+  return pickId;
+}
+
+/**
+ * 恢复聚类默认封面：清除手动设置的封面（representative_type = 2），恢复默认封面（representative_type = 1）
  * @param {number} userId - 用户ID
  * @param {number} clusterId - 聚类ID
  * @returns {Promise<Object>} 返回 { faceEmbeddingId, thumbnailStorageKey } 或 null
  */
 async function restoreDefaultCover(userId, clusterId) {
   try {
-    // 1. 获取默认封面 face_embedding_id（is_representative = 1）
-    const defaultFaceEmbeddingId = getDefaultCoverFaceEmbeddingId(userId, clusterId);
+    // 1. 获取默认封面 face_embedding_id（representative_type = 1）
+    let defaultFaceEmbeddingId = getDefaultCoverFaceEmbeddingId(userId, clusterId);
+
+    if (!defaultFaceEmbeddingId) {
+      defaultFaceEmbeddingId = await _ensureDefaultCoverRepresentative(userId, clusterId);
+    }
 
     if (!defaultFaceEmbeddingId) {
       logger.warn({
-        message: `无法找到默认封面: clusterId=${clusterId}`,
+        message: `无法找到或补写默认封面: clusterId=${clusterId}`,
         details: { userId, clusterId },
       });
       return null;
@@ -979,7 +1089,7 @@ async function restoreDefaultCover(userId, clusterId) {
       }
     }
 
-    // 4. 恢复默认封面：清除手动设置的封面（is_representative = 2），确保默认封面（is_representative = 1）存在
+    // 4. 恢复默认封面：清除手动设置的封面（representative_type = 2），确保默认封面（representative_type = 1）存在
     const result = restoreClusterDefaultCover(userId, clusterId, defaultFaceEmbeddingId);
 
     if (result.error || result.affectedRows === 0) {

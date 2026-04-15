@@ -530,7 +530,7 @@ async function setClusterCoverImage(req, res, next) {
       });
     }
 
-    // 2. 设置封面（更新 is_representative，封面为人脸缩略图）
+    // 2. 设置封面（更新 representative_type，封面为人脸缩略图）
     const result = setClusterCover(userId, clusterIdNum, faceEmbeddingIdNum);
 
     if (result.error) {

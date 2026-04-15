@@ -38,7 +38,7 @@ function recreateFaceClustersWithMediaFk() {
     throw new Error("未找到 media_face_embeddings，无法修复 face_clusters 外键。");
   }
 
-  const hasIsRepresentative = columnExists("face_clusters", "is_representative");
+  const hasIsRepresentative = columnExists("face_clusters", "is_representative"); // 仅用于从极旧表迁移时读源列
   const hasIsUserAssigned = columnExists("face_clusters", "is_user_assigned");
   const hasRepresentativeType = columnExists("face_clusters", "representative_type");
 
@@ -48,8 +48,8 @@ function recreateFaceClustersWithMediaFk() {
     return;
   }
 
-  const isRepresentativeExpr = hasIsRepresentative ? "COALESCE(is_representative, 0)" : "0";
   const isUserAssignedExpr = hasIsUserAssigned ? "COALESCE(is_user_assigned, 0)" : "0";
+  const isRepresentativeExpr = hasIsRepresentative ? "COALESCE(is_representative, 0)" : "0";
   const representativeTypeExpr = hasRepresentativeType
     ? "COALESCE(representative_type, 0)"
     : `CASE
@@ -73,12 +73,11 @@ function recreateFaceClustersWithMediaFk() {
         cluster_id INTEGER NOT NULL,
         face_embedding_id INTEGER NOT NULL,
         similarity_score REAL,
-        is_representative BOOLEAN DEFAULT FALSE,
-        created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+        representative_type INTEGER DEFAULT 0,
         name TEXT,
+        created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
         updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
         is_user_assigned BOOLEAN DEFAULT FALSE,
-        representative_type INTEGER DEFAULT 0,
         FOREIGN KEY (face_embedding_id) REFERENCES media_face_embeddings(id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         UNIQUE (user_id, cluster_id, face_embedding_id)
@@ -92,12 +91,11 @@ function recreateFaceClustersWithMediaFk() {
         cluster_id,
         face_embedding_id,
         similarity_score,
-        is_representative,
-        created_at,
+        representative_type,
         name,
+        created_at,
         updated_at,
-        is_user_assigned,
-        representative_type
+        is_user_assigned
       )
       SELECT
         id,
@@ -105,12 +103,11 @@ function recreateFaceClustersWithMediaFk() {
         cluster_id,
         face_embedding_id,
         similarity_score,
-        ${isRepresentativeExpr} AS is_representative,
-        created_at,
+        ${representativeTypeExpr} AS representative_type,
         name,
+        created_at,
         updated_at,
-        ${isUserAssignedExpr} AS is_user_assigned,
-        ${representativeTypeExpr} AS representative_type
+        ${isUserAssignedExpr} AS is_user_assigned
       FROM face_clusters
     `).run();
 

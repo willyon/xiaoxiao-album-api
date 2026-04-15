@@ -68,14 +68,14 @@ function fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, fallbackReaso
  *   mapRegeoStatus: 'skipped'|'success'|'failed'|null
  * }>}
  */
-async function getLocationFromCoordinates(latitude, longitude) {
+async function getLocationFromCoordinates(latitude, longitude, userId) {
   if (!latitude || !longitude) {
     return { location: null, mapRegeoStatus: null };
   }
 
   const gcj02Coords = wgs84ToGcj02(longitude, latitude);
 
-  const apiKey = getAmapApiKeyForGeocode();
+  const apiKey = getAmapApiKeyForGeocode(userId);
   if (!apiKey) {
     const location = fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, null);
     return { location, mapRegeoStatus: "skipped" };

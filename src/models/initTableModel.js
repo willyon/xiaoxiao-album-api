@@ -19,18 +19,22 @@ function createTableUsers() {
   db.prepare(createtablestmt).run();
 }
 
-/** 创建 app_config：id 自增；key_type 区分 cloud_model(百炼) / amap(高德)，UNIQUE */
+/** 创建 app_config：id 自增；按 (user_id, key_type) 存云模型/高德配置 */
 function createTableAppConfig() {
   const sql = `
     CREATE TABLE IF NOT EXISTS app_config (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      key_type TEXT NOT NULL UNIQUE,
+      user_id INTEGER NOT NULL,
+      key_type TEXT NOT NULL,
       enabled INTEGER NOT NULL DEFAULT 0,
       api_key TEXT,
-      updated_at INTEGER NOT NULL DEFAULT 0
+      updated_at INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE (user_id, key_type)
     );
   `;
   db.prepare(sql).run();
+  db.prepare("CREATE INDEX IF NOT EXISTS idx_app_config_user_id ON app_config(user_id);").run();
 }
 
 /** 创建 face_cluster_representatives：每人脸聚类一条代表向量，用于增量/全量人脸匹配 */

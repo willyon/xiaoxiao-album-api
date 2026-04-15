@@ -87,11 +87,6 @@ async function rebuildDatabase() {
 
       createTableUsers();
       createTableAppConfig();
-      const appConfigSeedTs = Date.now();
-      db.prepare("INSERT INTO app_config (key_type, enabled, updated_at) VALUES ('cloud_model', 0, ?)").run(
-        appConfigSeedTs,
-      );
-      db.prepare("INSERT INTO app_config (key_type, enabled, updated_at) VALUES ('amap', 0, ?)").run(appConfigSeedTs);
       createTableMedia();
       createTableMediaFaceEmbeddings();
       createTableMediaEmbeddings();

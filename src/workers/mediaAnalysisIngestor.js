@@ -194,7 +194,7 @@ async function _resolveVideoLocalPath({ highResStorageKey, originalStorageKey, i
 
 async function _runAnalyzeVideo({ imageId, userId, videoPath, stepResults }) {
   const device = process.env.AI_DEVICE || "auto";
-  const cloudConfig = getCloudConfigForAnalysis();
+  const cloudConfig = getCloudConfigForAnalysis(userId);
   const cloudEnabled = !!cloudConfig;
   const response = await withAiSlot(() =>
     axios.post(
@@ -257,7 +257,7 @@ async function _runAnalyzeImage({ imageId, userId, imageData, localPath, stepRes
   const device = process.env.AI_DEVICE || "auto";
   formData.append("device", device);
   formData.append("image_id", String(imageId));
-  const cloudConfig = getCloudConfigForAnalysis();
+  const cloudConfig = getCloudConfigForAnalysis(userId);
   const cloudEnabled = !!cloudConfig;
   if (cloudConfig) {
     // cloud_config 作为 JSON 字符串透传给 Python

@@ -345,7 +345,7 @@ async function handleRebuildSearchMedia(req, res, next) {
 async function handleGetProcessingFailureSummary(req, res, next) {
   try {
     const userId = req?.user?.userId;
-    const cloudRow = getRowByKeyType(KEY_TYPE_CLOUD_MODEL);
+    const cloudRow = getRowByKeyType(userId, KEY_TYPE_CLOUD_MODEL);
     const cloudModelReady =
       Number(cloudRow?.enabled) === 1 && Boolean(cloudRow?.api_key && String(cloudRow.api_key).trim() !== "");
     const data = countFailedMediasByStage(userId, { includeCloudFailures: cloudModelReady });
@@ -384,7 +384,7 @@ async function handleRetryProcessingFailures(req, res, next) {
       });
     }
 
-    const cloudRow = getRowByKeyType(KEY_TYPE_CLOUD_MODEL);
+    const cloudRow = getRowByKeyType(userId, KEY_TYPE_CLOUD_MODEL);
     const cloudModelReady =
       Number(cloudRow?.enabled) === 1 && Boolean(cloudRow?.api_key && String(cloudRow.api_key).trim() !== "");
 

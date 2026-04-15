@@ -71,7 +71,7 @@ async function processCloudCaptionJob(job) {
       }
 
       const device = process.env.AI_DEVICE || "auto";
-      const cloudConfig = getCloudConfigForAnalysis();
+      const cloudConfig = getCloudConfigForAnalysis(userId);
       const modules = "caption";
 
       const payload = {
@@ -153,7 +153,7 @@ async function processCloudCaptionJob(job) {
       const device = process.env.AI_DEVICE || "auto";
       formData.append("device", device);
       formData.append("image_id", String(mediaId));
-      const cloudConfig = getCloudConfigForAnalysis();
+      const cloudConfig = getCloudConfigForAnalysis(userId);
       if (cloudConfig) {
         formData.append("cloud_config", JSON.stringify(cloudConfig));
       }

@@ -149,26 +149,43 @@ function insertFaceClusters(userId, clusterData) {
   const now = Date.now();
   let totalAffected = 0;
 
-  for (const item of validClusterData) {
-    try {
-      const result = stmt.run(
-        userId,
-        item.clusterId,
-        item.faceEmbeddingId,
-        item.similarityScore || null,
-        item.representativeType ?? (item.isRepresentative ? 1 : 0),
-        item.isUserAssigned ? 1 : 0, // SQLite 使用 0/1 表示布尔值，默认 FALSE（自动聚类）
-        now,
-      );
-      totalAffected += result.changes;
-    } catch (error) {
-      // 如果仍然失败，记录错误但继续处理其他记录
-      logger.warn({
-        message: `插入聚类数据失败: face_embedding_id=${item.faceEmbeddingId}`,
-        details: { userId, clusterId: item.clusterId, error: error.message },
-      });
+  const faceIdsToReplace = [...new Set(validClusterData.map((item) => item.faceEmbeddingId))];
+
+  const transaction = db.transaction(() => {
+    // 先移除这些脸上的「自动聚类」旧行，再插入新簇归属，避免 UNIQUE(user_id, cluster_id, face_embedding_id)
+    // 下出现同脸跨簇双行；不删除 is_user_assigned 行
+    if (faceIdsToReplace.length > 0) {
+      const delSql = `
+        DELETE FROM face_clusters
+        WHERE user_id = ?
+          AND face_embedding_id IN (${faceIdsToReplace.map(() => "?").join(",")})
+          AND COALESCE(is_user_assigned, 0) = 0
+      `;
+      db.prepare(delSql).run(userId, ...faceIdsToReplace);
     }
-  }
+
+    for (const item of validClusterData) {
+      try {
+        const result = stmt.run(
+          userId,
+          item.clusterId,
+          item.faceEmbeddingId,
+          item.similarityScore || null,
+          item.representativeType ?? (item.isRepresentative ? 1 : 0),
+          item.isUserAssigned ? 1 : 0, // SQLite 使用 0/1 表示布尔值，默认 FALSE（自动聚类）
+          now,
+        );
+        totalAffected += result.changes;
+      } catch (error) {
+        logger.warn({
+          message: `插入聚类数据失败: face_embedding_id=${item.faceEmbeddingId}`,
+          details: { userId, clusterId: item.clusterId, error: error.message },
+        });
+      }
+    }
+  });
+
+  transaction();
 
   return { affectedRows: totalAffected };
 }
@@ -215,10 +232,10 @@ function getOldClusterNameMapping(userId) {
  * 获取旧的封面设置映射（重新聚类前调用，用于保留用户手动设置的封面）
  * 注意：只获取自动聚类的封面设置（is_user_assigned = false），因为手动聚类的记录不会被删除，不需要恢复封面
  * @param {number} userId - 用户ID
- * @returns {Map<number, number>} 映射：face_embedding_id -> old_cluster_id（只包含 is_representative = 2 的记录）
+ * @returns {Map<number, number>} 映射：face_embedding_id -> old_cluster_id（只包含 representative_type = 2 的记录）
  */
 function getOldCoverMapping(userId) {
-  // 只获取自动聚类（is_user_assigned = false 或 NULL）且手动设置的封面（is_representative = 2）
+  // 只获取自动聚类（is_user_assigned = false 或 NULL）且手动设置的封面（representative_type = 2）
   // 手动聚类（is_user_assigned = true）的记录不会被删除，所以不需要恢复封面
   const sql = `
     SELECT 
@@ -429,6 +446,17 @@ function restoreCoverSettings(userId, oldCoverMapping, newClusterData) {
  * @param {number} userId - 用户ID
  * @returns {Object} 聚类统计信息
  */
+/**
+ * 当前用户下已使用的最大 cluster_id（无记录时为 -1，便于后续从 max+1 起分配新 id）
+ * @param {number} userId
+ * @returns {number}
+ */
+function getMaxClusterIdForUser(userId) {
+  const row = db.prepare(`SELECT MAX(cluster_id) AS m FROM face_clusters WHERE user_id = ?`).get(userId);
+  if (row == null || row.m === null || row.m === undefined) return -1;
+  return Number(row.m);
+}
+
 function getClusterStatsByUserId(userId) {
   const sql = `
     SELECT 
@@ -509,7 +537,8 @@ function getFacesByClusterId(userId, clusterId, options = {}) {
         ELSE 3  -- 其他
       END,
       fc.similarity_score DESC, 
-      m.captured_at DESC
+      m.captured_at DESC,
+      fe.id ASC
     LIMIT ? OFFSET ?
   `;
 
@@ -562,7 +591,14 @@ function getClustersByUserId(userId, options = {}) {
       INNER JOIN media m ON fe.media_id = m.id
       WHERE fc.user_id = ?
         AND m.deleted_at IS NULL
-        AND fc.name LIKE ?
+        AND EXISTS (
+          SELECT 1 FROM face_clusters fcx
+          INNER JOIN media_face_embeddings fex ON fcx.face_embedding_id = fex.id
+          INNER JOIN media mx ON fex.media_id = mx.id
+          WHERE fcx.user_id = fc.user_id AND fcx.cluster_id = fc.cluster_id
+            AND mx.deleted_at IS NULL
+            AND fcx.name LIKE ?
+        )
     `;
     const countStmt = db.prepare(countSql);
     total = countStmt.get(userId, searchPattern)?.total || 0;
@@ -614,23 +650,7 @@ function getClustersByUserId(userId, options = {}) {
     return { list: [], total: 0 };
   }
 
-  // 第一步：先查询聚类基本信息（避免复杂的 JOIN 和 GROUP BY）
-  // 参考 cleanup 的优化方式：先简单查询，再批量查询关联数据
-  const basicSql = `
-    SELECT DISTINCT
-      fc.cluster_id,
-      fc.name,
-      COUNT(*) OVER (PARTITION BY fc.cluster_id) AS faceCount,
-      MAX(fc.representative_type) OVER (PARTITION BY fc.cluster_id) AS hasRepresentative
-    FROM face_clusters fc
-    INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
-    INNER JOIN media m ON fe.media_id = m.id
-    WHERE fc.user_id = ?
-      AND m.deleted_at IS NULL
-    GROUP BY fc.cluster_id, fc.name
-    ORDER BY faceCount DESC, fc.cluster_id ASC
-    LIMIT ? OFFSET ?
-  `;
+  // 第一步：查询聚类基本信息（按 cluster_id 聚合；name 取非空名的 MAX，避免 GROUP BY name 拆成同一人物两行）
 
   // 如果 SQLite 不支持窗口函数，使用更简单的方式
   // 只查询必要的字段：cluster_id, name, mediaCount
@@ -641,32 +661,47 @@ function getClustersByUserId(userId, options = {}) {
     const basicSqlSearchRecent = `
       SELECT 
         fc.cluster_id,
-        fc.name,
-        COUNT(DISTINCT m.id) AS mediaCount
+        MAX(CASE WHEN fc.name IS NOT NULL AND length(trim(fc.name)) > 0 THEN trim(fc.name) END) AS name,
+        COUNT(DISTINCT m.id) AS mediaCount,
+        MAX(COALESCE(fcm.last_used_at, 0)) AS sort_last_used
       FROM face_clusters fc
       INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
       INNER JOIN media m ON fe.media_id = m.id
       LEFT JOIN face_cluster_meta fcm ON fcm.user_id = fc.user_id AND fcm.cluster_id = fc.cluster_id
       WHERE fc.user_id = ?
         AND m.deleted_at IS NULL
-        AND fc.name LIKE ?
-      GROUP BY fc.cluster_id, fc.name
-      ORDER BY COALESCE(fcm.last_used_at, 0) DESC, (fc.name IS NOT NULL AND fc.name != '') DESC, mediaCount DESC, fc.cluster_id ASC
+        AND EXISTS (
+          SELECT 1 FROM face_clusters fcx
+          INNER JOIN media_face_embeddings fex ON fcx.face_embedding_id = fex.id
+          INNER JOIN media mx ON fex.media_id = mx.id
+          WHERE fcx.user_id = fc.user_id AND fcx.cluster_id = fc.cluster_id
+            AND mx.deleted_at IS NULL
+            AND fcx.name LIKE ?
+        )
+      GROUP BY fc.cluster_id
+      ORDER BY sort_last_used DESC, (name IS NOT NULL AND name != '') DESC, mediaCount DESC, fc.cluster_id ASC
       LIMIT ? OFFSET ?
     `;
     const basicSqlSearch = `
       SELECT 
         fc.cluster_id,
-        fc.name,
+        MAX(CASE WHEN fc.name IS NOT NULL AND length(trim(fc.name)) > 0 THEN trim(fc.name) END) AS name,
         COUNT(DISTINCT m.id) AS mediaCount
       FROM face_clusters fc
       INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
       INNER JOIN media m ON fe.media_id = m.id
       WHERE fc.user_id = ?
         AND m.deleted_at IS NULL
-        AND fc.name LIKE ?
-      GROUP BY fc.cluster_id, fc.name
-      ORDER BY (fc.name IS NOT NULL AND fc.name != '') DESC, mediaCount DESC, fc.cluster_id ASC
+        AND EXISTS (
+          SELECT 1 FROM face_clusters fcx
+          INNER JOIN media_face_embeddings fex ON fcx.face_embedding_id = fex.id
+          INNER JOIN media mx ON fex.media_id = mx.id
+          WHERE fcx.user_id = fc.user_id AND fcx.cluster_id = fc.cluster_id
+            AND mx.deleted_at IS NULL
+            AND fcx.name LIKE ?
+        )
+      GROUP BY fc.cluster_id
+      ORDER BY (name IS NOT NULL AND name != '') DESC, mediaCount DESC, fc.cluster_id ASC
       LIMIT ? OFFSET ?
     `;
     try {
@@ -676,33 +711,35 @@ function getClustersByUserId(userId, options = {}) {
       basicRows = db.prepare(basicSqlSearch).all(userId, searchPattern, pageSize, offset);
     }
   } else {
+    // 只按 cluster_id 分组：name 在各行可能不一致（部分行 NULL），不能 GROUP BY cluster_id, name 否则同一人物会出现两行
     const basicSqlRecent = `
       SELECT 
         fc.cluster_id,
-        fc.name,
-        COUNT(DISTINCT m.id) AS mediaCount
+        MAX(CASE WHEN fc.name IS NOT NULL AND length(trim(fc.name)) > 0 THEN trim(fc.name) END) AS name,
+        COUNT(DISTINCT m.id) AS mediaCount,
+        MAX(COALESCE(fcm.last_used_at, 0)) AS sort_last_used
       FROM face_clusters fc
       INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
       INNER JOIN media m ON fe.media_id = m.id
       LEFT JOIN face_cluster_meta fcm ON fcm.user_id = fc.user_id AND fcm.cluster_id = fc.cluster_id
       WHERE fc.user_id = ?
         AND m.deleted_at IS NULL
-      GROUP BY fc.cluster_id, fc.name
-      ORDER BY COALESCE(fcm.last_used_at, 0) DESC, (fc.name IS NOT NULL AND fc.name != '') DESC, mediaCount DESC, fc.cluster_id ASC
+      GROUP BY fc.cluster_id
+      ORDER BY sort_last_used DESC, (name IS NOT NULL AND name != '') DESC, mediaCount DESC, fc.cluster_id ASC
       LIMIT ? OFFSET ?
     `;
     const basicSqlSimple = `
       SELECT 
         fc.cluster_id,
-        fc.name,
+        MAX(CASE WHEN fc.name IS NOT NULL AND length(trim(fc.name)) > 0 THEN trim(fc.name) END) AS name,
         COUNT(DISTINCT m.id) AS mediaCount
       FROM face_clusters fc
       INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
       INNER JOIN media m ON fe.media_id = m.id
       WHERE fc.user_id = ?
         AND m.deleted_at IS NULL
-      GROUP BY fc.cluster_id, fc.name
-      ORDER BY (fc.name IS NOT NULL AND fc.name != '') DESC, mediaCount DESC, fc.cluster_id ASC
+      GROUP BY fc.cluster_id
+      ORDER BY (name IS NOT NULL AND name != '') DESC, mediaCount DESC, fc.cluster_id ASC
       LIMIT ? OFFSET ?
     `;
     try {
@@ -745,7 +782,8 @@ function getClustersByUserId(userId, options = {}) {
         WHEN fc.representative_type = 1 THEN 2  -- 默认封面次之
         ELSE 3  -- 其他
       END,
-      fc.similarity_score DESC
+      fc.similarity_score DESC,
+      fe.id ASC
   `;
 
   const coversMap = new Map();
@@ -856,19 +894,20 @@ function getRecentClustersByUserId(userId, options = {}) {
   `;
   const total = db.prepare(countSql).get(...params)?.total || 0;
 
-  // 基本查询：LEFT JOIN face_cluster_meta，按 最近使用 > 有名字 > 图片数量 排序
+  // 基本查询：LEFT JOIN face_cluster_meta，按 最近使用 > 有名字 > 图片数量 排序（只按 cluster_id 分组）
   const basicSql = `
     SELECT 
       fc.cluster_id,
-      fc.name,
-      COUNT(DISTINCT m.id) AS mediaCount
+      MAX(CASE WHEN fc.name IS NOT NULL AND length(trim(fc.name)) > 0 THEN trim(fc.name) END) AS name,
+      COUNT(DISTINCT m.id) AS mediaCount,
+      MAX(COALESCE(fcm.last_used_at, 0)) AS sort_last_used
     FROM face_clusters fc
     INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
     INNER JOIN media m ON fe.media_id = m.id
     LEFT JOIN face_cluster_meta fcm ON fcm.user_id = fc.user_id AND fcm.cluster_id = fc.cluster_id
     WHERE ${whereClause}
-    GROUP BY fc.cluster_id, fc.name
-    ORDER BY COALESCE(fcm.last_used_at, 0) DESC, (fc.name IS NOT NULL AND fc.name != '') DESC, mediaCount DESC, fc.cluster_id ASC
+    GROUP BY fc.cluster_id
+    ORDER BY sort_last_used DESC, (name IS NOT NULL AND name != '') DESC, mediaCount DESC, fc.cluster_id ASC
     LIMIT ?
   `;
   params.push(Math.min(limit, 20));
@@ -883,14 +922,14 @@ function getRecentClustersByUserId(userId, options = {}) {
     const fallbackSql = `
       SELECT 
         fc.cluster_id,
-        fc.name,
+        MAX(CASE WHEN fc.name IS NOT NULL AND length(trim(fc.name)) > 0 THEN trim(fc.name) END) AS name,
         COUNT(DISTINCT m.id) AS mediaCount
       FROM face_clusters fc
       INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
       INNER JOIN media m ON fe.media_id = m.id
       WHERE ${whereClause}
-      GROUP BY fc.cluster_id, fc.name
-      ORDER BY (fc.name IS NOT NULL AND fc.name != '') DESC, mediaCount DESC, fc.cluster_id ASC
+      GROUP BY fc.cluster_id
+      ORDER BY (name IS NOT NULL AND name != '') DESC, mediaCount DESC, fc.cluster_id ASC
       LIMIT ?
     `;
     fallbackParams.push(Math.min(limit, 20));
@@ -909,7 +948,7 @@ function getRecentClustersByUserId(userId, options = {}) {
     INNER JOIN media_face_embeddings fe ON fc.face_embedding_id = fe.id
     INNER JOIN media m ON fe.media_id = m.id
     WHERE fc.user_id = ? AND fc.cluster_id IN (${coverPlaceholders}) AND m.deleted_at IS NULL
-    ORDER BY fc.cluster_id, CASE WHEN fc.representative_type = 2 THEN 1 WHEN fc.representative_type = 1 THEN 2 ELSE 3 END, fc.similarity_score DESC
+    ORDER BY fc.cluster_id, CASE WHEN fc.representative_type = 2 THEN 1 WHEN fc.representative_type = 1 THEN 2 ELSE 3 END, fc.similarity_score DESC, fe.id ASC
   `;
   const coverRows = db.prepare(coverSql).all(userId, ...clusterIds);
   const coversMap = new Map();
@@ -1273,7 +1312,7 @@ function verifyFaceEmbeddingInCluster(userId, clusterId, faceEmbeddingId) {
 }
 
 /**
- * 清除指定 cluster 的所有 is_representative 标记
+ * 清除指定 cluster 的所有 representative_type 标记（置为 0）
  * @param {number} userId - 用户ID
  * @param {number} clusterId - 聚类ID
  * @returns {Object} 返回对象 { affectedRows: 更新的行数 }
@@ -1290,7 +1329,7 @@ function clearClusterRepresentatives(userId, clusterId) {
 }
 
 /**
- * 清除指定 cluster 的手动设置的封面标记（is_representative = 2）
+ * 清除指定 cluster 的手动设置的封面标记（representative_type = 2）
  * @param {number} userId - 用户ID
  * @param {number} clusterId - 聚类ID
  * @returns {Object} 返回对象 { affectedRows: 更新的行数 }
@@ -1307,10 +1346,10 @@ function clearManualCoverRepresentative(userId, clusterId) {
 }
 
 /**
- * 清除指定 cluster 的其他默认封面标记（is_representative = 1），但保留指定的 face_embedding_id
+ * 清除指定 cluster 的其他默认封面标记（representative_type = 1），但保留指定的 face_embedding_id
  * @param {number} userId - 用户ID
  * @param {number} clusterId - 聚类ID
- * @param {number} keepFaceEmbeddingId - 要保留的 face_embedding_id（不修改它的 is_representative）
+ * @param {number} keepFaceEmbeddingId - 要保留的 face_embedding_id（不修改其 representative_type）
  * @returns {Object} 返回对象 { affectedRows: 更新的行数 }
  */
 function clearOtherDefaultCoverRepresentative(userId, clusterId, keepFaceEmbeddingId) {
@@ -1328,7 +1367,7 @@ function clearOtherDefaultCoverRepresentative(userId, clusterId, keepFaceEmbeddi
 }
 
 /**
- * 更新face_clusters表的is_representative字段，标记为代表人脸
+ * 更新 face_clusters.representative_type，标记为代表人脸/封面类型
  * @param {number} userId - 用户ID
  * @param {number} clusterId - 聚类ID
  * @param {number} faceEmbeddingId - face_embedding ID
@@ -1347,11 +1386,11 @@ function updateFaceClusterRepresentative(userId, clusterId, faceEmbeddingId, rep
 }
 
 /**
- * 获取指定 face_embedding_id 在当前 cluster 中的 is_representative 值
+ * 获取指定 face_embedding_id 在当前 cluster 中的 representative_type
  * @param {number} userId - 用户ID
  * @param {number} clusterId - 聚类ID
  * @param {number} faceEmbeddingId - face_embedding ID
- * @returns {number|null} is_representative 值（0, 1, 2 或 null）
+ * @returns {number|null} representative_type（0, 1, 2 或 null）
  */
 function getFaceEmbeddingRepresentativeValue(userId, clusterId, faceEmbeddingId) {
   const sql = `
@@ -1365,10 +1404,10 @@ function getFaceEmbeddingRepresentativeValue(userId, clusterId, faceEmbeddingId)
 }
 
 /**
- * 根据缩略图存储键批量查询对应的 is_representative 值
+ * 根据缩略图存储键批量查询对应的 representative_type
  * @param {number} userId - 用户ID
  * @param {Array<string>} thumbnailStorageKeys - 缩略图存储键数组
- * @returns {Map<string, number>} 映射：thumbnailStorageKey -> is_representative 值（2 表示手动设置，1 表示默认，0 或其他表示普通）
+ * @returns {Map<string, number>} 映射：thumbnailStorageKey -> representative_type（2 手动封面，1 默认封面，0 普通）
  */
 function getRepresentativeStatusByThumbnailKeys(userId, thumbnailStorageKeys) {
   if (!thumbnailStorageKeys || thumbnailStorageKeys.length === 0) {
@@ -1581,7 +1620,7 @@ function getFaceEmbeddingIdByMediaIdInCluster(userId, clusterId, imageIds) {
 
 /**
  * 获取聚类时生成的默认封面 face_embedding_id
- * 直接查找 is_representative = 1 的记录（默认封面）
+ * 直接查找 representative_type = 1 的记录（默认封面）
  * @param {number} userId - 用户ID
  * @param {number} clusterId - 聚类ID
  * @returns {number|null} 默认封面的 face_embedding_id，如果找不到则返回 null
@@ -1624,8 +1663,8 @@ function getRepresentativeFaceEmbeddingIdsByUserId(userId) {
 }
 
 /**
- * 设置聚类封面（手动设置）：设置为 is_representative = 2，保留默认封面（is_representative = 1）不变
- * 如果手动设置的就是默认封面本身（is_representative = 1），则保持为 1，不改为 2
+ * 设置聚类封面（手动设置）：设置为 representative_type = 2，保留默认封面（representative_type = 1）不变
+ * 如果手动设置的就是默认封面本身（representative_type = 1），则保持为 1，不改为 2
  * @param {number} userId - 用户ID
  * @param {number} clusterId - 聚类ID
  * @param {number} faceEmbeddingId - face_embedding ID
@@ -1637,38 +1676,38 @@ function setClusterCover(userId, clusterId, faceEmbeddingId) {
     return { affectedRows: 0, error: "faceEmbeddingId does not belong to this cluster" };
   }
 
-  // 2. 检查当前要设置的 face_embedding_id 是否已经是默认封面（is_representative = 1）
+  // 2. 检查当前要设置的 face_embedding_id 是否已经是默认封面（representative_type = 1）
   const currentValue = getFaceEmbeddingRepresentativeValue(userId, clusterId, faceEmbeddingId);
   if (currentValue === 1) {
     // 如果已经是默认封面，则不需要做任何操作，保持为 1
-    // 但需要清除其他手动设置的封面（is_representative = 2），确保只有这一个 1
+    // 但需要清除其他手动设置的封面（representative_type = 2），确保只有这一个 1
     clearManualCoverRepresentative(userId, clusterId);
     return { affectedRows: 0, isDefaultCover: true };
   }
 
-  // 3. 清除该 cluster 中其他手动设置的封面（is_representative = 2），保留默认封面（is_representative = 1）
+  // 3. 清除该 cluster 中其他手动设置的封面（representative_type = 2），保留默认封面（representative_type = 1）
   clearManualCoverRepresentative(userId, clusterId);
 
-  // 4. 设置新的手动封面为 is_representative = 2
+  // 4. 设置新的手动封面为 representative_type = 2
   const result = updateFaceClusterRepresentative(userId, clusterId, faceEmbeddingId, 2);
   return { ...result, isDefaultCover: false };
 }
 
 /**
- * 恢复默认封面：清除手动设置的封面（is_representative = 2），确保默认封面（is_representative = 1）存在且唯一
+ * 恢复默认封面：清除手动设置的封面（representative_type = 2），确保默认封面（representative_type = 1）存在且唯一
  * @param {number} userId - 用户ID
  * @param {number} clusterId - 聚类ID
  * @param {number} defaultFaceEmbeddingId - 默认封面的 face_embedding_id
  * @returns {Object} 返回对象 { affectedRows: 更新的行数 }
  */
 function restoreClusterDefaultCover(userId, clusterId, defaultFaceEmbeddingId) {
-  // 1. 清除手动设置的封面（is_representative = 2）
+  // 1. 清除手动设置的封面（representative_type = 2）
   clearManualCoverRepresentative(userId, clusterId);
 
-  // 2. 清除其他可能的默认封面（is_representative = 1），确保只有指定的默认封面是 1
+  // 2. 清除其他可能的默认封面（representative_type = 1），确保只有指定的默认封面是 1
   clearOtherDefaultCoverRepresentative(userId, clusterId, defaultFaceEmbeddingId);
 
-  // 3. 确保默认封面存在（如果不存在，设置为 is_representative = 1）
+  // 3. 确保默认封面存在（如果不存在，设置为 representative_type = 1）
   // 注意：如果 defaultFaceEmbeddingId 对应的记录不存在或不属于该 cluster，updateFaceClusterRepresentative 会返回 affectedRows = 0
   return updateFaceClusterRepresentative(userId, clusterId, defaultFaceEmbeddingId, 1);
 }
@@ -1678,6 +1717,7 @@ module.exports = {
   getOldThumbnailPathsByUserId,
   deleteFaceClustersByUserId,
   insertFaceClusters,
+  getMaxClusterIdForUser,
   getClusterStatsByUserId,
   getFacesByClusterId,
   getClustersByUserId,

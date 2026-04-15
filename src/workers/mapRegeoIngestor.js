@@ -33,7 +33,7 @@ async function processMapRegeoJob(job) {
   }
 
   try {
-    const { location, mapRegeoStatus } = await getLocationFromCoordinates(lat, lng);
+    const { location, mapRegeoStatus } = await getLocationFromCoordinates(lat, lng, userId);
     if (mapRegeoStatus == null) {
       throw new Error("MAP_REGEO_NO_STATUS");
     }

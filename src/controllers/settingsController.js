@@ -23,7 +23,8 @@ function parseBool(value) {
 // 读取云模型（百炼）开关与是否已配置 API Key
 async function getCloudModelSettings(req, res, next) {
   try {
-    const row = getRowByKeyType(KEY_TYPE_CLOUD_MODEL);
+    const userId = req.user?.userId;
+    const row = getRowByKeyType(userId, KEY_TYPE_CLOUD_MODEL);
     const enabled = Number(row?.enabled) === 1;
     const hasApiKey = Boolean(row?.api_key && String(row.api_key).trim() !== "");
     res.sendResponse({
@@ -40,15 +41,16 @@ async function getCloudModelSettings(req, res, next) {
 // 更新云模型启用状态；请求体中带非空 apiKey 时写入百炼 Key
 async function updateCloudModelSettings(req, res, next) {
   try {
+    const userId = req.user?.userId;
     const { enabled, apiKey } = req.body || {};
     const normalizedEnabled = parseBool(enabled);
     const patch = { enabled: normalizedEnabled };
     if (typeof apiKey === "string" && apiKey.trim()) {
       patch.api_key = apiKey.trim();
     }
-    updateConfigRow(KEY_TYPE_CLOUD_MODEL, patch);
+    updateConfigRow(userId, KEY_TYPE_CLOUD_MODEL, patch);
 
-    const row = getRowByKeyType(KEY_TYPE_CLOUD_MODEL);
+    const row = getRowByKeyType(userId, KEY_TYPE_CLOUD_MODEL);
     res.sendResponse({
       data: {
         enabled: Number(row?.enabled) === 1,
@@ -63,7 +65,8 @@ async function updateCloudModelSettings(req, res, next) {
 // 使用已保存的 Key 请求 Python 服务做云模型连通性检测
 async function testCloudModelConnection(req, res, next) {
   try {
-    const row = getRowByKeyType(KEY_TYPE_CLOUD_MODEL);
+    const userId = req.user?.userId;
+    const row = getRowByKeyType(userId, KEY_TYPE_CLOUD_MODEL);
     const trimmed = (row?.api_key != null ? String(row.api_key) : "").trim();
     if (!trimmed) {
       return res.sendResponse({
@@ -126,7 +129,8 @@ async function rebuildCloudCaption(req, res, next) {
 // 读取高德逆地理开关与是否已保存 Web 服务 Key
 async function getAmapSettings(req, res, next) {
   try {
-    const row = getRowByKeyType(KEY_TYPE_AMAP);
+    const userId = req.user?.userId;
+    const row = getRowByKeyType(userId, KEY_TYPE_AMAP);
     const enabled = Number(row?.enabled) === 1;
     const hasApiKey = Boolean(row?.api_key && String(row.api_key).trim() !== "");
     res.sendResponse({
@@ -143,15 +147,16 @@ async function getAmapSettings(req, res, next) {
 // 更新高德启用状态与非空时写入 Web 服务 Key
 async function updateAmapSettings(req, res, next) {
   try {
+    const userId = req.user?.userId;
     const { enabled, apiKey } = req.body || {};
     const normalizedEnabled = parseBool(enabled);
     const patch = { enabled: normalizedEnabled };
     if (typeof apiKey === "string" && apiKey.trim()) {
       patch.api_key = apiKey.trim();
     }
-    updateConfigRow(KEY_TYPE_AMAP, patch);
+    updateConfigRow(userId, KEY_TYPE_AMAP, patch);
 
-    const row = getRowByKeyType(KEY_TYPE_AMAP);
+    const row = getRowByKeyType(userId, KEY_TYPE_AMAP);
     res.sendResponse({
       data: {
         enabled: Number(row?.enabled) === 1,
@@ -166,7 +171,8 @@ async function updateAmapSettings(req, res, next) {
 // 使用已保存的 Key 调用高德 regeo 接口做连通性检测
 async function testAmapConnection(req, res, next) {
   try {
-    const row = getRowByKeyType(KEY_TYPE_AMAP);
+    const userId = req.user?.userId;
+    const row = getRowByKeyType(userId, KEY_TYPE_AMAP);
     const trimmed = (row?.api_key != null ? String(row.api_key) : "").trim();
     if (!trimmed) {
       return res.sendResponse({
@@ -209,7 +215,8 @@ async function getMapRegeoSkippedCountHandler(req, res, next) {
 
 async function rebuildMapRegeo(req, res, next) {
   try {
-    const row = getRowByKeyType(KEY_TYPE_AMAP);
+    const userId = req.user?.userId;
+    const row = getRowByKeyType(userId, KEY_TYPE_AMAP);
     const amapReady = Number(row?.enabled) === 1 && Boolean(row?.api_key && String(row.api_key).trim() !== "");
     if (!amapReady) {
       throw new CustomError({
@@ -221,7 +228,6 @@ async function rebuildMapRegeo(req, res, next) {
     }
 
     const limitPerBatch = Number(process.env.MAP_REGEO_BATCH_LIMIT || 500);
-    const userId = req.user?.userId;
     const totalEnqueued = await enqueueMapRegeoRebuildAll(limitPerBatch, userId);
 
     res.sendResponse({

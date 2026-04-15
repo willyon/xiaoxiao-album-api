@@ -12,6 +12,7 @@ const storageService = require("../services/storageService");
 const videoProcessingService = require("../services/videoProcessingService");
 const { updateProgress, updateProgressOnce } = require("../services/mediaProcessingProgressService");
 const { mediaAnalysisQueue } = require("../queues/mediaAnalysisQueue");
+const { QUEUE_JOB_ATTEMPTS } = require("../config/queueConfig");
 const mediaMetadataService = require("../services/mediaMetadataService");
 const { addMediaToSession } = require("../services/uploadSessionService");
 const { getVideoMimeTypeFromFileName } = require("../utils/fileUtils");
@@ -27,7 +28,7 @@ const { getVideoMimeTypeFromFileName } = require("../utils/fileUtils");
  * @param {string} [params.highResStorageKey] - 高清图存储键（可选）
  */
 async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userId, highResStorageKey }) {
-  const maxAttempts = job?.opts?.attempts || Number(process.env.MEDIA_META_JOB_ATTEMPTS || 5);
+  const maxAttempts = job?.opts?.attempts || QUEUE_JOB_ATTEMPTS;
   const attemptsMade = job?.attemptsMade || 0;
   // 修复：判断失败后 BullMQ 是否还会重试
   // BullMQ 会在失败后将 attemptsMade 递增，然后判断是否 < maxAttempts
@@ -140,7 +141,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
   let mapRegeoStatus;
   if (meta.gpsLatitude != null && meta.gpsLongitude != null) {
     try {
-      const locInfo = await mediaMetadataService.analyzeLocationInfo(meta.gpsLatitude, meta.gpsLongitude);
+      const locInfo = await mediaMetadataService.analyzeLocationInfo(meta.gpsLatitude, meta.gpsLongitude, userId);
       gpsLocation = locInfo?.gpsLocation || null;
       country = locInfo?.country || null;
       province = locInfo?.province || null;
@@ -309,6 +310,7 @@ async function processMediaMeta(job) {
   try {
     metadata = await mediaMetadataService.analyzeMediaMetadata(fileData, {
       includeLocation: true,
+      userId,
     });
   } catch (err) {
     await _handleMetaRetryFailure({ job, reason: "metadata_analysis_failed", fileName, imageHash, userId });
