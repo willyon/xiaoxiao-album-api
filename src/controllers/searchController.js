@@ -6,9 +6,9 @@
 
 const CustomError = require('../errors/customError')
 const { SUCCESS_CODES, ERROR_CODES } = require('../constants/messageCodes')
-const searchService = require('../services/searchService')
+const searchService = require('../services/search')
 const { addFullUrlToMedia } = require('../services/mediaService')
-const faceClusterModel = require('../models/faceClusterModel')
+const faceClusterService = require('../services/faceCluster')
 const logger = require('../utils/logger')
 
 /**
@@ -75,7 +75,7 @@ async function handleSearchMedias(req, res, next) {
       let resultsWithUrls = await addFullUrlToMedia(searchResult.list)
       if (source === 'people' && validClusterId != null && resultsWithUrls.length > 0) {
         const mediaIds = resultsWithUrls.map((item) => item.mediaId).filter((id) => id != null)
-        const faceEmbeddingIdMap = faceClusterModel.getFaceEmbeddingIdByMediaIdInCluster(userId, validClusterId, mediaIds)
+        const faceEmbeddingIdMap = faceClusterService.getFaceEmbeddingIdByMediaIdInCluster(userId, validClusterId, mediaIds)
         resultsWithUrls = resultsWithUrls.map((item) => ({
           ...item,
           faceEmbeddingId: faceEmbeddingIdMap.get(item.mediaId) ?? null
@@ -137,28 +137,6 @@ async function handleSearchMedias(req, res, next) {
       data: {
         list: resultsWithUrls,
         total: searchResult.total
-      },
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED
-    })
-  } catch (error) {
-    next(error)
-  }
-}
-
-/**
- * 获取搜索队列状态
- * GET /search/queue-status
- * 注意：这个方法将在队列服务中实现
- */
-async function handleGetQueueStatus(req, res, next) {
-  try {
-    logger.info({ message: '获取搜索队列状态请求' })
-
-    // 简化实现，返回基本状态信息
-    res.sendResponse({
-      data: {
-        message: '队列状态检查功能将在队列服务集成时实现',
-        timestamp: new Date().toISOString()
       },
       messageCode: SUCCESS_CODES.REQUEST_COMPLETED
     })
@@ -240,6 +218,5 @@ async function handleGetFilterOptionsPaginated(req, res, next) {
 
 module.exports = {
   handleSearchMedias,
-  handleGetQueueStatus,
   handleGetFilterOptionsPaginated
 }

@@ -4,41 +4,22 @@
  * @Description: 人脸聚类API控制器
  */
 
-const faceClusterService = require('../services/faceClusterService')
+const faceClusterService = require('../services/faceCluster')
 const {
   getClustersByUserId,
   getRecentClustersByUserId,
   getExistingPersonNames,
   updateClusterName,
-  removeFacesFromCluster,
   moveFacesToCluster,
   setClusterCover,
   verifyFaceEmbeddingInCluster,
   getFaceEmbeddingIdsByClusterId
-} = require('../models/faceClusterModel')
-const { addFullUrlToMedia, getGroupsByYearForCluster, getGroupsByMonthForCluster } = require('../services/mediaService')
+} = faceClusterService
+const { addFullUrlToMedia } = require('../services/mediaService')
 const storageService = require('../services/storageService')
 const logger = require('../utils/logger')
 const CustomError = require('../errors/customError')
 const { ERROR_CODES } = require('../constants/messageCodes')
-
-/**
- * 获取聚类统计信息
- * GET /face-clusters/stats
- */
-async function getClusterStats(req, res, next) {
-  try {
-    const { userId } = req.user
-
-    const stats = faceClusterService.getFaceClusterStats(userId)
-
-    res.sendResponse({
-      data: stats
-    })
-  } catch (error) {
-    next(error)
-  }
-}
 
 /**
  * 获取指定人物（cluster）下所有 face_embedding_id（用于前端「合并到其他人」时一次性移整人）
@@ -246,50 +227,6 @@ async function updateCluster(req, res, next) {
 }
 
 /**
- * 从聚类中移除照片
- * DELETE /face-clusters/:clusterId/faces
- */
-async function removeFaces(req, res, next) {
-  try {
-    const { userId } = req.user
-    const { clusterId } = req.params
-    const { faceEmbeddingIds } = req.body
-
-    if (!Array.isArray(faceEmbeddingIds) || faceEmbeddingIds.length === 0) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'error'
-      })
-    }
-
-    // 验证所有 faceEmbeddingIds 都是数字
-    const invalidIds = faceEmbeddingIds.filter((id) => typeof id !== 'number' && !Number.isInteger(Number(id)))
-    if (invalidIds.length > 0) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'error'
-      })
-    }
-
-    const result = removeFacesFromCluster(
-      userId,
-      parseInt(clusterId),
-      faceEmbeddingIds.map((id) => parseInt(id))
-    )
-
-    res.sendResponse({
-      data: {
-        affectedRows: result.affectedRows
-      }
-    })
-  } catch (error) {
-    next(error)
-  }
-}
-
-/**
  * 将照片从一个聚类移动到另一个聚类（或创建新聚类）
  * POST /face-clusters/:clusterId/move-faces
  */
@@ -353,62 +290,6 @@ async function moveFaces(req, res, next) {
       data: {
         affectedRows: result.affectedRows,
         targetClusterId: result.targetClusterId
-      }
-    })
-  } catch (error) {
-    next(error)
-  }
-}
-
-/**
- * 获取指定人物的年份相册列表
- * GET /face-clusters/:clusterId/albums/year?pageNo=1&pageSize=20
- */
-async function getClusterYearAlbums(req, res, next) {
-  try {
-    const { userId } = req.user
-    const { clusterId } = req.params
-    const { pageNo = 1, pageSize = 20 } = req.query
-
-    const result = await getGroupsByYearForCluster({
-      userId,
-      clusterId: parseInt(clusterId),
-      pageNo: parseInt(pageNo),
-      pageSize: parseInt(pageSize)
-    })
-
-    res.sendResponse({
-      data: {
-        list: result.data,
-        total: result.total
-      }
-    })
-  } catch (error) {
-    next(error)
-  }
-}
-
-/**
- * 获取指定人物的月份相册列表
- * GET /face-clusters/:clusterId/albums/month?pageNo=1&pageSize=20
- */
-async function getClusterMonthAlbums(req, res, next) {
-  try {
-    const { userId } = req.user
-    const { clusterId } = req.params
-    const { pageNo = 1, pageSize = 20 } = req.query
-
-    const result = await getGroupsByMonthForCluster({
-      userId,
-      clusterId: parseInt(clusterId),
-      pageNo: parseInt(pageNo),
-      pageSize: parseInt(pageSize)
-    })
-
-    res.sendResponse({
-      data: {
-        list: result.data,
-        total: result.total
       }
     })
   } catch (error) {
@@ -577,15 +458,11 @@ async function setClusterCoverImage(req, res, next) {
 }
 
 module.exports = {
-  getClusterStats,
   getClusters,
   getRecentClusters,
   getClusterFaceEmbeddingIds,
   updateCluster,
-  removeFaces,
   moveFaces,
-  getClusterYearAlbums,
-  getClusterMonthAlbums,
   setClusterCoverImage,
   restoreClusterCoverImage
 }

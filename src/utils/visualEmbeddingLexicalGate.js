@@ -4,13 +4,12 @@
  * 不涉及 WEAK_VERBS；query 向量仍用全文 residual.trim()（searchService 侧）。
  */
 const { tryCreateJieba, SEARCH_TERMS_SPLIT_REGEX } = require('./chineseSegmenter')
+const { HAS_CJK, WORD_OR_CJK_REGEX } = require('./cjkRegex')
 const { isStopWordWholeSegment } = require('./embeddingLexicalGate')
 const { buildSynonymGroups } = require('./searchSynonymExpansion')
 
-const HAS_CJK = /[\u3400-\u9fff]/
-
 function isOnlyPunctOrSpace(s) {
-  return !s || !/[\w\u3400-\u9fff]/u.test(s)
+  return !s || !WORD_OR_CJK_REGEX.test(s)
 }
 
 /**

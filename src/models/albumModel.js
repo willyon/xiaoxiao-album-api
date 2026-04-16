@@ -3,7 +3,7 @@
  * @Date: 2025-01-XX
  * @Description: 相册数据模型
  */
-const { db } = require("../services/database");
+const { db } = require("../db");
 
 const { mapFields } = require("../utils/fieldMapper");
 
@@ -452,44 +452,6 @@ function toggleFavoriteMedia({ userId, imageId, isFavorite }) {
 }
 
 /**
- * 批量将媒体设为收藏（仅更新 media.is_favorite = 1，不操作 album_media）
- */
-function addMediasToFavorite({ userId, imageIds }) {
-  if (!imageIds || imageIds.length === 0) {
-    return { addedCount: 0, skippedCount: 0 };
-  }
-  const placeholders = imageIds.map(() => "?").join(",");
-  const sql = `
-    UPDATE media 
-    SET is_favorite = 1 
-    WHERE user_id = ? AND id IN (${placeholders})
-  `;
-  const result = db.prepare(sql).run(userId, ...imageIds);
-  const addedCount = result.changes;
-  return {
-    addedCount,
-    skippedCount: imageIds.length - addedCount,
-  };
-}
-
-/**
- * 批量取消媒体收藏（仅更新 media.is_favorite = 0，不操作 album_media）
- */
-function removeMediasFromFavorite({ userId, imageIds }) {
-  if (!imageIds || imageIds.length === 0) {
-    return { affectedRows: 0 };
-  }
-  const placeholders = imageIds.map(() => "?").join(",");
-  const sql = `
-    UPDATE media 
-    SET is_favorite = 0 
-    WHERE user_id = ? AND id IN (${placeholders})
-  `;
-  const result = db.prepare(sql).run(userId, ...imageIds);
-  return { affectedRows: result.changes };
-}
-
-/**
  * 检查媒体是否为收藏（仅查 media.is_favorite，不再查 album_media）
  */
 function isMediaFavorite({ userId, imageId }) {
@@ -574,8 +536,6 @@ module.exports = {
   addMediasToAlbum,
   removeMediasFromAlbum,
   getAlbumTimeRange,
-  addMediasToFavorite,
-  removeMediasFromFavorite,
   getAlbumMedias,
   isMediaInAlbum,
   toggleFavoriteMedia,

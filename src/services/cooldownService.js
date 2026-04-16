@@ -6,6 +6,8 @@
  * @Description:提供基于 Redis 的冷却时间管理功能，用于限制特定操作（如邮件发送、验证码获取）的频率，防止重复提交。
  */
 
+const logger = require('../utils/logger')
+
 class CooldownManager {
   /**
    * @param {RedisClient} redisClient - Redis 实例
@@ -39,7 +41,10 @@ class CooldownManager {
       const exists = await this.redis.get(key)
       return !!exists
     } catch (err) {
-      console.warn(`[CooldownManager] Redis check failed for ${key}:`, err)
+      logger.warn({
+        message: '[CooldownManager] Redis check failed',
+        details: { key, error: err?.message, stack: err?.stack }
+      })
       // 如果 Redis 异常，默认不拦截，返回 false
       return false
     }
@@ -56,7 +61,10 @@ class CooldownManager {
     try {
       await this.redis.set(key, '1', 'EX', duration)
     } catch (err) {
-      console.warn(`[CooldownManager] Redis set failed for ${key}:`, err)
+      logger.warn({
+        message: '[CooldownManager] Redis set failed',
+        details: { key, error: err?.message, stack: err?.stack }
+      })
     }
   }
   /**
@@ -72,7 +80,10 @@ class CooldownManager {
       if (ttl > 0) return ttl
       return null
     } catch (err) {
-      console.warn(`[CooldownManager] TTL check failed for ${key}:`, err)
+      logger.warn({
+        message: '[CooldownManager] TTL check failed',
+        details: { key, error: err?.message, stack: err?.stack }
+      })
       return null
     }
   }
@@ -87,7 +98,10 @@ class CooldownManager {
     try {
       await this.redis.del(key)
     } catch (err) {
-      console.warn(`[CooldownManager] Redis delete failed for ${key}:`, err)
+      logger.warn({
+        message: '[CooldownManager] Redis delete failed',
+        details: { key, error: err?.message, stack: err?.stack }
+      })
     }
   }
 }

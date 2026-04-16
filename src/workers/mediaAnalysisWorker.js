@@ -1,10 +1,10 @@
 /*
  * @Description: 媒体智能分析 Worker（消费 mediaAnalysisQueue）
  */
-require('dotenv').config()
 const { Worker } = require('bullmq')
 const IORedis = require('ioredis')
 const logger = require('../utils/logger')
+const { attachStandardFailedLogging } = require('../utils/bullmqWorkerTelemetry')
 const initGracefulShutdown = require('../utils/gracefulShutdown')
 const { processMediaAnalysis } = require('./mediaAnalysisIngestor')
 
@@ -37,22 +37,7 @@ worker.on('completed', (job) => {
   })
 })
 
-worker.on('failed', (job, error) => {
-  const maxAttempts = job?.opts?.attempts || 0
-  const willRetry = (job?.attemptsMade || 0) < maxAttempts
-  const level = willRetry ? 'warn' : 'error'
-  logger[level]({
-    message: 'mediaAnalysisWorker.failed',
-    details: {
-      queue: QUEUE_NAME,
-      jobId: job?.id,
-      attemptsMade: job?.attemptsMade,
-      maxAttempts,
-      error: error?.message,
-      data: job?.data
-    }
-  })
-})
+attachStandardFailedLogging(worker, QUEUE_NAME, { logPrefix: 'mediaAnalysisWorker' })
 
 worker.on('stalled', (jobId) => {
   logger.warn({ message: 'mediaAnalysisWorker.stalled', details: { jobId } })

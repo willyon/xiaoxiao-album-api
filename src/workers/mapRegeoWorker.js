@@ -1,8 +1,8 @@
-require('dotenv').config()
 const { Worker } = require('bullmq')
 const IORedis = require('ioredis')
 
 const logger = require('../utils/logger')
+const { attachStandardFailedLogging } = require('../utils/bullmqWorkerTelemetry')
 const initGracefulShutdown = require('../utils/gracefulShutdown')
 const { processMapRegeoJob } = require('./mapRegeoIngestor')
 const { MAP_REGEO_QUEUE_NAME } = require('../queues/mapRegeoQueue')
@@ -16,6 +16,8 @@ const worker = new Worker(QUEUE_NAME, processMapRegeoJob, {
 })
 
 logger.info({ message: `mapRegeoWorker 已启动，队列名=${QUEUE_NAME}` })
+
+attachStandardFailedLogging(worker, QUEUE_NAME, { logPrefix: 'mapRegeoWorker' })
 
 worker.on('stalled', (jobId) => {
   logger.warn({ message: 'mapRegeoWorker.stalled', details: { jobId } })

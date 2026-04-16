@@ -6,18 +6,23 @@
 
 const logger = require('../utils/logger')
 const storageService = require('../services/storageService')
-const { insertFaceEmbeddings, rebuildMediaSearchDoc, normalizeTextArray, updateAnalysisStatusPrimary } = require('../models/mediaModel')
+const {
+  insertFaceEmbeddings,
+  normalizeTextArray,
+  updateAnalysisStatusPrimary,
+  finalizeMediaAnalysis: finalizeMediaAnalysisInModel,
+  upsertMediaEmbedding
+} = require('../services/mediaAnalysisPipelineService')
+const { rebuildMediaSearchDoc } = require('../services/mediaService')
 const { getCloudConfigForAnalysis } = require('../services/cloudModelService')
 const { updateProgressOnce } = require('../services/mediaProcessingProgressService')
 const axios = require('axios')
 const { UnrecoverableError } = require('bullmq')
 const { withAiSlot } = require('../services/aiConcurrencyLimiter')
 const { bullMqWillRetryAfterThisFailure } = require('../utils/queuePipelineLifecycle')
-const { finalizeMediaAnalysis: finalizeMediaAnalysisInModel } = require('../models/mediaAnalysisModel')
-const { upsertMediaEmbedding } = require('../models/mediaEmbeddingModel')
 const { scheduleUserRebuild } = require('../services/cleanupGroupingScheduler')
-const { scheduleUserClustering } = require('../services/faceClusterScheduler')
-const PYTHON_SERVICE_URL = process.env.PYTHON_CLEANUP_SERVICE_URL || process.env.PYTHON_FACE_SERVICE_URL || 'http://localhost:5001'
+const { scheduleUserClustering } = require('../services/faceCluster')
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL
 // 图片分析超时：仅认 ANALYZE_IMAGE_TIMEOUT_MS，默认 120 秒
 const ANALYZE_IMAGE_TIMEOUT_MS = Number(process.env.ANALYZE_IMAGE_TIMEOUT_MS || 120000)
 /** 视频多帧分析，默认 10 分钟；可通过 ANALYZE_VIDEO_TIMEOUT_MS 覆盖 */

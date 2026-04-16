@@ -10,7 +10,6 @@ const {
   getAlbumById,
   updateAlbum,
   deleteAlbum,
-  queryAlbumPhotos,
   getCustomAlbums,
   getRecentAlbums,
   addMediasToAlbum,
@@ -40,9 +39,6 @@ router.put('/:albumId', updateAlbum)
 router.delete('/:albumId', deleteAlbum)
 
 // ========== 相册媒体管理接口 ========== //
-// 获取相册媒体列表（移除 type 参数，直接从 albumId 判断类型）
-router.get('/:albumId/media', queryAlbumPhotos)
-
 // 添加媒体到相册
 router.post('/:albumId/media', addMediasToAlbum)
 

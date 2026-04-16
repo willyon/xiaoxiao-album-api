@@ -14,8 +14,6 @@ const {
   handleCheckFileExists,
   handlePatchMedia,
   handleDeleteMedias,
-  handleReanalyzeMedia,
-  handleRebuildSearchMedia,
   handleGetProcessingFailureSummary,
   handleRetryProcessingFailures
 } = require('../controllers/mediaController')
@@ -39,10 +37,6 @@ router.post('/processing-failures/retry', handleRetryProcessingFailures)
 
 // 部分更新媒体信息（仅用于 favorite 字段）
 router.patch('/:mediaId', handlePatchMedia)
-
-// Phase 4 管理能力：单图重新分析、重建搜索文档
-router.post('/:mediaId/reanalyze', handleReanalyzeMedia)
-router.post('/:mediaId/rebuild-search', handleRebuildSearchMedia)
 
 // 批量删除图片（软删除，移至回收站）
 router.delete('/', handleDeleteMedias)

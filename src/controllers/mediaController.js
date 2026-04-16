@@ -7,6 +7,7 @@
  */
 const mediaService = require('../services/mediaService')
 const similarService = require('../services/similarService')
+const appSettingsService = require('../services/appSettingsService')
 const CustomError = require('../errors/customError')
 const { ERROR_CODES, SUCCESS_CODES } = require('../constants/messageCodes')
 const { getRedisClient } = require('../services/redisClient')
@@ -15,17 +16,16 @@ const { updateProgress } = require('../services/mediaProcessingProgressService')
 const logger = require('../utils/logger')
 const {
   getMediaDownloadInfo,
-  rebuildMediaSearchDoc,
   selectMediaRowByHashForUser,
   listFailedMedias,
   listAllFailedCloudMedias,
   countFailedMediasByStage
-} = require('../models/mediaModel')
+} = mediaService
 const trashService = require('../services/trashService')
 const { mediaAnalysisQueue } = require('../queues/mediaAnalysisQueue')
 const { mediaMetaQueue } = require('../queues/mediaMetaQueue')
 const { cloudCaptionQueue } = require('../queues/cloudCaptionQueue')
-const { getRowByKeyType, KEY_TYPE_CLOUD_MODEL } = require('../models/appSettingsModel')
+const { getRowByKeyType, KEY_TYPE_CLOUD_MODEL } = appSettingsService
 
 const CLOUD_RETRY_JOB_IN_FLIGHT_STATES = new Set(['waiting', 'active', 'delayed', 'paused'])
 const CLOUD_RETRY_LIST_MAX = Math.max(500, Math.min(Number(process.env.CLOUD_RETRY_LIST_MAX) || 20000, 200000))
@@ -241,104 +241,6 @@ async function handleDeleteMedias(req, res, next) {
 }
 
 /**
- * 单图重新分析：将指定媒体重新入队 mediaAnalysisQueue。
- * 主链路入队使用固定 jobId `analysis:${userId}:${mediaId}` 会去重；手动重算需每次唯一 jobId（带时间戳），否则会与 Bull 已有任务冲突或被 duplicated 吞掉。
- * POST /api/media/:mediaId/reanalyze
- */
-async function handleReanalyzeMedia(req, res, next) {
-  try {
-    const userId = req?.user?.userId
-    const mediaId = parseInt(req.params.mediaId, 10)
-
-    if (!mediaId || Number.isNaN(mediaId)) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'error'
-      })
-    }
-
-    const media = getMediaDownloadInfo({ userId, imageId: mediaId })
-    if (!media) {
-      throw new CustomError({
-        httpStatus: 404,
-        messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
-        messageType: 'warning'
-      })
-    }
-
-    const jobId = `analysis:${userId}:${mediaId}:manual:${Date.now()}`
-    await mediaAnalysisQueue.add(
-      'media-analysis',
-      {
-        imageId: mediaId,
-        userId,
-        highResStorageKey: media.highResStorageKey ?? null,
-        originalStorageKey: media.originalStorageKey ?? null,
-        mediaType: media.mediaType || 'image',
-        fileName: '',
-        forceReanalyze: true
-      },
-      { jobId }
-    )
-
-    logger.info({
-      message: 'media reanalyze enqueued',
-      details: { userId, mediaId, jobId }
-    })
-
-    res.sendResponse({
-      data: { mediaId, jobId, enqueued: true },
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED
-    })
-  } catch (error) {
-    next(error)
-  }
-}
-
-/**
- * 指定 mediaId 重建搜索文档：仅刷新 media_search，不重新跑 AI 分析
- * POST /api/media/:mediaId/rebuild-search
- */
-async function handleRebuildSearchMedia(req, res, next) {
-  try {
-    const userId = req?.user?.userId
-    const mediaId = parseInt(req.params.mediaId, 10)
-
-    if (!mediaId || Number.isNaN(mediaId)) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'error'
-      })
-    }
-
-    const media = getMediaDownloadInfo({ userId, imageId: mediaId })
-    if (!media) {
-      throw new CustomError({
-        httpStatus: 404,
-        messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
-        messageType: 'warning'
-      })
-    }
-
-    rebuildMediaSearchDoc(mediaId)
-
-    logger.info({
-      message: 'media search doc rebuilt',
-      details: { userId, mediaId }
-    })
-
-    res.sendResponse({
-      data: { mediaId, rebuilt: true },
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED
-    })
-  } catch (error) {
-    next(error)
-  }
-}
-
-/**
  * 各阶段处理失败数量汇总
  * GET /api/media/processing-failures/summary
  */
@@ -443,7 +345,7 @@ async function handleRetryProcessingFailures(req, res, next) {
       const mediaId = media.mediaId
 
       if (media.stage === 'primary') {
-        const mediaInfo = getMediaDownloadInfo({ userId, imageId: mediaId })
+        const mediaInfo = await getMediaDownloadInfo({ userId, imageId: mediaId })
         if (!mediaInfo) continue
 
         // 带时间戳：与主链路 analysis: 前缀不同；失败任务在 removeOnFail 下仍占 jobId 时仍可再次重试
@@ -492,7 +394,7 @@ async function handleRetryProcessingFailures(req, res, next) {
       const batch = cloudFailedRows.slice(i, i + CLOUD_RETRY_BATCH_SIZE)
       for (const row of batch) {
         const mediaId = row.mediaId
-        const mediaInfo = getMediaDownloadInfo({ userId, imageId: mediaId })
+        const mediaInfo = await getMediaDownloadInfo({ userId, imageId: mediaId })
         if (!mediaInfo) continue
 
         const enqueued = await enqueueCloudCaptionRetryJob(userId, mediaInfo)
@@ -522,8 +424,6 @@ module.exports = {
   handleCheckFileExists,
   handlePatchMedia,
   handleDeleteMedias,
-  handleReanalyzeMedia,
-  handleRebuildSearchMedia,
   handleGetProcessingFailureSummary,
   handleRetryProcessingFailures
 }

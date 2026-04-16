@@ -4,7 +4,6 @@
  * @Description: 相册API控制器
  */
 const albumService = require('../services/albumService')
-const mediaService = require('../services/mediaService')
 const CustomError = require('../errors/customError')
 const { ERROR_CODES } = require('../constants/messageCodes')
 
@@ -137,87 +136,6 @@ async function getRecentAlbums(req, res, next) {
       excludeAlbumId: Number.isNaN(excludeAlbumId) ? null : excludeAlbumId
     })
     res.sendResponse({ data: result })
-  } catch (error) {
-    next(error)
-  }
-}
-
-/**
- * 统一获取相册图片列表（year/month/date/custom）
- * GET /albums/:albumId/images?type=year&pageNo=1&pageSize=20&clusterId=123
- * 注意：type 参数必须提供，用于明确指定相册类型
- * clusterId 为可选参数，用于查询特定人物的相册照片
- */
-async function queryAlbumPhotos(req, res, next) {
-  try {
-    const userId = req.user.userId
-    const { albumId } = req.params
-    // GET 请求：type、clusterId 和分页参数都从 query 获取
-    const { type, pageNo, pageSize, clusterId } = req.query
-
-    // 验证 type 参数
-    if (!type || !['year', 'month', 'date', 'custom', 'location', 'unknown'].includes(type)) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'error'
-      })
-    }
-
-    let result
-
-    if (type === 'custom') {
-      // 自定义相册：albumId 是数字，暂不支持 clusterId 过滤
-      result = await albumService.getAlbumMediasList({
-        userId,
-        albumId: parseInt(albumId),
-        pageNo,
-        pageSize
-      })
-      res.sendResponse({ data: { list: result.list, total: result.total } })
-    } else {
-      // 时间相册（year/month/date）：albumId 是 year_key/month_key/date_key（字符串）
-      // 支持可选的 clusterId 参数
-      let queryResult
-      const clusterIdParam = clusterId ? parseInt(clusterId) : null
-
-      if (type === 'year') {
-        queryResult = await mediaService.getMediasByYear({
-          userId,
-          pageNo,
-          pageSize,
-          albumId,
-          clusterId: clusterIdParam
-        })
-      } else if (type === 'month') {
-        queryResult = await mediaService.getMediasByMonth({
-          userId,
-          pageNo,
-          pageSize,
-          albumId,
-          clusterId: clusterIdParam
-        })
-      } else if (type === 'date') {
-        queryResult = await mediaService.getMediasByDate({ userId, pageNo, pageSize, albumId })
-      } else if (type === 'location') {
-        queryResult = await mediaService.getMediasByCity({ userId, pageNo, pageSize, albumId })
-      } else if (type === 'unknown') {
-        queryResult = await mediaService.getMediasByYear({
-          userId,
-          pageNo,
-          pageSize,
-          albumId: 'unknown'
-        })
-      }
-
-      // 为每条数据添加 albumId 字段（统一返回格式）
-      const listWithAlbumId = queryResult.data.map((item) => ({
-        ...item,
-        albumId: albumId // 将 year_key/month_key/date_key 作为 albumId 返回
-      }))
-
-      res.sendResponse({ data: { list: listWithAlbumId, total: queryResult.total } })
-    }
   } catch (error) {
     next(error)
   }
@@ -365,7 +283,6 @@ module.exports = {
   deleteAlbum,
   getCustomAlbums,
   getRecentAlbums,
-  queryAlbumPhotos,
   addMediasToAlbum,
   removeMediasFromAlbum,
   setAlbumCover,

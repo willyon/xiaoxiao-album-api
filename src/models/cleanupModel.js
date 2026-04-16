@@ -1,4 +1,4 @@
-const { db } = require("../services/database");
+const { db } = require("../db");
 
 function selectMediaForCleanup(imageId) {
   const stmt = db.prepare(`

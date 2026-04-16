@@ -9,7 +9,7 @@ const { ERROR_CODES } = require('../constants/messageCodes')
 const trashModel = require('../models/trashModel')
 const albumModel = require('../models/albumModel')
 const cleanupModel = require('../models/cleanupModel')
-const mediaModel = require('../models/mediaModel')
+const mediaService = require('./mediaService')
 const storageService = require('./storageService')
 const logger = require('../utils/logger')
 const { removeHashesFromUserSet } = require('../workers/userMediaHashset')
@@ -298,7 +298,7 @@ async function restoreMedias({ userId, imageIds }) {
   // 恢复后重建 media_search 文档
   normalizedIds.forEach((id) => {
     try {
-      mediaModel.rebuildMediaSearchDoc(id)
+      mediaService.rebuildMediaSearchDoc(id)
     } catch (error) {
       logger.warn({
         message: '恢复回收站媒体后同步搜索索引失败',
@@ -329,7 +329,7 @@ async function restoreMedias({ userId, imageIds }) {
  * @returns {Promise<{ restored: boolean, mediaId?: number }>}
  */
 async function restoreTrashMediaByHashIfApplicable({ userId, imageHash }) {
-  const row = mediaModel.selectMediaRowByHashForUser({ userId, imageHash })
+  const row = mediaService.selectMediaRowByHashForUser({ userId, imageHash })
   if (!row || row.deleted_at == null) {
     return { restored: false }
   }

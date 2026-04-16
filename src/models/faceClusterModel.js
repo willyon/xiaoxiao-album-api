@@ -10,7 +10,7 @@
  * • 获取聚类统计信息
  */
 
-const { db } = require("../services/database");
+const { db } = require("../db");
 const logger = require("../utils/logger");
 
 /**
@@ -1059,40 +1059,6 @@ function updateFaceClusterLastUsedAt(userId, clusterId) {
 }
 
 /**
- * 从聚类中移除照片
- * 注意：此函数只负责从 face_clusters 表中删除记录
- * 如果用户需要将照片移动到另一个聚类，应该使用 moveFacesToCluster 函数
- * @param {number} userId - 用户ID
- * @param {number} clusterId - 聚类ID
- * @param {Array<number>} faceEmbeddingIds - 要移除的 face_embedding ID 数组
- * @returns {Object} 返回对象 { affectedRows: 删除的行数 }
- */
-function removeFacesFromCluster(userId, clusterId, faceEmbeddingIds) {
-  if (!faceEmbeddingIds || faceEmbeddingIds.length === 0) {
-    return { affectedRows: 0 };
-  }
-
-  // 开始事务
-  const transaction = db.transaction(() => {
-    // 从 face_clusters 表中删除记录
-    // 注意：移除操作实际上应该是移动到另一个聚类，这里只是删除旧的聚类关系
-    // 如果后续需要支持"永久排除"，应该使用 moveFacesToCluster 移动到特殊聚类
-    const deleteSql = `
-      DELETE FROM face_clusters
-      WHERE user_id = ? 
-        AND cluster_id = ?
-        AND face_embedding_id IN (${faceEmbeddingIds.map(() => "?").join(",")})
-    `;
-    const deleteStmt = db.prepare(deleteSql);
-    const deleteResult = deleteStmt.run(userId, clusterId, ...faceEmbeddingIds);
-
-    return { affectedRows: deleteResult.changes };
-  });
-
-  return transaction();
-}
-
-/**
  * 将照片从一个聚类移动到另一个聚类（或创建新聚类）
  * @param {number} userId - 用户ID
  * @param {number} sourceClusterId - 源聚类ID
@@ -1724,7 +1690,6 @@ module.exports = {
   getRecentClustersByUserId,
   getExistingPersonNames,
   updateClusterName,
-  removeFacesFromCluster,
   moveFacesToCluster,
   getFaceEmbeddingsByIds,
   getMediasSharpnessByIds,

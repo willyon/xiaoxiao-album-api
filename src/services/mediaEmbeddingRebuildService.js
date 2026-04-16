@@ -1,6 +1,7 @@
-const { db } = require('./database')
+const { db } = require('../db')
 const { generateTextEmbeddingForDocument } = require('./embeddingProvider')
-const { MEDIA_EMBEDDING_SOURCE_TYPES, upsertMediaEmbeddingBySourceType, deleteMediaEmbeddingBySourceType } = require('../models/mediaEmbeddingModel')
+const mediaModel = require('../models/mediaModel')
+const { MEDIA_EMBEDDING_SOURCE_TYPES, upsertMediaEmbeddingBySourceType, deleteMediaEmbeddingBySourceType } = mediaModel
 
 function getMediaSearchRow(mediaId) {
   return db

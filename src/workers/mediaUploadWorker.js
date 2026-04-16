@@ -5,10 +5,10 @@
  * @LastEditTime: 2025-08-19 01:00:09
  * @Description: 创建worker消费者任务
  */
-require('dotenv').config()
 const { Worker } = require('bullmq')
 const Redis = require('ioredis')
 const logger = require('../utils/logger')
+const { attachStandardFailedLogging } = require('../utils/bullmqWorkerTelemetry')
 const initGracefulShutdown = require('../utils/gracefulShutdown')
 const { ensureUserSetReady } = require('./userMediaHashset')
 const { processAndSaveSingleMedia } = require('./mediaUploadIngestor')
@@ -56,31 +56,14 @@ worker.on('completed', (_job) => {
   // }
 })
 
-worker.on('failed', (job, error) => {
-  // if (PROFILE) {
-  //   const runMs = job.finishedOn && job.processedOn ? job.finishedOn - job.processedOn : undefined;
-  //   logger.warn({
-  //     message: `upload.fail jobID:${job.id}, 任务执行时长:${Math.floor(runMs / 1000)}`,
-  //   });
-  // }
-  const maxAttempts = job.opts?.attempts || 0
-  const willRetry = (job?.attemptsMade || 0) < maxAttempts
-
-  const isBusy = error && (error.code === 'IMG_BUSY' || /image_processing_in_progress/.test(error.message || ''))
-
-  const level = willRetry && isBusy ? 'info' : willRetry ? 'warn' : 'error'
-
-  logger[level]({
-    message: `mediaUploadWorker failed: ${job?.id} ${willRetry ? '（将重试）' : '（已达最大重试）'}`,
-    stack: level === 'error' ? error?.stack : undefined,
-    details: {
-      queue: QUEUE_NAME,
-      attemptsMade: job?.attemptsMade,
-      maxAttempts,
-      error: error?.message,
-      data: job?.data
-    }
-  })
+attachStandardFailedLogging(worker, QUEUE_NAME, {
+  logPrefix: 'mediaUploadWorker',
+  resolveLevel: (_job, error, { willRetry }) => {
+    const isBusy = error && (error.code === 'IMG_BUSY' || /image_processing_in_progress/.test(error.message || ''))
+    if (willRetry && isBusy) return 'info'
+    if (willRetry) return 'warn'
+    return 'error'
+  }
 })
 
 worker.on('stalled', (job) => {

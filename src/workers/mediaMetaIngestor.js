@@ -13,6 +13,7 @@ const videoProcessingService = require('../services/videoProcessingService')
 const { updateProgress, updateProgressOnce } = require('../services/mediaProcessingProgressService')
 const { mediaAnalysisQueue } = require('../queues/mediaAnalysisQueue')
 const { QUEUE_JOB_ATTEMPTS } = require('../config/queueConfig')
+const { bullMqWillRetryAfterThisFailure } = require('../utils/queuePipelineLifecycle')
 const mediaMetadataService = require('../services/mediaMetadataService')
 const { addMediaToSession } = require('../services/uploadSessionService')
 const { getVideoMimeTypeFromFileName } = require('../utils/fileUtils')
@@ -26,15 +27,12 @@ const { getVideoMimeTypeFromFileName } = require('../utils/fileUtils')
  * @param {string} params.imageHash - 图片哈希
  * @param {string} params.userId - 用户ID
  * @param {string} [params.highResStorageKey] - 高清图存储键（可选）
+ * @param {unknown} [params.err] - 本次失败错误（与 BullMQ 重试策略对齐，如 UnrecoverableError）
  */
-async function _handleMetaRetryFailure({ job, reason, fileName, imageHash, userId, highResStorageKey }) {
+async function _handleMetaRetryFailure({ job, err, reason, fileName, imageHash, userId, highResStorageKey }) {
   const maxAttempts = job?.opts?.attempts || QUEUE_JOB_ATTEMPTS
   const attemptsMade = job?.attemptsMade || 0
-  // 修复：判断失败后 BullMQ 是否还会重试
-  // BullMQ 会在失败后将 attemptsMade 递增，然后判断是否 < maxAttempts
-  // 我们需要预测递增后的判断结果：(attemptsMade + 1) < maxAttempts
-  // 例如：第5次失败时 attemptsMade = 4 → (4+1) < 5 = false → 不会重试
-  const willRetry = attemptsMade + 1 < maxAttempts
+  const willRetry = bullMqWillRetryAfterThisFailure(job, err)
 
   if (!willRetry) {
     // 没有重试机会了，执行最终清理
@@ -116,7 +114,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
   try {
     videoPath = await storageService.storage.getFileData(originalStorageKey)
   } catch (err) {
-    await _handleMetaRetryFailure({ job, reason: 'file_read_failed', fileName, imageHash, userId })
+    await _handleMetaRetryFailure({ job, err, reason: 'file_read_failed', fileName, imageHash, userId })
     throw err
   }
 
@@ -124,7 +122,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
   try {
     meta = await videoProcessingService.getVideoMetadata(videoPath)
   } catch (err) {
-    await _handleMetaRetryFailure({ job, reason: 'metadata_analysis_failed', fileName, imageHash, userId })
+    await _handleMetaRetryFailure({ job, err, reason: 'metadata_analysis_failed', fileName, imageHash, userId })
     throw err
   }
 
@@ -198,6 +196,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
     })
     await _handleMetaRetryFailure({
       job,
+      err: e,
       reason: 'database_update_failed',
       fileName,
       imageHash,
@@ -302,7 +301,7 @@ async function processMediaMeta(job) {
   try {
     fileData = await storageService.storage.getFileData(originalStorageKey)
   } catch (err) {
-    await _handleMetaRetryFailure({ job, reason: 'file_read_failed', fileName, imageHash, userId })
+    await _handleMetaRetryFailure({ job, err, reason: 'file_read_failed', fileName, imageHash, userId })
     throw err
   }
 
@@ -313,7 +312,7 @@ async function processMediaMeta(job) {
       userId
     })
   } catch (err) {
-    await _handleMetaRetryFailure({ job, reason: 'metadata_analysis_failed', fileName, imageHash, userId })
+    await _handleMetaRetryFailure({ job, err, reason: 'metadata_analysis_failed', fileName, imageHash, userId })
     throw err
   }
 
@@ -369,6 +368,7 @@ async function processMediaMeta(job) {
 
     await _handleMetaRetryFailure({
       job,
+      err: e,
       reason: 'highres_generation_failed',
       fileName,
       imageHash,
@@ -419,6 +419,7 @@ async function processMediaMeta(job) {
     // 处理重试失败逻辑
     await _handleMetaRetryFailure({
       job,
+      err: e,
       reason: 'database_update_failed',
       fileName,
       imageHash,

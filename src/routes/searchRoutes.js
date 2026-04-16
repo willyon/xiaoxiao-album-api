@@ -7,7 +7,7 @@
 const express = require('express')
 const router = express.Router()
 const authMiddleware = require('../middlewares/authMiddleware')
-const { handleSearchMedias, handleGetQueueStatus, handleGetFilterOptionsPaginated } = require('../controllers/searchController')
+const { handleSearchMedias, handleGetFilterOptionsPaginated } = require('../controllers/searchController')
 
 // 应用认证中间件
 router.use(authMiddleware)
@@ -17,8 +17,5 @@ router.post('/media', handleSearchMedias)
 
 // 获取筛选选项（用于滚动加载）
 router.get('/filters', handleGetFilterOptionsPaginated)
-
-// 获取队列状态
-router.get('/queue-status', handleGetQueueStatus)
 
 module.exports = router

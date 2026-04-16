@@ -12,6 +12,7 @@ const { getRedisClient } = require('../services/redisClient')
 const { userSetKey } = require('./userMediaHashset')
 const { mediaMetaQueue } = require('../queues/mediaMetaQueue')
 const { QUEUE_JOB_ATTEMPTS } = require('../config/queueConfig')
+const { bullMqWillRetryAfterThisFailure } = require('../utils/queuePipelineLifecycle')
 const storageService = require('../services/storageService')
 const videoProcessingService = require('../services/videoProcessingService')
 const timeIt = require('../utils/timeIt')
@@ -122,13 +123,12 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
  * @param {string} params.imageHash - 图片哈希
  * @param {string} params.userId - 用户ID
  * @param {string} [params.thumbnailStorageKey] - 缩略图存储键（可选）
+ * @param {unknown} [params.err] - 本次失败错误（用于 UnrecoverableError 等与队列重试策略对齐）
  */
-async function _handleRetryFailure({ job, reason, storageKey, fileName, imageHash, userId, thumbnailStorageKey }) {
+async function _handleRetryFailure({ job, err, reason, storageKey, fileName, imageHash, userId, thumbnailStorageKey }) {
   const maxAttempts = job?.opts?.attempts || QUEUE_JOB_ATTEMPTS
   const attemptsMade = job?.attemptsMade || 0
-  // 修复：判断失败后 BullMQ 是否还会重试
-  // BullMQ 会在失败后将 attemptsMade 递增，然后判断是否 < maxAttempts
-  const willRetry = attemptsMade + 1 < maxAttempts
+  const willRetry = bullMqWillRetryAfterThisFailure(job, err)
 
   if (!willRetry) {
     // 没有重试机会了，执行最终清理
@@ -277,6 +277,7 @@ async function processAndSaveSingleMedia(job) {
       // 处理重试失败逻辑
       await _handleRetryFailure({
         job,
+        err: error,
         reason: 'thumbnail_generation_failed',
         storageKey,
         fileName,
@@ -329,6 +330,7 @@ async function processAndSaveSingleMedia(job) {
       // 处理重试失败逻辑
       await _handleRetryFailure({
         job,
+        err: error,
         reason: 'database_save_failed',
         storageKey,
         fileName,

@@ -28,7 +28,11 @@ const getRedisClient = () => {
     })
 
     redisClient.on('error', (err) => {
-      console.error('ioredis connection error:', err)
+      logger.error({
+        message: 'ioredis connection error',
+        stack: err?.stack,
+        details: { error: err?.message }
+      })
     })
   }
 

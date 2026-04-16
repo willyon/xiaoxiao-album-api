@@ -2,7 +2,7 @@
  * 数据库表结构定义与创建
  * 所有业务表均以 media 为核心（媒体、相册、人脸聚类、相似组等）；AI 文案、OCR 与视觉分析汇总在 media（ai_*、analysis_*、face_* 等列），由 rebuild-database.js 按依赖顺序调用创建。
  */
-const { db } = require("../services/database");
+const { db } = require("../db");
 
 /** 创建 users 表：用户账号、验证状态等 */
 function createTableUsers() {

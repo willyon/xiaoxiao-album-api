@@ -1,6 +1,9 @@
 const logger = require('../utils/logger')
 const { mapRegeoQueue } = require('../queues/mapRegeoQueue')
-const { selectPendingMapRegeoBatch, countMapRegeoSkippedForUser } = require('../models/mediaModel')
+const mediaModel = require('../models/mediaModel')
+const { enqueueRebuildAllByCursor } = require('../utils/enqueueRebuildAllByCursor')
+
+const { selectPendingMapRegeoBatch, countMapRegeoSkippedForUser } = mediaModel
 
 /** 设置页展示：map_regeo_status 为 skipped 或 failed、且含 GPS 的条数 */
 function getMapRegeoSkippedCount(userId) {
@@ -14,18 +17,11 @@ function getMapRegeoSkippedCount(userId) {
  * jobId: map-regeo:{userId}:{mediaId}
  */
 async function enqueueMapRegeoRebuildAll(limitPerBatch = 500, userId) {
-  const envIter = Number(process.env.MAP_REGEO_REBUILD_MAX_ITERATIONS)
-  const maxIter = Math.max(1, Math.min(Number.isFinite(envIter) && envIter > 0 ? envIter : 40, 100_000_000))
-  let totalEnqueued = 0
-  let cursorBeforeId = null
-
-  for (let i = 0; i < maxIter; i++) {
-    const rows = selectPendingMapRegeoBatch(limitPerBatch, userId, cursorBeforeId)
-    if (!rows || rows.length === 0) {
-      return totalEnqueued
-    }
-
-    const jobs = rows.map((row) => {
+  return enqueueRebuildAllByCursor({
+    limitPerBatch,
+    userId,
+    selectBatch: selectPendingMapRegeoBatch,
+    buildJob: (row) => {
       const uid = row.userId
       const mid = row.mediaId
       return {
@@ -40,25 +36,32 @@ async function enqueueMapRegeoRebuildAll(limitPerBatch = 500, userId) {
           jobId: `map-regeo:${uid}:${mid}`
         }
       }
-    })
-
-    await mapRegeoQueue.addBulk(jobs)
-    totalEnqueued += rows.length
-    cursorBeforeId = rows[rows.length - 1].mediaId
-  }
-
-  const pendingLeft = countMapRegeoSkippedForUser(userId)
-  logger.error({
-    message: 'enqueueMapRegeoRebuildAll: iteration cap reached (check MAP_REGEO_REBUILD_MAX_ITERATIONS)',
-    totalEnqueued,
-    pendingLeft,
-    maxIter,
-    limitPerBatch
+    },
+    addBulk: (jobs) => mapRegeoQueue.addBulk(jobs),
+    countPending: countMapRegeoSkippedForUser,
+    logLabel: 'enqueueMapRegeoRebuildAll',
+    maxIterEnvKey: 'MAP_REGEO_REBUILD_MAX_ITERATIONS',
+    logger
   })
-  return totalEnqueued
+}
+
+/** mapRegeoIngestor：仅通过本服务访问下列 model 方法 */
+function selectMediaRowForMapRegeoJob(mediaId, userId) {
+  return mediaModel.selectMediaRowForMapRegeoJob(mediaId, userId)
+}
+
+function updateLocationInfo(imageId, locationPayload, options) {
+  return mediaModel.updateLocationInfo(imageId, locationPayload, options)
+}
+
+function updateMapRegeoStatus(mediaId, status) {
+  return mediaModel.updateMapRegeoStatus(mediaId, status)
 }
 
 module.exports = {
   getMapRegeoSkippedCount,
-  enqueueMapRegeoRebuildAll
+  enqueueMapRegeoRebuildAll,
+  selectMediaRowForMapRegeoJob,
+  updateLocationInfo,
+  updateMapRegeoStatus
 }

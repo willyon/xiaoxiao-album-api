@@ -41,7 +41,6 @@ const aliyunOssCallbackRoutes = require('./src/routes/aliyunOssCallbackRoutes')
 const uploadSessionRoutes = require('./src/routes/uploadSessionRoutes')
 const progressRoutes = require('./src/routes/progressRoutes')
 const faceClusterRoutes = require('./src/routes/faceClusterRoutes')
-const favoritesRoutes = require('./src/routes/favoritesRoutes')
 const timelineRoutes = require('./src/routes/timelineRoutes')
 const locationsRoutes = require('./src/routes/locationsRoutes')
 const settingsRoutes = require('./src/routes/settingsRoutes')
@@ -135,9 +134,6 @@ app.use('/api/progress', progressRoutes)
 
 // 注册人脸聚类路由+鉴权中间件(authMiddleware)
 app.use('/api/face-clusters', [authMiddleware], faceClusterRoutes)
-
-// 注册收藏路由+鉴权中间件(authMiddleware)
-app.use('/api/favorites', [authMiddleware], favoritesRoutes)
 
 // 注册时间轴路由+鉴权中间件(authMiddleware)
 app.use('/api/timeline', [authMiddleware], timelineRoutes)

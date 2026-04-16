@@ -27,29 +27,18 @@ const handleCreateSession = async (req, res, next) => {
 }
 
 /**
- * 处理获取上传会话列表请求
- * GET /upload-sessions?active=true
+ * 获取当前「进行中」的上传会话（与历史 `?active=true` 行为一致）。
+ * 全量会话列表需额外 Redis 结构，未实现前不再保留无意义的 if/else 分支。
+ * GET /upload-sessions
  */
 const handleGetActiveSession = async (req, res, next) => {
   try {
     const userId = req.user.userId
-    const { active } = req.query
-
-    // 如果 active=true，只返回活跃会话；否则返回所有会话（未来扩展）
-    if (active === 'true') {
-      const activeSession = await getActiveSession(userId)
-      res.sendResponse({
-        messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-        data: activeSession
-      })
-    } else {
-      // TODO: 如果需要返回所有会话列表，需要实现新方法
-      const activeSession = await getActiveSession(userId)
-      res.sendResponse({
-        messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-        data: activeSession
-      })
-    }
+    const activeSession = await getActiveSession(userId)
+    res.sendResponse({
+      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
+      data: activeSession
+    })
   } catch (error) {
     next(error)
   }

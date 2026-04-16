@@ -4,7 +4,7 @@
  * @Description: 回收站数据模型 - 处理已删除图片的查询、恢复、彻底删除等操作
  */
 
-const { db } = require("../services/database");
+const { db } = require("../db");
 const { mapFields } = require("../utils/fieldMapper");
 
 /**

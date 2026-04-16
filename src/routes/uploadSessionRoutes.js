@@ -12,7 +12,7 @@ const { handleCreateSession, handleGetActiveSession, handleGetCurrentProgress } 
 // 创建上传会话
 router.post('/', handleCreateSession)
 
-// 获取上传会话列表（支持 active 查询参数）
+// 获取当前进行中的上传会话（全量列表未实现）
 router.get('/', handleGetActiveSession)
 
 // 当前会话快照（处理中心首屏恢复）

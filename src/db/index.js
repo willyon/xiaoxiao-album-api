@@ -3,7 +3,7 @@
  * @Date: 2024-09-05 17:00:57
  * @LastEditors: zhangshouchang
  * @LastEditTime: 2025-08-04 22:38:11
- * @Description: File description
+ * @Description: SQLite 数据库连接（基础设施层）
  */
 const Database = require('better-sqlite3')
 const path = require('path')
@@ -23,11 +23,5 @@ db.pragma('synchronous = NORMAL')
 db.pragma('cache_size = -65536')
 // 临时存储：内存，提高临时表操作性能
 db.pragma('temp_store = MEMORY')
-
-//用于执行查询的函数
-// function runQuery(query, params = []) {
-//   const stmt = db.prepare(query);
-//   return stmt.run(...params);
-// }
 
 module.exports = { db }

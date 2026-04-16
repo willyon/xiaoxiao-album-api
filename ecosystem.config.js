@@ -14,6 +14,7 @@ module.exports = {
     {
       name: 'app-service',
       script: 'server.js',
+      node_args: '-r dotenv/config',
       // cwd: "/var/www/photos.bingbingcloud.com/backend", // 绝对路径
       cwd: '.', // 相对路径
       watch: false,
@@ -25,6 +26,7 @@ module.exports = {
     {
       name: 'media-upload-worker',
       script: 'src/workers/mediaUploadWorker.js',
+      node_args: '-r dotenv/config',
       // cwd: "/var/www/photos.bingbingcloud.com/backend", // 绝对路径
       cwd: '.', // 相对路径
       watch: false,
@@ -36,6 +38,7 @@ module.exports = {
     {
       name: 'media-meta-worker',
       script: 'src/workers/mediaMetaWorker.js',
+      node_args: '-r dotenv/config',
       // cwd: "/var/www/photos.bingbingcloud.com/backend", // 绝对路径
       cwd: '.', // 相对路径
       watch: false,
@@ -47,6 +50,7 @@ module.exports = {
     {
       name: 'cloud-caption-worker',
       script: 'src/workers/cloudCaptionWorker.js',
+      node_args: '-r dotenv/config',
       cwd: '.',
       watch: false,
       max_restarts: 5,
@@ -57,6 +61,7 @@ module.exports = {
     {
       name: 'map-regeo-worker',
       script: 'src/workers/mapRegeoWorker.js',
+      node_args: '-r dotenv/config',
       cwd: '.',
       watch: false,
       max_restarts: 5,
@@ -68,6 +73,7 @@ module.exports = {
     {
       name: 'cleanup-rebuild-all',
       script: 'scripts/development/rebuild-similar-groups.js',
+      node_args: '-r dotenv/config',
       cwd: '.',
       // 定时执行：每天凌晨 3 点执行一次
       cron: '0 3 * * *',

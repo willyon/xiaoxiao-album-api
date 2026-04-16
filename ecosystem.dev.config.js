@@ -14,6 +14,7 @@ module.exports = {
     {
       name: 'app-service-dev',
       script: 'server.js',
+      node_args: '-r dotenv/config',
       // cwd: 未设置，使用 PM2 启动目录
       cwd: '.', // 相对路径
       watch: false,
@@ -25,6 +26,7 @@ module.exports = {
     {
       name: 'media-upload-worker-dev',
       script: 'src/workers/mediaUploadWorker.js',
+      node_args: '-r dotenv/config',
       // cwd: 未设置，使用 PM2 启动目录
       cwd: '.', // 相对路径
       watch: false,
@@ -36,6 +38,7 @@ module.exports = {
     {
       name: 'media-meta-worker-dev',
       script: 'src/workers/mediaMetaWorker.js',
+      node_args: '-r dotenv/config',
       // cwd: 未设置，使用 PM2 启动目录
       cwd: '.', // 相对路径
       watch: false,
@@ -47,6 +50,7 @@ module.exports = {
     {
       name: 'media-analysis-worker-dev',
       script: 'src/workers/mediaAnalysisWorker.js',
+      node_args: '-r dotenv/config',
       // cwd: 未设置，使用 PM2 启动目录
       cwd: '.', // 相对路径
       watch: false,
@@ -58,6 +62,7 @@ module.exports = {
     {
       name: 'cloud-caption-worker-dev',
       script: 'src/workers/cloudCaptionWorker.js',
+      node_args: '-r dotenv/config',
       cwd: '.',
       watch: false,
       max_restarts: 5,
@@ -68,6 +73,7 @@ module.exports = {
     {
       name: 'map-regeo-worker-dev',
       script: 'src/workers/mapRegeoWorker.js',
+      node_args: '-r dotenv/config',
       cwd: '.',
       watch: false,
       max_restarts: 5,

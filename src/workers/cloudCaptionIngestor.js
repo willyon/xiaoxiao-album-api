@@ -3,28 +3,27 @@
  */
 
 const { UnrecoverableError } = require('bullmq')
+const axios = require('axios')
 const logger = require('../utils/logger')
 const { bullMqWillRetryAfterThisFailure } = require('../utils/queuePipelineLifecycle')
 const storageService = require('../services/storageService')
-const { updateAnalysisStatusCloud, upsertMediaAiFieldsForAnalysis, rebuildMediaSearchDoc } = require('../models/mediaModel')
+const { updateAnalysisStatusCloud, upsertMediaAiFieldsForAnalysis } = require('../services/cloudCaptionService')
+const { rebuildMediaSearchDoc } = require('../services/mediaService')
 const { withAiSlot } = require('../services/aiConcurrencyLimiter')
 const { getCloudConfigForAnalysis } = require('../services/cloudModelService')
 
-const PYTHON_SERVICE_URL = process.env.PYTHON_CLEANUP_SERVICE_URL || process.env.PYTHON_FACE_SERVICE_URL || 'http://localhost:5001'
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL
 
 const ANALYZE_IMAGE_TIMEOUT_MS = Number(process.env.ANALYZE_IMAGE_TIMEOUT_MS || 120000)
 const ANALYZE_VIDEO_TIMEOUT_MS = Number(process.env.ANALYZE_VIDEO_TIMEOUT_MS || 600000)
 
-/** 为 fetch 提供超时，避免 HTTP 请求长期挂起（Node 18+ 优先 AbortSignal.timeout） */
-function cloudCaptionFetchSignal(timeoutMs) {
-  const ms = Math.max(1, Number(timeoutMs) || 120000)
-  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-    return AbortSignal.timeout(ms)
+function makeNon2xxError(prefix, status, bodyText) {
+  const text = String(bodyText || '').slice(0, 200)
+  const message = `${prefix}_${status}: ${text}`
+  if (status >= 500 || status === 429) {
+    return new Error(message)
   }
-  const controller = new AbortController()
-  const t = setTimeout(() => controller.abort(), ms)
-  if (typeof t.unref === 'function') t.unref()
-  return controller.signal
+  return new UnrecoverableError(message)
 }
 
 function buildCaptionForDb(capData) {
@@ -78,24 +77,19 @@ async function processCloudCaptionJob(job) {
       }
 
       const response = await withAiSlot(() =>
-        fetch(`${PYTHON_SERVICE_URL}/analyze_video`, {
-          method: 'POST',
+        axios.post(`${PYTHON_SERVICE_URL}/analyze_video`, payload, {
+          timeout: ANALYZE_VIDEO_TIMEOUT_MS,
+          maxBodyLength: Infinity,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          signal: cloudCaptionFetchSignal(ANALYZE_VIDEO_TIMEOUT_MS)
+          validateStatus: () => true
         })
       )
 
-      if (!response.ok) {
-        const text = await response.text()
-        const errMsg = `CLOUD_CAPTION_VIDEO_HTTP_${response.status}: ${text.slice(0, 200)}`
-        if (response.status >= 500 || response.status === 429) {
-          throw new Error(errMsg)
-        }
-        throw new UnrecoverableError(errMsg)
+      if (response.status < 200 || response.status >= 300) {
+        throw makeNon2xxError('CLOUD_CAPTION_VIDEO_HTTP', response.status, response.data)
       }
 
-      const body = await response.json()
+      const body = response.data || {}
       const modulesResult = body?.data || {}
       const captionModule = modulesResult.caption || {}
       const capStatus = captionModule.status
@@ -156,23 +150,19 @@ async function processCloudCaptionJob(job) {
       const modules = 'caption'
 
       const response = await withAiSlot(() =>
-        fetch(`${PYTHON_SERVICE_URL}/analyze_image?modules=${encodeURIComponent(modules)}`, {
-          method: 'POST',
-          body: formData,
-          signal: cloudCaptionFetchSignal(ANALYZE_IMAGE_TIMEOUT_MS)
+        axios.post(`${PYTHON_SERVICE_URL}/analyze_image?modules=${encodeURIComponent(modules)}`, formData, {
+          timeout: ANALYZE_IMAGE_TIMEOUT_MS,
+          maxBodyLength: Infinity,
+          headers: typeof formData.getHeaders === 'function' ? formData.getHeaders() : undefined,
+          validateStatus: () => true
         })
       )
 
-      if (!response.ok) {
-        const text = await response.text()
-        const errMsg = `CLOUD_CAPTION_HTTP_${response.status}: ${text.slice(0, 200)}`
-        if (response.status >= 500 || response.status === 429) {
-          throw new Error(errMsg)
-        }
-        throw new UnrecoverableError(errMsg)
+      if (response.status < 200 || response.status >= 300) {
+        throw makeNon2xxError('CLOUD_CAPTION_HTTP', response.status, response.data)
       }
 
-      const body = await response.json()
+      const body = response.data || {}
       const modulesResult = body?.data || {}
       const captionModule = modulesResult.caption || {}
       const capStatus = captionModule.status

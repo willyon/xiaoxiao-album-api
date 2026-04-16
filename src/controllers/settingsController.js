@@ -1,63 +1,65 @@
 const axios = require('axios')
 const CustomError = require('../errors/customError')
 const { ERROR_CODES } = require('../constants/messageCodes')
-const { getRowByKeyType, updateConfigRow, KEY_TYPE_CLOUD_MODEL, KEY_TYPE_AMAP } = require('../models/appSettingsModel')
+const { getRowByKeyType, updateConfigRow, KEY_TYPE_CLOUD_MODEL, KEY_TYPE_AMAP } = require('../services/appSettingsService')
 const { getCloudSkippedCount, enqueueCloudCaptionRebuildAll } = require('../services/cloudCaptionService')
 const { getMapRegeoSkippedCount, enqueueMapRegeoRebuildAll } = require('../services/mapRegeoService')
 
-/** 天安门附近 GCJ-02，用于连通性检测 */
+/** 天安门附近 GCJ-02，用于高德测连 */
 const AMAP_TEST_LNG = 116.397428
 const AMAP_TEST_LAT = 39.90923
-const PYTHON_SERVICE_URL = process.env.PYTHON_FACE_SERVICE_URL || 'http://localhost:5001'
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL
 
-// 将请求体中的开关解析为「开」：按数值是否为 1（含布尔 true、数字 1、字符串 "1"）
 function parseBool(value) {
   return Number(value) === 1
 }
 
-// 读取云模型（百炼）开关与是否已配置 API Key
-async function getCloudModelSettings(req, res, next) {
-  try {
-    const userId = req.user?.userId
-    const row = getRowByKeyType(userId, KEY_TYPE_CLOUD_MODEL)
-    const enabled = Number(row?.enabled) === 1
-    const hasApiKey = Boolean(row?.api_key && String(row.api_key).trim() !== '')
-    res.sendResponse({
-      data: {
-        enabled,
-        hasApiKey
-      }
-    })
-  } catch (error) {
-    next(error)
+/** 云模型 / 高德设置行 → 前端统一结构 */
+function toSettingsPayload(row) {
+  return {
+    enabled: Number(row?.enabled) === 1,
+    hasApiKey: Boolean(row?.api_key && String(row.api_key).trim() !== '')
   }
 }
 
-// 更新云模型启用状态；请求体中带非空 apiKey 时写入百炼 Key
-async function updateCloudModelSettings(req, res, next) {
-  try {
-    const userId = req.user?.userId
-    const { enabled, apiKey } = req.body || {}
-    const normalizedEnabled = parseBool(enabled)
-    const patch = { enabled: normalizedEnabled }
-    if (typeof apiKey === 'string' && apiKey.trim()) {
-      patch.api_key = apiKey.trim()
+/** 通用：读取 app_settings 中某一 KEY_TYPE 的开关与是否已配 Key */
+function createGetSettingsHandler(keyType) {
+  return async function getSettings(req, res, next) {
+    try {
+      const userId = req.user?.userId
+      const row = getRowByKeyType(userId, keyType)
+      res.sendResponse({ data: toSettingsPayload(row) })
+    } catch (error) {
+      next(error)
     }
-    updateConfigRow(userId, KEY_TYPE_CLOUD_MODEL, patch)
-
-    const row = getRowByKeyType(userId, KEY_TYPE_CLOUD_MODEL)
-    res.sendResponse({
-      data: {
-        enabled: Number(row?.enabled) === 1,
-        hasApiKey: Boolean(row?.api_key && String(row.api_key).trim() !== '')
-      }
-    })
-  } catch (error) {
-    next(error)
   }
 }
 
-// 使用已保存的 Key 请求 Python 服务做云模型连通性检测
+/** 通用：更新开关 + 可选 apiKey，并回读同一 keyType */
+function createUpdateSettingsHandler(keyType) {
+  return async function updateSettings(req, res, next) {
+    try {
+      const userId = req.user?.userId
+      const { enabled, apiKey } = req.body || {}
+      const patch = { enabled: parseBool(enabled) }
+      if (typeof apiKey === 'string' && apiKey.trim()) {
+        patch.api_key = apiKey.trim()
+      }
+      updateConfigRow(userId, keyType, patch)
+      const row = getRowByKeyType(userId, keyType)
+      res.sendResponse({ data: toSettingsPayload(row) })
+    } catch (error) {
+      next(error)
+    }
+  }
+}
+
+const getCloudModelSettings = createGetSettingsHandler(KEY_TYPE_CLOUD_MODEL)
+const updateCloudModelSettings = createUpdateSettingsHandler(KEY_TYPE_CLOUD_MODEL)
+const getAmapSettings = createGetSettingsHandler(KEY_TYPE_AMAP)
+const updateAmapSettings = createUpdateSettingsHandler(KEY_TYPE_AMAP)
+
+// 测连 URL 与协议不同，保持独立实现
 async function testCloudModelConnection(req, res, next) {
   try {
     const userId = req.user?.userId
@@ -94,7 +96,6 @@ async function testCloudModelConnection(req, res, next) {
   }
 }
 
-// 返回云阶段为 skipped 的条数（与设置页历史补跑入队条件一致）
 async function getCloudSkippedCountHandler(req, res, next) {
   try {
     const userId = req.user?.userId
@@ -106,7 +107,6 @@ async function getCloudSkippedCountHandler(req, res, next) {
   }
 }
 
-// 为历史媒体入队云 caption 补跑（后端按批循环直至清空）
 async function rebuildCloudCaption(req, res, next) {
   try {
     const limitPerBatch = Number(process.env.CLOUD_CAPTION_BATCH_LIMIT || 500)
@@ -121,49 +121,6 @@ async function rebuildCloudCaption(req, res, next) {
   }
 }
 
-// 读取高德逆地理开关与是否已保存 Web 服务 Key
-async function getAmapSettings(req, res, next) {
-  try {
-    const userId = req.user?.userId
-    const row = getRowByKeyType(userId, KEY_TYPE_AMAP)
-    const enabled = Number(row?.enabled) === 1
-    const hasApiKey = Boolean(row?.api_key && String(row.api_key).trim() !== '')
-    res.sendResponse({
-      data: {
-        enabled,
-        hasApiKey
-      }
-    })
-  } catch (error) {
-    next(error)
-  }
-}
-
-// 更新高德启用状态与非空时写入 Web 服务 Key
-async function updateAmapSettings(req, res, next) {
-  try {
-    const userId = req.user?.userId
-    const { enabled, apiKey } = req.body || {}
-    const normalizedEnabled = parseBool(enabled)
-    const patch = { enabled: normalizedEnabled }
-    if (typeof apiKey === 'string' && apiKey.trim()) {
-      patch.api_key = apiKey.trim()
-    }
-    updateConfigRow(userId, KEY_TYPE_AMAP, patch)
-
-    const row = getRowByKeyType(userId, KEY_TYPE_AMAP)
-    res.sendResponse({
-      data: {
-        enabled: Number(row?.enabled) === 1,
-        hasApiKey: Boolean(row?.api_key && String(row.api_key).trim() !== '')
-      }
-    })
-  } catch (error) {
-    next(error)
-  }
-}
-
-// 使用已保存的 Key 调用高德 regeo 接口做连通性检测
 async function testAmapConnection(req, res, next) {
   try {
     const userId = req.user?.userId

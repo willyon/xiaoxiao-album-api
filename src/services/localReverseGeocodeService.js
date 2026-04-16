@@ -9,9 +9,8 @@
 
 const fs = require('fs')
 const path = require('path')
-const RBush = require('rbush')
-const { booleanPointInPolygon } = require('@turf/boolean-point-in-polygon')
 const logger = require('../utils/logger')
+const { buildTree, findHit } = require('../utils/geoRbushIndex')
 
 const HIERARCHY_PATH = path.join(__dirname, '..', 'data', 'geo', 'chinaGeoDataHierarchy.json')
 
@@ -20,71 +19,14 @@ const MUNICIPALITY_ADCODES = new Set([110000, 120000, 310000, 500000])
 let indexReady = false
 /** @type {Error|null} */
 let indexError = null
-/** @type {RBush|null} */
+/** @type {import("rbush")|null} */
 let treeDistrict = null
-/** @type {RBush|null} */
+/** @type {import("rbush")|null} */
 let treeCity = null
-/** @type {RBush|null} */
+/** @type {import("rbush")|null} */
 let treeProvince = null
 /** @type {Map<number, string>} */
 let adcodeToName = new Map()
-
-/**
- * @param {unknown} coords
- * @param {(lng: number, lat: number) => void} cb
- */
-function walkCoords(coords, cb) {
-  if (!coords || typeof coords !== 'object') return
-  if (typeof coords[0] === 'number' && typeof coords[1] === 'number') {
-    cb(coords[0], coords[1])
-    return
-  }
-  for (let i = 0; i < coords.length; i++) {
-    walkCoords(coords[i], cb)
-  }
-}
-
-/**
- * @param {import("geojson").Geometry} geometry
- * @returns {{ minX: number, minY: number, maxX: number, maxY: number }|null}
- */
-function geometryBBox(geometry) {
-  if (!geometry || !geometry.coordinates) return null
-  let minX = Infinity
-  let minY = Infinity
-  let maxX = -Infinity
-  let maxY = -Infinity
-  walkCoords(geometry.coordinates, (x, y) => {
-    if (x < minX) minX = x
-    if (x > maxX) maxX = x
-    if (y < minY) minY = y
-    if (y > maxY) maxY = y
-  })
-  if (!Number.isFinite(minX)) return null
-  return { minX, minY, maxX, maxY }
-}
-
-function bboxArea(b) {
-  return (b.maxX - b.minX) * (b.maxY - b.minY)
-}
-
-/**
- * @param {import("geojson").Feature[]} features
- */
-function buildTree(features) {
-  const tree = new RBush()
-  const entries = []
-  for (const f of features) {
-    if (!f.geometry) continue
-    const box = geometryBBox(f.geometry)
-    if (!box) continue
-    entries.push({ ...box, feature: f })
-  }
-  if (entries.length) {
-    tree.load(entries)
-  }
-  return tree
-}
 
 function ensureIndex() {
   if (indexReady || indexError) return
@@ -128,35 +70,6 @@ function ensureIndex() {
       details: { error: e.message, path: HIERARCHY_PATH }
     })
   }
-}
-
-/**
- * @param {RBush|null} tree
- * @param {number} lng GCJ-02
- * @param {number} lat GCJ-02
- * @returns {import("geojson").Feature|null}
- */
-function findHit(tree, lng, lat) {
-  if (!tree) return null
-  const pt = { type: 'Point', coordinates: [lng, lat] }
-  const candidates = tree.search({ minX: lng, minY: lat, maxX: lng, maxY: lat })
-  let best = null
-  let bestArea = Infinity
-  for (let i = 0; i < candidates.length; i++) {
-    const item = candidates[i]
-    try {
-      if (booleanPointInPolygon(pt, item.feature.geometry)) {
-        const area = bboxArea(item)
-        if (area < bestArea) {
-          bestArea = area
-          best = item.feature
-        }
-      }
-    } catch {
-      /* 跳过异常几何 */
-    }
-  }
-  return best
 }
 
 /**

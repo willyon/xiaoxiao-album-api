@@ -3,9 +3,7 @@
  */
 const { SEARCH_TERM_FIELD_WEIGHTS, CHINESE_QUERY_TERM_BOOST } = require('../config/searchRankingWeights')
 const { segmentFieldForSearchTerms, normalizeChineseQueryForFts } = require('./chineseSegmenter')
-
-const CHINESE_RUN_REGEX = /[\u3400-\u9fff]+/g
-const HAS_CHINESE_REGEX = /[\u3400-\u9fff]/
+const { CHINESE_CHARS_GLOBAL_REGEX, CHINESE_RUN_REGEX, HAS_CHINESE_REGEX } = require('./cjkRegex')
 
 function containsChinese(input) {
   return HAS_CHINESE_REGEX.test(String(input || ''))
@@ -159,9 +157,9 @@ function normalizeQueryForFts(query) {
 function segmentLengthUnits(segment) {
   const s = String(segment || '').trim()
   if (!s) return 0
-  const cjk = s.match(/[\u3400-\u9fff]/g)
+  const cjk = s.match(CHINESE_CHARS_GLOBAL_REGEX)
   const cjkCount = cjk ? cjk.length : 0
-  const rest = s.replace(/[\u3400-\u9fff]/g, ' ')
+  const rest = s.replace(CHINESE_CHARS_GLOBAL_REGEX, ' ')
   const words = rest.trim().match(/[a-zA-Z0-9]+/g)
   const wordCount = words ? words.length : 0
   return cjkCount + wordCount

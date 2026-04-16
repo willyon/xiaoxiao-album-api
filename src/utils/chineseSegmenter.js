@@ -4,7 +4,8 @@
 const fs = require('fs')
 const path = require('path')
 
-const HAS_CHINESE_REGEX = /[\u3400-\u9fff]/
+const logger = require('./logger')
+const { HAS_CHINESE_REGEX, WORD_OR_CJK_REGEX } = require('./cjkRegex')
 const SEARCH_TERMS_SPLIT_REGEX = /[\s\u3000,.;:!?、，。；：！？/\\|'"()[\]{}]+/u
 
 const USER_DICT_PATH = path.join(__dirname, '../config/search-user-dict.txt')
@@ -72,13 +73,17 @@ function tryCreateJieba() {
   } catch (err) {
     jiebaLoadFailed = true
     userDictRecordedSnapshot = cur
-    console.error('[chineseSegmenter] jieba load failed:', err?.message || err)
+    logger.error({
+      message: '[chineseSegmenter] jieba load failed',
+      stack: err?.stack,
+      details: { error: err?.message || String(err) }
+    })
     return null
   }
 }
 
 function isOnlyPunctOrSpace(s) {
-  return !s || !/[\w\u3400-\u9fff]/u.test(s)
+  return !s || !WORD_OR_CJK_REGEX.test(s)
 }
 
 /**

@@ -8,6 +8,7 @@
 const CustomError = require('../errors/customError')
 const { ERROR_CODES } = require('../constants/messageCodes')
 const storageService = require('./storageService')
+const { rebuildMediaEmbeddingDoc } = require('./mediaEmbeddingRebuildService')
 const mediaModel = require('../models/mediaModel')
 const cleanupModel = require('../models/cleanupModel')
 const albumModel = require('../models/albumModel')
@@ -15,6 +16,36 @@ const favoriteService = require('./favoriteService')
 const logger = require('../utils/logger')
 
 // ========== 活跃的业务逻辑代码 ==========
+
+/**
+ * 重建 media_search / FTS / terms，并异步刷新视觉文本向量（与原先 mediaModel 内行为一致）。
+ */
+function rebuildMediaSearchDoc(mediaId) {
+  const result = mediaModel.rebuildMediaSearchDoc(mediaId)
+  Promise.resolve(rebuildMediaEmbeddingDoc(mediaId)).catch((error) => {
+    logger.warn({
+      message: '[rebuildMediaSearchDoc] rebuildMediaEmbeddingDoc failed',
+      details: { error: error?.message || String(error) }
+    })
+  })
+  return result
+}
+
+function selectMediaRowByHashForUser(opts) {
+  return mediaModel.selectMediaRowByHashForUser(opts)
+}
+
+function listFailedMedias(opts) {
+  return mediaModel.listFailedMedias(opts)
+}
+
+function listAllFailedCloudMedias(opts) {
+  return mediaModel.listAllFailedCloudMedias(opts)
+}
+
+function countFailedMediasByStage(userId, opts) {
+  return mediaModel.countFailedMediasByStage(userId, opts)
+}
 
 // ========== URL处理工具函数 ==========
 
@@ -391,58 +422,6 @@ async function getGroupsByDate({ userId, pageNo = 1, pageSize = 10, withFullUrls
   }
 }
 
-// 按年份获取指定人物的分组信息
-async function getGroupsByYearForCluster({ userId, clusterId, pageNo = 1, pageSize = 10, withFullUrls = true }) {
-  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId || !clusterId) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: 'warning'
-    })
-  }
-  try {
-    const queryResult = await mediaModel.selectGroupsByYearForCluster({ pageNo, pageSize, userId, clusterId })
-
-    if (withFullUrls && queryResult.data) {
-      queryResult.data = await _addFullUrlToGroupCover(queryResult.data)
-    }
-
-    return queryResult
-  } catch {
-    throw new CustomError({
-      httpStatus: 500,
-      messageCode: ERROR_CODES.FAILED_SELECT_GROUPS_BY_YEAR,
-      messageType: 'error'
-    })
-  }
-}
-
-// 按月份获取指定人物的分组信息
-async function getGroupsByMonthForCluster({ userId, clusterId, pageNo = 1, pageSize = 10, withFullUrls = true }) {
-  if (!pageNo || !pageSize || pageNo < 1 || pageSize < 1 || !userId || !clusterId) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: 'warning'
-    })
-  }
-  try {
-    const queryResult = await mediaModel.selectGroupsByMonthForCluster({ pageNo, pageSize, userId, clusterId })
-
-    if (withFullUrls && queryResult.data) {
-      queryResult.data = await _addFullUrlToGroupCover(queryResult.data)
-    }
-
-    return queryResult
-  } catch {
-    throw new CustomError({
-      httpStatus: 500,
-      messageCode: ERROR_CODES.FAILED_SELECT_GROUPS_BY_MONTH,
-      messageType: 'error'
-    })
-  }
-}
-
 // 部分更新图片信息（仅用于 favorite 字段，更新 images.is_favorite）
 async function patchMedia({ userId, imageId, patchData }) {
   if (patchData.favorite !== undefined || patchData.isFavorite !== undefined) {
@@ -513,7 +492,7 @@ async function deleteMedias({ userId, imageIds }) {
   // 同步 media_search / media_search_fts（软删除后移除搜索文档）
   normalizedIds.forEach((id) => {
     try {
-      mediaModel.rebuildMediaSearchDoc(id)
+      rebuildMediaSearchDoc(id)
     } catch (error) {
       logger.warn({
         message: '软删除后同步搜索索引失败',
@@ -564,6 +543,11 @@ module.exports = {
   saveProcessedMediaMetadata,
   setMetaPipelineStatus,
   getUserMediaHashes,
+  rebuildMediaSearchDoc,
+  selectMediaRowByHashForUser,
+  listFailedMedias,
+  listAllFailedCloudMedias,
+  countFailedMediasByStage,
 
   // ========== 媒体查询服务函数 ==========
   getBlurryMedias,
@@ -575,8 +559,6 @@ module.exports = {
   getGroupsByMonth,
   getGroupsByDate,
   getGroupsByCity,
-  getGroupsByYearForCluster,
-  getGroupsByMonthForCluster,
   addFullUrlToMedia,
 
   // ========== 媒体 CRUD 服务函数 ==========
