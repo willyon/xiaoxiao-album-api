@@ -33,7 +33,6 @@ const OSS_BASE_CONFIG = {
   bucket: ALIYUN_OSS_BUCKET_NAME,
   customDomain: process.env.ALIYUN_OSS_CUSTOM_DOMAIN,
   timeout: parseInt(process.env.ALIYUN_OSS_TIMEOUT) || 60000,
-  uploadConcurrency: parseInt(process.env.ALIYUN_OSS_UPLOAD_CONCURRENCY) || 5,
   preferInternal: _useOSSInternal()
 }
 

@@ -1,19 +1,27 @@
 /*
- * @Author: zhangshouchang
- * @Date: 2024-12-31 00:15:34
- * @LastEditors: zhangshouchang
- * @LastEditTime: 2025-08-13 00:01:35
- * @Description: File description
+ * @Description: 请求字段校验（邮箱、密码等）
  */
-// const validator = require("validator");
-const { ERROR_CODES } = require('../../constants/messageCodes')
-const CustomError = require('../../errors/customError')
+const validator = require('validator')
+const { ERROR_CODES } = require('../constants/messageCodes')
+const CustomError = require('../errors/customError')
 
-/**
- * Validates the given password.
- * @param {string} password - The password to validate.
- * @throws {CustomError} If the password does not meet the criteria.
- */
+function validateEmail(email) {
+  if (!email || typeof email !== 'string') {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.EMAIL_REQUIRED,
+      messageType: 'warning'
+    })
+  }
+  if (!validator.isEmail(email)) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_EMAIL_FORMAT,
+      messageType: 'warning'
+    })
+  }
+}
+
 function validatePassword(password) {
   if (!password || typeof password !== 'string') {
     throw new CustomError({
@@ -38,4 +46,7 @@ function validatePassword(password) {
   }
 }
 
-module.exports = validatePassword
+module.exports = {
+  validateEmail,
+  validatePassword
+}

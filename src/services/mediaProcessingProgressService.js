@@ -258,6 +258,5 @@ async function setupProgressStream(req, res, sessionId) {
 module.exports = {
   updateProgress,
   updateProgressOnce,
-  publishProgressSnapshot: _publishProgressUpdate,
   setupProgressStream
 }

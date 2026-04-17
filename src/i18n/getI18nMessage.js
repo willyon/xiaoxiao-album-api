@@ -18,11 +18,6 @@ function getI18nMessage(messageCode, lang = 'zh', params) {
     messageTemplate = messageTemplate.replace(new RegExp(`{${key}}`, 'g'), value)
   })
 
-  // 如果需要执行break continue 就用这种写法
-  // for (const [key, value] of Object.entries(params)) {
-  //     messageTemplate = messageTemplate.replace(new RegExp(`{${key}}`, "g"), value);
-  // }
-
   return messageTemplate
 }
 

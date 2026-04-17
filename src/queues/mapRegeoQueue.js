@@ -1,17 +1,10 @@
-const { createBullQueue } = require('../utils/createBullQueue')
+const { createBullQueue } = require('../utils/bullmq/createBullQueue')
 
 const QUEUE_NAME = process.env.MAP_REGEO_QUEUE_NAME || 'mapRegeoQueue'
 
-const { queue: mapRegeoQueue, connection: mapRegeoQueueConnection } = createBullQueue({ name: QUEUE_NAME })
-
-async function closeMapRegeoQueue() {
-  await mapRegeoQueue.close()
-  await mapRegeoQueueConnection.quit()
-}
+const { queue: mapRegeoQueue } = createBullQueue({ name: QUEUE_NAME })
 
 module.exports = {
   mapRegeoQueue,
-  mapRegeoQueueConnection,
-  closeMapRegeoQueue,
   MAP_REGEO_QUEUE_NAME: QUEUE_NAME
 }

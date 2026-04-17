@@ -3,7 +3,7 @@
  */
 const { Queue } = require('bullmq')
 const IORedis = require('ioredis')
-const { QUEUE_JOB_ATTEMPTS, QUEUE_JOB_BACKOFF_DELAY } = require('../config/queueConfig')
+const { QUEUE_JOB_ATTEMPTS, QUEUE_JOB_BACKOFF_DELAY } = require('../../config/queueConfig')
 
 /**
  * 失败任务：业务侧不消费 failed 集合，故统一 removeOnFail: true，避免 Redis 堆积失败记录。

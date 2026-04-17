@@ -7,23 +7,20 @@
  */
 const { createSession, getActiveSession, getCurrentProgressSnapshot } = require('../services/uploadSessionService')
 const { SUCCESS_CODES } = require('../constants/messageCodes')
+const asyncHandler = require('../utils/asyncHandler')
 
 /**
  * 处理创建上传会话请求
  */
-const handleCreateSession = async (req, res, next) => {
-  try {
-    const userId = req.user.userId
+async function handleCreateSession(req, res) {
+  const userId = req.user.userId
 
-    const session = await createSession(userId)
+  const session = await createSession(userId)
 
-    res.sendResponse({
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-      data: session
-    })
-  } catch (error) {
-    next(error)
-  }
+  res.sendResponse({
+    messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
+    data: session
+  })
 }
 
 /**
@@ -31,38 +28,30 @@ const handleCreateSession = async (req, res, next) => {
  * 全量会话列表需额外 Redis 结构，未实现前不再保留无意义的 if/else 分支。
  * GET /upload-sessions
  */
-const handleGetActiveSession = async (req, res, next) => {
-  try {
-    const userId = req.user.userId
-    const activeSession = await getActiveSession(userId)
-    res.sendResponse({
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-      data: activeSession
-    })
-  } catch (error) {
-    next(error)
-  }
+async function handleGetActiveSession(req, res) {
+  const userId = req.user.userId
+  const activeSession = await getActiveSession(userId)
+  res.sendResponse({
+    messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
+    data: activeSession
+  })
 }
 
 /**
  * 获取当前会话快照
  * GET /upload-sessions/current-progress
  */
-const handleGetCurrentProgress = async (req, res, next) => {
-  try {
-    const userId = req.user.userId
-    const snapshot = await getCurrentProgressSnapshot(userId)
-    res.sendResponse({
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-      data: snapshot
-    })
-  } catch (error) {
-    next(error)
-  }
+async function handleGetCurrentProgress(req, res) {
+  const userId = req.user.userId
+  const snapshot = await getCurrentProgressSnapshot(userId)
+  res.sendResponse({
+    messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
+    data: snapshot
+  })
 }
 
 module.exports = {
-  handleCreateSession,
-  handleGetActiveSession,
-  handleGetCurrentProgress
+  handleCreateSession: asyncHandler(handleCreateSession),
+  handleGetActiveSession: asyncHandler(handleGetActiveSession),
+  handleGetCurrentProgress: asyncHandler(handleGetCurrentProgress)
 }

@@ -5,7 +5,7 @@
  * @LastEditTime: 2025-08-16 22:10:58
  * @Description: 创建上传队列
  */
-const { createBullQueue } = require('../utils/createBullQueue')
+const { createBullQueue } = require('../utils/bullmq/createBullQueue')
 
 const { queue: mediaUploadQueue, connection } = createBullQueue({
   name: process.env.MEDIA_UPLOAD_QUEUE_NAME || 'media-upload'
@@ -19,4 +19,4 @@ function closeMediaUploadQueue() {
     .catch(() => {})
 }
 
-module.exports = { mediaUploadQueue, queueConnection: connection, closeMediaUploadQueue }
+module.exports = { mediaUploadQueue, closeMediaUploadQueue }

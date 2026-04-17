@@ -113,8 +113,6 @@ function hasAnyProgressData(progressData) {
 
 module.exports = {
   normalizeProgressData,
-  computeMediaStageDone,
-  computeAiStageDone,
   computeCompleted,
   hasAnyProgressData
 }

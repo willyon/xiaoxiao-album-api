@@ -123,13 +123,9 @@ function collectResidualQuery(normalizedQuery, ranges) {
 }
 
 module.exports = {
-  normalizeSemanticText,
   uniqueTerms,
   normalizeQueryText,
-  buildGroupTerms,
-  buildAliasCandidates,
   isOverlapping,
-  sortRanges,
   collectMatches,
   collectResidualQuery
 }

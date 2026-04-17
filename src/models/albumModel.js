@@ -264,62 +264,6 @@ function removeMediasFromAlbum({ albumId, mediaIds }) {
 }
 
 /**
- * 获取相册中的图片列表（分页）
- */
-function getAlbumMedias({ albumId, pageNo, pageSize }) {
-  const offset = (pageNo - 1) * pageSize;
-
-  const dataQuery = db.prepare(`
-    SELECT 
-      i.id,
-      i.original_storage_key,
-      i.high_res_storage_key,
-      i.thumbnail_storage_key,
-      i.media_type,
-      i.duration_sec,
-      i.captured_at,
-      i.date_key,
-      i.day_key,
-      i.month_key,
-      i.year_key,
-      i.gps_location,
-      i.width_px,
-      i.height_px,
-      i.aspect_ratio,
-      i.layout_type,
-      i.file_size_bytes,
-      COALESCE(i.face_count, 0) AS face_count,
-      COALESCE(i.person_count, 0) AS person_count,
-      NULL AS age_tags,
-      i.expression_tags AS expression_tags,
-      NULL AS has_young,
-      NULL AS has_adult,
-      i.is_favorite,
-      ai.added_at
-    FROM album_media ai
-    INNER JOIN media i ON ai.media_id = i.id
-    WHERE ai.album_id = ? AND i.deleted_at IS NULL
-    ORDER BY ai.added_at DESC, i.id DESC
-    LIMIT ? OFFSET ?
-  `);
-
-  const countQuery = db.prepare(`
-    SELECT COUNT(*) AS total
-    FROM album_media ai
-    INNER JOIN media i ON ai.media_id = i.id
-    WHERE ai.album_id = ? AND i.deleted_at IS NULL
-  `);
-
-  const data = dataQuery.all(albumId, pageSize, offset);
-  const { total } = countQuery.get(albumId);
-
-  return {
-    data: mapFields("media", data),
-    total,
-  };
-}
-
-/**
  * 获取相册内全部图片的时间范围（用于展示「整个相册」时间范围）
  * @returns {{ earliest: number, latest: number } | null} 毫秒时间戳，无图片时返回 null
  */
@@ -436,36 +380,28 @@ function getAlbumCoverMediaId(albumId) {
 /**
  * 切换媒体的喜欢状态（仅更新 media.is_favorite）
  */
-function toggleFavoriteMedia({ userId, imageId, isFavorite }) {
+function toggleFavoriteMedia({ userId, mediaId, isFavorite }) {
   const updateImageSql = `
     UPDATE media 
     SET is_favorite = ? 
     WHERE id = ? AND user_id = ?
   `;
-  const result = db.prepare(updateImageSql).run(isFavorite ? 1 : 0, imageId, userId);
+  const result = db.prepare(updateImageSql).run(isFavorite ? 1 : 0, mediaId, userId);
 
   return {
-    imageId,
+    mediaId,
     isFavorite,
     affectedRows: result.changes,
   };
 }
 
 /**
- * 检查媒体是否为收藏（仅查 media.is_favorite，不再查 album_media）
- */
-function isMediaFavorite({ userId, imageId }) {
-  const row = db.prepare("SELECT is_favorite FROM media WHERE id = ? AND user_id = ? AND deleted_at IS NULL").get(imageId, userId);
-  return row ? row.is_favorite === 1 : false;
-}
-
-/**
  * 获取包含指定图片的所有相册ID（仅未删除的相册）
  */
-function getAlbumsContainingMedias(imageIds) {
-  if (!imageIds || imageIds.length === 0) return [];
+function getAlbumsContainingMedias(mediaIds) {
+  if (!mediaIds || mediaIds.length === 0) return [];
 
-  const placeholders = imageIds.map(() => "?").join(", ");
+  const placeholders = mediaIds.map(() => "?").join(", ");
   const sql = `
     SELECT DISTINCT ai.album_id
     FROM album_media ai
@@ -475,18 +411,18 @@ function getAlbumsContainingMedias(imageIds) {
   `;
 
   const stmt = db.prepare(sql);
-  const results = stmt.all(...imageIds);
+  const results = stmt.all(...mediaIds);
   return results.map((row) => row.album_id);
 }
 
 /**
  * 批量更新相册的图片数量和封面（仅统计未删除的图片）
  */
-function updateAlbumsStatsForMedias(imageIds) {
-  if (!imageIds || imageIds.length === 0) return;
+function updateAlbumsStatsForMedias(mediaIds) {
+  if (!mediaIds || mediaIds.length === 0) return;
 
   // 获取包含这些图片的所有相册ID
-  const albumIds = getAlbumsContainingMedias(imageIds);
+  const albumIds = getAlbumsContainingMedias(mediaIds);
   if (albumIds.length === 0) return;
 
   const now = Date.now();
@@ -536,14 +472,11 @@ module.exports = {
   addMediasToAlbum,
   removeMediasFromAlbum,
   getAlbumTimeRange,
-  getAlbumMedias,
   isMediaInAlbum,
   toggleFavoriteMedia,
-  isMediaFavorite,
   setAlbumCover,
   updateAlbumMediaCount,
   updateAlbumCover,
-  updateAlbumLastUsedAt,
   getAlbumsContainingMedias,
   updateAlbumsStatsForMedias,
   getAlbumCoverMediaId,

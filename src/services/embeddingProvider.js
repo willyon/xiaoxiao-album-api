@@ -38,11 +38,6 @@ function assertLocalModelReady(dir) {
   )
 }
 
-/** 当前配置的模型目录（不校验是否已就绪；就绪性在首次加载 pipeline 时检查） */
-function getEmbeddingModelId() {
-  return resolveModelDir()
-}
-
 let extractorPromise = null
 
 function getPipelineOptions() {
@@ -96,11 +91,6 @@ async function generateTextEmbeddingForDocument(text) {
 }
 
 module.exports = {
-  DEFAULT_LOCAL_MODEL_DIR,
-  LOCAL_ONNX_MODEL_BASENAME,
-  resolveModelDir,
-  isLocalModelDirReady,
-  getEmbeddingModelId,
   generateTextEmbeddingForQuery,
   generateTextEmbeddingForDocument
 }

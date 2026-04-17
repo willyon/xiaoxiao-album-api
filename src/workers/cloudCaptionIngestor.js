@@ -5,7 +5,7 @@
 const { UnrecoverableError } = require('bullmq')
 const axios = require('axios')
 const logger = require('../utils/logger')
-const { bullMqWillRetryAfterThisFailure } = require('../utils/queuePipelineLifecycle')
+const { bullMqWillRetryAfterThisFailure } = require('../utils/bullmq/queuePipelineLifecycle')
 const storageService = require('../services/storageService')
 const { updateAnalysisStatusCloud, upsertMediaAiFieldsForAnalysis } = require('../services/cloudCaptionService')
 const { rebuildMediaSearchDoc } = require('../services/mediaService')

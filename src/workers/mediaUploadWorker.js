@@ -8,11 +8,10 @@
 const { Worker } = require('bullmq')
 const Redis = require('ioredis')
 const logger = require('../utils/logger')
-const { attachStandardFailedLogging } = require('../utils/bullmqWorkerTelemetry')
+const { attachStandardFailedLogging } = require('../utils/bullmq/bullmqWorkerTelemetry')
 const initGracefulShutdown = require('../utils/gracefulShutdown')
 const { ensureUserSetReady } = require('./userMediaHashset')
 const { processAndSaveSingleMedia } = require('./mediaUploadIngestor')
-// const PROFILE = process.env.PROFILE_UPLOAD === "1";
 
 const connection = new Redis({
   // 在BullMQ场景下设为null可以避免ioredis在命令阻塞时抛MaxRetriesPerRequesterror,是必要的设置
@@ -34,27 +33,6 @@ const worker = new Worker(
   { connection, concurrency: CONCURRENCY } //一次最多同时并发4个任务
 )
 logger.info({ message: `mediaUploadWorker 已启动，队列名=${QUEUE_NAME}，并发数=${CONCURRENCY}` })
-
-worker.on('active', (_job) => {
-  // if (PROFILE) {
-  //   const waitMs = job.processedOn && job.timestamp ? job.processedOn - job.timestamp : 0; // 回退
-  //   logger.info({
-  //     message: `upload.active jobID:${job.id}, 队列等待时长:, ${Math.floor(waitMs / 1000)}秒 processedOn:${job.processedOn}timestamp:${job.timestamp}`,
-  //   });
-  // }
-})
-
-worker.on('completed', (_job) => {
-  // logger.info({
-  //   message: `imageUploadWorker completed: ${job.id}`,
-  // });
-  // if (PROFILE) {
-  //   const runMs = job.finishedOn && job.processedOn ? job.finishedOn - job.processedOn : undefined; // 回退到你之前的 __start 也行
-  //   logger.info({
-  //     message: `upload.done jobID:${job.id}, 任务执行时长:${Math.floor(runMs / 1000)}秒`,
-  //   });
-  // }
-})
 
 attachStandardFailedLogging(worker, QUEUE_NAME, {
   logPrefix: 'mediaUploadWorker',

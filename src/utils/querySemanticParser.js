@@ -34,6 +34,5 @@ function parseQuerySemanticSignals(query) {
 }
 
 module.exports = {
-  parseQuerySemanticSignals,
-  normalizeQueryText
+  parseQuerySemanticSignals
 }

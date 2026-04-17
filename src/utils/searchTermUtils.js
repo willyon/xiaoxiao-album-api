@@ -1,8 +1,7 @@
 /*
  * @Description: 中文 term 索引与查询工具
  */
-const { SEARCH_TERM_FIELD_WEIGHTS, CHINESE_QUERY_TERM_BOOST } = require('../config/searchRankingWeights')
-const { segmentFieldForSearchTerms, normalizeChineseQueryForFts } = require('./chineseSegmenter')
+const { segmentFieldForSearchTerms } = require('./chineseSegmenter')
 const { CHINESE_CHARS_GLOBAL_REGEX, CHINESE_RUN_REGEX, HAS_CHINESE_REGEX } = require('./cjkRegex')
 
 function containsChinese(input) {
@@ -107,52 +106,6 @@ function buildSearchTermsFromFields(fields) {
   return tokens.length > 0 ? tokens.join(' ') : null
 }
 
-function buildChineseQueryTerms(query) {
-  const text = normalizeSearchText(query)
-  if (!text) {
-    return []
-  }
-  // media_search_terms 精确命中（mst.term IN ...）：中文 + 英文词 + 数字串（与 generateMediaSearchTerms 对齐）
-  const termMap = new Map()
-
-  if (containsChinese(text)) {
-    const runs = extractChineseRuns(text)
-    for (const run of runs) {
-      const runLen = Array.from(run).length
-      const terms = new Set()
-      if (runLen === 1) {
-        terms.add(run)
-      } else if (runLen === 2) {
-        terms.add(run)
-      } else {
-        const chars = Array.from(run)
-        for (let i = 0; i + 1 < chars.length; i += 1) {
-          terms.add(chars.slice(i, i + 2).join(''))
-        }
-      }
-      for (const term of terms) {
-        const termLen = Array.from(term).length
-        const boost = termLen >= 2 ? CHINESE_QUERY_TERM_BOOST.multiChar : CHINESE_QUERY_TERM_BOOST.singleChar
-        termMap.set(term, { term, termLen, boost })
-      }
-    }
-  }
-
-  for (const term of extractEnglishWordAndDigitTerms(text)) {
-    const termLen = Array.from(term).length
-    const boost = termLen >= 2 ? CHINESE_QUERY_TERM_BOOST.multiChar : CHINESE_QUERY_TERM_BOOST.singleChar
-    if (!termMap.has(term)) {
-      termMap.set(term, { term, termLen, boost })
-    }
-  }
-
-  return Array.from(termMap.values()).sort((a, b) => b.termLen - a.termLen || a.term.localeCompare(b.term, 'zh-Hans-CN'))
-}
-
-function normalizeQueryForFts(query) {
-  return normalizeChineseQueryForFts(query)
-}
-
 /** 中文按字计、英文按词计，用于搜索 residual 长短分支（如 ≤2 / ≥3 单位） */
 function segmentLengthUnits(segment) {
   const s = String(segment || '').trim()
@@ -166,16 +119,8 @@ function segmentLengthUnits(segment) {
 }
 
 module.exports = {
-  SEARCH_TERM_FIELD_WEIGHTS,
-  buildChineseQueryTerms,
   buildMediaSearchTermRows,
   buildSearchTermsFromFields,
   containsChinese,
-  extractChineseRuns,
-  extractEnglishWordAndDigitTerms,
-  generateChineseTerms,
-  generateMediaSearchTerms,
-  normalizeQueryForFts,
-  normalizeSearchText,
   segmentLengthUnits
 }

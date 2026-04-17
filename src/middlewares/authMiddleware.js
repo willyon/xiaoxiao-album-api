@@ -9,7 +9,7 @@ const jwt = require('jsonwebtoken')
 const CustomError = require('../errors/customError')
 const { ERROR_CODES } = require('../constants/messageCodes')
 
-const authMiddleware = async (req, res, next) => {
+const authMiddleware = async (req, _res, next) => {
   const authHeader = req.headers.authorization
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {

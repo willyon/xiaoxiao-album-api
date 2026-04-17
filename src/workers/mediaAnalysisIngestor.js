@@ -19,7 +19,7 @@ const { updateProgressOnce } = require('../services/mediaProcessingProgressServi
 const axios = require('axios')
 const { UnrecoverableError } = require('bullmq')
 const { withAiSlot } = require('../services/aiConcurrencyLimiter')
-const { bullMqWillRetryAfterThisFailure } = require('../utils/queuePipelineLifecycle')
+const { bullMqWillRetryAfterThisFailure } = require('../utils/bullmq/queuePipelineLifecycle')
 const { scheduleUserRebuild } = require('../services/cleanupGroupingScheduler')
 const { scheduleUserClustering } = require('../services/faceCluster')
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL
@@ -34,11 +34,11 @@ const ANALYZE_IMAGE_USE_LOCAL_PATH = process.env.ANALYZE_IMAGE_USE_LOCAL_PATH !=
 // 图中可读文字由 Python body.data.caption.data.ocr 写入 media.ai_ocr
 
 async function processMediaAnalysis(job) {
-  const { imageId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType = 'image', fileName } = job.data || {}
+  const { mediaId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType = 'image', fileName } = job.data || {}
 
-  if (!imageId) {
+  if (!mediaId) {
     logger.warn({
-      message: 'processMediaAnalysis 收到无效任务，缺少 imageId',
+      message: 'processMediaAnalysis 收到无效任务，缺少 mediaId',
       details: { jobId: job.id, data: job.data }
     })
     return
@@ -46,10 +46,10 @@ async function processMediaAnalysis(job) {
 
   try {
     if (mediaType === 'video') {
-      const videoPath = await _resolveVideoLocalPath({ highResStorageKey, originalStorageKey, imageId, userId, fileName })
+      const videoPath = await _resolveVideoLocalPath({ highResStorageKey, originalStorageKey, mediaId, userId, fileName })
       if (!videoPath) {
         const err = new UnrecoverableError('VIDEO_FILE_NOT_FOUND_OR_NO_LOCAL_PATH')
-        await _markMediaAnalysisFailed(imageId, err, sessionId, job)
+        await _markMediaAnalysisFailed(mediaId, err, sessionId, job)
         throw err
       }
 
@@ -59,33 +59,33 @@ async function processMediaAnalysis(job) {
         description: { status: 'pending', errorCode: null, data: {} }
       }
 
-      await _runAnalyzeVideo({ imageId, userId, videoPath, stepResults })
+      await _runAnalyzeVideo({ mediaId, userId, videoPath, stepResults })
 
-      await finalizeMediaAnalysis({ imageId, stepResults })
+      await finalizeMediaAnalysis({ mediaId, stepResults })
       if (sessionId) {
-        await updateProgressOnce({ sessionId, status: 'aiDoneCount', dedupeKey: imageId })
+        await updateProgressOnce({ sessionId, status: 'aiDoneCount', dedupeKey: mediaId })
         logger.info({
           message: 'mediaAnalysis.progress.updated',
-          details: { imageId, userId, sessionId: sessionId.substring(0, 8) + '...', status: 'aiDoneCount' }
+          details: { mediaId, userId, sessionId: sessionId.substring(0, 8) + '...', status: 'aiDoneCount' }
         })
       } else {
         logger.warn({
           message: 'mediaAnalysis.progress.skipped_no_session',
-          details: { imageId, userId, reason: 'sessionId 为空，智能分析进度不会更新' }
+          details: { mediaId, userId, reason: 'sessionId 为空，智能分析进度不会更新' }
         })
       }
 
       logger.info({
         message: 'mediaAnalysis.video.completed',
-        details: { imageId, userId }
+        details: { mediaId, userId }
       })
       return
     }
 
-    const { imageData, localPath } = await _loadMediaBuffer({ highResStorageKey, originalStorageKey, imageId, userId, fileName })
+    const { imageData, localPath } = await _loadMediaBuffer({ highResStorageKey, originalStorageKey, mediaId, userId, fileName })
     if (!imageData && !localPath) {
       const err = new UnrecoverableError('MEDIA_FILE_NOT_FOUND')
-      await _markMediaAnalysisFailed(imageId, err, sessionId, job)
+      await _markMediaAnalysisFailed(mediaId, err, sessionId, job)
       throw err
     }
 
@@ -95,86 +95,83 @@ async function processMediaAnalysis(job) {
       description: { status: 'pending', errorCode: null, data: {} }
     }
 
-    await _runAnalyzeImage({ imageId, userId, imageData, localPath, stepResults })
+    await _runAnalyzeImage({ mediaId, userId, imageData, localPath, stepResults })
 
-    await finalizeMediaAnalysis({ imageId, stepResults })
+    await finalizeMediaAnalysis({ mediaId, stepResults })
     if (sessionId) {
-      await updateProgressOnce({ sessionId, status: 'aiDoneCount', dedupeKey: imageId })
+      await updateProgressOnce({ sessionId, status: 'aiDoneCount', dedupeKey: mediaId })
       logger.info({
         message: 'mediaAnalysis.progress.updated',
-        details: { imageId, userId, sessionId: sessionId.substring(0, 8) + '...', status: 'aiDoneCount' }
+        details: { mediaId, userId, sessionId: sessionId.substring(0, 8) + '...', status: 'aiDoneCount' }
       })
     } else {
       logger.warn({
         message: 'mediaAnalysis.progress.skipped_no_session',
-        details: { imageId, userId, reason: 'sessionId 为空，智能分析进度不会更新' }
+        details: { mediaId, userId, reason: 'sessionId 为空，智能分析进度不会更新' }
       })
     }
 
     logger.info({
       message: 'mediaAnalysis.image.completed',
-      details: { imageId, userId, stepResults }
+      details: { mediaId, userId, stepResults }
     })
   } catch (error) {
     logger.error({
       message: 'processMediaAnalysis failed',
-      details: { imageId, userId, error: error.message }
+      details: { mediaId, userId, error: error.message }
     })
     try {
-      await _markMediaAnalysisFailed(imageId, error, sessionId, job)
+      await _markMediaAnalysisFailed(mediaId, error, sessionId, job)
     } catch (e) {
       logger.warn({
         message: 'markMediaAnalysisFailed error (swallowed)',
-        details: { imageId, error: e.message }
+        details: { mediaId, error: e.message }
       })
     }
     throw error
   }
 }
 
-async function _loadMediaBuffer({ highResStorageKey, originalStorageKey, imageId, userId, fileName }) {
+async function _loadMediaBuffer({ highResStorageKey, originalStorageKey, mediaId, userId, fileName }) {
   if (ANALYZE_IMAGE_USE_LOCAL_PATH) {
     if (highResStorageKey) {
       const p = await storageService.getLocalFilePath(highResStorageKey)
       if (p) {
-        return { imageData: null, storageKey: highResStorageKey, localPath: p }
+        return { imageData: null, localPath: p }
       }
     }
     if (originalStorageKey) {
       const p = await storageService.getLocalFilePath(originalStorageKey)
       if (p) {
-        return { imageData: null, storageKey: originalStorageKey, localPath: p }
+        return { imageData: null, localPath: p }
       }
     }
   }
 
   let imageData = null
-  let storageKey = null
 
   if (highResStorageKey) {
-    storageKey = highResStorageKey
-    imageData = await storageService.storage.getFileBuffer(storageKey)
+    imageData = await storageService.storage.getFileBuffer(highResStorageKey)
   }
 
   if (!imageData && originalStorageKey) {
-    storageKey = originalStorageKey
-    imageData = await storageService.storage.getFileBuffer(storageKey)
+    imageData = await storageService.storage.getFileBuffer(originalStorageKey)
   }
 
   if (!imageData) {
     logger.warn({
       message: 'mediaAnalysis.loadImageBuffer.failed',
-      details: { imageId, userId, highResStorageKey, originalStorageKey, fileName }
+      details: { mediaId, userId, highResStorageKey, originalStorageKey, fileName }
     })
   }
 
-  return { imageData, storageKey, localPath: null }
+  return { imageData, localPath: null }
 }
 
 /**
  * 视频原片本地路径（与 /analyze_video 设计方案一致：需 Python 与 Node 同卷可读）
  */
-async function _resolveVideoLocalPath({ highResStorageKey, originalStorageKey, imageId, userId, fileName }) {
+async function _resolveVideoLocalPath({ highResStorageKey, originalStorageKey, mediaId, userId, fileName }) {
   if (ANALYZE_IMAGE_USE_LOCAL_PATH) {
     if (originalStorageKey) {
       const p = await storageService.getLocalFilePath(originalStorageKey)
@@ -187,12 +184,12 @@ async function _resolveVideoLocalPath({ highResStorageKey, originalStorageKey, i
   }
   logger.warn({
     message: 'mediaAnalysis.videoLocalPath.missing',
-    details: { imageId, userId, highResStorageKey, originalStorageKey, fileName }
+    details: { mediaId, userId, highResStorageKey, originalStorageKey, fileName }
   })
   return null
 }
 
-async function _runAnalyzeVideo({ imageId, userId, videoPath, stepResults }) {
+async function _runAnalyzeVideo({ mediaId, userId, videoPath, stepResults }) {
   const device = process.env.AI_DEVICE || 'auto'
   const cloudConfig = getCloudConfigForAnalysis(userId)
   const cloudEnabled = !!cloudConfig
@@ -202,7 +199,7 @@ async function _runAnalyzeVideo({ imageId, userId, videoPath, stepResults }) {
       {
         video_path: videoPath,
         device,
-        image_id: String(imageId),
+        image_id: String(mediaId),
         cloud_config: cloudConfig
       },
       {
@@ -213,13 +210,13 @@ async function _runAnalyzeVideo({ imageId, userId, videoPath, stepResults }) {
     )
   )
   const body = response.data || {}
-  _applyAdapterFromModules(imageId, userId, body, stepResults, { mediaType: 'video', cloudEnabled })
+  _applyAdapterFromModules(mediaId, userId, body, stepResults, { mediaType: 'video', cloudEnabled })
 }
 
-async function _markMediaAnalysisFailed(imageId, error, sessionId, job) {
-  if (!imageId) {
+async function _markMediaAnalysisFailed(mediaId, error, sessionId, job) {
+  if (!mediaId) {
     logger.error({
-      message: 'markMediaAnalysisFailed called without imageId',
+      message: 'markMediaAnalysisFailed called without mediaId',
       details: { error: error?.message }
     })
     return
@@ -227,21 +224,21 @@ async function _markMediaAnalysisFailed(imageId, error, sessionId, job) {
   const finalFailure = !job || !bullMqWillRetryAfterThisFailure(job, error)
   if (finalFailure) {
     try {
-      updateAnalysisStatusPrimary(imageId, 'failed')
+      updateAnalysisStatusPrimary(mediaId, 'failed')
     } catch {
       // ignore
     }
   }
   if (sessionId && finalFailure) {
     try {
-      await updateProgressOnce({ sessionId, status: 'aiErrorCount', dedupeKey: imageId })
+      await updateProgressOnce({ sessionId, status: 'aiErrorCount', dedupeKey: mediaId })
     } catch {
       // ignore
     }
   }
 }
 
-async function _runAnalyzeImage({ imageId, userId, imageData, localPath, stepResults }) {
+async function _runAnalyzeImage({ mediaId, userId, imageData, localPath, stepResults }) {
   const { FormData, Blob } = globalThis
   if (!localPath && !imageData) {
     stepResults.cleanup = { status: 'failed', errorCode: 'ANALYZE_IMAGE_BUFFER_MISSING', data: {} }
@@ -252,11 +249,11 @@ async function _runAnalyzeImage({ imageId, userId, imageData, localPath, stepRes
     formData.append('image_path', localPath)
   } else {
     const blob = imageData instanceof Blob ? imageData : new Blob([imageData], { type: 'application/octet-stream' })
-    formData.append('image', blob, `image-${imageId}.bin`)
+    formData.append('image', blob, `image-${mediaId}.bin`)
   }
   const device = process.env.AI_DEVICE || 'auto'
   formData.append('device', device)
-  formData.append('image_id', String(imageId))
+  formData.append('image_id', String(mediaId))
   const cloudConfig = getCloudConfigForAnalysis(userId)
   const cloudEnabled = !!cloudConfig
   if (cloudConfig) {
@@ -271,10 +268,10 @@ async function _runAnalyzeImage({ imageId, userId, imageData, localPath, stepRes
     })
   )
   const body = response.data || {}
-  _applyAdapterFromModules(imageId, userId, body, stepResults, { mediaType: 'image', cloudEnabled })
+  _applyAdapterFromModules(mediaId, userId, body, stepResults, { mediaType: 'image', cloudEnabled })
 }
 
-function _applyAdapterFromModules(imageId, userId, body, stepResults, options = {}) {
+function _applyAdapterFromModules(mediaId, userId, body, stepResults, options = {}) {
   const mediaType = options.mediaType === 'video' ? 'video' : 'image'
   const cloudEnabled = options.cloudEnabled !== false
   const modules = body.data || {}
@@ -353,9 +350,9 @@ function _applyAdapterFromModules(imageId, userId, body, stepResults, options = 
 
   if (mediaType === 'image' && modules.embedding?.status === 'success' && modules.embedding.data?.vector) {
     try {
-      upsertMediaEmbedding({ imageId, vector: modules.embedding.data.vector })
+      upsertMediaEmbedding({ mediaId, vector: modules.embedding.data.vector })
     } catch (e) {
-      logger.warn({ message: 'analyze_image adapter: upsertMediaEmbedding failed', details: { imageId, error: e.message } })
+      logger.warn({ message: 'analyze_image adapter: upsertMediaEmbedding failed', details: { mediaId, error: e.message } })
     }
   }
   if (mediaType === 'image' && (modules.quality?.status === 'success' || modules.embedding?.status === 'success') && userId) {
@@ -404,7 +401,7 @@ function _applyAdapterFromModules(imageId, userId, body, stepResults, options = 
           bbox: f.bbox || [],
           pose: f.pose || {}
         }))
-        insertFaceEmbeddings(imageId, toInsert, { sourceType: mediaType })
+        insertFaceEmbeddings(mediaId, toInsert, { sourceType: mediaType })
       }
       stepResults.face = {
         status: 'completed',
@@ -464,7 +461,7 @@ function _pickCaptionFieldsForDb(capData) {
   return Object.keys(out).length > 0 ? out : null
 }
 
-async function finalizeMediaAnalysis({ imageId, stepResults }) {
+async function finalizeMediaAnalysis({ mediaId, stepResults }) {
   const faceData = stepResults.face?.data || {}
   const cleanupData = stepResults.cleanup?.data || {}
   const analysisStatusCloud = stepResults.analysisCloudStatus
@@ -473,14 +470,14 @@ async function finalizeMediaAnalysis({ imageId, stepResults }) {
   }
 
   finalizeMediaAnalysisInModel({
-    mediaId: imageId,
+    mediaId: mediaId,
     analysisStatusCloud,
     caption: stepResults.captionForFinalize ?? null,
     faceData,
     cleanupData
   })
 
-  await rebuildMediaSearchDoc(imageId)
+  await rebuildMediaSearchDoc(mediaId)
 }
 
 module.exports = {

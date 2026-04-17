@@ -1,7 +1,7 @@
 const logger = require('../utils/logger')
 const { cloudCaptionQueue } = require('../queues/cloudCaptionQueue')
 const mediaModel = require('../models/mediaModel')
-const { enqueueRebuildAllByCursor } = require('../utils/enqueueRebuildAllByCursor')
+const { enqueueRebuildAllByCursor } = require('../utils/bullmq/enqueueRebuildAllByCursor')
 
 const { selectPendingCloudCaptionBatch, countCloudAnalysisSkippedForUser } = mediaModel
 

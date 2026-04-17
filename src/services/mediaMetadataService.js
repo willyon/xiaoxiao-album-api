@@ -15,7 +15,6 @@ const { randomUUID } = require('crypto')
 const { stringToTimestamp } = require('../utils/formatTime')
 const { getMimeTypeByMagicBytes } = require('../utils/fileUtils')
 const { getLocationFromCoordinates } = require('./geocodingService')
-const mediaModel = require('../models/mediaModel')
 
 // EXIF Orientation 字符串 → 数值映射（exiftool 常见输出）
 const ORIENTATION_MAP = {
@@ -332,63 +331,6 @@ class MediaMetadataService {
         province: null,
         city: null
       }
-    }
-  }
-
-  /**
-   * 异步分析地理位置信息（用于延迟处理）
-   * @param {number} latitude - 纬度
-   * @param {number} longitude - 经度
-   * @param {number} imageId - 图片ID
-   * @returns {Promise<void>}
-   */
-  async analyzeLocationInfoAsync(latitude, longitude, imageId, userId) {
-    try {
-      const locationInfo = await this.analyzeLocationInfo(latitude, longitude, userId)
-
-      // 更新数据库
-      await this.updateLocationInfo(imageId, locationInfo)
-
-      logger.info({
-        message: '地理位置信息异步分析完成',
-        details: {
-          imageId,
-          latitude,
-          longitude,
-          gpsLocation: locationInfo.gpsLocation
-        }
-      })
-    } catch (error) {
-      logger.warn({
-        message: '地理位置信息异步分析失败',
-        details: {
-          imageId,
-          latitude,
-          longitude,
-          error: error.message
-        }
-      })
-    }
-  }
-
-  /**
-   * 更新数据库中的位置信息
-   * @param {number} imageId - 图片ID
-   * @param {Object} locationInfo - 位置信息
-   */
-  async updateLocationInfo(imageId, locationInfo) {
-    try {
-      await mediaModel.updateLocationInfo(imageId, locationInfo)
-    } catch (error) {
-      logger.error({
-        message: '更新位置信息失败',
-        details: {
-          imageId,
-          locationInfo,
-          error: error.message
-        }
-      })
-      throw error
     }
   }
 }

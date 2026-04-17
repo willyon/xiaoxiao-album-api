@@ -26,8 +26,8 @@ function rebuildCleanupGroups({ userId }) {
   })
 
   // 模糊图：只更新 images.is_blurry，不再写入 similar_groups
-  const blurryImageIds = images.filter((img) => img.sharpness_score != null && img.sharpness_score < BLURRY_SHARPNESS_THRESHOLD).map((img) => img.id)
-  mediaModel.updateBlurryForUser(userId, blurryImageIds)
+  const blurryMediaIds = images.filter((img) => img.sharpness_score != null && img.sharpness_score < BLURRY_SHARPNESS_THRESHOLD).map((img) => img.id)
+  mediaModel.updateBlurryForUser(userId, blurryMediaIds)
 
   return {
     similarGroupCount: similarSummary.groupCount
@@ -48,7 +48,7 @@ function _replaceGroups({ userId, groups }) {
     try {
       const groupId = cleanupModel.insertSimilarGroup({
         userId,
-        primaryImageId: group.primaryImageId,
+        primaryMediaId: group.primaryMediaId,
         memberCount: group.members.length,
         updatedAt: now // 明确传递当前时间，确保每次重建时更新时间都是最新的
       })
@@ -212,7 +212,7 @@ function _createGroupFromMembers(members, { similarityResolver }) {
   const groupMembers = sorted.map((image) => {
     const similarity = similarityResolver(primary, image)
     return {
-      imageId: image.id,
+      mediaId: image.id,
       rankScore: _computeRankScore(image),
       similarity,
       aestheticScore: image.aesthetic_score ?? null
@@ -220,7 +220,7 @@ function _createGroupFromMembers(members, { similarityResolver }) {
   })
 
   return {
-    primaryImageId: primary.id,
+    primaryMediaId: primary.id,
     members: groupMembers
   }
 }

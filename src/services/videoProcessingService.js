@@ -330,7 +330,6 @@ async function storeVideoThumbnail(videoPath, targetStorageKey, storageAdapter, 
 }
 
 module.exports = {
-  extractFirstFrame,
   getVideoMetadata,
   storeVideoThumbnail
 }

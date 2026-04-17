@@ -6,7 +6,7 @@
 
 const fs = require('fs-extra')
 const StorageAdapterFactory = require('../storage/factory/StorageAdapterFactory')
-const { STORAGE_TYPES } = require('../storage/constants/StorageTypes')
+const { STORAGE_TYPES } = require('../constants/StorageTypes')
 const logger = require('../utils/logger')
 const sharp = require('sharp')
 

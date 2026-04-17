@@ -124,27 +124,9 @@ function segmentFieldForSearchTerms(text) {
     .map((t) => (/^[\x00-\x7f]+$/.test(t) ? t.toLowerCase() : t))
 }
 
-/**
- * 整句用户查询 → 空格分隔，供 FTS MATCH 与分词后 token 对齐
- */
-function normalizeChineseQueryForFts(query) {
-  const raw = String(query || '').trim()
-  if (!raw || !HAS_CHINESE_REGEX.test(raw)) {
-    return raw
-  }
-  const jieba = tryCreateJieba()
-  if (!jieba) {
-    return raw
-  }
-  const parts = jieba.cutForSearch(raw, true)
-  const words = parts.map((w) => w.trim()).filter((w) => w.length > 0 && !isOnlyPunctOrSpace(w))
-  return words.length > 0 ? words.join(' ') : raw
-}
-
 module.exports = {
   tryCreateJieba,
   segmentFieldForSearchTerms,
-  normalizeChineseQueryForFts,
   /** 与 `segmentFieldForSearchTerms` 无中文分支一致，供视觉向量字面门闩等复用 */
   SEARCH_TERMS_SPLIT_REGEX
 }

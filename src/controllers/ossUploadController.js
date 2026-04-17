@@ -10,65 +10,57 @@ const { SUCCESS_CODES, ERROR_CODES } = require('../constants/messageCodes')
 const storageService = require('../services/storageService')
 const { mediaUploadQueue } = require('../queues/mediaUploadQueue')
 const logger = require('../utils/logger')
-const { verifyOSSCallbackSignature, parseCallbackData } = require('../utils/ossCallbackUtils')
+const { verifyOSSCallbackSignature, parseCallbackData } = require('../utils/ossUtils')
 const { updateProgress } = require('../services/mediaProcessingProgressService')
 const { SUPPORTED_IMAGE_MIME_TYPES, getExtensionFromMimeType } = require('../utils/fileUtils')
+const asyncHandler = require('../utils/asyncHandler')
 
 /**
  * 获取OSS直传签名
  * POST /images/getUploadSignature
  * Body: { hash, contentType, contentLength }
  */
-async function handleGetUploadSignature(req, res, next) {
-  try {
-    const { hash, contentType, contentLength, sessionId } = req.body
-    const userId = req?.user?.userId
+async function handleGetUploadSignature(req, res) {
+  const { hash, contentType, contentLength, sessionId } = req.body
+  const userId = req?.user?.userId
 
-    if (!hash || !contentType || !contentLength) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'error'
-      })
-    }
-
-    // 验证 contentType 有效性（防止前端伪造）
-    if (!SUPPORTED_IMAGE_MIME_TYPES.has(contentType)) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'error',
-        message: `不支持的图片格式: ${contentType}`
-      })
-    }
-
-    // 从 MIME 类型提取文件扩展名（使用公共方法）
-    const fileExtension = getExtensionFromMimeType(contentType)
-
-    // 生成基于时间的storageKey
-    const now = new Date()
-    const year = now.getFullYear()
-    const month = String(now.getMonth() + 1).padStart(2, '0')
-
-    // images/userId/year/month/hashPrefix/hash.ext
-    const storageKey = `images/${userId}/${year}/${month}/${hash.substring(0, 2)}/${hash}.${fileExtension}`
-
-    // 获取OSS上传签名
-    const uploadSignature = await storageService.getUploadSignature({
-      storageKey,
-      contentType,
-      contentLength,
-      userId,
-      sessionId
+  if (!hash || !contentType || !contentLength) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: 'error'
     })
-
-    return res.sendResponse({
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
-      data: uploadSignature // 直接返回适配器的结果
-    })
-  } catch (error) {
-    next(error)
   }
+
+  if (!SUPPORTED_IMAGE_MIME_TYPES.has(contentType)) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: 'error',
+      message: `不支持的图片格式: ${contentType}`
+    })
+  }
+
+  const fileExtension = getExtensionFromMimeType(contentType)
+
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+
+  const storageKey = `images/${userId}/${year}/${month}/${hash.substring(0, 2)}/${hash}.${fileExtension}`
+
+  const uploadSignature = await storageService.getUploadSignature({
+    storageKey,
+    contentType,
+    contentLength,
+    userId,
+    sessionId
+  })
+
+  return res.sendResponse({
+    messageCode: SUCCESS_CODES.REQUEST_COMPLETED,
+    data: uploadSignature
+  })
 }
 
 /**
@@ -134,60 +126,55 @@ async function checkAndAddToQueue(callbackData) {
  * POST /aliyunOss/mediaUploadCallback
  * Body: OSS回调数据
  */
-async function handleUploadCallback(req, res, next) {
-  try {
-    // 记录回调请求
-    logger.info({
-      message: '收到OSS回调请求',
+async function runUploadCallback(req, res) {
+  logger.info({
+    message: '收到OSS回调请求',
+    details: {
+      method: req.method,
+      url: req.url,
+      headers: req.headers,
+      body: req.body
+    }
+  })
+
+  const isValid = await verifyOSSCallbackSignature(req)
+  if (!isValid) {
+    throw new CustomError({
+      httpStatus: 403,
+      messageType: 'error',
+      message: 'Invalid OSS callback signature',
       details: {
-        method: req.method,
-        url: req.url,
-        headers: req.headers,
-        body: req.body
+        req
       }
     })
-
-    // 1. 验证回调签名
-    const isValid = await verifyOSSCallbackSignature(req)
-    if (!isValid) {
-      throw new CustomError({
-        httpStatus: 403,
-        messageType: 'error',
-        message: 'Invalid OSS callback signature',
-        details: {
-          req
-        }
-      })
-    }
-
-    logger.info({
-      message: 'OSS回调签名验证成功 开始解析回调数据进行图片入库'
-    })
-
-    // 2. 解析回调数据
-    const callbackData = parseCallbackData(req.body)
-
-    // 3. 检查去重并添加到队列
-    await checkAndAddToQueue(callbackData)
-
-    logger.info({
-      message: '图片处理任务添加到队列成功'
-    })
-
-    // 4. 返回成功响应给OSS
-    return res.sendResponse({
-      messageCode: SUCCESS_CODES.REQUEST_COMPLETED
-    })
-  } catch (error) {
-    logger.error({
-      message: 'OSS回调处理失败',
-      details: { error: error.message, stack: error.stack }
-    })
-    next(error)
   }
+
+  logger.info({
+    message: 'OSS回调签名验证成功 开始解析回调数据进行图片入库'
+  })
+
+  const callbackData = parseCallbackData(req.body)
+
+  await checkAndAddToQueue(callbackData)
+
+  logger.info({
+    message: '图片处理任务添加到队列成功'
+  })
+
+  return res.sendResponse({
+    messageCode: SUCCESS_CODES.REQUEST_COMPLETED
+  })
 }
 
 module.exports = {
-  handleGetUploadSignature,
-  handleUploadCallback
+  handleGetUploadSignature: asyncHandler(handleGetUploadSignature),
+  handleUploadCallback: (req, res, next) => {
+    Promise.resolve(runUploadCallback(req, res)).catch((error) => {
+      logger.error({
+        message: 'OSS回调处理失败',
+        details: { error: error.message, stack: error.stack }
+      })
+      next(error)
+    })
+  }
 }

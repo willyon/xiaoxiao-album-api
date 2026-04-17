@@ -1,7 +1,7 @@
 const logger = require('../utils/logger')
 const { mapRegeoQueue } = require('../queues/mapRegeoQueue')
 const mediaModel = require('../models/mediaModel')
-const { enqueueRebuildAllByCursor } = require('../utils/enqueueRebuildAllByCursor')
+const { enqueueRebuildAllByCursor } = require('../utils/bullmq/enqueueRebuildAllByCursor')
 
 const { selectPendingMapRegeoBatch, countMapRegeoSkippedForUser } = mediaModel
 
@@ -50,8 +50,8 @@ function selectMediaRowForMapRegeoJob(mediaId, userId) {
   return mediaModel.selectMediaRowForMapRegeoJob(mediaId, userId)
 }
 
-function updateLocationInfo(imageId, locationPayload, options) {
-  return mediaModel.updateLocationInfo(imageId, locationPayload, options)
+function updateLocationInfo(mediaId, locationPayload, options) {
+  return mediaModel.updateLocationInfo(mediaId, locationPayload, options)
 }
 
 function updateMapRegeoStatus(mediaId, status) {

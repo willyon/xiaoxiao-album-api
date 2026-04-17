@@ -72,12 +72,12 @@ function selectDeletedMediasByPage({ userId, pageNo, pageSize, mediaType }) {
 /**
  * 查询指定ID的已删除图片（用于权限验证）
  * @param {number} userId - 用户ID
- * @param {Array<number>} imageIds - 图片ID数组
+ * @param {Array<number>} mediaIds - 图片ID数组
  * @returns {Array} 图片信息数组
  */
-function selectDeletedMediasByIds(userId, imageIds) {
-  if (!imageIds || imageIds.length === 0) return [];
-  const placeholders = imageIds.map(() => "?").join(", ");
+function selectDeletedMediasByIds(userId, mediaIds) {
+  if (!mediaIds || mediaIds.length === 0) return [];
+  const placeholders = mediaIds.map(() => "?").join(", ");
   const stmt = db.prepare(`
     SELECT 
       id,
@@ -91,40 +91,40 @@ function selectDeletedMediasByIds(userId, imageIds) {
       AND id IN (${placeholders})
       AND deleted_at IS NOT NULL
   `);
-  return stmt.all(userId, ...imageIds);
+  return stmt.all(userId, ...mediaIds);
 }
 
 /**
  * 恢复图片（将 deleted_at 设为 NULL）
- * @param {Array<number>} imageIds - 图片ID数组
+ * @param {Array<number>} mediaIds - 图片ID数组
  * @returns {Object} { changes: number }
  */
-function restoreMedias(imageIds) {
-  if (!imageIds || imageIds.length === 0) return { changes: 0 };
-  const placeholders = imageIds.map(() => "?").join(", ");
+function restoreMedias(mediaIds) {
+  if (!mediaIds || mediaIds.length === 0) return { changes: 0 };
+  const placeholders = mediaIds.map(() => "?").join(", ");
   const stmt = db.prepare(`
     UPDATE media
     SET deleted_at = NULL
     WHERE id IN (${placeholders})
       AND deleted_at IS NOT NULL
   `);
-  return stmt.run(...imageIds);
+  return stmt.run(...mediaIds);
 }
 
 /**
  * 彻底删除图片（物理删除数据库记录，仅限回收站内 deleted_at IS NOT NULL）
- * @param {Array<number>} imageIds - 图片ID数组（必须已在回收站）
+ * @param {Array<number>} mediaIds - 图片ID数组（必须已在回收站）
  * @returns {Object} { changes: number }
  */
-function permanentlyDeleteMedias(imageIds) {
-  if (!imageIds || imageIds.length === 0) return { changes: 0 };
-  const placeholders = imageIds.map(() => "?").join(", ");
+function permanentlyDeleteMedias(mediaIds) {
+  if (!mediaIds || mediaIds.length === 0) return { changes: 0 };
+  const placeholders = mediaIds.map(() => "?").join(", ");
   const stmt = db.prepare(`
     DELETE FROM media
     WHERE deleted_at IS NOT NULL
       AND id IN (${placeholders})
   `);
-  return stmt.run(...imageIds);
+  return stmt.run(...mediaIds);
 }
 
 /**
@@ -142,20 +142,14 @@ function clearTrash(userId) {
 }
 
 /**
- * 获取需要删除文件的图片信息（用于物理删除文件）
- * @param {number} userId - 用户ID
- * @param {Array<number>} imageIds - 图片ID数组
- * @returns {Array} 图片信息数组，包含存储键和存储类型
- */
-/**
  * 获取需要删除文件的图片信息（仅回收站内 deleted_at IS NOT NULL）
  * @param {number} userId - 用户ID
- * @param {Array<number>} imageIds - 图片ID数组
+ * @param {Array<number>} mediaIds - 图片ID数组
  * @returns {Array} 图片信息数组
  */
-function selectMediasForFileDeletion(userId, imageIds) {
-  if (!imageIds || imageIds.length === 0) return [];
-  const placeholders = imageIds.map(() => "?").join(", ");
+function selectMediasForFileDeletion(userId, mediaIds) {
+  if (!mediaIds || mediaIds.length === 0) return [];
+  const placeholders = mediaIds.map(() => "?").join(", ");
   const stmt = db.prepare(`
     SELECT 
       id,
@@ -169,7 +163,7 @@ function selectMediasForFileDeletion(userId, imageIds) {
       AND deleted_at IS NOT NULL
       AND id IN (${placeholders})
   `);
-  return stmt.all(userId, ...imageIds);
+  return stmt.all(userId, ...mediaIds);
 }
 
 /**

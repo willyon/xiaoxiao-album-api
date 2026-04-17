@@ -5,7 +5,7 @@
  * @LastEditTime: 2025-08-16 22:08:51
  * @Description: File description
  */
-const { createBullQueue } = require('../utils/createBullQueue')
+const { createBullQueue } = require('../utils/bullmq/createBullQueue')
 
 const { queue: mediaMetaQueue, connection } = createBullQueue({
   name: process.env.MEDIA_META_QUEUE_NAME || 'media-meta'

@@ -316,7 +316,7 @@ async function setAlbumCover({ userId, albumId, mediaId }) {
     })
   }
 
-  // 验证图片是否在相册中（model 层仍用 imageId 字段名，与 media 主键 id 一致）
+  // 验证媒体是否在相册中（media 主键 id）
   const isInAlbum = albumModel.isMediaInAlbum({ albumId, mediaId })
   if (!isInAlbum) {
     throw new CustomError({
@@ -415,65 +415,10 @@ async function getAlbumById({ userId, albumId }) {
 }
 
 /**
- * 获取相册中的图片列表（包含完整URL）
- */
-async function getAlbumMediasList({ userId, albumId, pageNo, pageSize }) {
-  // 验证相册存在且属于当前用户
-  const album = albumModel.getAlbumById({ albumId, userId })
-  if (!album) {
-    throw new CustomError({
-      httpStatus: 404,
-      messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
-      messageType: 'error',
-      message: '相册不存在'
-    })
-  }
-
-  const queryResult = albumModel.getAlbumMedias({
-    albumId,
-    pageNo,
-    pageSize
-  })
-
-  // 为图片添加完整URL（isFavorite字段已从数据库直接返回）
-  const imagesWithUrl = await Promise.all(
-    queryResult.data.map(async (image) => {
-      let thumbnailUrl = null
-      let highResUrl = null
-      let originalUrl = null
-      if (image.thumbnailStorageKey) {
-        thumbnailUrl = await storageService.getFileUrl(image.thumbnailStorageKey)
-      }
-      if (image.highResStorageKey) {
-        highResUrl = await storageService.getFileUrl(image.highResStorageKey)
-      }
-      if (image.mediaType === 'video' && image.originalStorageKey) {
-        originalUrl = await storageService.getFileUrl(image.originalStorageKey)
-      } else if (!image.highResStorageKey && image.originalStorageKey) {
-        originalUrl = await storageService.getFileUrl(image.originalStorageKey)
-      }
-
-      return {
-        ...image,
-        albumId, // 添加 albumId 字段，统一返回格式
-        thumbnailUrl,
-        highResUrl,
-        originalUrl
-      }
-    })
-  )
-
-  return {
-    list: imagesWithUrl,
-    total: queryResult.total
-  }
-}
-
-/**
  * 内部方法：根据ID获取图片存储信息
  */
-function _getMediaById(imageId) {
-  const image = mediaModel.getMediaStorageInfo(imageId)
+function _getMediaById(mediaId) {
+  const image = mediaModel.getMediaStorageInfo(mediaId)
   return image
     ? {
         thumbnailStorageKey: image.thumbnailStorageKey,
@@ -491,7 +436,6 @@ module.exports = {
   deleteAlbum,
   addMediasToAlbum,
   removeMediasFromAlbum,
-  getAlbumMediasList,
   setAlbumCover,
   restoreAlbumCover
 }

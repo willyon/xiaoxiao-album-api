@@ -1,26 +1,5 @@
 const { db } = require("../db");
 
-function selectMediaForCleanup(imageId) {
-  const stmt = db.prepare(`
-    SELECT
-      m.id,
-      m.user_id,
-      m.file_hash AS image_hash,
-      m.phash AS image_phash,
-      m.dhash AS image_dhash,
-      m.high_res_storage_key,
-      m.original_storage_key,
-      m.thumbnail_storage_key,
-      m.file_size_bytes,
-      m.aesthetic_score,
-      m.sharpness_score
-    FROM media m
-    WHERE m.id = ?
-    LIMIT 1
-  `);
-  return stmt.get(imageId);
-}
-
 function selectCleanupCandidatesByUser(userId) {
   const stmt = db.prepare(`
     SELECT
@@ -40,52 +19,6 @@ function selectCleanupCandidatesByUser(userId) {
   return stmt.all(userId);
 }
 
-/**
- * 查询用户未分析的图片（用于清理分析入队）
- * 只返回未分析的图片：image_phash、aesthetic_score、sharpness_score 任一为 NULL
- */
-function selectUnanalyzedMediasByUser(userId) {
-  const stmt = db.prepare(`
-    SELECT
-      m.id,
-      m.user_id,
-      m.created_at,
-      m.high_res_storage_key,
-      m.original_storage_key,
-      m.phash AS image_phash,
-      m.dhash AS image_dhash,
-      m.aesthetic_score,
-      m.sharpness_score
-    FROM media m
-    WHERE m.user_id = ?
-      AND (m.high_res_storage_key IS NOT NULL OR m.original_storage_key IS NOT NULL)
-      AND (m.deleted_at IS NULL)
-      AND (
-        m.phash IS NULL
-        OR m.aesthetic_score IS NULL
-        OR m.sharpness_score IS NULL
-      )
-    ORDER BY m.created_at DESC
-  `);
-  return stmt.all(userId);
-}
-
-function updateMediaCleanupMetrics(imageId, { imagePhash, imageDhash, aestheticScore, sharpnessScore }) {
-  return db
-    .prepare(
-      `
-      UPDATE media
-      SET
-        phash = ?,
-        dhash = ?,
-        aesthetic_score = ?,
-        sharpness_score = ?
-      WHERE id = ?
-    `,
-    )
-    .run(imagePhash ?? null, imageDhash ?? null, aestheticScore ?? null, sharpnessScore ?? null, imageId);
-}
-
 function deleteGroupsByUser(userId) {
   const stmt = db.prepare(`
     DELETE FROM similar_groups
@@ -94,7 +27,7 @@ function deleteGroupsByUser(userId) {
   stmt.run(userId);
 }
 
-function insertSimilarGroup({ userId, primaryImageId, memberCount, createdAt, updatedAt }) {
+function insertSimilarGroup({ userId, primaryMediaId, memberCount, createdAt, updatedAt }) {
   const stmt = db.prepare(`
     INSERT INTO similar_groups (
       user_id,
@@ -105,11 +38,11 @@ function insertSimilarGroup({ userId, primaryImageId, memberCount, createdAt, up
     ) VALUES (?, ?, ?, ?, ?)
   `);
   const now = Date.now();
-  const result = stmt.run(userId, primaryImageId ?? null, memberCount ?? 0, createdAt ?? now, updatedAt ?? now);
+  const result = stmt.run(userId, primaryMediaId ?? null, memberCount ?? 0, createdAt ?? now, updatedAt ?? now);
   return result.lastInsertRowid;
 }
 
-function insertSimilarGroupMember(groupId, { imageId, rankScore, similarity, aestheticScore }) {
+function insertSimilarGroupMember(groupId, { mediaId, rankScore, similarity, aestheticScore }) {
   const stmt = db.prepare(`
     INSERT INTO similar_group_members (
       group_id,
@@ -122,38 +55,7 @@ function insertSimilarGroupMember(groupId, { imageId, rankScore, similarity, aes
     ) VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
   const now = Date.now();
-  stmt.run(groupId, imageId, rankScore ?? null, similarity ?? null, aestheticScore ?? null, now, now);
-}
-
-/**
- * 查询指定类型的清理分组
- */
-function selectGroupsByType({ userId, limit, offset }) {
-  const stmt = db.prepare(`
-    SELECT
-      id,
-      user_id,
-      primary_media_id,
-      member_count,
-      created_at,
-      updated_at
-    FROM similar_groups
-    WHERE user_id = ?
-    ORDER BY updated_at DESC, id DESC
-    LIMIT ? OFFSET ?
-  `);
-
-  return stmt.all(userId, limit, offset);
-}
-
-function countGroupsByType({ userId }) {
-  const stmt = db.prepare(`
-    SELECT COUNT(*) AS total
-    FROM similar_groups
-    WHERE user_id = ?
-  `);
-  const result = stmt.get(userId);
-  return result?.total || 0;
+  stmt.run(groupId, mediaId, rankScore ?? null, similarity ?? null, aestheticScore ?? null, now, now);
 }
 
 /**
@@ -176,7 +78,7 @@ function countDisplayableSimilarGroups(userId) {
 }
 
 /**
- * 分页查询「可展示」的相似图分组：至少有 2 个未删除成员，排序与 selectGroupsByType 一致
+ * 分页查询「可展示」的相似图分组：至少有 2 个未删除成员，按 updated_at、id 倒序
  */
 function selectDisplayableSimilarGroups({ userId, limit, offset }) {
   const stmt = db.prepare(`
@@ -246,37 +148,6 @@ function selectMembersByGroupIds(groupIds) {
   `);
 
   return stmt.all(...groupIds);
-}
-
-/**
- * 统计指定分组的成员数量（未删除的）
- * @param {number} groupId - 分组ID
- * @returns {number}
- */
-function countMembersByGroupId(groupId) {
-  const stmt = db.prepare(`
-    SELECT COUNT(*) AS total
-    FROM similar_group_members cgm
-    JOIN media i ON i.id = cgm.media_id
-    WHERE cgm.group_id = ?
-      AND i.deleted_at IS NULL
-  `);
-  const result = stmt.get(groupId);
-  return result?.total || 0;
-}
-
-/**
- * 删除分组成员
- */
-function deleteGroupMembers(groupId, mediaIds) {
-  if (!mediaIds || mediaIds.length === 0) return { changes: 0 };
-  const placeholders = mediaIds.map(() => "?").join(", ");
-  const stmt = db.prepare(`
-    DELETE FROM similar_group_members
-    WHERE group_id = ?
-      AND media_id IN (${placeholders})
-  `);
-  return stmt.run(groupId, ...mediaIds);
 }
 
 /**
@@ -353,9 +224,9 @@ function selectGroupById(groupId) {
 /**
  * 查询图片的存储信息
  */
-function selectMediasByIds(imageIds) {
-  if (!imageIds || imageIds.length === 0) return [];
-  const placeholders = imageIds.map(() => "?").join(", ");
+function selectMediasByIds(mediaIds) {
+  if (!mediaIds || mediaIds.length === 0) return [];
+  const placeholders = mediaIds.map(() => "?").join(", ");
   const stmt = db.prepare(`
     SELECT
       id,
@@ -369,34 +240,21 @@ function selectMediasByIds(imageIds) {
     WHERE id IN (${placeholders})
       AND deleted_at IS NULL
   `);
-  return stmt.all(...imageIds);
+  return stmt.all(...mediaIds);
 }
 
-/**
- * 从 images 表删除指定图片
- */
-function deleteMediasByIds(imageIds) {
-  if (!imageIds || imageIds.length === 0) return { changes: 0 };
-  const placeholders = imageIds.map(() => "?").join(", ");
-  const stmt = db.prepare(`
-    DELETE FROM media
-    WHERE id IN (${placeholders})
-  `);
-  return stmt.run(...imageIds);
-}
-
-function markMediasDeleted(imageIds = [], deletedAt) {
-  if (!imageIds || imageIds.length === 0) return { changes: 0 };
-  const placeholders = imageIds.map(() => "?").join(", ");
+function markMediasDeleted(mediaIds = [], deletedAt) {
+  if (!mediaIds || mediaIds.length === 0) return { changes: 0 };
+  const placeholders = mediaIds.map(() => "?").join(", ");
   const stmt = db.prepare(`
     UPDATE media
     SET deleted_at = ?
     WHERE id IN (${placeholders})
   `);
-  return stmt.run(deletedAt, ...imageIds);
+  return stmt.run(deletedAt, ...mediaIds);
 }
 
-function deleteGroupMembersByImageIds(mediaIds = []) {
+function deleteGroupMembersByMediaIds(mediaIds = []) {
   if (!mediaIds || mediaIds.length === 0) return { changes: 0 };
   const placeholders = mediaIds.map(() => "?").join(", ");
   const stmt = db.prepare(`
@@ -427,11 +285,11 @@ function getGroupsContainingMedias(mediaIds) {
 /**
  * 批量更新包含指定图片的所有分组统计
  */
-function refreshGroupsStatsForMedias(imageIds) {
-  if (!imageIds || imageIds.length === 0) return;
+function refreshGroupsStatsForMedias(mediaIds) {
+  if (!mediaIds || mediaIds.length === 0) return;
 
   // 获取包含这些图片的所有分组ID
-  const groupIds = getGroupsContainingMedias(imageIds);
+  const groupIds = getGroupsContainingMedias(mediaIds);
   if (groupIds.length === 0) return;
 
   const now = Date.now();
@@ -448,26 +306,17 @@ function refreshGroupsStatsForMedias(imageIds) {
 }
 
 module.exports = {
-  selectGroupsByType,
   selectMembersByGroupIds,
-  countMembersByGroupId,
   selectGroupById,
-  deleteGroupMembers,
-  deleteGroup,
   refreshGroupStats,
   selectMediasByIds,
-  deleteMediasByIds,
   markMediasDeleted,
-  deleteGroupMembersByImageIds,
+  deleteGroupMembersByMediaIds,
   getGroupsContainingMedias,
   refreshGroupsStatsForMedias,
-  countGroupsByType,
   countDisplayableSimilarGroups,
   selectDisplayableSimilarGroups,
-  selectMediaForCleanup,
   selectCleanupCandidatesByUser,
-  selectUnanalyzedMediasByUser,
-  updateMediaCleanupMetrics,
   deleteGroupsByUser,
   insertSimilarGroup,
   insertSimilarGroupMember,

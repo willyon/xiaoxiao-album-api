@@ -10,7 +10,7 @@
  * @param {(userId:number|string)=>number} options.countPending
  * @param {string} options.logLabel
  * @param {string} options.maxIterEnvKey
- * @param {import('./logger')} options.logger
+ * @param {import('../logger')} options.logger
  * @returns {Promise<number>}
  */
 async function enqueueRebuildAllByCursor({

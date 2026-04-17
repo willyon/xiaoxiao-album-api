@@ -13,7 +13,7 @@ const videoProcessingService = require('../services/videoProcessingService')
 const { updateProgress, updateProgressOnce } = require('../services/mediaProcessingProgressService')
 const { mediaAnalysisQueue } = require('../queues/mediaAnalysisQueue')
 const { QUEUE_JOB_ATTEMPTS } = require('../config/queueConfig')
-const { bullMqWillRetryAfterThisFailure } = require('../utils/queuePipelineLifecycle')
+const { bullMqWillRetryAfterThisFailure } = require('../utils/bullmq/queuePipelineLifecycle')
 const mediaMetadataService = require('../services/mediaMetadataService')
 const { addMediaToSession } = require('../services/uploadSessionService')
 const { getVideoMimeTypeFromFileName } = require('../utils/fileUtils')
@@ -158,8 +158,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
   const mime = getVideoMimeTypeFromFileName(fileName) || 'application/octet-stream'
   const durationSec = typeof meta.duration === 'number' ? Math.round(meta.duration) : null
 
-  let imageId = null
-  const effectiveOriginalStorageKey = originalStorageKey
+  let mediaId = null
   try {
     const result = await saveProcessedMediaMetadata({
       userId,
@@ -188,7 +187,7 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
       mediaType: 'video',
       mapRegeoStatus: meta.gpsLatitude != null && meta.gpsLongitude != null ? mapRegeoStatus : undefined
     })
-    imageId = result.imageId
+    mediaId = result.mediaId
   } catch (e) {
     logger.error({
       message: 'Video metadata database update failed',
@@ -205,17 +204,17 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
     throw e
   }
 
-  if (sessionId && imageId) {
+  if (sessionId && mediaId) {
     try {
-      await addMediaToSession({ sessionId, mediaId: imageId })
+      await addMediaToSession({ sessionId, mediaId: mediaId })
     } catch {}
   }
 
   await _enqueueAiAndCleanup({
-    imageId,
+    mediaId,
     userId,
     highResStorageKey: null,
-    originalStorageKey: effectiveOriginalStorageKey,
+    originalStorageKey,
     sessionId,
     mediaType: 'video',
     fileName,
@@ -230,10 +229,10 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
   }
 }
 
-async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType, fileName, imageHash }) {
-  if (!imageId) {
+async function _enqueueAiAndCleanup({ mediaId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType, fileName, imageHash }) {
+  if (!mediaId) {
     logger.warn({
-      message: 'Cannot add to queues - imageId is null',
+      message: 'Cannot add to queues - mediaId is null',
       details: { imageHash, userId }
     })
     return
@@ -243,7 +242,7 @@ async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, origin
     await mediaAnalysisQueue.add(
       'media-analysis',
       {
-        imageId,
+        mediaId,
         userId,
         highResStorageKey,
         originalStorageKey,
@@ -251,13 +250,13 @@ async function _enqueueAiAndCleanup({ imageId, userId, highResStorageKey, origin
         mediaType: mediaType || 'image',
         fileName: fileName || ''
       },
-      { jobId: `analysis:${userId}:${imageId}` }
+      { jobId: `analysis:${userId}:${mediaId}` }
     )
     if (sessionId) {
       await updateProgressOnce({
         sessionId,
         status: 'aiEligibleCount',
-        dedupeKey: imageId
+        dedupeKey: mediaId
       })
     }
   } catch (err) {
@@ -379,7 +378,7 @@ async function processMediaMeta(job) {
     throw e
   }
 
-  let imageId = null
+  let mediaId = null
   try {
     const result = await saveProcessedMediaMetadata({
       userId,
@@ -408,7 +407,7 @@ async function processMediaMeta(job) {
       mime,
       mapRegeoStatus: latitude != null && longitude != null ? mapRegeoStatus : undefined
     })
-    imageId = result.imageId
+    mediaId = result.mediaId
   } catch (e) {
     // 数据库更新失败
     logger.error({
@@ -430,14 +429,14 @@ async function processMediaMeta(job) {
     throw e
   }
   // ======== 移动原图到 original 存储位置 ========
-  if (sessionId && imageId) {
+  if (sessionId && mediaId) {
     try {
-      await addMediaToSession({ sessionId, mediaId: imageId })
+      await addMediaToSession({ sessionId, mediaId: mediaId })
     } catch {}
   }
 
   await _enqueueAiAndCleanup({
-    imageId,
+    mediaId,
     userId,
     highResStorageKey: highResStorageKeyResult,
     originalStorageKey,

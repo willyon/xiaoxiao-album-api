@@ -80,10 +80,10 @@ function wgs84ToGcj02(wgsLng, wgsLat) {
 }
 
 /**
- * GCJ-02 转 WGS-84
- * @param {number} gcjLng - GCJ-02经度
- * @param {number} gcjLat - GCJ-02纬度
- * @returns {Object} WGS-84坐标 {lng, lat}
+ * GCJ-02 转 WGS-84（与 wgs84ToGcj02 互逆近似；境外直接返回原坐标）
+ * @param {number} gcjLng - GCJ-02 经度
+ * @param {number} gcjLat - GCJ-02 纬度
+ * @returns {Object} WGS-84 坐标 { lng, lat }
  */
 function gcj02ToWgs84(gcjLng, gcjLat) {
   if (!isInChina(gcjLng, gcjLat)) {
@@ -167,9 +167,9 @@ function bd09ToWgs84(bdLng, bdLat) {
 module.exports = {
   wgs84ToGcj02,
   gcj02ToWgs84,
-  gcj02ToBd09,
-  bd09ToGcj02,
   wgs84ToBd09,
   bd09ToWgs84,
+  gcj02ToBd09,
+  bd09ToGcj02,
   isInChina
 }

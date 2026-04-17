@@ -5,9 +5,8 @@
  */
 
 const LocalStorageAdapter = require('../adapters/LocalStorageAdapter')
-const AliyunOSSAdapter = require('../adapters/AliyunOSSAdapter')
-const logger = require('../../utils/logger')
-const { STORAGE_TYPES, getStorageConfig } = require('../constants/StorageTypes')
+const AliyunOSSAdapter = require('../adapters/aliyun-oss-adapter')
+const { STORAGE_TYPES, getStorageConfig } = require('../../constants/StorageTypes')
 
 let adapterContainer = {
   [STORAGE_TYPES.LOCAL]: LocalStorageAdapter,
@@ -16,7 +15,6 @@ let adapterContainer = {
 
 class StorageAdapterFactory {
   static currentAdapter = null
-  static storageConfig = null
 
   /**
    * 创建或获取存储适配器实例（单例模式）
@@ -57,9 +55,7 @@ class StorageAdapterFactory {
       return StorageAdapterFactory.currentAdapter
     }
 
-    // 设置配置对象
     const storageConfig = getStorageConfig()
-    StorageAdapterFactory.storageConfig = storageConfig
     let Adapter = adapterContainer[storageConfig.storageType]
     let options = storageConfig[storageConfig.storageType]
 
@@ -69,14 +65,6 @@ class StorageAdapterFactory {
     StorageAdapterFactory.currentAdapter = adapter
 
     return adapter
-  }
-
-  /**
-   * 清空当前适配器实例（用于配置变更时强制重新初始化）
-   */
-  static clearAdapter() {
-    StorageAdapterFactory.currentAdapter = null
-    logger.info({ message: 'Storage adapter cleared, will be re-initialized on next access' })
   }
 }
 

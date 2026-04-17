@@ -12,7 +12,7 @@ const nodemailer = require('nodemailer')
 const { getRedisClient } = require('./redisClient')
 const jwt = require('jsonwebtoken')
 const CustomError = require('../errors/customError')
-const { validateEmail, validatePassword } = require('../utils/validators/index')
+const { validateEmail, validatePassword } = require('../utils/validators')
 const { ERROR_CODES } = require('../constants/messageCodes')
 
 const generateJWTToken = (userId) => {

@@ -103,6 +103,5 @@ function expandTermsWithSynonyms(seedTerms) {
 
 module.exports = {
   expandTermsWithSynonyms,
-  getReverseSynonymIndex,
   buildSynonymGroups
 }

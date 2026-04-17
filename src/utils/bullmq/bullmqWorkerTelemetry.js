@@ -1,7 +1,7 @@
 /*
  * BullMQ Worker 侧通用埋点：收敛 worker.on('failed') 中 willRetry / 日志级别 / details 结构，避免各 worker 复制样板。
  */
-const logger = require('./logger')
+const logger = require('../logger')
 
 /**
  * @param {import('bullmq').Worker} worker

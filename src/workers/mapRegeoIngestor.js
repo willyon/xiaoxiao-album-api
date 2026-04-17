@@ -1,6 +1,6 @@
 const { UnrecoverableError } = require('bullmq')
 const logger = require('../utils/logger')
-const { bullMqWillRetryAfterThisFailure } = require('../utils/queuePipelineLifecycle')
+const { bullMqWillRetryAfterThisFailure } = require('../utils/bullmq/queuePipelineLifecycle')
 const { getLocationFromCoordinates } = require('../services/geocodingService')
 const { selectMediaRowForMapRegeoJob, updateLocationInfo, updateMapRegeoStatus } = require('../services/mapRegeoService')
 

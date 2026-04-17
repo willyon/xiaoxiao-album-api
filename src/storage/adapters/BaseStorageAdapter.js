@@ -66,17 +66,6 @@ class BaseStorageAdapter {
   }
 
   /**
-   * 直接存储处理后的图片（性能优化版本）
-   * 本地存储：直接写入文件，OSS存储：转Buffer后上传
-   * @param {Object} pipeline - Sharp pipeline对象
-   * @param {string} key - 存储键名
-   * @returns {Promise<string>} 返回文件访问URL
-   */
-  async storeProcessedImage(_pipeline, _key) {
-    throw new Error(`storeProcessedImage method must be implemented in ${this.constructor.name}`)
-  }
-
-  /**
    * 获取文件数据
    * 本地存储：返回绝对文件路径，OSS存储：返回Buffer
    * @param {string} key - 存储键名
@@ -127,38 +116,7 @@ class BaseStorageAdapter {
     throw new Error(`getFileUrl method must be implemented in ${this.constructor.name}`)
   }
 
-  /**
-   * 获取带签名的临时访问URL（用于私有文件）
-   * 默认实现返回普通URL，云存储适配器可以覆盖此方法实现签名逻辑
-   * @param {string} key - 存储键名
-   * @param {number} expiresIn - 过期时间（秒）
-   * @returns {Promise<string>} 签名URL
-   */
-  async _getSignedUrl(key, _expiresIn = 3600) {
-    // 默认实现：对于不需要签名的存储（如本地存储），直接返回普通URL
-    // 子类（如OSS）可以覆盖此方法实现真正的签名逻辑
-    return await this.getFileUrl(key)
-  }
-
-  // ========== 批量操作 ==========
-
-  /**
-   * 批量上传文件
-   * @param {Array<{fileData: Buffer|string, key: string, options?: Object}>} files
-   * @returns {Promise<Array<string>>} 返回所有文件的URL数组
-   */
-  async storeFiles(files) {
-    const results = []
-    for (const file of files) {
-      try {
-        const url = await this.storeFile(file.fileData, file.key, file.options || {})
-        results.push({ success: true, key: file.key, url })
-      } catch (error) {
-        results.push({ success: false, key: file.key, error: error.message })
-      }
-    }
-    return results
-  }
+  // ========== 批量删除 ==========
 
   /**
    * 批量删除文件
@@ -176,46 +134,6 @@ class BaseStorageAdapter {
       }
     }
     return results
-  }
-
-  // ========== 目录操作 ==========
-
-  /**
-   * 确保目录存在（本地存储需要，云存储可能不需要）
-   * @param {string} dirPath - 目录路径
-   * @returns {Promise<void>}
-   */
-  async ensureDirectory(_dirPath) {
-    // 默认实现：什么都不做（云存储通常不需要创建目录）
-    return Promise.resolve()
-  }
-
-  /**
-   * 列出指定前缀的所有文件
-   * @param {string} prefix - 文件前缀
-   * @returns {Promise<Array<string>>} 文件键名数组
-   */
-  async listFiles(_prefix) {
-    throw new Error(`listFiles method must be implemented in ${this.constructor.name}`)
-  }
-
-  // ========== 工具方法 ==========
-
-  /**
-   * 从键名中提取文件名
-   * @param {string} key - 存储键名
-   * @returns {string} 文件名
-   */
-  extractFilename(key) {
-    return key.split('/').pop()
-  }
-
-  /**
-   * 获取适配器类型
-   * @returns {string} 适配器类型
-   */
-  getType() {
-    return this.type
   }
 }
 

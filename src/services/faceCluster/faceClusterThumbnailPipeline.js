@@ -86,15 +86,15 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
       const clusterFaces = getFaceEmbeddingsByIds(clusterFaceIds)
       if (clusterFaces.length === 0) continue
 
-      const imageIds = [...new Set(clusterFaces.map((f) => f.image_id))]
-      const imagesMap = getMediasSharpnessByIds(imageIds)
-      const mediaTypeByImageId = new Map()
-      for (const iid of imageIds) {
+      const mediaIds = [...new Set(clusterFaces.map((f) => f.image_id))]
+      const imagesMap = getMediasSharpnessByIds(mediaIds)
+      const mediaTypeByMediaId = new Map()
+      for (const iid of mediaIds) {
         const info = getMediaStorageInfo(iid)
-        mediaTypeByImageId.set(iid, info?.mediaType || 'image')
+        mediaTypeByMediaId.set(iid, info?.mediaType || 'image')
       }
 
-      const ranked = rankFacesForCover(clusterFaces, imagesMap, mediaTypeByImageId)
+      const ranked = rankFacesForCover(clusterFaces, imagesMap, mediaTypeByMediaId)
       if (ranked.length === 0) {
         logger.warn({
           message: `未找到最佳人脸: clusterId=${clusterId}`,
@@ -106,7 +106,7 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
       let bestFace = null
       let bbox = null
       for (const face of ranked) {
-        if (mediaTypeByImageId.get(face.image_id) === 'video') continue
+        if (mediaTypeByMediaId.get(face.image_id) === 'video') continue
         const normalizedBbox = normalizeBboxFromFace(face)
         if (normalizedBbox) {
           bestFace = face
@@ -116,7 +116,7 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
       }
 
       if (!bestFace) {
-        const repFace = ranked.find((f) => mediaTypeByImageId.get(f.image_id) !== 'video') || ranked[0]
+        const repFace = ranked.find((f) => mediaTypeByMediaId.get(f.image_id) !== 'video') || ranked[0]
         clearOtherDefaultCoverRepresentative(userId, clusterId, repFace.id)
         updateFaceClusterRepresentative(userId, clusterId, repFace.id)
         logger.info({
@@ -129,7 +129,7 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
       const imageInfo = getMediaStorageInfo(bestFace.image_id)
       if (!imageInfo) {
         logger.warn({
-          message: `图片不存在: imageId=${bestFace.image_id}`,
+          message: `图片不存在: mediaId=${bestFace.image_id}`,
           details: { userId, clusterId }
         })
         continue
@@ -151,7 +151,7 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
 
       if (!imageData) {
         logger.warn({
-          message: `无法获取图片数据: imageId=${bestFace.image_id}`,
+          message: `无法获取图片数据: mediaId=${bestFace.image_id}`,
           details: { userId, clusterId }
         })
         continue
@@ -160,7 +160,7 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
       if (!Buffer.isBuffer(imageData)) {
         logger.error({
           message: `图片数据格式错误: clusterId=${clusterId}`,
-          details: { userId, clusterId, imageId: bestFace.image_id }
+          details: { userId, clusterId, mediaId: bestFace.image_id }
         })
         continue
       }
@@ -177,7 +177,7 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
             status: error.response?.status,
             userId,
             clusterId,
-            imageId: bestFace.image_id
+            mediaId: bestFace.image_id
           }
         })
 
@@ -263,11 +263,11 @@ function normalizeBboxFromFace(face) {
 /**
  * 按封面策略排序人脸（前者更优），可选优先图片媒体。
  * @param {Array<any>} faces 人脸列表
- * @param {Map<number, any>} [imagesMap=new Map()] image_id -> 图片信息
- * @param {Map<number, string>|null} [mediaTypeByImageId=null] image_id -> mediaType
+ * @param {Map<number, any>} [imagesMap=new Map()] media id -> 图片信息
+ * @param {Map<number, string>|null} [mediaTypeByMediaId=null] media id -> mediaType
  * @returns {Array<any>} 已排序人脸列表
  */
-function rankFacesForCover(faces, imagesMap = new Map(), mediaTypeByImageId = null) {
+function rankFacesForCover(faces, imagesMap = new Map(), mediaTypeByMediaId = null) {
   if (!faces || faces.length === 0) {
     return []
   }
@@ -319,9 +319,9 @@ function rankFacesForCover(faces, imagesMap = new Map(), mediaTypeByImageId = nu
   })
 
   facesWithMetrics.sort((a, b) => {
-    if (mediaTypeByImageId) {
-      const aV = mediaTypeByImageId.get(a.image_id) === 'video' ? 1 : 0
-      const bV = mediaTypeByImageId.get(b.image_id) === 'video' ? 1 : 0
+    if (mediaTypeByMediaId) {
+      const aV = mediaTypeByMediaId.get(a.image_id) === 'video' ? 1 : 0
+      const bV = mediaTypeByMediaId.get(b.image_id) === 'video' ? 1 : 0
       if (aV !== bV) return aV - bV
     }
 
@@ -364,15 +364,15 @@ async function ensureDefaultCoverRepresentative(userId, clusterId) {
   const faces = getFaceEmbeddingsByIds(ids)
   if (faces.length === 0) return null
 
-  const imageIds = [...new Set(faces.map((f) => f.image_id))]
-  const imagesMap = getMediasSharpnessByIds(imageIds)
-  const mediaTypeByImageId = new Map()
-  for (const iid of imageIds) {
+  const mediaIds = [...new Set(faces.map((f) => f.image_id))]
+  const imagesMap = getMediasSharpnessByIds(mediaIds)
+  const mediaTypeByMediaId = new Map()
+  for (const iid of mediaIds) {
     const info = getMediaStorageInfo(iid)
-    mediaTypeByImageId.set(iid, info?.mediaType || 'image')
+    mediaTypeByMediaId.set(iid, info?.mediaType || 'image')
   }
 
-  const ranked = rankFacesForCover(faces, imagesMap, mediaTypeByImageId)
+  const ranked = rankFacesForCover(faces, imagesMap, mediaTypeByMediaId)
   if (ranked.length === 0) return null
 
   let pickId = null
@@ -510,7 +510,7 @@ async function generateThumbnailForFaceEmbedding(faceEmbeddingId, forceRegenerat
     const imageInfo = getMediaStorageInfo(faceEmbedding.image_id)
     if (!imageInfo) {
       logger.warn({
-        message: `图片不存在: imageId=${faceEmbedding.image_id}`,
+        message: `图片不存在: mediaId=${faceEmbedding.image_id}`,
         details: { faceEmbeddingId }
       })
       return null
@@ -519,7 +519,7 @@ async function generateThumbnailForFaceEmbedding(faceEmbeddingId, forceRegenerat
     if (imageInfo.mediaType && imageInfo.mediaType !== 'image') {
       logger.warn({
         message: '跳过非图片媒体的聚类封面缩略图生成',
-        details: { faceEmbeddingId, imageId: faceEmbedding.image_id, mediaType: imageInfo.mediaType }
+        details: { faceEmbeddingId, mediaId: faceEmbedding.image_id, mediaType: imageInfo.mediaType }
       })
       return null
     }
@@ -540,7 +540,7 @@ async function generateThumbnailForFaceEmbedding(faceEmbeddingId, forceRegenerat
 
     if (!imageData) {
       logger.warn({
-        message: `无法获取图片数据: imageId=${faceEmbedding.image_id}`,
+        message: `无法获取图片数据: mediaId=${faceEmbedding.image_id}`,
         details: { faceEmbeddingId }
       })
       return null

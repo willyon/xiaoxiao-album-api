@@ -256,7 +256,7 @@ function createTableMediaSearchFts() {
   // 不使用 content=：与触发器组合易触发 SQLite 限制。
   // 不在此使用 AFTER INSERT/UPDATE/DELETE 触发器写入 FTS：对 media_search 的 UPDATE 会触发
   // unsafe use of virtual table "media_search_fts"（better-sqlite3 常报 database disk image is malformed）。
-  // FTS 与 media_search 的同步在 mediaModel.syncMediaSearchFtsRow / rebuildMediaSearchDoc 中完成。
+  // FTS 与 media_search 的同步在 rebuildMediaSearchDoc 中完成。
   const sql = `
     CREATE VIRTUAL TABLE media_search_fts USING fts5(
       description_text,

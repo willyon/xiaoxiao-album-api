@@ -98,14 +98,6 @@ function dropChineseStopSeeds(seeds) {
   return out
 }
 
-/**
- * @param {string} residual
- * @returns {string[]} 扩展后的字面词表，供 passLexicalGate
- */
-function buildVisualEmbeddingGateLexicalTokens(residual) {
-  return buildVisualEmbeddingGateLexicalSpec(residual).tokens
-}
-
 function buildVisualEmbeddingGateLexicalSpec(residual) {
   const raw = String(residual || '').trim()
   if (!raw) {
@@ -140,7 +132,5 @@ function buildVisualEmbeddingGateLexicalSpec(residual) {
 }
 
 module.exports = {
-  buildVisualEmbeddingGateLexicalTokens,
-  buildVisualEmbeddingGateLexicalSpec,
-  splitCjkAndAlnumRuns
+  buildVisualEmbeddingGateLexicalSpec
 }

@@ -14,6 +14,8 @@ const { getRedisClient } = require('../services/redisClient')
 const { userSetKey } = require('../workers/userMediaHashset')
 const { updateProgress } = require('../services/mediaProcessingProgressService')
 const logger = require('../utils/logger')
+const asyncHandler = require('../utils/asyncHandler')
+const { parsePagination } = require('../utils/requestParams')
 const {
   getMediaDownloadInfo,
   selectMediaRowByHashForUser,
@@ -63,36 +65,28 @@ async function enqueueCloudCaptionRetryJob(userId, mediaInfo) {
 
 // 分页获取模糊图列表（is_blurry = 1），用于清理页模糊图 tab
 // GET /api/media/blurry?pageNo=1&pageSize=20
-async function handleGetBlurryMedias(req, res, next) {
-  try {
-    const { userId } = req?.user
-    const { pageNo, pageSize } = req.query
-    const result = await mediaService.getBlurryMedias({
-      userId,
-      pageNo,
-      pageSize
-    })
-    res.sendResponse({ data: result })
-  } catch (error) {
-    next(error)
-  }
+async function handleGetBlurryMedias(req, res) {
+  const { userId } = req?.user
+  const { pageNo, pageSize } = parsePagination(req.query, { pageNo: 1, pageSize: 20 })
+  const result = await mediaService.getBlurryMedias({
+    userId,
+    pageNo,
+    pageSize
+  })
+  res.sendResponse({ data: result })
 }
 
 // 分页获取相似图分组列表（清理页相似图 tab）
 // GET /api/media/similar?pageNo=1&pageSize=12
-async function handleGetSimilarGroups(req, res, next) {
-  try {
-    const { userId } = req?.user
-    const { pageNo, pageSize } = req.query
-    const data = await similarService.getSimilarGroups({
-      userId,
-      pageNo: Number(pageNo) || 1,
-      pageSize: Number(pageSize) || 12
-    })
-    res.sendResponse({ data })
-  } catch (error) {
-    next(error)
-  }
+async function handleGetSimilarGroups(req, res) {
+  const { userId } = req?.user
+  const { pageNo, pageSize } = parsePagination(req.query, { pageNo: 1, pageSize: 12 })
+  const data = await similarService.getSimilarGroups({
+    userId,
+    pageNo,
+    pageSize
+  })
+  res.sendResponse({ data })
 }
 
 /**
@@ -105,157 +99,139 @@ async function handleGetSimilarGroups(req, res, next) {
  * - 仅回收站有行：静默恢复后返回 exists:true（计 uploadedCount，不计「跳过」）
  * - 正常库内：秒传，计 existingFiles
  */
-async function handleCheckFileExists(req, res, next) {
-  try {
-    const { hash, sessionId } = req.body
-    const userId = req?.user?.userId
+async function handleCheckFileExists(req, res) {
+  const { hash, sessionId } = req.body
+  const userId = req?.user?.userId
 
-    if (!hash) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'error'
-      })
-    }
-
-    const redisClient = getRedisClient()
-    const setKey = userSetKey(userId)
-    const row = selectMediaRowByHashForUser({ userId, imageHash: hash })
-
-    if (!row) {
-      try {
-        await redisClient.srem(setKey, hash)
-      } catch {
-        /* ignore */
-      }
-      return res.sendResponse({
-        data: { exists: false },
-        messageCode: SUCCESS_CODES.REQUEST_COMPLETED
-      })
-    }
-
-    if (row.deleted_at != null) {
-      await trashService.restoreMedias({ userId, imageIds: [row.id] })
-      try {
-        await redisClient.sadd(setKey, hash)
-      } catch {
-        /* ignore */
-      }
-      if (sessionId) {
-        // 与正常入库后走 meta 流水线一致：基础处理进度 = ingestDoneCount/uploadedCount
-        await updateProgress({ sessionId, status: 'uploadedCount' })
-        await updateProgress({ sessionId, status: 'ingestDoneCount' })
-      }
-      logger.info({
-        message: 'checkFileExists: restored from trash on re-upload',
-        details: { userId, imageHash: hash, mediaId: row.id }
-      })
-      return res.sendResponse({
-        data: { exists: true, restoredFromTrash: true },
-        messageCode: SUCCESS_CODES.REQUEST_COMPLETED
-      })
-    }
-
-    logger.info({
-      message: 'File exists check: found active media',
-      details: { userId, imageHash: hash }
+  if (!hash) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: 'error'
     })
+  }
 
-    if (sessionId) {
-      await updateProgress({
-        sessionId,
-        status: 'existingFiles'
-      })
+  const redisClient = getRedisClient()
+  const setKey = userSetKey(userId)
+  const row = selectMediaRowByHashForUser({ userId, imageHash: hash })
+
+  if (!row) {
+    try {
+      await redisClient.srem(setKey, hash)
+    } catch {
+      /* ignore */
     }
+    return res.sendResponse({
+      data: { exists: false },
+      messageCode: SUCCESS_CODES.REQUEST_COMPLETED
+    })
+  }
+
+  if (row.deleted_at != null) {
+    await trashService.restoreMedias({ userId, mediaIds: [row.id] })
     try {
       await redisClient.sadd(setKey, hash)
     } catch {
       /* ignore */
     }
-
+    if (sessionId) {
+      await updateProgress({ sessionId, status: 'uploadedCount' })
+      await updateProgress({ sessionId, status: 'ingestDoneCount' })
+    }
+    logger.info({
+      message: 'checkFileExists: restored from trash on re-upload',
+      details: { userId, imageHash: hash, mediaId: row.id }
+    })
     return res.sendResponse({
-      data: { exists: true },
+      data: { exists: true, restoredFromTrash: true },
       messageCode: SUCCESS_CODES.REQUEST_COMPLETED
     })
-  } catch (error) {
-    next(error)
   }
+
+  logger.info({
+    message: 'File exists check: found active media',
+    details: { userId, imageHash: hash }
+  })
+
+  if (sessionId) {
+    await updateProgress({
+      sessionId,
+      status: 'existingFiles'
+    })
+  }
+  try {
+    await redisClient.sadd(setKey, hash)
+  } catch {
+    /* ignore */
+  }
+
+  return res.sendResponse({
+    data: { exists: true },
+    messageCode: SUCCESS_CODES.REQUEST_COMPLETED
+  })
 }
 
 // 部分更新图片信息（仅用于 favorite 字段）
-async function handlePatchMedia(req, res, next) {
-  try {
-    const { userId } = req?.user
-    const { mediaId } = req.params
-    const patchData = req.body // { favorite: true }
+async function handlePatchMedia(req, res) {
+  const { userId } = req?.user
+  const { mediaId } = req.params
+  const patchData = req.body // { favorite: true }
 
-    if (!mediaId) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'error'
-      })
-    }
-
-    const result = await mediaService.patchMedia({ userId, imageId: parseInt(mediaId), patchData })
-
-    res.sendResponse({ data: result })
-  } catch (error) {
-    next(error)
+  if (!mediaId) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: 'error'
+    })
   }
+
+  const result = await mediaService.patchMedia({ userId, mediaId: parseInt(mediaId), patchData })
+
+  res.sendResponse({ data: result })
 }
 
 // 批量删除图片（软删除，移至回收站）
-async function handleDeleteMedias(req, res, next) {
-  try {
-    const { userId } = req?.user
-    const { mediaIds, groupId } = req.body || {}
+async function handleDeleteMedias(req, res) {
+  const { userId } = req?.user
+  const { mediaIds, groupId } = req.body || {}
 
-    if (!mediaIds || !Array.isArray(mediaIds) || mediaIds.length === 0) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'warning'
-      })
-    }
+  if (!mediaIds || !Array.isArray(mediaIds) || mediaIds.length === 0) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: 'warning'
+    })
+  }
 
-    // 相似图删除：提供 groupId 时走 similarService（需刷新分组统计）；其余（含模糊图、首页等）走 imageService 通用删除
-    let result
-    if (groupId) {
+  let result
+  if (groupId) {
       result = await similarService.deleteMedias({
         userId,
         groupId,
-        imageIds: mediaIds
+        mediaIds
       })
     } else {
       result = await mediaService.deleteMedias({
         userId,
-        imageIds: mediaIds
+        mediaIds
       })
-    }
-
-    res.sendResponse({ data: result })
-  } catch (error) {
-    next(error)
   }
+
+  res.sendResponse({ data: result })
 }
 
 /**
  * 各阶段处理失败数量汇总
  * GET /api/media/processing-failures/summary
  */
-async function handleGetProcessingFailureSummary(req, res, next) {
-  try {
-    const userId = req?.user?.userId
-    const cloudRow = getRowByKeyType(userId, KEY_TYPE_CLOUD_MODEL)
-    const cloudModelReady = Number(cloudRow?.enabled) === 1 && Boolean(cloudRow?.api_key && String(cloudRow.api_key).trim() !== '')
-    const data = countFailedMediasByStage(userId, { includeCloudFailures: cloudModelReady })
-    res.sendResponse({
-      data
-    })
-  } catch (error) {
-    next(error)
-  }
+async function handleGetProcessingFailureSummary(req, res) {
+  const userId = req?.user?.userId
+  const cloudRow = getRowByKeyType(userId, KEY_TYPE_CLOUD_MODEL)
+  const cloudModelReady = Number(cloudRow?.enabled) === 1 && Boolean(cloudRow?.api_key && String(cloudRow.api_key).trim() !== '')
+  const data = countFailedMediasByStage(userId, { includeCloudFailures: cloudModelReady })
+  res.sendResponse({
+    data
+  })
 }
 
 /**
@@ -263,9 +239,8 @@ async function handleGetProcessingFailureSummary(req, res, next) {
  * POST /api/media/processing-failures/retry?stage=primary
  * body: { mediaIds?: number[] }
  */
-async function handleRetryProcessingFailures(req, res, next) {
-  try {
-    const userId = req?.user?.userId
+async function handleRetryProcessingFailures(req, res) {
+  const userId = req?.user?.userId
     const stage = req.query.stage || null // null / 'all' → 所有阶段
     const bodyMediaIds = Array.isArray(req.body?.mediaIds) ? req.body.mediaIds : null
 
@@ -345,7 +320,7 @@ async function handleRetryProcessingFailures(req, res, next) {
       const mediaId = media.mediaId
 
       if (media.stage === 'primary') {
-        const mediaInfo = await getMediaDownloadInfo({ userId, imageId: mediaId })
+        const mediaInfo = await getMediaDownloadInfo({ userId, mediaId })
         if (!mediaInfo) continue
 
         // 带时间戳：与主链路 analysis: 前缀不同；失败任务在 removeOnFail 下仍占 jobId 时仍可再次重试
@@ -353,7 +328,7 @@ async function handleRetryProcessingFailures(req, res, next) {
         await mediaAnalysisQueue.add(
           'media-analysis',
           {
-            imageId: mediaInfo.id,
+            mediaId: mediaInfo.id,
             userId,
             highResStorageKey: mediaInfo.highResStorageKey || null,
             originalStorageKey: mediaInfo.originalStorageKey || null,
@@ -394,7 +369,7 @@ async function handleRetryProcessingFailures(req, res, next) {
       const batch = cloudFailedRows.slice(i, i + CLOUD_RETRY_BATCH_SIZE)
       for (const row of batch) {
         const mediaId = row.mediaId
-        const mediaInfo = await getMediaDownloadInfo({ userId, imageId: mediaId })
+        const mediaInfo = await getMediaDownloadInfo({ userId, mediaId })
         if (!mediaInfo) continue
 
         const enqueued = await enqueueCloudCaptionRetryJob(userId, mediaInfo)
@@ -405,25 +380,22 @@ async function handleRetryProcessingFailures(req, res, next) {
       }
     }
 
-    res.sendResponse({
-      data: {
-        stage: stage || 'all',
-        retriedCount,
-        skippedCount: totalTargets - retriedCount,
-        mediaIds: retriedMediaIds
-      }
-    })
-  } catch (error) {
-    next(error)
-  }
+  res.sendResponse({
+    data: {
+      stage: stage || 'all',
+      retriedCount,
+      skippedCount: totalTargets - retriedCount,
+      mediaIds: retriedMediaIds
+    }
+  })
 }
 
 module.exports = {
-  handleGetBlurryMedias,
-  handleGetSimilarGroups,
-  handleCheckFileExists,
-  handlePatchMedia,
-  handleDeleteMedias,
-  handleGetProcessingFailureSummary,
-  handleRetryProcessingFailures
+  handleGetBlurryMedias: asyncHandler(handleGetBlurryMedias),
+  handleGetSimilarGroups: asyncHandler(handleGetSimilarGroups),
+  handleCheckFileExists: asyncHandler(handleCheckFileExists),
+  handlePatchMedia: asyncHandler(handlePatchMedia),
+  handleDeleteMedias: asyncHandler(handleDeleteMedias),
+  handleGetProcessingFailureSummary: asyncHandler(handleGetProcessingFailureSummary),
+  handleRetryProcessingFailures: asyncHandler(handleRetryProcessingFailures)
 }

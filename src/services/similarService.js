@@ -132,8 +132,8 @@ async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
 
 // 删除图片（软删除，移至回收站）
 // 仅相似图删除时调用，需传入 groupId，用于刷新该分组统计；模糊图/首页等删除直接走 imageService，不经过本方法
-async function deleteMedias({ userId, groupId, imageIds }) {
-  const normalizedIds = _normalizeIdList(imageIds)
+async function deleteMedias({ userId, groupId, mediaIds }) {
+  const normalizedIds = _normalizeIdList(mediaIds)
 
   if (normalizedIds.length === 0) {
     throw new CustomError({
@@ -161,9 +161,9 @@ async function deleteMedias({ userId, groupId, imageIds }) {
     })
   }
 
-  await mediaService.deleteMedias({ userId, imageIds: normalizedIds })
+  await mediaService.deleteMedias({ userId, mediaIds: normalizedIds })
 
-  cleanupModel.deleteGroupMembersByImageIds(normalizedIds)
+  cleanupModel.deleteGroupMembersByMediaIds(normalizedIds)
   cleanupModel.refreshGroupsStatsForMedias(normalizedIds)
 
   logger.info({
@@ -171,7 +171,7 @@ async function deleteMedias({ userId, groupId, imageIds }) {
     details: {
       userId,
       groupId: group.id,
-      imageIds: normalizedIds
+      mediaIds: normalizedIds
     }
   })
 

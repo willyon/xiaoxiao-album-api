@@ -6,11 +6,9 @@
  * @Description: File description
  */
 const { setCookie } = require('../utils/cookieHelper')
-// 优化成自动导入 这样后面加文件就不需要手动添加了
 const getI18nMessage = require('../i18n/getI18nMessage')
 const { SUCCESS_CODES } = require('../constants/messageCodes')
 
-// 修改为导出中间件函数
 const responseHandler = (req, res, next) => {
   req.userLanguage = req.get('X-Accept-Language') || req.headers['x-accept-language'] || 'zh'
 
@@ -39,7 +37,6 @@ const responseHandler = (req, res, next) => {
   next()
 }
 
-// 导出两个函数
 module.exports = {
   responseHandler
 }

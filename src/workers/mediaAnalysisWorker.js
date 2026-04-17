@@ -4,7 +4,7 @@
 const { Worker } = require('bullmq')
 const IORedis = require('ioredis')
 const logger = require('../utils/logger')
-const { attachStandardFailedLogging } = require('../utils/bullmqWorkerTelemetry')
+const { attachStandardFailedLogging } = require('../utils/bullmq/bullmqWorkerTelemetry')
 const initGracefulShutdown = require('../utils/gracefulShutdown')
 const { processMediaAnalysis } = require('./mediaAnalysisIngestor')
 
@@ -46,5 +46,3 @@ worker.on('stalled', (jobId) => {
 initGracefulShutdown({
   extraClosers: [async () => worker.close(), async () => connection.quit()]
 })
-
-module.exports = worker

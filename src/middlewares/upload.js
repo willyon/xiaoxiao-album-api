@@ -32,7 +32,7 @@ function generateFilename(req, file) {
 // 通过存储服务获取Multer存储配置
 const storage = storageService.storage.getMulterStorage(generateFilename)
 
-const fileFilter = (req, file, cb) => {
+const fileFilter = (_req, file, cb) => {
   // 支持图片和视频（HEIC 等格式通过 isMediaFile 内部 isImageFile 支持）
   if (isMediaFile(file)) {
     cb(null, true)

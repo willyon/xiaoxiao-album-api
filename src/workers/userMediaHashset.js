@@ -103,4 +103,4 @@ async function removeHashesFromUserSet(userId, hashes) {
   await redis.srem(userSetKey(userId), ...unique)
 }
 
-module.exports = { ensureUserSetReady, userSetKey, readyKeyOf, lockKeyOf, removeHashesFromUserSet }
+module.exports = { ensureUserSetReady, userSetKey, removeHashesFromUserSet }

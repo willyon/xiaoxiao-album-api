@@ -4,6 +4,7 @@ const { ERROR_CODES } = require('../constants/messageCodes')
 const { getRowByKeyType, updateConfigRow, KEY_TYPE_CLOUD_MODEL, KEY_TYPE_AMAP } = require('../services/appSettingsService')
 const { getCloudSkippedCount, enqueueCloudCaptionRebuildAll } = require('../services/cloudCaptionService')
 const { getMapRegeoSkippedCount, enqueueMapRegeoRebuildAll } = require('../services/mapRegeoService')
+const asyncHandler = require('../utils/asyncHandler')
 
 /** 天安门附近 GCJ-02，用于高德测连 */
 const AMAP_TEST_LNG = 116.397428
@@ -24,34 +25,26 @@ function toSettingsPayload(row) {
 
 /** 通用：读取 app_settings 中某一 KEY_TYPE 的开关与是否已配 Key */
 function createGetSettingsHandler(keyType) {
-  return async function getSettings(req, res, next) {
-    try {
-      const userId = req.user?.userId
-      const row = getRowByKeyType(userId, keyType)
-      res.sendResponse({ data: toSettingsPayload(row) })
-    } catch (error) {
-      next(error)
-    }
-  }
+  return asyncHandler(async function getSettings(req, res) {
+    const userId = req.user?.userId
+    const row = getRowByKeyType(userId, keyType)
+    res.sendResponse({ data: toSettingsPayload(row) })
+  })
 }
 
 /** 通用：更新开关 + 可选 apiKey，并回读同一 keyType */
 function createUpdateSettingsHandler(keyType) {
-  return async function updateSettings(req, res, next) {
-    try {
-      const userId = req.user?.userId
-      const { enabled, apiKey } = req.body || {}
-      const patch = { enabled: parseBool(enabled) }
-      if (typeof apiKey === 'string' && apiKey.trim()) {
-        patch.api_key = apiKey.trim()
-      }
-      updateConfigRow(userId, keyType, patch)
-      const row = getRowByKeyType(userId, keyType)
-      res.sendResponse({ data: toSettingsPayload(row) })
-    } catch (error) {
-      next(error)
+  return asyncHandler(async function updateSettings(req, res) {
+    const userId = req.user?.userId
+    const { enabled, apiKey } = req.body || {}
+    const patch = { enabled: parseBool(enabled) }
+    if (typeof apiKey === 'string' && apiKey.trim()) {
+      patch.api_key = apiKey.trim()
     }
-  }
+    updateConfigRow(userId, keyType, patch)
+    const row = getRowByKeyType(userId, keyType)
+    res.sendResponse({ data: toSettingsPayload(row) })
+  })
 }
 
 const getCloudModelSettings = createGetSettingsHandler(KEY_TYPE_CLOUD_MODEL)
@@ -96,29 +89,21 @@ async function testCloudModelConnection(req, res, next) {
   }
 }
 
-async function getCloudSkippedCountHandler(req, res, next) {
-  try {
-    const userId = req.user?.userId
-    res.sendResponse({
-      data: getCloudSkippedCount(userId)
-    })
-  } catch (error) {
-    next(error)
-  }
+async function getCloudSkippedCountHandler(req, res) {
+  const userId = req.user?.userId
+  res.sendResponse({
+    data: getCloudSkippedCount(userId)
+  })
 }
 
-async function rebuildCloudCaption(req, res, next) {
-  try {
-    const limitPerBatch = Number(process.env.CLOUD_CAPTION_BATCH_LIMIT || 500)
-    const userId = req.user?.userId
-    const totalEnqueued = await enqueueCloudCaptionRebuildAll(limitPerBatch, userId)
+async function rebuildCloudCaption(req, res) {
+  const limitPerBatch = Number(process.env.CLOUD_CAPTION_BATCH_LIMIT || 500)
+  const userId = req.user?.userId
+  const totalEnqueued = await enqueueCloudCaptionRebuildAll(limitPerBatch, userId)
 
-    res.sendResponse({
-      data: { enqueued: totalEnqueued }
-    })
-  } catch (error) {
-    next(error)
-  }
+  res.sendResponse({
+    data: { enqueued: totalEnqueued }
+  })
 }
 
 async function testAmapConnection(req, res, next) {
@@ -154,51 +139,43 @@ async function testAmapConnection(req, res, next) {
   }
 }
 
-async function getMapRegeoSkippedCountHandler(req, res, next) {
-  try {
-    const userId = req.user?.userId
-    res.sendResponse({
-      data: getMapRegeoSkippedCount(userId)
-    })
-  } catch (error) {
-    next(error)
-  }
+async function getMapRegeoSkippedCountHandler(req, res) {
+  const userId = req.user?.userId
+  res.sendResponse({
+    data: getMapRegeoSkippedCount(userId)
+  })
 }
 
-async function rebuildMapRegeo(req, res, next) {
-  try {
-    const userId = req.user?.userId
-    const row = getRowByKeyType(userId, KEY_TYPE_AMAP)
-    const amapReady = Number(row?.enabled) === 1 && Boolean(row?.api_key && String(row.api_key).trim() !== '')
-    if (!amapReady) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.UNSUPPORTED_OPERATION,
-        messageType: 'error',
-        message: '高德逆地理未启用或未配置 Web 服务 Key，无法补跑。'
-      })
-    }
-
-    const limitPerBatch = Number(process.env.MAP_REGEO_BATCH_LIMIT || 500)
-    const totalEnqueued = await enqueueMapRegeoRebuildAll(limitPerBatch, userId)
-
-    res.sendResponse({
-      data: { enqueued: totalEnqueued }
+async function rebuildMapRegeo(req, res) {
+  const userId = req.user?.userId
+  const row = getRowByKeyType(userId, KEY_TYPE_AMAP)
+  const amapReady = Number(row?.enabled) === 1 && Boolean(row?.api_key && String(row.api_key).trim() !== '')
+  if (!amapReady) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.UNSUPPORTED_OPERATION,
+      messageType: 'error',
+      message: '高德逆地理未启用或未配置 Web 服务 Key，无法补跑。'
     })
-  } catch (error) {
-    next(error)
   }
+
+  const limitPerBatch = Number(process.env.MAP_REGEO_BATCH_LIMIT || 500)
+  const totalEnqueued = await enqueueMapRegeoRebuildAll(limitPerBatch, userId)
+
+  res.sendResponse({
+    data: { enqueued: totalEnqueued }
+  })
 }
 
 module.exports = {
   getCloudModelSettings,
   updateCloudModelSettings,
   testCloudModelConnection,
-  getCloudSkippedCountHandler,
-  rebuildCloudCaption,
+  getCloudSkippedCountHandler: asyncHandler(getCloudSkippedCountHandler),
+  rebuildCloudCaption: asyncHandler(rebuildCloudCaption),
   getAmapSettings,
   updateAmapSettings,
   testAmapConnection,
-  getMapRegeoSkippedCountHandler,
-  rebuildMapRegeo
+  getMapRegeoSkippedCountHandler: asyncHandler(getMapRegeoSkippedCountHandler),
+  rebuildMapRegeo: asyncHandler(rebuildMapRegeo)
 }

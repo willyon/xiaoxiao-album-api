@@ -323,19 +323,10 @@ function getMimeTypeByMagicBytes(input) {
 }
 
 module.exports = {
-  isImageFile,
-  isVideoFile,
   isMediaFile,
   getMediaTypeFromFile,
-  getStandardMimeType,
   getVideoMimeTypeFromFileName,
   getExtensionFromMimeType,
-  detectImageFormatFromBuffer,
   getMimeTypeByMagicBytes,
-  IMAGE_FORMAT_MAP,
-  SUPPORTED_IMAGE_EXTENSIONS,
-  SUPPORTED_IMAGE_MIME_TYPES,
-  VIDEO_FORMAT_MAP,
-  SUPPORTED_VIDEO_EXTENSIONS,
-  SUPPORTED_VIDEO_MIME_TYPES
+  SUPPORTED_IMAGE_MIME_TYPES
 }

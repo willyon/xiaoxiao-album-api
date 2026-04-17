@@ -225,95 +225,6 @@ async function getBlurryMedias({ userId, pageNo = 1, pageSize = 20 }) {
   return { list, total }
 }
 
-// 分页获取用户某年份图片
-// albumId: 对于时间相册，实际上是 year_key (如 "2024")
-// clusterId: 可选，用于查询特定人物的某年份照片
-async function getMediasByYear({ pageNo, pageSize, albumId, userId, clusterId = null }) {
-  try {
-    const result = await mediaModel.selectMediasByYear({
-      pageNo,
-      pageSize,
-      albumId,
-      userId,
-      clusterId
-    })
-
-    // 添加完整URL（isFavorite字段已从数据库直接返回）
-    result.data = await addFullUrlToMedia(result.data)
-
-    return result
-  } catch (error) {
-    logger.error({
-      message: '分页获取用户某年份图片失败',
-      details: { pageNo, pageSize, albumId, userId, clusterId, error: error.message }
-    })
-    throw new CustomError(ERROR_CODES.INTERNAL_SERVER_ERROR, '获取用户图片失败')
-  }
-}
-
-// 分页获取用户某月份图片
-// albumId: 对于时间相册，实际上是 month_key (如 "2024-01")
-// clusterId: 可选，用于查询特定人物的某月份照片
-async function getMediasByMonth({ pageNo, pageSize, albumId, userId, clusterId = null }) {
-  try {
-    const result = await mediaModel.selectMediasByMonth({
-      pageNo,
-      pageSize,
-      albumId,
-      userId,
-      clusterId
-    })
-
-    // 添加完整URL（isFavorite字段已从数据库直接返回）
-    result.data = await addFullUrlToMedia(result.data)
-
-    return result
-  } catch (error) {
-    logger.error({
-      message: '分页获取用户某月份图片失败',
-      details: { pageNo, pageSize, albumId, userId, clusterId, error: error.message }
-    })
-    throw new CustomError(ERROR_CODES.INTERNAL_SERVER_ERROR, '获取用户图片失败')
-  }
-}
-
-// 分页获取用户某日期图片
-// albumId: 对于时间相册，实际上是 date_key (如 "2024-01-15")
-async function getMediasByDate({ pageNo, pageSize, albumId, userId }) {
-  try {
-    const result = await mediaModel.selectMediasByDate({ pageNo, pageSize, albumId, userId })
-
-    // 添加完整URL（isFavorite字段已从数据库直接返回）
-    result.data = await addFullUrlToMedia(result.data)
-
-    return result
-  } catch (error) {
-    logger.error({
-      message: '分页获取用户某日期图片失败',
-      details: { pageNo, pageSize, albumId, userId, error: error.message }
-    })
-    throw new CustomError(ERROR_CODES.INTERNAL_SERVER_ERROR, '获取用户图片失败')
-  }
-}
-
-// 分页获取用户某地点图片
-// albumId: 城市名称或 'unknown'
-async function getMediasByCity({ pageNo, pageSize, albumId, userId }) {
-  try {
-    const result = await mediaModel.selectMediasByCity({ pageNo, pageSize, albumId, userId })
-
-    result.data = await addFullUrlToMedia(result.data)
-
-    return result
-  } catch (error) {
-    logger.error({
-      message: '分页获取用户某地点图片失败',
-      details: { pageNo, pageSize, albumId, userId, error: error.message }
-    })
-    throw new CustomError(ERROR_CODES.INTERNAL_SERVER_ERROR, '获取用户图片失败')
-  }
-}
-
 // 按年份获取分组信息
 async function getGroupsByYear({ userId, pageNo = 1, pageSize = 10, withFullUrls = true }) {
   // 参数校验和默认值保护
@@ -423,12 +334,12 @@ async function getGroupsByDate({ userId, pageNo = 1, pageSize = 10, withFullUrls
 }
 
 // 部分更新图片信息（仅用于 favorite 字段，更新 images.is_favorite）
-async function patchMedia({ userId, imageId, patchData }) {
+async function patchMedia({ userId, mediaId, patchData }) {
   if (patchData.favorite !== undefined || patchData.isFavorite !== undefined) {
     const isFavorite = patchData.favorite !== undefined ? patchData.favorite : patchData.isFavorite
     return await favoriteService.toggleFavoriteMedia({
       userId,
-      imageId,
+      mediaId,
       isFavorite
     })
   }
@@ -443,9 +354,9 @@ async function patchMedia({ userId, imageId, patchData }) {
 
 // 删除图片（软删除，移至回收站）
 // 这是核心的删除方法，包含通用的删除逻辑
-async function deleteMedias({ userId, imageIds }) {
+async function deleteMedias({ userId, mediaIds }) {
   // 规范化 ID 列表
-  const normalizedIds = Array.isArray(imageIds) ? imageIds.map((id) => parseInt(id)).filter((id) => !isNaN(id)) : []
+  const normalizedIds = Array.isArray(mediaIds) ? mediaIds.map((id) => parseInt(id)).filter((id) => !isNaN(id)) : []
 
   if (normalizedIds.length === 0) {
     throw new CustomError({
@@ -496,7 +407,7 @@ async function deleteMedias({ userId, imageIds }) {
     } catch (error) {
       logger.warn({
         message: '软删除后同步搜索索引失败',
-        details: { imageId: id, error: error.message }
+        details: { mediaId: id, error: error.message }
       })
     }
   })
@@ -508,7 +419,7 @@ async function deleteMedias({ userId, imageIds }) {
     message: 'image.delete.completed',
     details: {
       userId,
-      imageIds: normalizedIds,
+      mediaIds: normalizedIds,
       timestamp: now
     }
   })
@@ -521,8 +432,8 @@ async function deleteMedias({ userId, imageIds }) {
 /**
  * 获取单张图片的下载信息
  */
-async function getMediaDownloadInfo({ userId, imageId }) {
-  const image = mediaModel.getMediaDownloadInfo({ userId, imageId })
+async function getMediaDownloadInfo({ userId, mediaId }) {
+  const image = mediaModel.getMediaDownloadInfo({ userId, mediaId })
   if (!image) {
     return null
   }
@@ -532,8 +443,8 @@ async function getMediaDownloadInfo({ userId, imageId }) {
 /**
  * 批量获取图片的下载信息
  */
-async function getMediasDownloadInfo({ userId, imageIds }) {
-  const images = mediaModel.getMediasDownloadInfo({ userId, imageIds })
+async function getMediasDownloadInfo({ userId, mediaIds }) {
+  const images = mediaModel.getMediasDownloadInfo({ userId, mediaIds })
   return images
 }
 
@@ -551,10 +462,6 @@ module.exports = {
 
   // ========== 媒体查询服务函数 ==========
   getBlurryMedias,
-  getMediasByYear,
-  getMediasByMonth,
-  getMediasByDate,
-  getMediasByCity,
   getGroupsByYear,
   getGroupsByMonth,
   getGroupsByDate,

@@ -85,34 +85,6 @@ class LocalStorageAdapter extends BaseStorageAdapter {
   // ========== 基础文件操作实现 ==========
 
   /**
-   * 直接将Sharp pipeline写入文件（性能优化版本）
-   * @param {Object} pipeline - Sharp pipeline对象
-   * @param {string} targetPath - 目标文件路径
-   * @returns {Promise<string>} 返回文件访问URL
-   */
-  async storeProcessedImage(pipeline, targetPath) {
-    try {
-      const fullPath = this.getFullPath(targetPath)
-
-      // 确保目标目录存在
-      await fsExtra.ensureDir(path.dirname(fullPath))
-
-      // 直接写入文件，避免Buffer中转
-      await pipeline.toFile(fullPath)
-
-      // 上传成功，返回存储路径（不生成URL）
-      return targetPath
-    } catch (error) {
-      logger.error(`本地存储直接写入失败: ${error.message}`, {
-        targetPath,
-        fullPath: this.getFullPath(targetPath),
-        error: error.stack
-      })
-      throw error
-    }
-  }
-
-  /**
    * 获取文件数据（本地存储返回绝对路径）
    * @param {string} targetPath - 目标文件路径
    * @returns {Promise<string>} 绝对文件路径
@@ -307,108 +279,7 @@ class LocalStorageAdapter extends BaseStorageAdapter {
     return `${this.baseUrl}/${fullPath}`
   }
 
-  // ========== 目录操作实现 ==========
-
-  /**
-   * 确保本地目录存在
-   * @param {string} dirPath - 目录路径（相对于baseDir）
-   * @returns {Promise<void>}
-   */
-  async ensureDirectory(dirPath) {
-    try {
-      const fullDirPath = this.getFullPath(dirPath)
-      await fsExtra.ensureDir(fullDirPath)
-    } catch (error) {
-      logger.error({
-        message: 'Local storage ensure directory failed',
-        details: { dirPath, error: error.message }
-      })
-      throw error
-    }
-  }
-
-  /**
-   * 列出本地指定前缀的所有文件
-   * @param {string} prefix - 文件前缀
-   * @returns {Promise<Array<string>>} 文件键名数组
-   */
-  async listFiles(prefix) {
-    try {
-      const prefixPath = this.getFullPath(prefix)
-      const exists = await fsExtra.pathExists(prefixPath)
-
-      if (!exists) {
-        return []
-      }
-
-      const stat = await fsExtra.stat(prefixPath)
-      if (stat.isFile()) {
-        return [prefix]
-      }
-
-      // 如果是目录，递归读取所有文件
-      const files = []
-      const items = await fsExtra.readdir(prefixPath)
-
-      for (const item of items) {
-        const itemPath = path.join(prefixPath, item)
-        const itemStat = await fsExtra.stat(itemPath)
-        const itemKey = path.join(prefix, item)
-
-        if (itemStat.isFile()) {
-          files.push(itemKey)
-        } else if (itemStat.isDirectory()) {
-          const subFiles = await this.listFiles(itemKey)
-          files.push(...subFiles)
-        }
-      }
-
-      return files
-    } catch (error) {
-      logger.error({
-        message: 'Local storage list files failed',
-        details: { prefix, error: error.message }
-      })
-      throw error
-    }
-  }
-
-  // ========== 批量操作优化 ==========
-
-  /**
-   * 批量上传文件（本地存储优化版本）
-   * @param {Array<{fileData: Buffer|string, key: string, options?: Object}>} files
-   * @returns {Promise<Array<{success: boolean, key: string, url?: string, error?: string}>>}
-   */
-  async storeFiles(files) {
-    const results = []
-
-    // 并行处理提高效率
-    const promises = files.map(async (file) => {
-      try {
-        const url = await this.storeFile(file.fileData, file.key, file.options || {})
-        return { success: true, key: file.key, url }
-      } catch (error) {
-        return { success: false, key: file.key, error: error.message }
-      }
-    })
-
-    const settled = await Promise.allSettled(promises)
-
-    settled.forEach((result) => {
-      if (result.status === 'fulfilled') {
-        results.push(result.value)
-      } else {
-        results.push({
-          success: false,
-          key: 'unknown',
-          error: result.reason?.message || 'Unknown error'
-        })
-      }
-    })
-
-    return results
-  }
+  // ========== 批量删除 ==========
 
   /**
    * 批量删除文件（本地存储优化版本）
@@ -444,8 +315,6 @@ class LocalStorageAdapter extends BaseStorageAdapter {
 
     return results
   }
-
-  // ========== 元数据提取 ==========
 }
 
 module.exports = LocalStorageAdapter

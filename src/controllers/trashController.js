@@ -5,152 +5,82 @@
  */
 
 const trashService = require('../services/trashService')
-const CustomError = require('../errors/customError')
-const { ERROR_CODES } = require('../constants/messageCodes')
+const asyncHandler = require('../utils/asyncHandler')
+const { requireUserId, requireNonEmptyMediaIds, parseBoundedPagination } = require('../utils/requestParams')
 
 /**
- * 分页获取已删除图片列表
+ * 分页获取已删除媒体列表
  * GET /api/trash?pageNo=1&pageSize=20
  */
-async function handleGetDeletedMedias(req, res, next) {
-  try {
-    const { userId } = req?.user
-    if (!userId) {
-      throw new CustomError({
-        httpStatus: 401,
-        messageCode: ERROR_CODES.UNAUTHORIZED,
-        messageType: 'error'
-      })
+async function handleGetDeletedMedias(req, res) {
+  const userId = requireUserId(req)
+  const { pageNo, pageSize } = parseBoundedPagination(req.query, { pageNo: 1, pageSize: 20 }, { maxPageSize: 100 })
+  const mediaType = req.query.mediaType || 'all'
+
+  const result = await trashService.getDeletedMedias({
+    userId,
+    pageNo,
+    pageSize,
+    mediaType
+  })
+
+  res.sendResponse({
+    data: {
+      list: result.list,
+      total: result.total
     }
-
-    const pageNo = Number(req.query.pageNo) || 1
-    const pageSize = Number(req.query.pageSize) || 20
-    const mediaType = req.query.mediaType || 'all'
-
-    if (pageNo < 1 || pageSize < 1 || pageSize > 100) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'warning'
-      })
-    }
-
-    const result = await trashService.getDeletedMedias({
-      userId,
-      pageNo,
-      pageSize,
-      mediaType
-    })
-
-    res.sendResponse({
-      data: {
-        list: result.list,
-        total: result.total
-      }
-    })
-  } catch (error) {
-    next(error)
-  }
+  })
 }
 
 /**
- * 恢复图片
+ * 恢复媒体
  * POST /images/trash/restore
- * Body: { imageIds: [1, 2, 3] }
+ * Body: { mediaIds: number[] }
  */
-async function handleRestoreMedias(req, res, next) {
-  try {
-    const { userId } = req?.user
-    if (!userId) {
-      throw new CustomError({
-        httpStatus: 401,
-        messageCode: ERROR_CODES.UNAUTHORIZED,
-        messageType: 'error'
-      })
-    }
+async function handleRestoreMedias(req, res) {
+  const userId = requireUserId(req)
+  const mediaIds = requireNonEmptyMediaIds(req.body, { messageType: 'warning' })
 
-    const { mediaIds } = req.body
-    if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'warning'
-      })
-    }
-
-    const result = await trashService.restoreMedias({ userId, imageIds: mediaIds })
-    res.sendResponse({
-      data: result,
-      messageCode: 'trash.restore.success'
-    })
-  } catch (error) {
-    next(error)
-  }
+  const result = await trashService.restoreMedias({ userId, mediaIds })
+  res.sendResponse({
+    data: result,
+    messageCode: 'trash.restore.success'
+  })
 }
 
 /**
- * 彻底删除图片
+ * 彻底删除媒体
  * POST /images/trash/permanently-delete
- * Body: { imageIds: [1, 2, 3] }
+ * Body: { mediaIds: number[] }
  */
-async function handlePermanentlyDeleteMedias(req, res, next) {
-  try {
-    const { userId } = req?.user
-    if (!userId) {
-      throw new CustomError({
-        httpStatus: 401,
-        messageCode: ERROR_CODES.UNAUTHORIZED,
-        messageType: 'error'
-      })
-    }
+async function handlePermanentlyDeleteMedias(req, res) {
+  const userId = requireUserId(req)
+  const mediaIds = requireNonEmptyMediaIds(req.body, { messageType: 'warning' })
 
-    const { mediaIds } = req.body
-    if (!Array.isArray(mediaIds) || mediaIds.length === 0) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'warning'
-      })
-    }
-
-    const result = await trashService.permanentlyDeleteMedias({ userId, imageIds: mediaIds })
-    res.sendResponse({
-      data: result,
-      messageCode: 'trash.permanentlyDelete.success'
-    })
-  } catch (error) {
-    next(error)
-  }
+  const result = await trashService.permanentlyDeleteMedias({ userId, mediaIds })
+  res.sendResponse({
+    data: result,
+    messageCode: 'trash.permanentlyDelete.success'
+  })
 }
 
 /**
  * 清空回收站
  * POST /images/trash/clear
  */
-async function handleClearTrash(req, res, next) {
-  try {
-    const { userId } = req?.user
-    if (!userId) {
-      throw new CustomError({
-        httpStatus: 401,
-        messageCode: ERROR_CODES.UNAUTHORIZED,
-        messageType: 'error'
-      })
-    }
+async function handleClearTrash(req, res) {
+  const userId = requireUserId(req)
 
-    const result = await trashService.clearTrash({ userId })
-    res.sendResponse({
-      data: result,
-      messageCode: 'trash.clear.success'
-    })
-  } catch (error) {
-    next(error)
-  }
+  const result = await trashService.clearTrash({ userId })
+  res.sendResponse({
+    data: result,
+    messageCode: 'trash.clear.success'
+  })
 }
 
 module.exports = {
-  handleGetDeletedMedias,
-  handleRestoreMedias,
-  handlePermanentlyDeleteMedias,
-  handleClearTrash
+  handleGetDeletedMedias: asyncHandler(handleGetDeletedMedias),
+  handleRestoreMedias: asyncHandler(handleRestoreMedias),
+  handlePermanentlyDeleteMedias: asyncHandler(handlePermanentlyDeleteMedias),
+  handleClearTrash: asyncHandler(handleClearTrash)
 }

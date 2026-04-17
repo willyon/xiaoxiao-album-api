@@ -9,17 +9,17 @@ const SQLITE_IN_CLAUSE_CHUNK = 900
 /**
  * 按 SQLite IN 子句上限分块查询媒体详情。
  * @param {number} userId 用户 ID
- * @param {number[]} imageIds 媒体 ID 列表
+ * @param {number[]} mediaIds 媒体 ID 列表
  * @returns {any[]} 媒体详情数组
  */
-function fetchMediasByIdsChunked(userId, imageIds) {
-  if (!imageIds.length) return []
+function fetchMediasByIdsChunked(userId, mediaIds) {
+  if (!mediaIds.length) return []
   const rows = []
-  for (let i = 0; i < imageIds.length; i += SQLITE_IN_CLAUSE_CHUNK) {
+  for (let i = 0; i < mediaIds.length; i += SQLITE_IN_CLAUSE_CHUNK) {
     rows.push(
       ...searchModel.getMediasByIds({
         userId,
-        imageIds: imageIds.slice(i, i + SQLITE_IN_CLAUSE_CHUNK)
+        mediaIds: mediaIds.slice(i, i + SQLITE_IN_CLAUSE_CHUNK)
       })
     )
   }

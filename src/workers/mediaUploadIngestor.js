@@ -12,7 +12,7 @@ const { getRedisClient } = require('../services/redisClient')
 const { userSetKey } = require('./userMediaHashset')
 const { mediaMetaQueue } = require('../queues/mediaMetaQueue')
 const { QUEUE_JOB_ATTEMPTS } = require('../config/queueConfig')
-const { bullMqWillRetryAfterThisFailure } = require('../utils/queuePipelineLifecycle')
+const { bullMqWillRetryAfterThisFailure } = require('../utils/bullmq/queuePipelineLifecycle')
 const storageService = require('../services/storageService')
 const videoProcessingService = require('../services/videoProcessingService')
 const timeIt = require('../utils/timeIt')
@@ -223,7 +223,6 @@ async function processAndSaveSingleMedia(job) {
 
   try {
     // 去重 + 分布式锁
-    // const { proceed, lockKey: key } = await timeIt("dedupeAndLock", async () => _ensureProcessRightOrShortCircuit(fileInfo, redisClient));
     const { proceed, lockKey: key } = await _ensureProcessRightOrShortCircuit(fileInfo, redisClient)
     if (!proceed) return
     lockKey = key

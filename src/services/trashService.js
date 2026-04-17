@@ -54,7 +54,7 @@ async function _deleteMediasFiles(images) {
 
   const adapter = storageService.storage
   const allStorageKeys = []
-  const keyToImageMap = {}
+  const keyToMediaMap = {}
 
   images.forEach((image) => {
     const keys = []
@@ -64,10 +64,10 @@ async function _deleteMediasFiles(images) {
 
     keys.forEach((key) => {
       allStorageKeys.push(key)
-      if (!keyToImageMap[key]) {
-        keyToImageMap[key] = []
+      if (!keyToMediaMap[key]) {
+        keyToMediaMap[key] = []
       }
-      keyToImageMap[key].push(image.id)
+      keyToMediaMap[key].push(image.id)
     })
   })
 
@@ -85,7 +85,7 @@ async function _deleteMediasFiles(images) {
       const deleteResults = await adapter.deleteFiles(allStorageKeys)
       deleteResults.forEach((result) => {
         allResults.push({
-          imageIds: keyToImageMap[result.key] || [],
+          mediaIds: keyToMediaMap[result.key] || [],
           key: result.key,
           success: result.success,
           error: result.error
@@ -101,7 +101,7 @@ async function _deleteMediasFiles(images) {
         try {
           await adapter.deleteFile(key)
           allResults.push({
-            imageIds: keyToImageMap[key] || [],
+            mediaIds: keyToMediaMap[key] || [],
             key,
             success: true
           })
@@ -112,7 +112,7 @@ async function _deleteMediasFiles(images) {
             details: { key, error: error.message }
           })
           allResults.push({
-            imageIds: keyToImageMap[key] || [],
+            mediaIds: keyToMediaMap[key] || [],
             key,
             success: false,
             error: error.message
@@ -129,7 +129,7 @@ async function _deleteMediasFiles(images) {
     allResults.length = 0
     allStorageKeys.forEach((key) => {
       allResults.push({
-        imageIds: keyToImageMap[key] || [],
+        mediaIds: keyToMediaMap[key] || [],
         key,
         success: false,
         error: error.message
@@ -259,11 +259,11 @@ async function getDeletedMedias({ userId, pageNo, pageSize, mediaType }) {
  * 恢复图片（将 deleted_at 设为 NULL）
  * @param {Object} params
  * @param {number} params.userId - 用户ID
- * @param {Array<number>} params.imageIds - 图片ID数组
+ * @param {Array<number>} params.mediaIds - 媒体 ID 数组
  * @returns {Promise<Object>} 恢复结果
  */
-async function restoreMedias({ userId, imageIds }) {
-  const normalizedIds = _normalizeIdList(imageIds)
+async function restoreMedias({ userId, mediaIds }) {
+  const normalizedIds = _normalizeIdList(mediaIds)
 
   if (normalizedIds.length === 0) {
     throw new CustomError({
@@ -302,7 +302,7 @@ async function restoreMedias({ userId, imageIds }) {
     } catch (error) {
       logger.warn({
         message: '恢复回收站媒体后同步搜索索引失败',
-        details: { imageId: id, error: error.message }
+        details: { mediaId: id, error: error.message }
       })
     }
   })
@@ -314,7 +314,7 @@ async function restoreMedias({ userId, imageIds }) {
     message: 'trash.restore.completed',
     details: {
       userId,
-      imageIds: normalizedIds,
+      mediaIds: normalizedIds,
       restoredCount: result.changes
     }
   })
@@ -333,7 +333,7 @@ async function restoreTrashMediaByHashIfApplicable({ userId, imageHash }) {
   if (!row || row.deleted_at == null) {
     return { restored: false }
   }
-  await restoreMedias({ userId, imageIds: [row.id] })
+  await restoreMedias({ userId, mediaIds: [row.id] })
   return { restored: true, mediaId: row.id }
 }
 
@@ -341,11 +341,11 @@ async function restoreTrashMediaByHashIfApplicable({ userId, imageHash }) {
  * 彻底删除图片（物理删除数据库记录和存储文件）
  * @param {Object} params
  * @param {number} params.userId - 用户ID
- * @param {Array<number>} params.imageIds - 图片ID数组
+ * @param {Array<number>} params.mediaIds - 媒体 ID 数组
  * @returns {Promise<Object>} 删除结果
  */
-async function permanentlyDeleteMedias({ userId, imageIds }) {
-  const normalizedIds = _normalizeIdList(imageIds)
+async function permanentlyDeleteMedias({ userId, mediaIds }) {
+  const normalizedIds = _normalizeIdList(mediaIds)
 
   if (normalizedIds.length === 0) {
     throw new CustomError({
@@ -415,7 +415,7 @@ async function permanentlyDeleteMedias({ userId, imageIds }) {
     message: 'trash.permanentlyDelete.completed',
     details: {
       userId,
-      imageIds: normalizedIds,
+      mediaIds: normalizedIds,
       deletedCount: dbResult.changes,
       fileDeleteResult: {
         total: fileDeleteResult.total,

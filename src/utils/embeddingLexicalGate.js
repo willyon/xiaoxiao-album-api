@@ -1,7 +1,7 @@
 /*
  * @Description: `getCoreTokensOnlyForResidual`（视觉 FTS）：对 residual jieba 分词后仅剔除全词 SEARCH_NOISE_TERMS；core 为空则不做 FTS。不含同义词扩展（同义词见短句 terms、`visualEmbeddingLexicalGate`）。
  *
- * `passLexicalGate` 用于向量补召回的字面校验；词表由 `visualEmbeddingLexicalGate.buildVisualEmbeddingGateLexicalTokens` 传入。
+ * `passLexicalGate` 用于向量补召回的字面校验；词表由 `visualEmbeddingLexicalGate.buildVisualEmbeddingGateLexicalSpec` 的 `tokens` 传入。
  *
  * 英文纯 ASCII token 先 lowerCase 再与 SEARCH_NOISE_TERMS 比对。
  */
@@ -74,7 +74,7 @@ function groupMatched(text, group) {
 
 /**
  * @param {string} descriptionText - media_search.description_text
- * @param {string[]} tokens - 扩展后的字面词表（如 `visualEmbeddingLexicalGate.buildVisualEmbeddingGateLexicalTokens`）
+ * @param {string[]} tokens - 扩展后的字面词表（如 `buildVisualEmbeddingGateLexicalSpec(residual).tokens`）
  * @returns {boolean}
  */
 function passLexicalGate(descriptionText, tokens, options = {}) {
@@ -117,11 +117,8 @@ function passLexicalGate(descriptionText, tokens, options = {}) {
 
 module.exports = {
   getCoreTokensOnlyForResidual,
-  normalizeStopWordLookupKey,
   isStopWordWholeSegment,
   extractActionGroups,
   calcRequiredGroupHits,
-  passLexicalGate,
-  /** 检索噪声词（含传统停用词与业务噪声词），供外部复用。 */
-  SEARCH_NOISE_TERMS
+  passLexicalGate
 }
