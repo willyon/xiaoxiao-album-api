@@ -3,6 +3,11 @@ const { generateTextEmbeddingForDocument } = require('./embeddingProvider')
 const mediaModel = require('../models/mediaModel')
 const { MEDIA_EMBEDDING_SOURCE_TYPES, upsertMediaEmbeddingBySourceType, deleteMediaEmbeddingBySourceType } = mediaModel
 
+/**
+ * 查询单个媒体的搜索文档行。
+ * @param {number|string} mediaId - 媒体 ID。
+ * @returns {{media_id:number,description_text:string|null}|undefined} 搜索文档行。
+ */
 function getMediaSearchRow(mediaId) {
   return db
     .prepare(
@@ -17,6 +22,11 @@ function getMediaSearchRow(mediaId) {
     .get(mediaId)
 }
 
+/**
+ * 重建单个媒体的文本向量（visual_text 来源）。
+ * @param {number|string} mediaId - 媒体 ID。
+ * @returns {Promise<{affectedRows:number,deleted:boolean,skipped:boolean}>} 重建结果。
+ */
 async function rebuildMediaEmbeddingDoc(mediaId) {
   const row = getMediaSearchRow(mediaId)
   if (!row) {

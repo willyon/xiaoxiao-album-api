@@ -10,6 +10,10 @@ const logger = require('../utils/logger')
 
 let redisClient = null
 
+/**
+ * 获取全局单例 Redis 客户端。
+ * @returns {import('ioredis').Redis} Redis 客户端实例。
+ */
 const getRedisClient = () => {
   if (!redisClient) {
     redisClient = new Redis({

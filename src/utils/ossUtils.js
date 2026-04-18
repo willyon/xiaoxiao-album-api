@@ -33,6 +33,11 @@ let publicKeyCache = {
   timestamp: 0
 }
 
+/**
+ * 校验请求时间戳是否在允许窗口内。
+ * @param {string} dateHeader - 请求头中的 Date。
+ * @returns {boolean} 是否有效。
+ */
 function _isRequestTimestampValid(dateHeader) {
   try {
     const requestTime = new Date(dateHeader)
@@ -65,6 +70,11 @@ function _isRequestTimestampValid(dateHeader) {
   }
 }
 
+/**
+ * 解码并校验 OSS 公钥 URL。
+ * @param {string} encodedUrl - Base64 编码 URL。
+ * @returns {string|null} 解码后的 URL 或 null。
+ */
 function _decodeUrl(encodedUrl) {
   const decodedUrl = Buffer.from(encodedUrl, 'base64').toString('utf-8')
 
@@ -79,6 +89,10 @@ function _decodeUrl(encodedUrl) {
   return decodedUrl
 }
 
+/**
+ * 读取缓存公钥（未过期才返回）。
+ * @returns {string|null} 公钥字符串或 null。
+ */
 function _getCachedPublicKey() {
   const now = Date.now()
   const cacheAge = (now - publicKeyCache.timestamp) / 1000
@@ -90,6 +104,11 @@ function _getCachedPublicKey() {
   return null
 }
 
+/**
+ * 获取公钥并写入缓存。
+ * @param {string} pubKeyUrl - 公钥地址。
+ * @returns {Promise<string>} 公钥内容。
+ */
 async function _fetchPublicKeyWithCache(pubKeyUrl) {
   try {
     const publicKey = await _fetchPublicKey(pubKeyUrl)
@@ -111,6 +130,11 @@ async function _fetchPublicKeyWithCache(pubKeyUrl) {
   }
 }
 
+/**
+ * 远程拉取 OSS 公钥。
+ * @param {string} pubKeyUrl - 公钥地址。
+ * @returns {Promise<string>} 公钥内容。
+ */
 async function _fetchPublicKey(pubKeyUrl) {
   return new Promise((resolve, reject) => {
     https
@@ -135,6 +159,11 @@ async function _fetchPublicKey(pubKeyUrl) {
   })
 }
 
+/**
+ * 验证 OSS 回调签名。
+ * @param {import('express').Request} req - 回调请求对象。
+ * @returns {Promise<boolean>} 验证是否通过。
+ */
 async function verifyOSSCallbackSignature(req) {
   const { VERIFICATION_LEVEL } = OSS_CALLBACK_CONFIG
 
@@ -238,6 +267,11 @@ async function verifyOSSCallbackSignature(req) {
   }
 }
 
+/**
+ * 构建 OSS 回调验签原文。
+ * @param {import('express').Request} req - 回调请求对象。
+ * @returns {string} 待签名字符串。
+ */
 function _buildStringToSign(req) {
   const path = req.originalUrl
 
@@ -251,6 +285,11 @@ function _buildStringToSign(req) {
   return stringToSign
 }
 
+/**
+ * 构建 OSS 回调地址。
+ * @param {import('express').Request|null} [req=null] - 可选请求对象。
+ * @returns {string} 回调 URL。
+ */
 function buildOSSCallbackUrl(req = null) {
   if (process.env.NODE_ENV === 'development') {
     return `${process.env.NGROK_URL}/aliyunOss/mediaUploadCallback`
@@ -267,6 +306,11 @@ function buildOSSCallbackUrl(req = null) {
   throw new Error('无法构建OSS回调URL：请配置NGROK_URL或API_BASE_URL_ALIYUN_ECS环境变量')
 }
 
+/**
+ * 解析 OSS 回调数据。
+ * @param {object|string} body - 回调请求体。
+ * @returns {{storageKey:string,fileSize:number,userId:number|string,hash:string,fileName:string,sessionId?:string}} 归一化后的回调数据。
+ */
 function parseCallbackData(body) {
   let callbackData
 

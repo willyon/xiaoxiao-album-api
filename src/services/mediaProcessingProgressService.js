@@ -14,10 +14,8 @@ const redisClient = getRedisClient()
 
 /**
  * 更新会话进度（统一接口）
- * @param {Object} params - 参数对象
- * @param {string} params.sessionId - 会话ID
- * @param {string} params.status - `upload:session:{sessionId}` 的 Hash 字段名；九字段含义见 ../utils/uploadProgressSnapshot.js
- * @param {number} params.increment - 增量值（默认为1）
+ * @param {{sessionId:string,status:string,increment?:number}} params - 参数对象。
+ * @returns {Promise<void>} 无返回值。
  */
 async function updateProgress({ sessionId, status, increment = 1 }) {
   if (!sessionId) return
@@ -39,6 +37,8 @@ async function updateProgress({ sessionId, status, increment = 1 }) {
 /**
  * 同一会话同一 dedupeKey 对某 status 只递增一次（用于 ingestError / aiDone / aiError / aiEligible 等）。
  * status 字段语义见 ../utils/uploadProgressSnapshot.js
+ * @param {{sessionId:string,status:string,dedupeKey:string|number,increment?:number}} params - 幂等更新参数。
+ * @returns {Promise<void>} 无返回值。
  */
 async function updateProgressOnce({ sessionId, status, dedupeKey, increment = 1 }) {
   if (!sessionId || !status || !dedupeKey) return
@@ -62,6 +62,7 @@ async function updateProgressOnce({ sessionId, status, dedupeKey, increment = 1 
 /**
  * 发布图片处理进度更新事件
  * @param {string} sessionId - 会话ID
+ * @returns {Promise<void>} 无返回值。
  */
 async function _publishProgressUpdate(sessionId) {
   try {
@@ -84,9 +85,10 @@ async function _publishProgressUpdate(sessionId) {
 
 /**
  * 设置Redis图片处理进度实时推送
- * @param {Object} req - 请求对象
- * @param {Object} res - 响应对象
- * @param {string} sessionId - 会话ID
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @param {string} sessionId - 会话 ID。
+ * @returns {Promise<void>} 无返回值。
  */
 async function setupProgressStream(req, res, sessionId) {
   let subscriber = null

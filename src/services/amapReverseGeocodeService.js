@@ -6,6 +6,11 @@
 const https = require('https')
 const logger = require('../utils/logger')
 
+/**
+ * 判断高德返回是否包含可用位置字段。
+ * @param {{formattedAddress?:string|null,country?:string|null,province?:string|null,city?:string|null,district?:string|null}} result - 逆地理结果。
+ * @returns {boolean} 是否可用。
+ */
 function amapResultHasUsableLocation({ formattedAddress, country, province, city, district }) {
   const addr = formattedAddress && typeof formattedAddress === 'string' && formattedAddress.trim() !== ''
   return Boolean(addr || country || province || city || district)

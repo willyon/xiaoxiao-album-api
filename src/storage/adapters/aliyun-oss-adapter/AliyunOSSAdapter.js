@@ -18,6 +18,10 @@ const { getUploadSignature: buildUploadSignature } = require('./uploadSignature'
  * 并增加 OSS 客户端初始化、签名 URL、表单直传签名等能力。详细配置说明见历史版本或运维文档。
  */
 class AliyunOSSAdapter extends BaseStorageAdapter {
+  /**
+   * 构造 OSS 存储适配器。
+   * @param {object} [config={}] - 适配器配置。
+   */
   constructor(config = {}) {
     super(config)
     this.type = config.storageType
@@ -26,6 +30,10 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     this._initPromise = this._initClient()
   }
 
+  /**
+   * 异步初始化 OSS 客户端与运行时上下文。
+   * @returns {Promise<void>} 无返回值。
+   */
   async _initClient() {
     const runtime = await initAliyunOssClients(this.config)
     this.client = runtime.client
@@ -39,6 +47,10 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     this.stsToken = runtime.stsToken
   }
 
+  /**
+   * 确保 OSS 客户端已完成初始化。
+   * @returns {Promise<void>} 无返回值。
+   */
   async _ensureClient() {
     if (!this.client) {
       if (!this._initPromise) this._initPromise = this._initClient()
@@ -52,12 +64,23 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     }
   }
 
+  /**
+   * 统一处理 OSS 错误。
+   * @param {Error & {code?:string,status?:number,requestId?:string}} error - 错误对象。
+   * @param {string} operation - 操作名称。
+   * @param {object} [context={}] - 附加上下文。
+   * @returns {never} 总是抛出异常。
+   */
   _handleOSSError(error, operation, context = {}) {
     handleOssError(logger, error, operation, context)
   }
 
   /**
    * 生成处理后图片的存储键名（OSS对象键名）
+   * @param {string} type - 资源类型目录。
+   * @param {string} fileName - 原始文件名。
+   * @param {string} [extension] - 目标扩展名。
+   * @returns {string} OSS 对象键名。
    */
   generateStorageKey(type, fileName, extension) {
     if (!extension) {
@@ -71,6 +94,13 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
 
   // ========== 基础文件操作实现 ==========
 
+  /**
+   * 上传文件到 OSS。
+   * @param {Buffer|string} fileData - 文件 Buffer 或本地路径。
+   * @param {string} ossKey - OSS 对象键名。
+   * @param {{contentType?:string,cacheControl?:string,headers?:Record<string,string>,metadata?:Record<string,string>}} [options={}] - 上传选项。
+   * @returns {Promise<string>} 写入后的对象键名。
+   */
   async storeFile(fileData, ossKey, options = {}) {
     await this._ensureClient()
     try {
@@ -111,6 +141,11 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     }
   }
 
+  /**
+   * 删除 OSS 对象。
+   * @param {string} ossKey - OSS 对象键名。
+   * @returns {Promise<void>} 无返回值。
+   */
   async deleteFile(ossKey) {
     await this._ensureClient()
     try {
@@ -123,6 +158,12 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     }
   }
 
+  /**
+   * 在 OSS 中移动对象（copy + delete）。
+   * @param {string} sourceKey - 源对象键名。
+   * @param {string} targetKey - 目标对象键名。
+   * @returns {Promise<boolean>} 是否移动成功。
+   */
   async moveFile(sourceKey, targetKey) {
     await this._ensureClient()
     try {
@@ -142,6 +183,11 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     }
   }
 
+  /**
+   * 检查 OSS 对象是否存在。
+   * @param {string} ossKey - OSS 对象键名。
+   * @returns {Promise<boolean>} 是否存在。
+   */
   async fileExists(ossKey) {
     await this._ensureClient()
     try {
@@ -155,14 +201,29 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     }
   }
 
+  /**
+   * 获取 OSS 文件数据（返回 Buffer）。
+   * @param {string} ossKey - OSS 对象键名。
+   * @returns {Promise<Buffer>} 文件数据。
+   */
   async getFileData(ossKey) {
     return await this.getFileBuffer(ossKey)
   }
 
+  /**
+   * 获取 Multer 存储配置（OSS 使用内存模式）。
+   * @param {Function} _generateFilename - 文件名生成器（未使用）。
+   * @returns {import('multer').StorageEngine} Multer storage。
+   */
   getMulterStorage(_generateFilename) {
     return multer.memoryStorage()
   }
 
+  /**
+   * 获取文件大小。
+   * @param {string|Buffer} input - OSS 键名或 Buffer。
+   * @returns {Promise<number>} 文件大小（字节）。
+   */
   async getFileSize(input) {
     await this._ensureClient()
     if (Buffer.isBuffer(input)) {
@@ -182,6 +243,11 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     return 1 * 1024 * 1024
   }
 
+  /**
+   * 读取 OSS 文件内容。
+   * @param {string} ossKey - OSS 对象键名。
+   * @returns {Promise<Buffer>} 文件 Buffer。
+   */
   async getFileBuffer(ossKey) {
     await this._ensureClient()
     try {
@@ -194,6 +260,12 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
 
   // ========== URL 生成实现 ==========
 
+  /**
+   * 生成文件访问 URL（优先签名 URL）。
+   * @param {string|null} ossKey - OSS 对象键名。
+   * @param {{expiresIn?:number}} [options={}] - URL 选项。
+   * @returns {Promise<string|null>} 访问 URL 或 null。
+   */
   async getFileUrl(ossKey, options = {}) {
     await this._ensureClient()
     if (!ossKey || typeof ossKey !== 'string' || ossKey.trim() === '') {
@@ -222,6 +294,12 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     }
   }
 
+  /**
+   * 生成 OSS 签名下载 URL。
+   * @param {string} ossKey - OSS 对象键名。
+   * @param {number} [expiresIn=3600] - 过期秒数。
+   * @returns {Promise<string>} 签名 URL。
+   */
   async _getSignedUrl(ossKey, expiresIn = 3600) {
     await this._ensureClient()
     try {
@@ -232,12 +310,22 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
     }
   }
 
+  /**
+   * 获取 OSS 表单直传签名参数。
+   * @param {{storageKey:string,contentType:string,contentLength:number,userId:number|string,sessionId?:string}} params - 签名参数。
+   * @returns {Promise<object>} 直传签名响应。
+   */
   async getUploadSignature(params) {
     return buildUploadSignature(this, params)
   }
 
   // ========== 批量删除 ==========
 
+  /**
+   * 批量删除 OSS 对象。
+   * @param {Array<string>} keys - 对象键名列表。
+   * @returns {Promise<Array<{key:string,success:boolean,error?:string}>>} 删除结果列表。
+   */
   async deleteFiles(keys) {
     await this._ensureClient()
     try {

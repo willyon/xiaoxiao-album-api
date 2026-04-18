@@ -9,6 +9,13 @@ const { setCookie } = require('../utils/cookieHelper')
 const getI18nMessage = require('../i18n/getI18nMessage')
 const { SUCCESS_CODES } = require('../constants/messageCodes')
 
+/**
+ * 统一响应中间件：注入 `res.sendResponse` 与 `res.setCookie`。
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @param {import('express').NextFunction} next - 下一中间件。
+ * @returns {void} 无返回值。
+ */
 const responseHandler = (req, res, next) => {
   req.userLanguage = req.get('X-Accept-Language') || req.headers['x-accept-language'] || 'zh'
 

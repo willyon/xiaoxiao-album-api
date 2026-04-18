@@ -4,6 +4,8 @@ const { getRowByKeyType, KEY_TYPE_CLOUD_MODEL } = require('../models/appSettings
  * 统一获取云模型配置（app_config user_id + key_type = cloud_model）：
  * - enabled=false 或无 key 时返回 null
  * - enabled=true 且有 key 时返回 { enabled, provider, api_key }
+ * @param {number|string} userId - 用户 ID。
+ * @returns {{enabled:true,provider:'aliyun-bailian',api_key:string}|null} 云模型配置。
  */
 function getCloudConfigForAnalysis(userId) {
   try {

@@ -15,10 +15,20 @@ const CustomError = require('../errors/customError')
 const { validateEmail, validatePassword } = require('../utils/validators')
 const { ERROR_CODES } = require('../constants/messageCodes')
 
+/**
+ * 生成访问令牌（JWT）。
+ * @param {number|string} userId - 用户 ID。
+ * @returns {string} JWT 字符串。
+ */
 const generateJWTToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '1h' })
 }
 
+/**
+ * 生成并缓存刷新令牌。
+ * @param {number|string} userId - 用户 ID。
+ * @returns {Promise<string>} 刷新令牌。
+ */
 async function generateAndStoreRefreshToken(userId) {
   const refreshToken = jwt.sign({ userId }, process.env.JWT_REFRESH_SECRET, { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' })
   try {
@@ -32,24 +42,32 @@ async function generateAndStoreRefreshToken(userId) {
   return refreshToken
 }
 
+/**
+ * 通过邮箱查询用户信息。
+ * @param {string} email - 用户邮箱。
+ * @returns {Promise<object|null>} 用户信息或 null。
+ */
 const getUserInfoByEmail = async (email) => {
-  try {
-    const user = await authModel.findUserByEmail(email)
-    return user // 直接返回查询结果，可能为 null
-  } catch (error) {
-    throw error
-  }
+  const user = await authModel.findUserByEmail(email)
+  return user // 直接返回查询结果，可能为 null
 }
 
+/**
+ * 通过用户 ID 查询用户信息。
+ * @param {number|string} userId - 用户 ID。
+ * @returns {Promise<object|null>} 用户信息或 null。
+ */
 const getUserInfoById = async (userId) => {
-  try {
-    const user = await authModel.findUserById(userId)
-    return user // 直接返回查询结果，可能为 null
-  } catch (error) {
-    throw error
-  }
+  const user = await authModel.findUserById(userId)
+  return user // 直接返回查询结果，可能为 null
 }
 
+/**
+ * 校验输入密码与哈希密码是否匹配。
+ * @param {string} inputPassword - 输入密码。
+ * @param {string} hashedPassword - 哈希密码。
+ * @returns {Promise<boolean>} 是否匹配。
+ */
 const validateInputPassword = async (inputPassword, hashedPassword) => {
   try {
     return await bcrypt.compare(inputPassword, hashedPassword)
@@ -63,46 +81,62 @@ const validateInputPassword = async (inputPassword, hashedPassword) => {
 }
 
 // 生成不可逆加密密码 用于存储于数据库
+/**
+ * 哈希密码。
+ * @param {string} password - 明文密码。
+ * @returns {Promise<string>} 哈希密码。
+ */
 const _hashPassword = async (password) => {
   return await bcrypt.hash(password, 10)
 }
 
+/**
+ * 创建新用户并生成邮箱验证令牌。
+ * @param {{email:string,password:string}} payload - 注册参数。
+ * @returns {Promise<object>} 新建用户对象。
+ */
 const createNewUser = async ({ email, password }) => {
-  try {
-    // 验证邮箱和密码格式
-    validateEmail(email)
-    validatePassword(password)
+  // 验证邮箱和密码格式
+  validateEmail(email)
+  validatePassword(password)
 
-    // 加密密码
-    const hashedPassword = await _hashPassword(password)
+  // 加密密码
+  const hashedPassword = await _hashPassword(password)
 
-    // 创建新用户
-    const newUser = await authModel.insertUser(email, hashedPassword)
+  // 创建新用户
+  const newUser = await authModel.insertUser(email, hashedPassword)
 
-    // 生成邮箱验证 token
-    const verificationJWTToken = generateJWTToken(newUser.id)
+  // 生成邮箱验证 token
+  const verificationJWTToken = generateJWTToken(newUser.id)
 
-    // 更新验证 token
-    await authModel.updateUserVerificationToken(newUser.id, verificationJWTToken)
+  // 更新验证 token
+  await authModel.updateUserVerificationToken(newUser.id, verificationJWTToken)
 
-    // 更新用户状态
-    await authModel.updateUserStatus(newUser.id, 'pending')
+  // 更新用户状态
+  await authModel.updateUserStatus(newUser.id, 'pending')
 
-    // 添加 token 到返回对象
-    newUser.verificationJWTToken = verificationJWTToken
+  // 添加 token 到返回对象
+  newUser.verificationJWTToken = verificationJWTToken
 
-    return newUser
-  } catch (error) {
-    throw error
-  }
+  return newUser
 }
 
+/**
+ * 校验并解析邮箱验证 JWT。
+ * @param {string} token - 验证令牌。
+ * @returns {{userId:number|string,exp:number,iat:number}} 解码载荷。
+ */
 const _verifyJWTToken = (token) => {
   const secretKey = process.env.JWT_SECRET
   // 返回解码后的数据，例如 { userId: 123, exp: 1670815945 }
   return jwt.verify(token, secretKey)
 }
 
+/**
+ * 校验邮箱激活令牌并激活账户。
+ * @param {string} token - 邮箱验证令牌。
+ * @returns {Promise<void>} 无返回值。
+ */
 const verifyEmail = async (token) => {
   try {
     if (!token)
@@ -160,19 +194,20 @@ const verifyEmail = async (token) => {
   }
 }
 
+/**
+ * 重新发送验证邮件。
+ * @param {{email:string,req:import('express').Request}} payload - 邮件参数。
+ * @returns {Promise<{email:string}>} 返回邮箱信息。
+ */
 const resendVerificationEmail = async ({ email, req }) => {
-  try {
-    validateEmail(email) // 验证 email 格式
-    var user = await authModel.findUserByEmail(email)
-    if (!user) {
-      throw new CustomError({
-        httpStatus: 404,
-        messageCode: ERROR_CODES.ACCOUNT_NOT_FOUND,
-        messageType: 'error'
-      })
-    }
-  } catch (error) {
-    throw error
+  validateEmail(email) // 验证 email 格式
+  const user = await authModel.findUserByEmail(email)
+  if (!user) {
+    throw new CustomError({
+      httpStatus: 404,
+      messageCode: ERROR_CODES.ACCOUNT_NOT_FOUND,
+      messageType: 'error'
+    })
   }
 
   // 如果用户的状态是 "active"，不需要发送激活邮件
@@ -199,21 +234,18 @@ const resendVerificationEmail = async ({ email, req }) => {
   }
 
   // 重新发送验证邮件
-  try {
-    await sendVerificationEmail({ email, JWTToken: newVerificationJWTToken, language: req.userLanguage })
-  } catch (error) {
-    throw error
-  }
+  await sendVerificationEmail({ email, JWTToken: newVerificationJWTToken, language: req.userLanguage })
 
   return { email }
 }
 
+/**
+ * 发送邮箱验证邮件。
+ * @param {{email:string,JWTToken:string,language:string}} payload - 邮件参数。
+ * @returns {Promise<void>} 无返回值。
+ */
 const sendVerificationEmail = async ({ email, JWTToken, language }) => {
-  try {
-    validateEmail(email)
-  } catch (error) {
-    throw error
-  }
+  validateEmail(email)
 
   // 动态生成邮件内容
   const emailContent = _getEmailContent(language, JWTToken)
@@ -255,6 +287,12 @@ const sendVerificationEmail = async ({ email, JWTToken, language }) => {
   }
 }
 
+/**
+ * 构建邮箱验证邮件内容。
+ * @param {string} language - 语言代码。
+ * @param {string} JWTToken - 邮箱验证令牌。
+ * @returns {{mailName:string,subject:string,html:string}} 邮件内容。
+ */
 const _getEmailContent = (language, JWTToken) => {
   // 根据环境变量确定域名
   const baseUrl = process.env.NODE_ENV === 'development' ? 'http://localhost:5173' : 'https://photos.bingbingcloud.com'
@@ -262,10 +300,11 @@ const _getEmailContent = (language, JWTToken) => {
   // 这里定义多语言的标题和正文内容
   const content = {
     en: {
-      mailName: 'Bingbing Cloud Photos',
-      subject: 'Activate Your Account for Bingbing Cloud Photos',
+      mailName: 'Xiaoxiao Album',
+      subject: 'Activate Your Account for Xiaoxiao Album',
       html: `
-        <h1>Welcome to Bingbing Cloud Photos!</h1>
+        <h1>Welcome to Xiaoxiao Album!</h1>
+        <p>Your private photo/video storage and management platform.</p>
         <p>Click the button below to activate your account:</p>
         <a href="${baseUrl}/emailActivation?token=${JWTToken}&lang=en" 
           style="display:inline-block;padding:10px 20px;background-color:#409eff;color:#fff;text-decoration:none;border-radius:4px;">
@@ -275,10 +314,11 @@ const _getEmailContent = (language, JWTToken) => {
       `
     },
     zh: {
-      mailName: '冰冰云相册',
-      subject: '激活您的冰冰云相册账户',
+      mailName: '笑启相册',
+      subject: '激活您的笑启相册账户',
       html: `
-        <h1>欢迎注册冰冰云相册！</h1>
+        <h1>欢迎注册笑启相册！</h1>
+        <p>私人照片/视频存储与管理平台</p>
         <p>点击下面的按钮以激活您的账户：</p>
         <a href="${baseUrl}/emailActivation?token=${JWTToken}&lang=zh" 
           style="display:inline-block;padding:10px 20px;background-color:#409eff;color:#fff;text-decoration:none;border-radius:4px;">
@@ -297,10 +337,21 @@ const _getEmailContent = (language, JWTToken) => {
 const PASSWORD_RESET_TOKEN_EXPIRY = '15m'
 const PASSWORD_RESET_REDIS_TTL = 15 * 60 // 秒
 
+/**
+ * 生成密码重置令牌。
+ * @param {number|string} userId - 用户 ID。
+ * @returns {string} 密码重置令牌。
+ */
 const generatePasswordResetToken = (userId) => {
   return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: PASSWORD_RESET_TOKEN_EXPIRY })
 }
 
+/**
+ * 发起密码重置流程。
+ * @param {string} email - 用户邮箱。
+ * @param {import('express').Request} req - 请求对象。
+ * @returns {Promise<void>} 无返回值。
+ */
 const requestPasswordReset = async (email, req) => {
   validateEmail(email)
   const user = await authModel.findUserByEmail(email)
@@ -314,6 +365,11 @@ const requestPasswordReset = async (email, req) => {
   await sendPasswordResetEmail({ email, token, language: req.userLanguage })
 }
 
+/**
+ * 发送密码重置邮件。
+ * @param {{email:string,token:string,language:string}} payload - 邮件参数。
+ * @returns {Promise<void>} 无返回值。
+ */
 const sendPasswordResetEmail = async ({ email, token, language }) => {
   validateEmail(email)
   const emailContent = _getPasswordResetEmailContent(language, token)
@@ -350,6 +406,12 @@ const sendPasswordResetEmail = async ({ email, token, language }) => {
   }
 }
 
+/**
+ * 构建密码重置邮件内容。
+ * @param {string} language - 语言代码。
+ * @param {string} token - 重置令牌。
+ * @returns {{mailName:string,subject:string,html:string}} 邮件内容。
+ */
 const _getPasswordResetEmailContent = (language, token) => {
   const baseUrl = process.env.NODE_ENV === 'development' ? 'http://localhost:5173' : 'https://photos.bingbingcloud.com'
   const content = {
@@ -383,6 +445,12 @@ const _getPasswordResetEmailContent = (language, token) => {
   return content[language] || content.zh
 }
 
+/**
+ * 确认密码重置并更新新密码。
+ * @param {string} token - 重置令牌。
+ * @param {string} newPassword - 新密码。
+ * @returns {Promise<void>} 无返回值。
+ */
 const confirmPasswordReset = async (token, newPassword) => {
   if (!token) {
     throw new CustomError({

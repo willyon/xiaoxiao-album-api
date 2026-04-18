@@ -6,8 +6,8 @@ const FormData = require('form-data')
 
 /**
  * 检查 Python 服务健康状态。
- * @param {string} serviceUrl Python 服务基地址
- * @returns {Promise<any>} 健康检查响应体
+ * @param {string} serviceUrl - Python 服务基地址。
+ * @returns {Promise<any>} 健康检查响应体。
  */
 async function checkPythonServiceHealth(serviceUrl) {
   const response = await axios.get(`${serviceUrl}/health`, {
@@ -18,9 +18,9 @@ async function checkPythonServiceHealth(serviceUrl) {
 
 /**
  * 调用 Python 聚类接口。
- * @param {string} serviceUrl Python 服务基地址
- * @param {{embeddings:number[][], threshold?:number}} requestBody 聚类请求体
- * @returns {Promise<any>} 聚类响应体
+ * @param {string} serviceUrl - Python 服务基地址。
+ * @param {{embeddings:number[][], threshold?:number}} requestBody - 聚类请求体。
+ * @returns {Promise<any>} 聚类响应体。
  */
 async function clusterFaceEmbeddings(serviceUrl, requestBody) {
   const response = await axios.post(`${serviceUrl}/cluster_face_embeddings`, requestBody, {
@@ -34,10 +34,10 @@ async function clusterFaceEmbeddings(serviceUrl, requestBody) {
 
 /**
  * 调用 Python 人脸缩略图裁剪接口。
- * @param {string} serviceUrl Python 服务基地址
- * @param {Buffer} imageData 原图二进制
- * @param {number[]} bbox 人脸框 [x1, y1, x2, y2]
- * @returns {Promise<any>} 裁剪响应体
+ * @param {string} serviceUrl - Python 服务基地址。
+ * @param {Buffer} imageData - 原图二进制。
+ * @param {number[]} bbox - 人脸框 [x1, y1, x2, y2]。
+ * @returns {Promise<any>} 裁剪响应体。
  */
 async function cropFaceThumbnail(serviceUrl, imageData, bbox) {
   const formData = new FormData()

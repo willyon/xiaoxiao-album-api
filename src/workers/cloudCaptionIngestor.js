@@ -11,12 +11,20 @@ const { updateAnalysisStatusCloud, upsertMediaAiFieldsForAnalysis } = require('.
 const { rebuildMediaSearchDoc } = require('../services/mediaService')
 const { withAiSlot } = require('../services/aiConcurrencyLimiter')
 const { getCloudConfigForAnalysis } = require('../services/cloudModelService')
+const { buildCaptionForDb } = require('../utils/caption/captionNormalization')
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL
 
 const ANALYZE_IMAGE_TIMEOUT_MS = Number(process.env.ANALYZE_IMAGE_TIMEOUT_MS || 120000)
 const ANALYZE_VIDEO_TIMEOUT_MS = Number(process.env.ANALYZE_VIDEO_TIMEOUT_MS || 600000)
 
+/**
+ * 构造非 2xx HTTP 的错误对象（按状态码区分是否可重试）。
+ * @param {string} prefix - 错误前缀。
+ * @param {number} status - HTTP 状态码。
+ * @param {unknown} bodyText - 响应体文本。
+ * @returns {Error} 可重试或不可重试错误对象。
+ */
 function makeNon2xxError(prefix, status, bodyText) {
   const text = String(bodyText || '').slice(0, 200)
   const message = `${prefix}_${status}: ${text}`
@@ -26,21 +34,9 @@ function makeNon2xxError(prefix, status, bodyText) {
   return new UnrecoverableError(message)
 }
 
-function buildCaptionForDb(capData) {
-  return {
-    description: typeof capData.description === 'string' ? capData.description : undefined,
-    keywords: Array.isArray(capData.keywords) ? capData.keywords : undefined,
-    subjectTags: Array.isArray(capData.subject_tags) ? capData.subject_tags : undefined,
-    actionTags: Array.isArray(capData.action_tags) ? capData.action_tags : undefined,
-    sceneTags: Array.isArray(capData.scene_tags) ? capData.scene_tags : undefined,
-    ocr: typeof capData.ocr === 'string' ? capData.ocr : undefined,
-    faceCount: typeof capData.face_count === 'number' && Number.isFinite(capData.face_count) ? capData.face_count : undefined,
-    personCount: typeof capData.person_count === 'number' && Number.isFinite(capData.person_count) ? capData.person_count : undefined
-  }
-}
-
 /**
  * @param {import("bullmq").Job} job
+ * @returns {Promise<void>} 无返回值。
  */
 async function processCloudCaptionJob(job) {
   const { mediaId, userId, highResStorageKey, originalStorageKey, mediaType } = job.data || {}

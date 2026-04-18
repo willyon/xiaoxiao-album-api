@@ -1,0 +1,539 @@
+[
+  {
+    "label": "中国",
+    "aliases": [
+      "中华人民共和国"
+    ]
+  },
+  {
+    "label": "日本",
+    "aliases": [
+      "霓虹"
+    ]
+  },
+  {
+    "label": "韩国",
+    "aliases": [
+      "南韩",
+      "大韩民国"
+    ]
+  },
+  {
+    "label": "朝鲜",
+    "aliases": [
+      "北韩",
+      "朝鲜民主主义人民共和国"
+    ]
+  },
+  {
+    "label": "蒙古",
+    "aliases": []
+  },
+  {
+    "label": "新加坡",
+    "aliases": [
+      "狮城"
+    ]
+  },
+  {
+    "label": "马来西亚",
+    "aliases": [
+      "大马"
+    ]
+  },
+  {
+    "label": "泰国",
+    "aliases": []
+  },
+  {
+    "label": "越南",
+    "aliases": []
+  },
+  {
+    "label": "印度尼西亚",
+    "aliases": [
+      "印尼"
+    ]
+  },
+  {
+    "label": "菲律宾",
+    "aliases": []
+  },
+  {
+    "label": "柬埔寨",
+    "aliases": []
+  },
+  {
+    "label": "老挝",
+    "aliases": []
+  },
+  {
+    "label": "缅甸",
+    "aliases": []
+  },
+  {
+    "label": "文莱",
+    "aliases": []
+  },
+  {
+    "label": "东帝汶",
+    "aliases": []
+  },
+  {
+    "label": "印度",
+    "aliases": []
+  },
+  {
+    "label": "巴基斯坦",
+    "aliases": []
+  },
+  {
+    "label": "斯里兰卡",
+    "aliases": []
+  },
+  {
+    "label": "马尔代夫",
+    "aliases": []
+  },
+  {
+    "label": "尼泊尔",
+    "aliases": []
+  },
+  {
+    "label": "孟加拉国",
+    "aliases": [
+      "孟加拉"
+    ]
+  },
+  {
+    "label": "不丹",
+    "aliases": []
+  },
+  {
+    "label": "哈萨克斯坦",
+    "aliases": []
+  },
+  {
+    "label": "乌兹别克斯坦",
+    "aliases": []
+  },
+  {
+    "label": "吉尔吉斯斯坦",
+    "aliases": []
+  },
+  {
+    "label": "塔吉克斯坦",
+    "aliases": []
+  },
+  {
+    "label": "土库曼斯坦",
+    "aliases": []
+  },
+  {
+    "label": "阿联酋",
+    "aliases": [
+      "阿拉伯联合酋长国"
+    ]
+  },
+  {
+    "label": "卡塔尔",
+    "aliases": []
+  },
+  {
+    "label": "沙特阿拉伯",
+    "aliases": [
+      "沙特"
+    ]
+  },
+  {
+    "label": "以色列",
+    "aliases": []
+  },
+  {
+    "label": "土耳其",
+    "aliases": []
+  },
+  {
+    "label": "伊朗",
+    "aliases": []
+  },
+  {
+    "label": "约旦",
+    "aliases": []
+  },
+  {
+    "label": "黎巴嫩",
+    "aliases": []
+  },
+  {
+    "label": "阿曼",
+    "aliases": []
+  },
+  {
+    "label": "科威特",
+    "aliases": []
+  },
+  {
+    "label": "巴林",
+    "aliases": []
+  },
+  {
+    "label": "格鲁吉亚",
+    "aliases": []
+  },
+  {
+    "label": "阿塞拜疆",
+    "aliases": []
+  },
+  {
+    "label": "亚美尼亚",
+    "aliases": []
+  },
+  {
+    "label": "英国",
+    "aliases": [
+      "大不列颠"
+    ]
+  },
+  {
+    "label": "法国",
+    "aliases": [
+      "法兰西"
+    ]
+  },
+  {
+    "label": "德国",
+    "aliases": [
+      "德意志"
+    ]
+  },
+  {
+    "label": "意大利",
+    "aliases": []
+  },
+  {
+    "label": "西班牙",
+    "aliases": []
+  },
+  {
+    "label": "葡萄牙",
+    "aliases": []
+  },
+  {
+    "label": "荷兰",
+    "aliases": []
+  },
+  {
+    "label": "比利时",
+    "aliases": []
+  },
+  {
+    "label": "瑞士",
+    "aliases": []
+  },
+  {
+    "label": "奥地利",
+    "aliases": []
+  },
+  {
+    "label": "希腊",
+    "aliases": []
+  },
+  {
+    "label": "卢森堡",
+    "aliases": []
+  },
+  {
+    "label": "摩纳哥",
+    "aliases": []
+  },
+  {
+    "label": "马耳他",
+    "aliases": []
+  },
+  {
+    "label": "安道尔",
+    "aliases": []
+  },
+  {
+    "label": "爱尔兰",
+    "aliases": []
+  },
+  {
+    "label": "冰岛",
+    "aliases": []
+  },
+  {
+    "label": "挪威",
+    "aliases": []
+  },
+  {
+    "label": "瑞典",
+    "aliases": []
+  },
+  {
+    "label": "芬兰",
+    "aliases": []
+  },
+  {
+    "label": "丹麦",
+    "aliases": []
+  },
+  {
+    "label": "俄罗斯",
+    "aliases": [
+      "俄国"
+    ]
+  },
+  {
+    "label": "波兰",
+    "aliases": []
+  },
+  {
+    "label": "捷克",
+    "aliases": []
+  },
+  {
+    "label": "斯洛伐克",
+    "aliases": []
+  },
+  {
+    "label": "匈牙利",
+    "aliases": []
+  },
+  {
+    "label": "罗马尼亚",
+    "aliases": []
+  },
+  {
+    "label": "保加利亚",
+    "aliases": []
+  },
+  {
+    "label": "塞尔维亚",
+    "aliases": []
+  },
+  {
+    "label": "克罗地亚",
+    "aliases": []
+  },
+  {
+    "label": "斯洛文尼亚",
+    "aliases": []
+  },
+  {
+    "label": "波黑",
+    "aliases": [
+      "波斯尼亚和黑塞哥维那"
+    ]
+  },
+  {
+    "label": "黑山",
+    "aliases": []
+  },
+  {
+    "label": "北马其顿",
+    "aliases": [
+      "马其顿"
+    ]
+  },
+  {
+    "label": "阿尔巴尼亚",
+    "aliases": []
+  },
+  {
+    "label": "乌克兰",
+    "aliases": []
+  },
+  {
+    "label": "白俄罗斯",
+    "aliases": []
+  },
+  {
+    "label": "摩尔多瓦",
+    "aliases": []
+  },
+  {
+    "label": "立陶宛",
+    "aliases": []
+  },
+  {
+    "label": "拉脱维亚",
+    "aliases": []
+  },
+  {
+    "label": "爱沙尼亚",
+    "aliases": []
+  },
+  {
+    "label": "塞浦路斯",
+    "aliases": []
+  },
+  {
+    "label": "美国",
+    "aliases": [
+      "美利坚"
+    ]
+  },
+  {
+    "label": "加拿大",
+    "aliases": []
+  },
+  {
+    "label": "墨西哥",
+    "aliases": []
+  },
+  {
+    "label": "古巴",
+    "aliases": []
+  },
+  {
+    "label": "哥斯达黎加",
+    "aliases": []
+  },
+  {
+    "label": "巴拿马",
+    "aliases": []
+  },
+  {
+    "label": "巴哈马",
+    "aliases": []
+  },
+  {
+    "label": "牙买加",
+    "aliases": []
+  },
+  {
+    "label": "巴西",
+    "aliases": []
+  },
+  {
+    "label": "阿根廷",
+    "aliases": []
+  },
+  {
+    "label": "智利",
+    "aliases": []
+  },
+  {
+    "label": "秘鲁",
+    "aliases": []
+  },
+  {
+    "label": "哥伦比亚",
+    "aliases": []
+  },
+  {
+    "label": "厄瓜多尔",
+    "aliases": []
+  },
+  {
+    "label": "乌拉圭",
+    "aliases": []
+  },
+  {
+    "label": "巴拉圭",
+    "aliases": []
+  },
+  {
+    "label": "玻利维亚",
+    "aliases": []
+  },
+  {
+    "label": "委内瑞拉",
+    "aliases": []
+  },
+  {
+    "label": "澳大利亚",
+    "aliases": [
+      "澳洲"
+    ]
+  },
+  {
+    "label": "新西兰",
+    "aliases": []
+  },
+  {
+    "label": "斐济",
+    "aliases": []
+  },
+  {
+    "label": "法属波利尼西亚",
+    "aliases": [
+      "大溪地",
+      "塔希提"
+    ]
+  },
+  {
+    "label": "埃及",
+    "aliases": []
+  },
+  {
+    "label": "摩洛哥",
+    "aliases": []
+  },
+  {
+    "label": "南非",
+    "aliases": []
+  },
+  {
+    "label": "肯尼亚",
+    "aliases": []
+  },
+  {
+    "label": "坦桑尼亚",
+    "aliases": []
+  },
+  {
+    "label": "毛里求斯",
+    "aliases": []
+  },
+  {
+    "label": "塞舌尔",
+    "aliases": []
+  },
+  {
+    "label": "突尼斯",
+    "aliases": []
+  },
+  {
+    "label": "纳米比亚",
+    "aliases": []
+  },
+  {
+    "label": "津巴布韦",
+    "aliases": []
+  },
+  {
+    "label": "赞比亚",
+    "aliases": []
+  },
+  {
+    "label": "博茨瓦纳",
+    "aliases": []
+  },
+  {
+    "label": "马达加斯加",
+    "aliases": []
+  },
+  {
+    "label": "埃塞俄比亚",
+    "aliases": []
+  },
+  {
+    "label": "尼日利亚",
+    "aliases": []
+  },
+  {
+    "label": "加纳",
+    "aliases": []
+  },
+  {
+    "label": "卢旺达",
+    "aliases": []
+  },
+  {
+    "label": "乌干达",
+    "aliases": []
+  }
+]

@@ -9,10 +9,30 @@ const { getRedisClient } = require('../services/redisClient')
 const { getUserMediaHashes } = require('../services/mediaService')
 const logger = require('../utils/logger')
 
+/**
+ * 生成用户 HashSet 就绪标记 key。
+ * @param {number|string} uid - 用户 ID。
+ * @returns {string} Redis key。
+ */
 const readyKeyOf = (uid) => `images:hashset:ready:${uid}`
+/**
+ * 生成用户 HashSet 初始化锁 key。
+ * @param {number|string} uid - 用户 ID。
+ * @returns {string} Redis key。
+ */
 const lockKeyOf = (uid) => `lock:images:hashset:init:${uid}`
+/**
+ * 生成用户维度媒体哈希集合 key。
+ * @param {number|string} uid - 用户 ID。
+ * @returns {string} Redis key。
+ */
 const userSetKey = (uid) => `images:hashset:user:${uid}`
 
+/**
+ * 确保用户去重哈希集合已在 Redis 中初始化完成。
+ * @param {number|string} userId - 用户 ID。
+ * @returns {Promise<void>} 无返回值。
+ */
 async function ensureUserSetReady(userId) {
   const redis = getRedisClient()
 
@@ -93,8 +113,9 @@ async function ensureUserSetReady(userId) {
 
 /**
  * 从用户维度的上传去重集合中移除哈希（彻底删除媒体后调用，避免 Redis 残留导致无法重新导入同文件）
- * @param {number} userId
+ * @param {number|string} userId
  * @param {Array<string|undefined|null>} hashes
+ * @returns {Promise<void>} 无返回值。
  */
 async function removeHashesFromUserSet(userId, hashes) {
   const unique = [...new Set((hashes || []).filter((h) => h != null && String(h).length > 0))]

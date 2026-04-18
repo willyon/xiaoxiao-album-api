@@ -10,6 +10,14 @@ const logger = require('../utils/logger')
 const CustomError = require('../errors/customError')
 const { ERROR_CODES } = require('../constants/messageCodes')
 
+/**
+ * 全局错误处理中间件：统一包装与输出错误响应。
+ * @param {Error} err - 错误对象。
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @param {import('express').NextFunction} _next - 下一中间件（未使用）。
+ * @returns {void} 无返回值。
+ */
 function errorHandler(err, req, res, _next) {
   // 非 CustomError 统一包装
   if (!(err instanceof CustomError)) {
@@ -64,6 +72,11 @@ function errorHandler(err, req, res, _next) {
 }
 
 // 将常见的非 CustomError 映射为更合理的 HTTP 状态码与错误码
+/**
+ * 将常见原生错误映射为 `CustomError`。
+ * @param {any} err - 原始错误对象。
+ * @returns {CustomError|null} 映射后的错误或 null。
+ */
 const mapToKnownCustomError = (err) => {
   if (err && err.type === 'entity.parse.failed') {
     // JSON 解析失败（express.json/body-parser）
@@ -107,6 +120,12 @@ const mapToKnownCustomError = (err) => {
   return null
 }
 
+/**
+ * 安全转换任意值为字符串，超长截断。
+ * @param {unknown} v - 原始值。
+ * @param {number} [max=2000] - 最大长度。
+ * @returns {string} 安全字符串。
+ */
 const toSafeString = (v, max = 2000) => {
   if (v == null) return '' //v为null或undefined时执行
   try {

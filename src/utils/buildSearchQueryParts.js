@@ -7,8 +7,10 @@ const { AGE_GROUP_FRONTEND_TO_BACKEND } = require('../constants/filterMappings')
 const ALLOWED_EXPRESSION_FILTERS = new Set(['happy', 'sad', 'anger', 'surprise', 'neutral'])
 
 /**
- * @param {Object} filters - 筛选条件
- * @param {Object} [options] - { userId, clusterId, locationKeyExpr? }
+ * 根据筛选条件构建 SQL where 片段及参数。
+ * @param {Record<string, unknown>} filters - 筛选条件。
+ * @param {{userId?: number|string, clusterId?: number|string, locationKeyExpr?: string}} [options={}] - 附加构建选项。
+ * @returns {{whereConditions: string[], whereParams: Array<string|number>}} 查询片段与参数。
  */
 function buildSearchQueryParts(filters, options = {}) {
   const convertedFilters = { ...filters }

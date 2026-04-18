@@ -7,7 +7,7 @@ const { CHINESE_QUERY_TERM_BOOST } = require('../../config/searchRankingWeights'
 const { containsChinese, segmentLengthUnits } = require('../../utils/searchTermUtils')
 const { SANITIZE_FTS_TOKEN_CHAR_PATTERN } = require('../../utils/cjkRegex')
 const { generateTextEmbeddingForQuery } = require('../embeddingProvider')
-const { SEARCH_TERMS_SPLIT_REGEX } = require('../../utils/chineseSegmenter')
+const { splitBySearchDelimiters } = require('../../utils/searchLexicalPipeline')
 const {
   passLexicalGate,
   getCoreTokensOnlyForResidual,
@@ -95,13 +95,18 @@ function dotProduct(a = [], b = []) {
 }
 
 /**
+ * 视觉向量召回结果排序：相似度降序，media_id 降序。
+ * @param {{media_id:number, similarity:number}} a - 结果 A。
+ * @param {{media_id:number, similarity:number}} b - 结果 B。
+ * @returns {number} 排序比较值。
+ */
+function compareVisualSimilarityRows(a, b) {
+  return b.similarity - a.similarity || b.media_id - a.media_id
+}
+
+/**
  * 通过向量相似度召回媒体 ID 列表。
- * @param {Object} [params={}] 召回参数
- * @param {number} params.userId 用户 ID
- * @param {string} params.queryText 查询文本
- * @param {string[]} params.whereConditions SQL 条件
- * @param {any[]} params.whereParams SQL 参数
- * @param {number} [params.topK] 可选 TopK（不传则用环境变量）
+ * @param {{userId:number|string,queryText:string,whereConditions:string[],whereParams:any[],topK?:number}} [params={}] - 召回参数。
  * @returns {Promise<Array<{media_id:number, similarity:number, description_text:string}>>}
  */
 function recallMediaIdsByVisualEmbedding({ userId, queryText, whereConditions, whereParams, topK } = {}) {
@@ -131,7 +136,7 @@ function recallMediaIdsByVisualEmbedding({ userId, queryText, whereConditions, w
         description_text: row.description_text
       })
     }
-    scored.sort((a, b) => b.similarity - a.similarity || b.media_id - a.media_id)
+    scored.sort(compareVisualSimilarityRows)
     if (Number.isFinite(limit) && limit > 0) {
       return scored.slice(0, limit)
     }
@@ -148,10 +153,7 @@ function recallMediaIdsByVisualEmbedding({ userId, queryText, whereConditions, w
 function splitResidualSegmentsForShortTerms(residual) {
   const raw = String(residual || '').trim()
   if (!raw) return []
-  return raw
-    .split(SEARCH_TERMS_SPLIT_REGEX)
-    .map((s) => s.trim())
-    .filter(Boolean)
+  return splitBySearchDelimiters(raw)
 }
 
 /**
@@ -245,12 +247,8 @@ async function applyVisualRecallForSegment({ segment, residual, hasStructured, u
 
         const allTermsFlat = [...new Set(groups.flat())]
         const queryTerms = allTermsFlat
-          .map((term) => {
-            const termLen = Array.from(term).length
-            const boost = termLen >= 2 ? CHINESE_QUERY_TERM_BOOST.multiChar : CHINESE_QUERY_TERM_BOOST.singleChar
-            return { term, termLen, boost }
-          })
-          .sort((a, b) => b.termLen - a.termLen || a.term.localeCompare(b.term, 'zh-Hans-CN'))
+          .map((term) => buildChineseQueryTermMeta(term))
+          .sort(compareChineseQueryTermMeta)
 
         if (queryTerms.length > 0 && allowedIds && allowedIds.size > 0) {
           const termRowsDataAll = searchModel.recallMediaIdsByChineseTerms({
@@ -318,6 +316,27 @@ async function applyVisualRecallForSegment({ segment, residual, hasStructured, u
   }
 
   return { termRows, ftsRows, semanticRows }
+}
+
+/**
+ * 构造中文 term 的长度与权重信息。
+ * @param {string} term - 查询词。
+ * @returns {{term:string,termLen:number,boost:number}} term 元信息。
+ */
+function buildChineseQueryTermMeta(term) {
+  const termLen = Array.from(term).length
+  const boost = termLen >= 2 ? CHINESE_QUERY_TERM_BOOST.multiChar : CHINESE_QUERY_TERM_BOOST.singleChar
+  return { term, termLen, boost }
+}
+
+/**
+ * 中文 term 元信息排序：长度降序，同长度按中文字典序升序。
+ * @param {{term:string,termLen:number}} a - 元信息 A。
+ * @param {{term:string,termLen:number}} b - 元信息 B。
+ * @returns {number} 排序比较值。
+ */
+function compareChineseQueryTermMeta(a, b) {
+  return b.termLen - a.termLen || a.term.localeCompare(b.term, 'zh-Hans-CN')
 }
 
 module.exports = {

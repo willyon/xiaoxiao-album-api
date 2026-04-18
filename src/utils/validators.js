@@ -5,6 +5,11 @@ const validator = require('validator')
 const { ERROR_CODES } = require('../constants/messageCodes')
 const CustomError = require('../errors/customError')
 
+/**
+ * 校验邮箱是否存在且格式合法。
+ * @param {string} email - 待校验邮箱。
+ * @returns {void} 校验通过时无返回值。
+ */
 function validateEmail(email) {
   if (!email || typeof email !== 'string') {
     throw new CustomError({
@@ -22,6 +27,11 @@ function validateEmail(email) {
   }
 }
 
+/**
+ * 校验密码强度是否满足规则。
+ * @param {string} password - 待校验密码。
+ * @returns {void} 校验通过时无返回值。
+ */
 function validatePassword(password) {
   if (!password || typeof password !== 'string') {
     throw new CustomError({

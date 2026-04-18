@@ -84,8 +84,8 @@ const FIELD_MAPPING = {
 
 /**
  * 将下划线字段名转换为驼峰字段名（备用方法）
- * @param {string} snakeCase - 下划线格式的字段名
- * @returns {string} 驼峰格式的字段名
+ * @param {string} snakeCase - 下划线格式的字段名。
+ * @returns {string} 驼峰格式的字段名。
  */
 function snakeToCamel(snakeCase) {
   return snakeCase.replace(/_([a-z])/g, (match, letter) => letter.toUpperCase())
@@ -93,9 +93,9 @@ function snakeToCamel(snakeCase) {
 
 /**
  * 将数据库查询结果转换为API格式（优化版）
- * @param {string} tableName - 表名
- * @param {Object|Array} data - 数据库查询结果
- * @returns {Object|Array} API格式的数据
+ * @param {string} tableName - 表名。
+ * @param {object|Array<object>} data - 数据库查询结果。
+ * @returns {object|Array<object>} API 格式数据。
  */
 function mapFields(tableName, data) {
   // 如果没有数据，直接返回

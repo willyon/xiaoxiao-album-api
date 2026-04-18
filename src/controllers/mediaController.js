@@ -15,7 +15,7 @@ const { userSetKey } = require('../workers/userMediaHashset')
 const { updateProgress } = require('../services/mediaProcessingProgressService')
 const logger = require('../utils/logger')
 const asyncHandler = require('../utils/asyncHandler')
-const { parsePagination } = require('../utils/requestParams')
+const { parsePagination, parsePositiveIntParam } = require('../utils/requestParams')
 const {
   getMediaDownloadInfo,
   selectMediaRowByHashForUser,
@@ -32,10 +32,13 @@ const { getRowByKeyType, KEY_TYPE_CLOUD_MODEL } = appSettingsService
 const CLOUD_RETRY_JOB_IN_FLIGHT_STATES = new Set(['waiting', 'active', 'delayed', 'paused'])
 const CLOUD_RETRY_LIST_MAX = Math.max(500, Math.min(Number(process.env.CLOUD_RETRY_LIST_MAX) || 20000, 200000))
 const CLOUD_RETRY_BATCH_SIZE = Math.max(50, Math.min(Number(process.env.CLOUD_RETRY_BATCH_SIZE) || 500, 2000))
+const VALID_RETRY_STAGES = ['primary', 'ingest', 'cloud']
 
 /**
  * 处理中心「云阶段失败」重试：固定 jobId 避免连点重复入队。
  * removeOnFail 会保留失败 job，同 jobId 再次 add 只会走 duplicated 且不会重新进 wait，故非进行中状态会先 remove 再 add。
+ * @param {number|string} userId - 用户 ID。
+ * @param {{id:number,highResStorageKey?:string|null,originalStorageKey?:string|null,mediaType?:string}} mediaInfo - 媒体信息。
  * @returns {Promise<boolean>} true 表示新入队；false 表示已有同 jobId 在等待/执行中，跳过。
  */
 async function enqueueCloudCaptionRetryJob(userId, mediaInfo) {
@@ -65,6 +68,12 @@ async function enqueueCloudCaptionRetryJob(userId, mediaInfo) {
 
 // 分页获取模糊图列表（is_blurry = 1），用于清理页模糊图 tab
 // GET /api/media/blurry?pageNo=1&pageSize=20
+/**
+ * 获取当前用户的模糊图分页列表。
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
+ */
 async function handleGetBlurryMedias(req, res) {
   const { userId } = req?.user
   const { pageNo, pageSize } = parsePagination(req.query, { pageNo: 1, pageSize: 20 })
@@ -78,6 +87,12 @@ async function handleGetBlurryMedias(req, res) {
 
 // 分页获取相似图分组列表（清理页相似图 tab）
 // GET /api/media/similar?pageNo=1&pageSize=12
+/**
+ * 获取当前用户的相似图分组分页列表。
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
+ */
 async function handleGetSimilarGroups(req, res) {
   const { userId } = req?.user
   const { pageNo, pageSize } = parsePagination(req.query, { pageNo: 1, pageSize: 12 })
@@ -98,6 +113,9 @@ async function handleGetSimilarGroups(req, res) {
  * - 无行：清理 Redis 陈旧 hash，返回不存在
  * - 仅回收站有行：静默恢复后返回 exists:true（计 uploadedCount，不计「跳过」）
  * - 正常库内：秒传，计 existingFiles
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function handleCheckFileExists(req, res) {
   const { hash, sessionId } = req.body
@@ -172,35 +190,35 @@ async function handleCheckFileExists(req, res) {
 }
 
 // 部分更新图片信息（仅用于 favorite 字段）
+/**
+ * 更新单个媒体的部分字段。
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
+ */
 async function handlePatchMedia(req, res) {
   const { userId } = req?.user
-  const { mediaId } = req.params
+  const mediaId = parsePositiveIntParam(req.params.mediaId)
   const patchData = req.body // { favorite: true }
 
-  if (!mediaId) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: 'error'
-    })
-  }
-
-  const result = await mediaService.patchMedia({ userId, mediaId: parseInt(mediaId), patchData })
+  const result = await mediaService.patchMedia({ userId, mediaId, patchData })
 
   res.sendResponse({ data: result })
 }
 
 // 批量删除图片（软删除，移至回收站）
+/**
+ * 批量软删除媒体到回收站。
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
+ */
 async function handleDeleteMedias(req, res) {
   const { userId } = req?.user
   const { mediaIds, groupId } = req.body || {}
 
   if (!mediaIds || !Array.isArray(mediaIds) || mediaIds.length === 0) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: 'warning'
-    })
+    throwInvalidParametersError('warning')
   }
 
   let result
@@ -223,6 +241,9 @@ async function handleDeleteMedias(req, res) {
 /**
  * 各阶段处理失败数量汇总
  * GET /api/media/processing-failures/summary
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function handleGetProcessingFailureSummary(req, res) {
   const userId = req?.user?.userId
@@ -238,147 +259,28 @@ async function handleGetProcessingFailureSummary(req, res) {
  * 重试处理失败媒体
  * POST /api/media/processing-failures/retry?stage=primary
  * body: { mediaIds?: number[] }
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function handleRetryProcessingFailures(req, res) {
   const userId = req?.user?.userId
-    const stage = req.query.stage || null // null / 'all' → 所有阶段
-    const bodyMediaIds = Array.isArray(req.body?.mediaIds) ? req.body.mediaIds : null
+  const stage = req.query.stage || null // null / 'all' → 所有阶段
+  const bodyMediaIds = Array.isArray(req.body?.mediaIds) ? req.body.mediaIds : null
 
-    const validStages = ['primary', 'ingest', 'cloud']
-    let stagesToRetry = stage === null || stage === 'all' ? validStages : validStages.includes(stage) ? [stage] : []
+  const stagesToRetry = resolveRetryStages({ userId, stage })
+  const { nonCloudFailed, cloudFailedRows } = collectRetryTargets({ userId, stagesToRetry, bodyMediaIds })
+  const totalTargets = nonCloudFailed.length + cloudFailedRows.length
+  if (totalTargets === 0) {
+    return res.sendResponse({
+      data: { stage: stage || 'all', retriedCount: 0, skippedCount: 0, mediaIds: [] }
+    })
+  }
 
-    if (stagesToRetry.length === 0) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'error'
-      })
-    }
-
-    const cloudRow = getRowByKeyType(userId, KEY_TYPE_CLOUD_MODEL)
-    const cloudModelReady = Number(cloudRow?.enabled) === 1 && Boolean(cloudRow?.api_key && String(cloudRow.api_key).trim() !== '')
-
-    if (!cloudModelReady && stage === 'cloud') {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.UNSUPPORTED_OPERATION,
-        messageType: 'error',
-        message: '云模型未启用或未配置 API Key，无法重试云端分析阶段。'
-      })
-    }
-
-    if (!cloudModelReady) {
-      stagesToRetry = stagesToRetry.filter((s) => s !== 'cloud')
-    }
-
-    if (stagesToRetry.length === 0) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'error'
-      })
-    }
-
-    const nonCloudFailed = []
-
-    for (const s of stagesToRetry) {
-      if (s === 'cloud') {
-        continue
-      }
-      const items = listFailedMedias({
-        userId,
-        stage: s,
-        mediaIds: bodyMediaIds || null,
-        limit: 500,
-        offset: 0
-      })
-      for (const it of items) {
-        nonCloudFailed.push({ ...it, stage: s })
-      }
-    }
-
-    let cloudFailedRows = []
-    if (stagesToRetry.includes('cloud')) {
-      cloudFailedRows = listAllFailedCloudMedias({
-        userId,
-        mediaIds: bodyMediaIds,
-        maxRows: CLOUD_RETRY_LIST_MAX
-      })
-    }
-
-    const totalTargets = nonCloudFailed.length + cloudFailedRows.length
-    if (totalTargets === 0) {
-      return res.sendResponse({
-        data: { stage: stage || 'all', retriedCount: 0, skippedCount: 0, mediaIds: [] }
-      })
-    }
-
-    let retriedCount = 0
-    const retriedMediaIds = []
-
-    for (const media of nonCloudFailed) {
-      const mediaId = media.mediaId
-
-      if (media.stage === 'primary') {
-        const mediaInfo = await getMediaDownloadInfo({ userId, mediaId })
-        if (!mediaInfo) continue
-
-        // 带时间戳：与主链路 analysis: 前缀不同；失败任务在 removeOnFail 下仍占 jobId 时仍可再次重试
-        const jobId = `retry-primary:${userId}:${mediaId}:${Date.now()}`
-        await mediaAnalysisQueue.add(
-          'media-analysis',
-          {
-            mediaId: mediaInfo.id,
-            userId,
-            highResStorageKey: mediaInfo.highResStorageKey || null,
-            originalStorageKey: mediaInfo.originalStorageKey || null,
-            mediaType: mediaInfo.mediaType || 'image',
-            fileName: ''
-          },
-          { jobId }
-        )
-      } else if (media.stage === 'ingest') {
-        // 基础处理重试：基于 original_storage_key 重新入队 meta 阶段
-        if (!media.originalStorageKey) {
-          continue
-        }
-
-        await mediaMetaQueue.add(
-          process.env.MEDIA_META_QUEUE_NAME || 'media-meta',
-          {
-            userId,
-            imageHash: media.imageHash,
-            fileName: '',
-            originalStorageKey: media.originalStorageKey,
-            mediaType: media.mediaType || 'image',
-            extension: process.env.MEDIA_HIGHRES_EXTENSION || 'avif',
-            fileSize: media.fileSize,
-            sessionId: null
-          },
-          {
-            jobId: `retry-ingest:${userId}:${mediaId}:${Date.now()}`
-          }
-        )
-      }
-
-      retriedMediaIds.push(String(mediaId))
-      retriedCount += 1
-    }
-
-    for (let i = 0; i < cloudFailedRows.length; i += CLOUD_RETRY_BATCH_SIZE) {
-      const batch = cloudFailedRows.slice(i, i + CLOUD_RETRY_BATCH_SIZE)
-      for (const row of batch) {
-        const mediaId = row.mediaId
-        const mediaInfo = await getMediaDownloadInfo({ userId, mediaId })
-        if (!mediaInfo) continue
-
-        const enqueued = await enqueueCloudCaptionRetryJob(userId, mediaInfo)
-        if (!enqueued) continue
-
-        retriedMediaIds.push(String(mediaId))
-        retriedCount += 1
-      }
-    }
+  const nonCloudResult = await retryNonCloudFailures({ userId, rows: nonCloudFailed })
+  const cloudResult = await retryCloudFailures({ userId, rows: cloudFailedRows })
+  const retriedMediaIds = [...nonCloudResult.mediaIds, ...cloudResult.mediaIds]
+  const retriedCount = nonCloudResult.count + cloudResult.count
 
   res.sendResponse({
     data: {
@@ -388,6 +290,124 @@ async function handleRetryProcessingFailures(req, res) {
       mediaIds: retriedMediaIds
     }
   })
+}
+
+function resolveRetryStages({ userId, stage }) {
+  let stages = stage == null || stage === 'all' ? [...VALID_RETRY_STAGES] : VALID_RETRY_STAGES.includes(stage) ? [stage] : []
+  if (stages.length === 0) {
+    throwInvalidParametersError('error')
+  }
+
+  const cloudRow = getRowByKeyType(userId, KEY_TYPE_CLOUD_MODEL)
+  const cloudModelReady = Number(cloudRow?.enabled) === 1 && Boolean(cloudRow?.api_key && String(cloudRow.api_key).trim() !== '')
+  if (!cloudModelReady && stage === 'cloud') {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.UNSUPPORTED_OPERATION,
+      messageType: 'error',
+      message: '云模型未启用或未配置 API Key，无法重试云端分析阶段。'
+    })
+  }
+  if (!cloudModelReady) stages = stages.filter((s) => s !== 'cloud')
+  if (stages.length === 0) {
+    throwInvalidParametersError('error')
+  }
+  return stages
+}
+
+function throwInvalidParametersError(messageType = 'error') {
+  throw new CustomError({
+    httpStatus: 400,
+    messageCode: ERROR_CODES.INVALID_PARAMETERS,
+    messageType
+  })
+}
+
+function collectRetryTargets({ userId, stagesToRetry, bodyMediaIds }) {
+  const nonCloudFailed = []
+  for (const s of stagesToRetry) {
+    if (s === 'cloud') continue
+    const items = listFailedMedias({
+      userId,
+      stage: s,
+      mediaIds: bodyMediaIds || null,
+      limit: 500,
+      offset: 0
+    })
+    for (const it of items) nonCloudFailed.push({ ...it, stage: s })
+  }
+  const cloudFailedRows = stagesToRetry.includes('cloud')
+    ? listAllFailedCloudMedias({ userId, mediaIds: bodyMediaIds, maxRows: CLOUD_RETRY_LIST_MAX })
+    : []
+  return { nonCloudFailed, cloudFailedRows }
+}
+
+async function retryNonCloudFailures({ userId, rows }) {
+  const mediaIds = []
+  let count = 0
+  for (const media of rows) {
+    const retried = media.stage === 'primary'
+      ? await retryPrimaryFailure({ userId, media })
+      : await retryIngestFailure({ userId, media })
+    if (!retried) continue
+    mediaIds.push(String(media.mediaId))
+    count += 1
+  }
+  return { mediaIds, count }
+}
+
+async function retryPrimaryFailure({ userId, media }) {
+  const mediaInfo = await getMediaDownloadInfo({ userId, mediaId: media.mediaId })
+  if (!mediaInfo) return false
+  await mediaAnalysisQueue.add(
+    'media-analysis',
+    {
+      mediaId: mediaInfo.id,
+      userId,
+      highResStorageKey: mediaInfo.highResStorageKey || null,
+      originalStorageKey: mediaInfo.originalStorageKey || null,
+      mediaType: mediaInfo.mediaType || 'image',
+      fileName: ''
+    },
+    { jobId: `retry-primary:${userId}:${media.mediaId}:${Date.now()}` }
+  )
+  return true
+}
+
+async function retryIngestFailure({ userId, media }) {
+  if (!media.originalStorageKey) return false
+  await mediaMetaQueue.add(
+    process.env.MEDIA_META_QUEUE_NAME || 'media-meta',
+    {
+      userId,
+      imageHash: media.imageHash,
+      fileName: '',
+      originalStorageKey: media.originalStorageKey,
+      mediaType: media.mediaType || 'image',
+      extension: process.env.MEDIA_HIGHRES_EXTENSION || 'avif',
+      fileSize: media.fileSize,
+      sessionId: null
+    },
+    { jobId: `retry-ingest:${userId}:${media.mediaId}:${Date.now()}` }
+  )
+  return true
+}
+
+async function retryCloudFailures({ userId, rows }) {
+  const mediaIds = []
+  let count = 0
+  for (let i = 0; i < rows.length; i += CLOUD_RETRY_BATCH_SIZE) {
+    const batch = rows.slice(i, i + CLOUD_RETRY_BATCH_SIZE)
+    for (const row of batch) {
+      const mediaInfo = await getMediaDownloadInfo({ userId, mediaId: row.mediaId })
+      if (!mediaInfo) continue
+      const enqueued = await enqueueCloudCaptionRetryJob(userId, mediaInfo)
+      if (!enqueued) continue
+      mediaIds.push(String(row.mediaId))
+      count += 1
+    }
+  }
+  return { mediaIds, count }
 }
 
 module.exports = {

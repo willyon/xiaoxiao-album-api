@@ -16,7 +16,8 @@ const FFPROBE_PATH = process.env.FFPROBE_PATH || 'ffprobe'
  * 从 ffprobe 获取视频色彩元数据（用于正确抽帧）
  * MOV/QuickTime 常缺失或错误，导致 FFmpeg 默认按 BT.601 处理，产生惨白/发灰
  * 室外阳光视频常为 HDR（bt2020+HLG），需 tone mapping 才能正确转 SDR
- * @returns {{ inColorMatrix: string, inRange: string, isHdr: boolean }}
+ * @param {string} videoPath - 视频文件路径。
+ * @returns {Promise<{ inColorMatrix: string, inRange: string, isHdr: boolean }>} 色彩元数据。
  */
 async function getVideoColorMetadata(videoPath) {
   return new Promise((resolve) => {
@@ -125,7 +126,7 @@ async function extractFirstFrame(videoPath) {
 /**
  * 使用 ffprobe 获取视频元数据
  * @param {string} videoPath - 视频文件路径
- * @returns {Promise<Object>} { duration, codec, width, height, codedWidth, codedHeight, rotationDegrees, creationTime, gpsLatitude, gpsLongitude }
+ * @returns {Promise<{duration:number|null,codec:string|null,width:number|null,height:number|null,codedWidth:number|null,codedHeight:number|null,rotationDegrees:number,creationTime:number|null,gpsLatitude:number|null,gpsLongitude:number|null}>} 视频元数据。
  *   width/height 为考虑 rotation 后的显示尺寸；coded* 为码流内宽高
  */
 async function getVideoMetadata(videoPath) {
@@ -164,6 +165,7 @@ async function getVideoMetadata(videoPath) {
 
 /**
  * ffprobe 视频流中的旋转角度（度），常见：tags.rotate 或 side_data Display Matrix
+ * @param {object} videoStream - ffprobe 视频流对象。
  * @returns {number} 可为负值，与 FFmpeg 行为一致
  */
 function _parseVideoRotationDegrees(videoStream) {
@@ -187,6 +189,10 @@ function _parseVideoRotationDegrees(videoStream) {
 
 /**
  * 按显示旋转得到用户观感上的宽高（与 EXIF 5–8 交换宽高一致：90°/270° 交换）
+ * @param {number|null} codedWidth - 码流宽度。
+ * @param {number|null} codedHeight - 码流高度。
+ * @param {number} rotationDegrees - 旋转角度。
+ * @returns {{codedWidth:number|null,codedHeight:number|null,displayWidth:number|null,displayHeight:number|null}} 显示尺寸结果。
  */
 function _displayDimensionsFromRotation(codedWidth, codedHeight, rotationDegrees) {
   if (!codedWidth || !codedHeight) {
@@ -209,6 +215,8 @@ function _displayDimensionsFromRotation(codedWidth, codedHeight, rotationDegrees
  * 解析 ffprobe JSON 输出
  * width/height 为「显示」尺寸（已考虑 rotation），与图片侧 displayWidth/displayHeight 语义一致
  * codedWidth/codedHeight 为码流内存储的像素框
+ * @param {object} data - ffprobe JSON 输出对象。
+ * @returns {{duration:number|null,codec:string|null,width:number|null,height:number|null,codedWidth:number|null,codedHeight:number|null,rotationDegrees:number,creationTime:number|null,gpsLatitude:number|null,gpsLongitude:number|null}} 标准化结果。
  */
 function _parseFfprobeOutput(data) {
   const result = {
@@ -272,6 +280,8 @@ function _parseFfprobeOutput(data) {
 
 /**
  * 解析 ISO 8601 或类似格式的 creation_time 为时间戳（毫秒）
+ * @param {string} str - creation_time 字符串。
+ * @returns {number|null} 时间戳或 null。
  */
 function _parseCreationTime(str) {
   if (!str || typeof str !== 'string') return null
@@ -286,6 +296,8 @@ function _parseCreationTime(str) {
 
 /**
  * 解析 GPS location 字符串（如 +39.9042+116.4074/）
+ * @param {string} str - GPS location 字符串。
+ * @returns {{latitude:number,longitude:number}|null} 解析结果。
  */
 function _parseGpsLocation(str) {
   if (!str || typeof str !== 'string') return null
@@ -301,10 +313,10 @@ function _parseGpsLocation(str) {
  * 从视频抽首帧并按 extension 编码（与图片缩略图一致，默认 MEDIA_THUMBNAIL_EXTENSION / webp），写入存储
  * @param {string} videoPath - 视频路径
  * @param {string} targetStorageKey - 目标存储键
- * @param {Object} storageAdapter - 存储适配器（需有 storeFile 方法）
- * @param {Object} [options]
+ * @param {{storeFile:(data:Buffer,key:string)=>Promise<any>}} storageAdapter - 存储适配器（需有 storeFile 方法）。
+ * @param {{extension?:string}} [options]
  * @param {string} [options.extension] - 目标扩展名；未传则使用 process.env.MEDIA_THUMBNAIL_EXTENSION || "webp"
- * @returns {Promise<{ width: number, height: number }>}
+ * @returns {Promise<{ width: number, height: number }>} 生成后的缩略图尺寸。
  */
 async function storeVideoThumbnail(videoPath, targetStorageKey, storageAdapter, options = {}) {
   const extension = options.extension ?? (process.env.MEDIA_THUMBNAIL_EXTENSION || 'webp')

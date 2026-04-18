@@ -8,6 +8,9 @@ const { parsePagination } = require('../utils/requestParams')
 /**
  * 获取地点相册列表（按地点键分组）
  * GET /api/locations?pageNo=1&pageSize=20
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function getLocations(req, res) {
   const userId = req.user.userId

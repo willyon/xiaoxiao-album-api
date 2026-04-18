@@ -32,30 +32,60 @@
  * 二者同时满足则 completed===true。duplicateCount、existingFiles 不参与媒体完成不等式，用于总文件数与「未走流水线」提示。
  */
 
+/**
+ * 将 Redis 字段值转换为整数。
+ * @param {unknown} value - 原始值。
+ * @returns {number} 非负整数。
+ */
 function toInt(value) {
   return Number.parseInt(value, 10) || 0
 }
 
+/**
+ * 判断是否已出现媒体阶段进度信号。
+ * @param {object} progressData - 进度对象。
+ * @returns {boolean} 是否存在媒体阶段信号。
+ */
 function hasMediaSignal(progressData) {
   const { uploadedCount, ingestDoneCount, ingestErrorCount, duplicateCount, workerSkippedCount, existingFiles } = progressData
 
   return uploadedCount + ingestDoneCount + ingestErrorCount + duplicateCount + workerSkippedCount + existingFiles > 0
 }
 
+/**
+ * 计算媒体阶段是否完成。
+ * @param {object} progressData - 进度对象。
+ * @returns {boolean} 媒体阶段是否完成。
+ */
 function computeMediaStageDone(progressData) {
   const { uploadedCount, ingestDoneCount, ingestErrorCount, workerSkippedCount } = progressData
   return uploadedCount === 0 || ingestDoneCount + ingestErrorCount + workerSkippedCount >= uploadedCount
 }
 
+/**
+ * 计算 AI 阶段是否完成。
+ * @param {object} progressData - 进度对象。
+ * @returns {boolean} AI 阶段是否完成。
+ */
 function computeAiStageDone(progressData) {
   const { aiEligibleCount, aiDoneCount, aiErrorCount } = progressData
   return aiEligibleCount === 0 || aiDoneCount + aiErrorCount >= aiEligibleCount
 }
 
+/**
+ * 计算整体是否完成。
+ * @param {object} progressData - 进度对象。
+ * @returns {boolean} 是否完成。
+ */
 function computeCompleted(progressData) {
   return computeMediaStageDone(progressData) && computeAiStageDone(progressData)
 }
 
+/**
+ * 计算当前上传会话阶段。
+ * @param {object} progressData - 进度对象。
+ * @returns {'uploading'|'mediaProcessing'|'aiAnalyzing'|'completed'} 当前阶段。
+ */
 function computePhase(progressData) {
   if (progressData.completed) return 'completed'
 
@@ -74,6 +104,12 @@ function computePhase(progressData) {
   return 'completed'
 }
 
+/**
+ * 将 Redis 原始进度归一化为前端快照结构。
+ * @param {string} sessionId - 会话 ID。
+ * @param {Record<string, string|number>} [redisData={}] - Redis Hash 数据。
+ * @returns {object} 归一化后的进度快照。
+ */
 function normalizeProgressData(sessionId, redisData = {}) {
   const ingestDoneCount = toInt(redisData.ingestDoneCount)
   const normalized = {
@@ -96,6 +132,11 @@ function normalizeProgressData(sessionId, redisData = {}) {
   return normalized
 }
 
+/**
+ * 判断进度对象是否存在任意计数数据。
+ * @param {object} progressData - 进度对象。
+ * @returns {boolean} 是否存在数据。
+ */
 function hasAnyProgressData(progressData) {
   return (
     progressData.uploadedCount +

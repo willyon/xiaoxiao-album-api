@@ -4,7 +4,11 @@
 
 const { getRowByKeyType, KEY_TYPE_AMAP } = require('../models/appSettingsModel')
 
-/** @returns {string} 非空则使用高德逆地理；空则走本地/全球 */
+/**
+ * 读取用户可用的高德逆地理 API Key。
+ * @param {number|string} userId - 用户 ID。
+ * @returns {string} 非空则使用高德逆地理；空则走本地/全球。
+ */
 function getAmapApiKeyForGeocode(userId) {
   const row = getRowByKeyType(userId, KEY_TYPE_AMAP)
   if (!row) return ''

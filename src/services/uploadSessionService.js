@@ -15,8 +15,8 @@ const redisClient = getRedisClient()
 
 /**
  * 创建上传会话
- * @param {string} userId - 用户ID
- * @returns {Object} 会话对象
+ * @param {string|number} userId - 用户 ID。
+ * @returns {Promise<object>} 会话快照对象。
  */
 async function createSession(userId) {
   // 生成会话ID
@@ -61,8 +61,8 @@ async function createSession(userId) {
 
 /**
  * 获取用户的活跃会话
- * @param {string} userId - 用户ID
- * @returns {Object|null} 会话对象，如果没有活跃会话则返回null
+ * @param {string|number} userId - 用户 ID。
+ * @returns {Promise<object|null>} 活跃会话快照或 null。
  */
 async function getActiveSession(userId) {
   // 获取用户的最新会话ID
@@ -97,6 +97,11 @@ async function getActiveSession(userId) {
   }
 }
 
+/**
+ * 获取当前上传进度快照。
+ * @param {string|number} userId - 用户 ID。
+ * @returns {Promise<{active:boolean,session:object|null}>} 当前会话进度状态。
+ */
 async function getCurrentProgressSnapshot(userId) {
   const activeSessionId = await redisClient.get(`user:latest:session:${userId}`)
   if (!activeSessionId) {
@@ -118,6 +123,11 @@ async function getCurrentProgressSnapshot(userId) {
   return { active: true, session: snapshot }
 }
 
+/**
+ * 将媒体 ID 绑定到上传会话。
+ * @param {{sessionId:string,mediaId:number|string}} params - 绑定参数。
+ * @returns {Promise<void>} 无返回值。
+ */
 async function addMediaToSession({ sessionId, mediaId }) {
   if (!sessionId || !mediaId) return
   const sessionMediaSetKey = `upload:session:${sessionId}:media_ids`

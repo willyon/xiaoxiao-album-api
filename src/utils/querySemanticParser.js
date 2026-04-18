@@ -6,6 +6,21 @@ const { normalizeQueryText, collectResidualQuery } = require('./querySemanticMat
 const { collectCitySignals, buildLocationFilter } = require('./queryLocationParser')
 const { collectTimeSignals, pickPrimaryTimeFilter } = require('./queryTimeParser')
 
+/**
+ * 解析查询语义信号，提取时间和地点筛选信息。
+ * @param {string} query - 用户输入的查询文本。
+ * @returns {{
+ * normalizedQuery: string,
+ * cities: Array<object>,
+ * timeSignals: Array<object>,
+ * allSignals: Array<object>,
+ * summary: { cityLabels: string[], timeLabels: string[] },
+ * primaryTimeFilter: object|null,
+ * primaryLocationFilter: object|null,
+ * residualQuery: string,
+ * residualSegments: string[]
+ * }} 语义解析结果。
+ */
 function parseQuerySemanticSignals(query) {
   const normalizedQuery = normalizeQueryText(query)
   const cities = collectCitySignals(normalizedQuery)

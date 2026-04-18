@@ -16,6 +16,12 @@ const { isMediaFile } = require('../utils/fileUtils')
 const VIDEO_MAX_FILE_SIZE = Number(process.env.VIDEO_MAX_FILE_SIZE) || 10 * 1024 * 1024 * 1024
 
 // 生成文件名的通用函数
+/**
+ * 生成上传文件名（用户 + 时间 + UUID）。
+ * @param {import('express').Request} req - 请求对象。
+ * @param {{originalname:string}} file - 上传文件对象。
+ * @returns {string} 生成后的文件名。
+ */
 function generateFilename(req, file) {
   const ext = path.extname(file.originalname)
   const now = DateTime.local()
@@ -32,6 +38,13 @@ function generateFilename(req, file) {
 // 通过存储服务获取Multer存储配置
 const storage = storageService.storage.getMulterStorage(generateFilename)
 
+/**
+ * Multer 文件过滤器：仅允许图片与视频。
+ * @param {import('express').Request} _req - 请求对象（未使用）。
+ * @param {Express.Multer.File} file - 上传文件。
+ * @param {(error:Error|null,acceptFile:boolean)=>void} cb - 回调。
+ * @returns {void} 无返回值。
+ */
 const fileFilter = (_req, file, cb) => {
   // 支持图片和视频（HEIC 等格式通过 isMediaFile 内部 isImageFile 支持）
   if (isMediaFile(file)) {
@@ -52,6 +65,13 @@ const upload = multer({
 const uploadMiddleware = upload.single('file')
 
 // 创建增强的上传中间件：为内存存储模式添加生成的文件名
+/**
+ * 增强上传中间件：执行 multer 并补全内存模式文件名。
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @param {import('express').NextFunction} next - 下一中间件。
+ * @returns {void} 无返回值。
+ */
 const enhancedUpload = (req, res, next) => {
   uploadMiddleware(req, res, (err) => {
     // 这个回调函数会在 uploadMiddleware 完成时被调用

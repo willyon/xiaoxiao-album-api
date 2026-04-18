@@ -1,15 +1,18 @@
 /**
  * 按 userId 去抖：同一 user 在 debounceMs 内多次 schedule，只在最后一次触发后的安静期结束时执行一次 execute(userId)。
  *
- * @param {Object} options
- * @param {number} options.debounceMs - 安静期毫秒数（调用方通常从环境变量解析）
- * @param {(userId: number) => void | Promise<void>} options.execute
- * @returns {{ schedule: (userId: number) => void }}
+ * @param {{debounceMs:number,execute:(userId: number) => void | Promise<void>}} options - 去抖配置。
+ * @returns {{ schedule: (userId: number) => void }} 调度器对象。
  */
 function createDebouncedUserScheduler({ debounceMs, execute }) {
   const userTimers = new Map()
   const ms = Math.max(0, Number(debounceMs) || 0)
 
+  /**
+   * 调度指定用户的去抖任务。
+   * @param {number} userId - 用户 ID。
+   * @returns {void} 无返回值。
+   */
   function schedule(userId) {
     if (!userId) return
 

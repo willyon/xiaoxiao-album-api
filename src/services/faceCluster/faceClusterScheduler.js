@@ -9,6 +9,11 @@ const { performFaceClustering } = require('./faceClusteringOrchestrator')
 
 const DEBOUNCE_MS = Number(process.env.FACE_CLUSTERING_DEBOUNCE_MS || 1 * 60 * 1000)
 
+/**
+ * 调度用户人脸聚类（去抖）。
+ * @param {number|string} userId - 用户 ID。
+ * @returns {void} 无返回值。
+ */
 const { schedule: scheduleUserClustering } = createDebouncedUserScheduler({
   debounceMs: DEBOUNCE_MS,
   async execute(userId) {

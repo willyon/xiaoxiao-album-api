@@ -74,6 +74,7 @@ function ensureIndex() {
 
 /**
  * @param {import("geojson").Feature} f
+ * @returns {{formattedAddress:string|null,country:string,province:string|null,city:string|null,district:string|null}}
  */
 function buildResultFromDistrict(f) {
   const p = f.properties
@@ -106,6 +107,7 @@ function buildResultFromDistrict(f) {
 
 /**
  * @param {import("geojson").Feature} f
+ * @returns {{formattedAddress:string|null,country:string,province:string|null,city:string|null,district:null}}
  */
 function buildResultFromCity(f) {
   const p = f.properties
@@ -125,6 +127,7 @@ function buildResultFromCity(f) {
 
 /**
  * @param {import("geojson").Feature} f
+ * @returns {{formattedAddress:string|null,country:string,province:string|null,city:string|null,district:null}}
  */
 function buildResultFromProvince(f) {
   const p = f.properties

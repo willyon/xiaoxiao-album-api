@@ -5,13 +5,21 @@
 const OSS = require('ali-oss')
 const Credential = require('@alicloud/credentials').default
 const logger = require('../../../utils/logger')
-const { OSS_AUTH_TYPES } = require('../../../constants/StorageTypes')
+const { OSS_AUTH_TYPES } = require('../../../constants/storageTypes')
 
+/**
+ * 获取 OSS Bucket 对外访问 Host。
+ * @param {string} bucket - Bucket 名称。
+ * @param {string} region - 区域标识。
+ * @returns {string} 公网 Host。
+ */
 function getBucketPublicHost(bucket, region) {
   return `https://${bucket}.${region}.aliyuncs.com`
 }
 
 /**
+ * 预处理 OSS 鉴权上下文与关键配置。
+ * @param {object} config - OSS 配置对象。
  * @returns {{
  *   authCtx: object,
  *   bucket: string,
@@ -70,6 +78,13 @@ function prepareAuthContext(config) {
   }
 }
 
+/**
+ * 构建 OSS 客户端基础配置与 baseUrl。
+ * @param {object} config - OSS 配置。
+ * @param {string} bucket - Bucket 名称。
+ * @param {string} region - 区域标识。
+ * @returns {{baseConfig:object,baseUrl:string}} 基础配置与基础 URL。
+ */
 function buildBaseConfig(config, bucket, region) {
   const baseConfig = {
     region,
@@ -86,6 +101,13 @@ function buildBaseConfig(config, bucket, region) {
   return { baseConfig, baseUrl }
 }
 
+/**
+ * 按鉴权类型创建主 OSS client。
+ * @param {object} baseConfig - OSS 基础配置。
+ * @param {object} authCtx - 鉴权上下文。
+ * @param {object} config - 原始配置。
+ * @returns {Promise<{client:object,credential?:object}>} client 与可选 credential。
+ */
 async function createClientByAuthType(baseConfig, authCtx, config) {
   const mode = authCtx.mode
 
@@ -100,44 +122,21 @@ async function createClientByAuthType(baseConfig, authCtx, config) {
 
     const s = await credClient.getCredential()
 
-    const client = new OSS({
-      ...baseConfig,
-      accessKeyId: s.accessKeyId,
-      accessKeySecret: s.accessKeySecret,
-      stsToken: s.securityToken,
-      refreshSTSToken: async () => {
-        const r = await credClient.getCredential()
-        return {
-          accessKeyId: r.accessKeyId,
-          accessKeySecret: r.accessKeySecret,
-          stsToken: r.securityToken
-        }
-      },
-      refreshSTSTokenInterval: 10 * 60 * 1000
-    })
+    const client = new OSS(buildClientOptionsByAuth({ baseConfig, authCtx, credential: credClient, seedCredential: s }))
 
     return { client, credential: credClient }
   }
 
   if (mode === OSS_AUTH_TYPES.ACCESS_KEY) {
     return {
-      client: new OSS({
-        ...baseConfig,
-        accessKeyId: authCtx.accessKeyId,
-        accessKeySecret: authCtx.accessKeySecret
-      }),
+      client: new OSS(buildClientOptionsByAuth({ baseConfig, authCtx })),
       credential: undefined
     }
   }
 
   if (mode === OSS_AUTH_TYPES.STS) {
     return {
-      client: new OSS({
-        ...baseConfig,
-        accessKeyId: authCtx.accessKeyId,
-        accessKeySecret: authCtx.accessKeySecret,
-        stsToken: authCtx.stsToken
-      }),
+      client: new OSS(buildClientOptionsByAuth({ baseConfig, authCtx })),
       credential: undefined
     }
   }
@@ -147,8 +146,55 @@ async function createClientByAuthType(baseConfig, authCtx, config) {
   )
 }
 
+function buildClientOptionsByAuth({ baseConfig, authCtx, credential, seedCredential }) {
+  if (authCtx.mode === OSS_AUTH_TYPES.ROLE) {
+    if (!credential || !seedCredential) {
+      throw new Error('ROLE auth requires credential client and seed credential')
+    }
+    return {
+      ...baseConfig,
+      accessKeyId: seedCredential.accessKeyId,
+      accessKeySecret: seedCredential.accessKeySecret,
+      stsToken: seedCredential.securityToken,
+      refreshSTSToken: async () => {
+        const r = await credential.getCredential()
+        return {
+          accessKeyId: r.accessKeyId,
+          accessKeySecret: r.accessKeySecret,
+          stsToken: r.securityToken
+        }
+      },
+      refreshSTSTokenInterval: 10 * 60 * 1000
+    }
+  }
+  if (authCtx.mode === OSS_AUTH_TYPES.ACCESS_KEY) {
+    return {
+      ...baseConfig,
+      accessKeyId: authCtx.accessKeyId,
+      accessKeySecret: authCtx.accessKeySecret
+    }
+  }
+  if (authCtx.mode === OSS_AUTH_TYPES.STS) {
+    return {
+      ...baseConfig,
+      accessKeyId: authCtx.accessKeyId,
+      accessKeySecret: authCtx.accessKeySecret,
+      stsToken: authCtx.stsToken
+    }
+  }
+  throw new Error(
+    `Unsupported authentication type: ${authCtx.mode}. Supported types: ${OSS_AUTH_TYPES.ROLE}, ${OSS_AUTH_TYPES.ACCESS_KEY}, ${OSS_AUTH_TYPES.STS}`
+  )
+}
+
 /**
  * 自定义域名或内网 client 场景下，用于生成与对外 Host 一致的签名 URL
+ * @param {object} config - OSS 配置。
+ * @param {string} bucket - Bucket 名称。
+ * @param {string} region - 区域标识。
+ * @param {object} authCtx - 鉴权上下文。
+ * @param {object} credential - 角色凭证对象。
+ * @returns {Promise<object|undefined>} signer client。
  */
 async function createSignerClient(config, bucket, region, authCtx, credential) {
   let configObj = {}
@@ -164,39 +210,15 @@ async function createSignerClient(config, bucket, region, authCtx, credential) {
   if (authCtx.mode === OSS_AUTH_TYPES.ROLE) {
     const credClient = credential
     const s = await credClient.getCredential()
-
-    return new OSS({
-      ...signerBaseConfig,
-      accessKeyId: s.accessKeyId,
-      accessKeySecret: s.accessKeySecret,
-      stsToken: s.securityToken,
-      refreshSTSToken: async () => {
-        const r = await credClient.getCredential()
-        return {
-          accessKeyId: r.accessKeyId,
-          accessKeySecret: r.accessKeySecret,
-          stsToken: r.securityToken
-        }
-      },
-      refreshSTSTokenInterval: 10 * 60 * 1000
-    })
+    return new OSS(buildClientOptionsByAuth({ baseConfig: signerBaseConfig, authCtx, credential: credClient, seedCredential: s }))
   }
 
   if (authCtx.mode === OSS_AUTH_TYPES.ACCESS_KEY) {
-    return new OSS({
-      ...signerBaseConfig,
-      accessKeyId: authCtx.accessKeyId,
-      accessKeySecret: authCtx.accessKeySecret
-    })
+    return new OSS(buildClientOptionsByAuth({ baseConfig: signerBaseConfig, authCtx }))
   }
 
   if (authCtx.mode === OSS_AUTH_TYPES.STS) {
-    return new OSS({
-      ...signerBaseConfig,
-      accessKeyId: authCtx.accessKeyId,
-      accessKeySecret: authCtx.accessKeySecret,
-      stsToken: authCtx.stsToken
-    })
+    return new OSS(buildClientOptionsByAuth({ baseConfig: signerBaseConfig, authCtx }))
   }
 
   return undefined
@@ -204,6 +226,8 @@ async function createSignerClient(config, bucket, region, authCtx, credential) {
 
 /**
  * 初始化主 client、可选 signer，以及适配器实例所需的字段
+ * @param {object} config - OSS 配置。
+ * @returns {Promise<{client:object,signer?:object,credential?:object,baseUrl:string,bucket:string,region:string,accessKeyId?:string,accessKeySecret?:string,stsToken?:string}>} 初始化结果。
  */
 async function initAliyunOssClients(config) {
   const prepared = prepareAuthContext(config)

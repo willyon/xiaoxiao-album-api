@@ -14,9 +14,10 @@ class CustomError extends Error {
    * @param {string} [options.messageCode=SERVER_ERROR] - 业务逻辑错误代码（如 ACCOUNT_NOT_FOUND, INVALID_TOKEN）
    * @param {string} [options.messageType="error"] - 消息类型（success, warning, error, info），用于前端弹框样式
    * @param {boolean} [options.refreshable] - 是否允许刷新/重试（例如刷新 JWT）
-   * @param {Object} [options.details] - 结构化内部上下文，供日志与 i18n 占位使用（默认不下发给前端）
+   * @param {Record<string, any>} [options.details] - 结构化内部上下文，供日志与 i18n 占位使用（默认不下发给前端）
    * @param {string} [options.message] - 用于存储原始错误信息（默认不下发给前端 用于日志）
-   * @param {Object} [options.public] - 允许返回给前端的附加字段（仅该对象内的键会下发）
+   * @param {Record<string, any>} [options.public] - 允许返回给前端的附加字段（仅该对象内的键会下发）
+   * @returns {void}
    */
   constructor({
     httpStatus = 500,

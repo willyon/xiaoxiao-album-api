@@ -15,10 +15,14 @@ const { QUEUE_JOB_ATTEMPTS } = require('../config/queueConfig')
 const { bullMqWillRetryAfterThisFailure } = require('../utils/bullmq/queuePipelineLifecycle')
 const storageService = require('../services/storageService')
 const videoProcessingService = require('../services/videoProcessingService')
-const timeIt = require('../utils/timeIt')
 const { updateProgress } = require('../services/mediaProcessingProgressService')
 
 /** Redis 命中但库内仅回收站记录时：静默恢复并计 uploadedCount，删除临时上传文件 */
+/**
+ * Redis 命中且仅存在回收站记录时，恢复媒体并跳过上传流程。
+ * @param {{userId:number|string,imageHash:string,fileName:string,sessionId?:string}} fileInfo - 文件上下文。
+ * @returns {Promise<boolean>} 是否已恢复并短路。
+ */
 async function _restoreTrashIfApplicableAndSkipUpload(fileInfo) {
   const { userId, imageHash } = fileInfo
   const { restored } = await trashService.restoreTrashMediaByHashIfApplicable({ userId, imageHash })
@@ -36,6 +40,12 @@ async function _restoreTrashIfApplicableAndSkipUpload(fileInfo) {
 }
 
 // 原子化：先查集合 → 抢锁 → 失败则再查集合 → 再决定 busy/重复
+/**
+ * 原子化判定当前文件是否可继续处理（去重 + 分布式锁）。
+ * @param {{userId:number|string,imageHash:string,fileName:string,sessionId?:string}} fileInfo - 文件上下文。
+ * @param {import('ioredis').Redis} redisClient - Redis 客户端。
+ * @returns {Promise<{proceed:boolean,lockKey?:string}>} 判定结果。
+ */
 async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
   const { userId, imageHash } = fileInfo
   const setKey = userSetKey(userId)
@@ -124,6 +134,7 @@ async function _ensureProcessRightOrShortCircuit(fileInfo, redisClient) {
  * @param {string} params.userId - 用户ID
  * @param {string} [params.thumbnailStorageKey] - 缩略图存储键（可选）
  * @param {unknown} [params.err] - 本次失败错误（用于 UnrecoverableError 等与队列重试策略对齐）
+ * @returns {Promise<void>} 无返回值。
  */
 async function _handleRetryFailure({ job, err, reason, storageKey, fileName, imageHash, userId, thumbnailStorageKey }) {
   const maxAttempts = job?.opts?.attempts || QUEUE_JOB_ATTEMPTS
@@ -212,6 +223,7 @@ async function _handleRetryFailure({ job, err, reason, storageKey, fileName, ima
 /**
  * 独立的单张图片处理与入库方法
  * @param {Object} job - BullMQ job对象
+ * @returns {Promise<void>} 无返回值。
  */
 async function processAndSaveSingleMedia(job) {
   let fileInfo = job.data
@@ -235,29 +247,17 @@ async function processAndSaveSingleMedia(job) {
     try {
       if (mediaType === 'video') {
         // 视频：FFmpeg 抽首帧 → Sharp 转 webp → 写入存储
-        await timeIt(
-          'storeVideoThumbnail',
-          async () => {
-            await videoProcessingService.storeVideoThumbnail(storageKey, thumbnailStorageKey, storageService.storage, { extension })
-          },
-          imageHash
-        )
+        await videoProcessingService.storeVideoThumbnail(storageKey, thumbnailStorageKey, storageService.storage, { extension })
       } else {
         // 图片：沿用 Sharp 处理
-        await timeIt(
-          'processAndStoreImage',
-          async () => {
-            await storageService.processAndStoreImage({
-              fileSize,
-              sourceStorageKey: storageKey,
-              targetStorageKey: thumbnailStorageKey,
-              extension,
-              quality: 65,
-              resizeWidth: 600
-            })
-          },
-          imageHash
-        )
+        await storageService.processAndStoreImage({
+          fileSize,
+          sourceStorageKey: storageKey,
+          targetStorageKey: thumbnailStorageKey,
+          extension,
+          quality: 65,
+          resizeWidth: 600
+        })
       }
     } catch (error) {
       // 缩略图处理失败

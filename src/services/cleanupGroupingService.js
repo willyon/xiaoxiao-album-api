@@ -5,6 +5,11 @@ const logger = require('../utils/logger')
 const DEFAULT_SIMILAR_HAMMING_THRESHOLD = Number(process.env.CLEANUP_SIMILAR_HAMMING_THRESHOLD || 8)
 const BLURRY_SHARPNESS_THRESHOLD = Number(process.env.BLURRY_SHARPNESS_THRESHOLD || 0.25)
 
+/**
+ * 重建用户清理分组（相似图 + 模糊图标记）。
+ * @param {{userId:number|string}} params - 重建参数。
+ * @returns {{similarGroupCount:number}} 重建摘要。
+ */
 function rebuildCleanupGroups({ userId }) {
   if (!userId) {
     throw new Error('userId is required to rebuild cleanup groups')
@@ -34,40 +39,20 @@ function rebuildCleanupGroups({ userId }) {
   }
 }
 
+/**
+ * 用新分组替换用户旧分组。
+ * @param {{userId:number|string,groups:Array<object>}} params - 替换参数。
+ * @returns {{groupCount:number}} 创建分组数量。
+ */
 function _replaceGroups({ userId, groups }) {
-  cleanupModel.deleteGroupsByUser(userId)
-
-  if (!groups || groups.length === 0) {
-    return { groupCount: 0 }
-  }
-
-  // 使用当前时间作为所有新创建分组的 updatedAt，确保时间准确
-  const now = Date.now()
-  let createdGroups = 0
-  for (const group of groups) {
-    try {
-      const groupId = cleanupModel.insertSimilarGroup({
-        userId,
-        primaryMediaId: group.primaryMediaId,
-        memberCount: group.members.length,
-        updatedAt: now // 明确传递当前时间，确保每次重建时更新时间都是最新的
-      })
-
-      createdGroups += 1
-
-      for (const member of group.members) {
-        cleanupModel.insertSimilarGroupMember(groupId, member)
-      }
-    } catch (error) {
-      logger.error({
-        message: '插入清理分组失败: similar',
-        details: { userId, error: error.message }
-      })
-    }
-  }
-
-  return {
-    groupCount: createdGroups
+  try {
+    return cleanupModel.replaceGroupsByUser({ userId, groups })
+  } catch (error) {
+    logger.error({
+      message: '替换清理分组失败: similar',
+      details: { userId, error: error.message }
+    })
+    throw error
   }
 }
 
@@ -75,6 +60,8 @@ function _replaceGroups({ userId, groups }) {
  * 构建相似图片分组（优化版：使用倒排索引）
  * 优化策略：按哈希前缀分组，只比较同组或相邻组的图片，大幅减少比较次数
  * 时间复杂度：从 O(n²) 优化到 O(n × k)，k 为平均组大小（通常远小于 n）
+ * @param {Array<object>} images - 候选图片列表。
+ * @returns {Array<{primaryMediaId:number,members:Array<object>}>} 相似图分组结果。
  */
 function _buildSimilarGroups(images) {
   const candidates = images
@@ -200,6 +187,12 @@ function _buildSimilarGroups(images) {
   return groups
 }
 
+/**
+ * 由成员列表构建单个分组结构。
+ * @param {Array<object>} members - 分组成员。
+ * @param {{similarityResolver:(primary:any,member:any)=>number}} options - 计算选项。
+ * @returns {{primaryMediaId:number,members:Array<object>}} 分组对象。
+ */
 function _createGroupFromMembers(members, { similarityResolver }) {
   const sorted = [...members].sort((a, b) => {
     const aRank = _computeRankScore(a)
@@ -225,12 +218,23 @@ function _createGroupFromMembers(members, { similarityResolver }) {
   }
 }
 
+/**
+ * 计算成员排序分值。
+ * @param {{aesthetic_score?:number}} image - 图片对象。
+ * @returns {number} 排序分值。
+ */
 function _computeRankScore(image) {
   const aesthetic = typeof image.aesthetic_score === 'number' ? image.aesthetic_score : 0
   // 相似组推荐仅按美学分排序
   return Number(aesthetic.toFixed(6))
 }
 
+/**
+ * 计算两个感知哈希的汉明距离。
+ * @param {string} hashA - 哈希 A。
+ * @param {string} hashB - 哈希 B。
+ * @returns {number} 汉明距离。
+ */
 function _hammingDistance(hashA, hashB) {
   if (!hashA || !hashB) return 64
   try {

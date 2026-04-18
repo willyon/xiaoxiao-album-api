@@ -2,9 +2,15 @@ const CustomError = require('../errors/customError')
 const { ERROR_CODES } = require('../constants/messageCodes')
 const cleanupModel = require('../models/cleanupModel')
 const mediaService = require('./mediaService')
-const storageService = require('./storageService')
 const logger = require('../utils/logger')
+const { normalizeNumericIds } = require('../utils/normalizeNumericIds')
+const { hydrateMediaUrls } = require('../utils/mediaUrlHydrator')
 
+/**
+ * 统一格式化时间戳为 ISO 字符串。
+ * @param {string|number|Date|null|undefined} value - 原始时间值。
+ * @returns {string|null} ISO 字符串或 null。
+ */
 function _formatTimestamp(value) {
   if (!value && value !== 0) return null
   if (typeof value === 'number') {
@@ -20,18 +26,10 @@ function _formatTimestamp(value) {
   }
 }
 
-function _normalizeIdList(ids) {
-  if (!Array.isArray(ids)) return []
-  return ids
-    .map((value) => {
-      const numeric = Number(value)
-      return Number.isFinite(numeric) ? numeric : null
-    })
-    .filter((value) => value !== null)
-}
-
 /**
  * 获取相似图分组列表（清理页相似图 tab，模糊图请使用 GET /api/images/blurry）
+ * @param {{userId:number|string,pageNo?:number,pageSize?:number}} params - 查询参数。
+ * @returns {Promise<{list:Array<{id:number,updatedAt:string|null,members:Array<object>}>,total:number}>} 分组列表与总数。
  */
 async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
   const safePageSize = Math.max(Number(pageSize) || 12, 1)
@@ -64,46 +62,28 @@ async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
     membersByGroup.get(memberRow.group_id).push(_mapMemberRow(memberRow))
   }
 
-  // 批量补齐缩略图和高清图 URL（isFavorite字段已从数据库直接返回）
-  await Promise.all(
-    rawMembers.map(async (row) => {
-      const members = membersByGroup.get(row.group_id)
-      const target = members?.find((item) => item.mediaId === row.media_id)
-      if (!target) return
-
-      // 补齐缩略图 URL
-      if (row.thumbnail_storage_key) {
-        try {
-          const url = await storageService.getFileUrl(row.thumbnail_storage_key)
-          target.thumbnailUrl = url
-        } catch (error) {
-          logger.warn({
-            message: '获取缩略图 URL 失败',
-            details: { storageKey: row.thumbnail_storage_key, error: error.message }
-          })
-        }
-      }
-
-      // 补齐高清图 URL
-      if (row.high_res_storage_key) {
-        try {
-          const url = await storageService.getFileUrl(row.high_res_storage_key)
-          target.highResUrl = url
-        } catch (error) {
-          logger.warn({
-            message: '获取高清图 URL 失败',
-            details: { storageKey: row.high_res_storage_key, error: error.message }
-          })
-        }
-      }
-
-      // isFavorite字段已从数据库直接返回，通过 _mapMemberRow 映射
-      // 如果 target 中没有 isFavorite，从 row 中读取
-      if (target.isFavorite === undefined) {
-        target.isFavorite = row.is_favorite === 1 || row.is_favorite === true
-      }
+  // 批量补齐缩略图和高清图 URL（isFavorite 字段已由 _mapMemberRow 映射）
+  const membersToHydrate = []
+  for (const [groupId, members] of membersByGroup.entries()) {
+    members.forEach((member, index) => {
+      membersToHydrate.push({ ...member, _groupId: groupId, _index: index })
     })
-  )
+  }
+  const hydratedMembers = await hydrateMediaUrls(membersToHydrate, {
+    thumbnailKey: 'thumbnailStorageKey',
+    highResKey: 'highResStorageKey',
+    originalKey: 'originalStorageKey',
+    dropStorageKeys: true
+  })
+  hydratedMembers.forEach((member) => {
+    const targetList = membersByGroup.get(member._groupId)
+    if (!targetList) return
+    targetList[member._index] = {
+      ...targetList[member._index],
+      thumbnailUrl: member.thumbnailUrl,
+      highResUrl: member.highResUrl
+    }
+  })
 
   const groups = rawGroups
     .map((group) => {
@@ -119,7 +99,7 @@ async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
       return {
         id: group.id,
         updatedAt: _formatTimestamp(group.updated_at),
-        members
+        members: members.map(({ thumbnailStorageKey: _thumbnailStorageKey, highResStorageKey: _highResStorageKey, ...member }) => member)
       }
     })
     .filter((group) => group !== null) // 过滤掉 null（只有1张图片的分组）
@@ -132,8 +112,13 @@ async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
 
 // 删除图片（软删除，移至回收站）
 // 仅相似图删除时调用，需传入 groupId，用于刷新该分组统计；模糊图/首页等删除直接走 imageService，不经过本方法
+/**
+ * 删除相似图分组中的媒体并刷新分组状态。
+ * @param {{userId:number|string,groupId:number|string,mediaIds:Array<string|number>}} params - 删除参数。
+ * @returns {Promise<{resolved:boolean}>} 分组是否已被清空。
+ */
 async function deleteMedias({ userId, groupId, mediaIds }) {
-  const normalizedIds = _normalizeIdList(mediaIds)
+  const normalizedIds = normalizeNumericIds(mediaIds)
 
   if (normalizedIds.length === 0) {
     throw new CustomError({
@@ -181,12 +166,19 @@ async function deleteMedias({ userId, groupId, mediaIds }) {
   }
 }
 
+/**
+ * 将清理分组成员行映射为前端结构。
+ * @param {Record<string, any>} row - 数据库成员行。
+ * @returns {object} 映射后的成员对象。
+ */
 function _mapMemberRow(row) {
   return {
     mediaId: row.media_id,
     groupId: row.group_id,
     rankScore: row.rank_score,
     similarity: row.similarity,
+    thumbnailStorageKey: row.thumbnail_storage_key || null,
+    highResStorageKey: row.high_res_storage_key || null,
     thumbnailUrl: null, // 后续补齐URL
     highResUrl: null, // 后续补齐URL
     isFavorite: row.is_favorite === 1 || row.is_favorite === true,

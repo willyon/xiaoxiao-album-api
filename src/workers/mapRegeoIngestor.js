@@ -6,6 +6,7 @@ const { selectMediaRowForMapRegeoJob, updateLocationInfo, updateMapRegeoStatus }
 
 /**
  * @param {import("bullmq").Job} job
+ * @returns {Promise<void>} 无返回值。
  */
 async function processMapRegeoJob(job) {
   const { mediaId, userId, latitude, longitude } = job.data || {}

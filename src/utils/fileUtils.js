@@ -57,8 +57,8 @@ const SUPPORTED_VIDEO_MIME_TYPES = new Set(Object.values(VIDEO_FORMAT_MAP))
 
 /**
  * 从视频文件名解析 MIME（与 VIDEO_FORMAT_MAP 一致；未知扩展名返回 null）
- * @param {string} fileName - 含扩展名的文件名或路径
- * @returns {string|null}
+ * @param {string} fileName - 含扩展名的文件名或路径。
+ * @returns {string|null} 视频 MIME 类型或 null。
  */
 function getVideoMimeTypeFromFileName(fileName) {
   if (!fileName || typeof fileName !== 'string') return null
@@ -80,8 +80,8 @@ function getVideoMimeTypeFromFileName(fileName) {
  * - 需要通过文件名扩展名进行二次验证
  * - 确保所有支持的图片格式都能被正确识别
  *
- * @param {Object} file - multer文件对象 {originalname, mimetype, ...}
- * @returns {boolean} 是否为支持的图片文件
+ * @param {{originalname?:string,mimetype?:string}} file - multer 文件对象。
+ * @returns {boolean} 是否为支持的图片文件。
  */
 function isImageFile(file) {
   // 1. 优先检查multer提供的MIME类型
@@ -101,8 +101,8 @@ function isImageFile(file) {
 
 /**
  * 视频文件检测
- * @param {Object} file - multer文件对象 {originalname, mimetype, ...}
- * @returns {boolean} 是否为支持的视频文件
+ * @param {{originalname?:string,mimetype?:string}} file - multer 文件对象。
+ * @returns {boolean} 是否为支持的视频文件。
  */
 function isVideoFile(file) {
   if (file.mimetype && SUPPORTED_VIDEO_MIME_TYPES.has(file.mimetype)) {
@@ -117,8 +117,8 @@ function isVideoFile(file) {
 
 /**
  * 媒体文件检测（图片或视频）
- * @param {Object} file - multer文件对象
- * @returns {boolean} 是否为支持的媒体文件
+ * @param {{originalname?:string,mimetype?:string}} file - multer 文件对象。
+ * @returns {boolean} 是否为支持的媒体文件。
  */
 function isMediaFile(file) {
   return isImageFile(file) || isVideoFile(file)
@@ -127,8 +127,8 @@ function isMediaFile(file) {
 /**
  * 从文件对象推断 mediaType（'image' | 'video'）
  * 解决 mimetype 不可靠场景（如从 Finder 拖入时为 application/octet-stream）
- * @param {Object} file - multer 文件对象 { mimetype, originalname, filename }
- * @returns {'video'|'image'}
+ * @param {{mimetype?:string,originalname?:string,filename?:string}} file - multer 文件对象。
+ * @returns {'video'|'image'} 媒体类型。
  */
 function getMediaTypeFromFile(file) {
   if (file.mimetype?.startsWith('video/')) return 'video'
@@ -142,8 +142,8 @@ function getMediaTypeFromFile(file) {
  * 通过魔数（magic bytes）检测图片格式
  * 基于文件头字节判断，比扩展名更可靠
  *
- * @param {Buffer} buffer - 图片数据（建议至少 12 字节）
- * @returns {string|null} 检测到的格式或 null
+ * @param {Buffer} buffer - 图片数据（建议至少 12 字节）。
+ * @returns {string|null} 检测到的图片格式或 null。
  *
  * 支持格式：jpeg, png, gif, bmp, tiff, webp, svg, avif, heic, heif
  */
@@ -258,8 +258,8 @@ function detectImageFormatFromBuffer(buffer) {
  * 用于修正错误的MIME类型（如HEIC文件的application/octet-stream）
  * 支持文件名和扩展名输入
  *
- * @param {string} input - 文件名（如 "test.jpg"）或扩展名（如 "jpg" 或 ".jpg"）
- * @returns {string} 标准化的MIME类型
+ * @param {string} input - 文件名（如 "test.jpg"）或扩展名（如 "jpg" 或 ".jpg"）。
+ * @returns {string} 标准化的 MIME 类型。
  */
 function getStandardMimeType(input) {
   // 支持文件名（如 "test.jpg"）和扩展名（如 "jpg" 或 ".jpg"）
@@ -276,8 +276,8 @@ function getStandardMimeType(input) {
 /**
  * 从 MIME 类型获取文件扩展名
  *
- * @param {string} mimeType - MIME 类型（如 "image/jpeg"）
- * @returns {string} 文件扩展名（如 "jpg"），不支持的类型返回 "jpg"
+ * @param {string} mimeType - MIME 类型（如 "image/jpeg"）。
+ * @returns {string} 文件扩展名（如 "jpg"），不支持时返回 "jpg"。
  */
 function getExtensionFromMimeType(mimeType) {
   // 从主映射表中查找（反向查找）
@@ -294,8 +294,8 @@ function getExtensionFromMimeType(mimeType) {
  * 增强版：通过魔数检测图片格式，并返回 MIME 类型
  * 优先使用魔数检测，失败时降级到扩展名
  *
- * @param {Buffer|string} input - Buffer（优先，用于魔数检测）或文件名/路径（降级）
- * @returns {string} 标准化的 MIME 类型
+ * @param {Buffer|string} input - Buffer（优先，用于魔数检测）或文件名/路径（降级）。
+ * @returns {string} 标准化的 MIME 类型。
  */
 function getMimeTypeByMagicBytes(input) {
   // 如果输入是 Buffer，使用魔数检测

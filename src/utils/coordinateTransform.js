@@ -54,7 +54,7 @@ function transformLng(lng, lat) {
  * WGS-84 转 GCJ-02
  * @param {number} wgsLng - WGS-84经度
  * @param {number} wgsLat - WGS-84纬度
- * @returns {Object} GCJ-02坐标 {lng, lat}
+ * @returns {{lng:number,lat:number}} GCJ-02 坐标。
  */
 function wgs84ToGcj02(wgsLng, wgsLat) {
   if (!isInChina(wgsLng, wgsLat)) {
@@ -83,7 +83,7 @@ function wgs84ToGcj02(wgsLng, wgsLat) {
  * GCJ-02 转 WGS-84（与 wgs84ToGcj02 互逆近似；境外直接返回原坐标）
  * @param {number} gcjLng - GCJ-02 经度
  * @param {number} gcjLat - GCJ-02 纬度
- * @returns {Object} WGS-84 坐标 { lng, lat }
+ * @returns {{lng:number,lat:number}} WGS-84 坐标。
  */
 function gcj02ToWgs84(gcjLng, gcjLat) {
   if (!isInChina(gcjLng, gcjLat)) {
@@ -112,7 +112,7 @@ function gcj02ToWgs84(gcjLng, gcjLat) {
  * GCJ-02 转 BD-09
  * @param {number} gcjLng - GCJ-02经度
  * @param {number} gcjLat - GCJ-02纬度
- * @returns {Object} BD-09坐标 {lng, lat}
+ * @returns {{lng:number,lat:number}} BD-09 坐标。
  */
 function gcj02ToBd09(gcjLng, gcjLat) {
   const z = Math.sqrt(gcjLng * gcjLng + gcjLat * gcjLat) + 0.00002 * Math.sin((gcjLat * PI * 3000.0) / 180.0)
@@ -128,7 +128,7 @@ function gcj02ToBd09(gcjLng, gcjLat) {
  * BD-09 转 GCJ-02
  * @param {number} bdLng - BD-09经度
  * @param {number} bdLat - BD-09纬度
- * @returns {Object} GCJ-02坐标 {lng, lat}
+ * @returns {{lng:number,lat:number}} GCJ-02 坐标。
  */
 function bd09ToGcj02(bdLng, bdLat) {
   const x = bdLng - 0.0065
@@ -146,7 +146,7 @@ function bd09ToGcj02(bdLng, bdLat) {
  * WGS-84 转 BD-09
  * @param {number} wgsLng - WGS-84经度
  * @param {number} wgsLat - WGS-84纬度
- * @returns {Object} BD-09坐标 {lng, lat}
+ * @returns {{lng:number,lat:number}} BD-09 坐标。
  */
 function wgs84ToBd09(wgsLng, wgsLat) {
   const gcj = wgs84ToGcj02(wgsLng, wgsLat)
@@ -157,7 +157,7 @@ function wgs84ToBd09(wgsLng, wgsLat) {
  * BD-09 转 WGS-84
  * @param {number} bdLng - BD-09经度
  * @param {number} bdLat - BD-09纬度
- * @returns {Object} WGS-84坐标 {lng, lat}
+ * @returns {{lng:number,lat:number}} WGS-84 坐标。
  */
 function bd09ToWgs84(bdLng, bdLat) {
   const gcj = bd09ToGcj02(bdLng, bdLat)

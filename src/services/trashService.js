@@ -13,22 +13,15 @@ const mediaService = require('./mediaService')
 const storageService = require('./storageService')
 const logger = require('../utils/logger')
 const { removeHashesFromUserSet } = require('../workers/userMediaHashset')
+const { normalizeNumericIds } = require('../utils/normalizeNumericIds')
+const { hydrateMediaUrls } = require('../utils/mediaUrlHydrator')
 
 /**
- * 规范化ID列表
- * @param {Array} ids - ID数组
- * @returns {Array<number>} 规范化后的ID数组
+ * 从用户 Redis 哈希集合中移除已删除媒体哈希。
+ * @param {number|string} userId - 用户 ID。
+ * @param {Array<{file_hash?:string}>} images - 媒体行列表。
+ * @returns {Promise<void>} 无返回值。
  */
-function _normalizeIdList(ids) {
-  if (!Array.isArray(ids)) return []
-  return ids
-    .map((value) => {
-      const numeric = Number(value)
-      return Number.isFinite(numeric) ? numeric : null
-    })
-    .filter((value) => value !== null)
-}
-
 async function _removeRedisHashesForDeletedMedias(userId, images) {
   const hashes = (images || []).map((row) => row.file_hash).filter((h) => h != null && String(h).length > 0)
   if (hashes.length === 0) return
@@ -44,8 +37,8 @@ async function _removeRedisHashesForDeletedMedias(userId, images) {
 
 /**
  * 批量删除图片的存储文件（使用当前环境配置的单一存储适配器）
- * @param {Array<Object>} images - 图片信息数组（含 thumbnail/high_res/original storage key）
- * @returns {Promise<Object>} 删除统计结果
+ * @param {Array<{id:number,thumbnail_storage_key?:string,high_res_storage_key?:string,original_storage_key?:string}>} images - 图片信息数组（含 thumbnail/high_res/original storage key）。
+ * @returns {Promise<{total:number,success:number,failed:number,details:Array<object>}>} 删除统计结果。
  */
 async function _deleteMediasFiles(images) {
   if (!images || images.length === 0) {
@@ -149,12 +142,8 @@ async function _deleteMediasFiles(images) {
 
 /**
  * 分页获取已删除图片列表
- * @param {Object} params
- * @param {number} params.userId - 用户ID
- * @param {number} params.pageNo - 页码
- * @param {number} params.pageSize - 每页数量
- * @param {string} [params.mediaType] - 媒体类型：'all' | 'image' | 'video'
- * @returns {Promise<{ list: Array, total: number }>} 图片列表与总数
+ * @param {{userId:number|string,pageNo:number,pageSize:number,mediaType?:'all'|'image'|'video'}} params - 查询参数。
+ * @returns {Promise<{ list: Array<object>, total: number }>} 图片列表与总数。
  */
 async function getDeletedMedias({ userId, pageNo, pageSize, mediaType }) {
   try {
@@ -165,78 +154,25 @@ async function getDeletedMedias({ userId, pageNo, pageSize, mediaType }) {
       mediaType
     })
 
-    // 生成图片URL并精简返回字段
-    const list = await Promise.all(
-      result.data.map(async (item) => {
-        // 生成缩略图URL
-        let thumbnailUrl = null
-        if (item.thumbnailStorageKey) {
-          try {
-            thumbnailUrl = await storageService.getFileUrl(item.thumbnailStorageKey)
-          } catch (error) {
-            logger.warn({
-              message: '获取缩略图URL失败',
-              details: {
-                storageKey: item.thumbnailStorageKey,
-                error: error.message
-              }
-            })
-          }
-        }
-
-        // 生成高清图URL（图片有，视频无）
-        let highResUrl = null
-        if (item.highResStorageKey) {
-          try {
-            highResUrl = await storageService.getFileUrl(item.highResStorageKey)
-          } catch (error) {
-            logger.warn({
-              message: '获取高清图URL失败',
-              details: {
-                storageKey: item.highResStorageKey,
-                error: error.message
-              }
-            })
-          }
-        }
-
-        // 视频需要 originalUrl
-        let originalUrl = null
-        const needsOriginalUrl = item.mediaType === 'video' || !item.highResStorageKey
-        if (needsOriginalUrl && item.originalStorageKey) {
-          try {
-            originalUrl = await storageService.getFileUrl(item.originalStorageKey)
-          } catch (error) {
-            logger.warn({
-              message: '获取原片URL失败',
-              details: {
-                storageKey: item.originalStorageKey,
-                error: error.message
-              }
-            })
-          }
-        }
-
-        // 返回精简后的字段（只包含前端需要的）
-        return {
-          mediaId: item.mediaId,
-          mediaType: item.mediaType || 'image',
-          thumbnailUrl,
-          highResUrl,
-          originalUrl,
-          isFavorite: item.isFavorite || false,
-          capturedAt: item.capturedAt,
-          gpsLocation: item.gpsLocation,
-          dayKey: item.dayKey,
-          widthPx: item.widthPx,
-          heightPx: item.heightPx,
-          aspectRatio: item.aspectRatio,
-          layoutType: item.layoutType,
-          fileSizeBytes: item.fileSizeBytes,
-          durationSec: item.durationSec
-        }
-      })
-    )
+    const hydrated = await hydrateMediaUrls(result.data || [])
+    // 返回精简后的字段（只包含前端需要的）
+    const list = hydrated.map((item) => ({
+      mediaId: item.mediaId,
+      mediaType: item.mediaType || 'image',
+      thumbnailUrl: item.thumbnailUrl,
+      highResUrl: item.highResUrl,
+      originalUrl: item.originalUrl,
+      isFavorite: item.isFavorite || false,
+      capturedAt: item.capturedAt,
+      gpsLocation: item.gpsLocation,
+      dayKey: item.dayKey,
+      widthPx: item.widthPx,
+      heightPx: item.heightPx,
+      aspectRatio: item.aspectRatio,
+      layoutType: item.layoutType,
+      fileSizeBytes: item.fileSizeBytes,
+      durationSec: item.durationSec
+    }))
 
     return {
       list,
@@ -257,13 +193,11 @@ async function getDeletedMedias({ userId, pageNo, pageSize, mediaType }) {
 
 /**
  * 恢复图片（将 deleted_at 设为 NULL）
- * @param {Object} params
- * @param {number} params.userId - 用户ID
- * @param {Array<number>} params.mediaIds - 媒体 ID 数组
- * @returns {Promise<Object>} 恢复结果
+ * @param {{userId:number|string,mediaIds:Array<number|string>}} params - 恢复参数。
+ * @returns {Promise<{restoredCount:number}>} 恢复结果。
  */
 async function restoreMedias({ userId, mediaIds }) {
-  const normalizedIds = _normalizeIdList(mediaIds)
+  const normalizedIds = normalizeNumericIds(mediaIds)
 
   if (normalizedIds.length === 0) {
     throw new CustomError({
@@ -326,7 +260,8 @@ async function restoreMedias({ userId, mediaIds }) {
 
 /**
  * 若该 hash 仅对应回收站中的媒体，则静默恢复（用于上传预检 / Worker 去重与恢复一致）
- * @returns {Promise<{ restored: boolean, mediaId?: number }>}
+ * @param {{userId:number|string,imageHash:string}} params - 查询参数。
+ * @returns {Promise<{ restored: boolean, mediaId?: number }>} 恢复结果。
  */
 async function restoreTrashMediaByHashIfApplicable({ userId, imageHash }) {
   const row = mediaService.selectMediaRowByHashForUser({ userId, imageHash })
@@ -339,13 +274,11 @@ async function restoreTrashMediaByHashIfApplicable({ userId, imageHash }) {
 
 /**
  * 彻底删除图片（物理删除数据库记录和存储文件）
- * @param {Object} params
- * @param {number} params.userId - 用户ID
- * @param {Array<number>} params.mediaIds - 媒体 ID 数组
- * @returns {Promise<Object>} 删除结果
+ * @param {{userId:number|string,mediaIds:Array<number|string>}} params - 删除参数。
+ * @returns {Promise<{deletedCount:number,fileDeleteResult:{total:number,success:number,failed:number}}>} 删除结果。
  */
 async function permanentlyDeleteMedias({ userId, mediaIds }) {
-  const normalizedIds = _normalizeIdList(mediaIds)
+  const normalizedIds = normalizeNumericIds(mediaIds)
 
   if (normalizedIds.length === 0) {
     throw new CustomError({
@@ -389,8 +322,7 @@ async function permanentlyDeleteMedias({ userId, mediaIds }) {
   // 注意：album_media 已被 CASCADE 删除，所以需要更新相册统计
   if (albumIds.length > 0) {
     albumIds.forEach((albumId) => {
-      albumModel.updateAlbumMediaCount(albumId)
-      albumModel.updateAlbumCover(albumId)
+      albumModel.refreshAlbumStats(albumId)
     })
   }
 
@@ -437,9 +369,8 @@ async function permanentlyDeleteMedias({ userId, mediaIds }) {
 
 /**
  * 清空回收站（物理删除用户所有已删除图片）
- * @param {Object} params
- * @param {number} params.userId - 用户ID
- * @returns {Promise<Object>} 清空结果
+ * @param {{userId:number|string}} params - 清空参数。
+ * @returns {Promise<{deletedCount:number,fileDeleteResult:{total:number,success:number,failed:number}}>} 清空结果。
  */
 async function clearTrash({ userId }) {
   // 获取所有需要删除文件的图片信息

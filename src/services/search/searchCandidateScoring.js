@@ -132,30 +132,39 @@ function candidateRankTier(candidate) {
 }
 
 /**
+ * 比较两个候选在最终排序中的先后顺序。
+ * @param {any} a - 候选 A。
+ * @param {any} b - 候选 B。
+ * @param {Map<number, any>} mediaMap - 媒体详情映射。
+ * @returns {number} 比较值（负数表示 A 在前）。
+ */
+function compareCandidates(a, b, mediaMap) {
+  const tierA = candidateRankTier(a)
+  const tierB = candidateRankTier(b)
+  if (tierB !== tierA) {
+    return tierB - tierA
+  }
+  if (b.score !== a.score) {
+    return b.score - a.score
+  }
+  const mediaA = mediaMap.get(a.mediaId)
+  const mediaB = mediaMap.get(b.mediaId)
+  const capturedA = Number(mediaA?.capturedAt || 0)
+  const capturedB = Number(mediaB?.capturedAt || 0)
+  if (capturedB !== capturedA) {
+    return capturedB - capturedA
+  }
+  return b.mediaId - a.mediaId
+}
+
+/**
  * 对候选集合进行最终排序。
  * @param {Map<number, any>} candidates 候选集合
  * @param {Map<number, any>} mediaMap 媒体详情映射
  * @returns {any[]} 已排序候选数组
  */
 function sortCandidates(candidates, mediaMap) {
-  return Array.from(candidates.values()).sort((a, b) => {
-    const tierA = candidateRankTier(a)
-    const tierB = candidateRankTier(b)
-    if (tierB !== tierA) {
-      return tierB - tierA
-    }
-    if (b.score !== a.score) {
-      return b.score - a.score
-    }
-    const mediaA = mediaMap.get(a.mediaId)
-    const mediaB = mediaMap.get(b.mediaId)
-    const capturedA = Number(mediaA?.capturedAt || 0)
-    const capturedB = Number(mediaB?.capturedAt || 0)
-    if (capturedB !== capturedA) {
-      return capturedB - capturedA
-    }
-    return b.mediaId - a.mediaId
-  })
+  return Array.from(candidates.values()).sort((a, b) => compareCandidates(a, b, mediaMap))
 }
 
 /**
@@ -165,9 +174,7 @@ function sortCandidates(candidates, mediaMap) {
  */
 function cloneCandidate(candidate) {
   const matchedTermsByField = new Map()
-  candidate.matchedTermsByField.forEach((set, key) => {
-    matchedTermsByField.set(key, new Set(set))
-  })
+  copyMatchedTermsByFieldInto(matchedTermsByField, candidate.matchedTermsByField)
   return {
     mediaId: candidate.mediaId,
     score: candidate.score,
@@ -180,6 +187,18 @@ function cloneCandidate(candidate) {
     roleSignals: { ...candidate.roleSignals },
     visualSemanticScore: candidate.visualSemanticScore || 0
   }
+}
+
+/**
+ * 复制 matchedTermsByField 映射到目标映射。
+ * @param {Map<string, Set<string>>} target - 目标映射。
+ * @param {Map<string, Set<string>>} source - 来源映射。
+ * @returns {void} 无返回值。
+ */
+function copyMatchedTermsByFieldInto(target, source) {
+  source.forEach((termSet, fieldKey) => {
+    target.set(fieldKey, new Set(termSet))
+  })
 }
 
 /**

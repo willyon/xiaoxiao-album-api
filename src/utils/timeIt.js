@@ -12,6 +12,10 @@ const PROFILE = process.env.PROFILE_UPLOAD === '1'
 
 // const times = [];
 
+/**
+ * 获取高精度当前时间戳（毫秒）。
+ * @returns {number} 当前时间戳。
+ */
 function tNow() {
   return performance.now()
 }
@@ -21,19 +25,19 @@ function tNow() {
 // }
 
 // 异步计时器：await timeIt('标签', async () => { ... })
+/**
+ * 对异步函数执行耗时打点。
+ * @param {string} label - 打点标签。
+ * @param {() => Promise<any>} fn - 待执行异步函数。
+ * @param {string} [imageHash] - 关联媒体哈希（可选）。
+ * @returns {Promise<any>} 原函数返回值。
+ */
 async function timeIt(label, fn, imageHash) {
-  let ret
-  try {
-    const s = tNow()
-    console.log('timeit这里开始啦', label, s)
-    ret = await fn()
-    const ms = tNow() - s
-    console.log('timeit这里执行完啦', label, ms, '毫秒')
-    if (PROFILE) {
-      logger.info({ message: `[埋点计时]${label}:jobId:${imageHash || 0}:${ms}毫秒` })
-    }
-  } catch (error) {
-    throw error
+  const s = tNow()
+  const ret = await fn()
+  const ms = tNow() - s
+  if (PROFILE) {
+    logger.info({ message: `[埋点计时]${label}:jobId:${imageHash || 0}:${ms}毫秒` })
   }
   return ret
 }

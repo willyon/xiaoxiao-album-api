@@ -19,6 +19,8 @@ const initGracefulShutdown = require('./src/utils/gracefulShutdown')
 const { closeMediaUploadQueue } = require('./src/queues/mediaUploadQueue')
 const { closeMediaMetaQueue } = require('./src/queues/mediaMetaQueue')
 const { closeMediaAnalysisQueue } = require('./src/queues/mediaAnalysisQueue')
+const { closeCloudCaptionQueue } = require('./src/queues/cloudCaptionQueue')
+const { closeMapRegeoQueue } = require('./src/queues/mapRegeoQueue')
 
 // 应用服务安全中间件
 const xss = require('xss')
@@ -39,11 +41,11 @@ const searchRoutes = require('./src/routes/searchRoutes')
 const trashRoutes = require('./src/routes/trashRoutes')
 const aliyunOssCallbackRoutes = require('./src/routes/aliyunOssCallbackRoutes')
 const uploadSessionRoutes = require('./src/routes/uploadSessionRoutes')
-const progressRoutes = require('./src/routes/progressRoutes')
 const faceClusterRoutes = require('./src/routes/faceClusterRoutes')
 const timelineRoutes = require('./src/routes/timelineRoutes')
-const locationsRoutes = require('./src/routes/locationsRoutes')
 const settingsRoutes = require('./src/routes/settingsRoutes')
+const { progressStream } = require('./src/controllers/mediaProcessingProgressController')
+const { getLocations } = require('./src/controllers/locationsController')
 
 // ========================== 创建Express实例，设置端口号 ========================== //
 
@@ -130,7 +132,7 @@ app.use('/api/trash', [authMiddleware], trashRoutes)
 app.use('/api/upload-sessions', [authMiddleware], uploadSessionRoutes)
 
 // 注册SSE进度推送路由 - 不需要鉴权（EventSource无法发送认证头）
-app.use('/api/progress', progressRoutes)
+app.get('/api/progress/stream', progressStream)
 
 // 注册人脸聚类路由+鉴权中间件(authMiddleware)
 app.use('/api/face-clusters', [authMiddleware], faceClusterRoutes)
@@ -139,7 +141,7 @@ app.use('/api/face-clusters', [authMiddleware], faceClusterRoutes)
 app.use('/api/timeline', [authMiddleware], timelineRoutes)
 
 // 注册地点路由+鉴权中间件(authMiddleware)
-app.use('/api/locations', [authMiddleware], locationsRoutes)
+app.get('/api/locations', authMiddleware, getLocations)
 
 // 注册应用设置路由+鉴权中间件(authMiddleware)
 app.use('/api/settings', [authMiddleware], settingsRoutes)
@@ -163,6 +165,8 @@ initGracefulShutdown({
     // 关闭 BullMQ 的 Queue 及其底层连接（API 进程只负责入队）
     async () => closeMediaUploadQueue(),
     async () => closeMediaMetaQueue(),
-    async () => closeMediaAnalysisQueue()
+    async () => closeMediaAnalysisQueue(),
+    async () => closeCloudCaptionQueue(),
+    async () => closeMapRegeoQueue()
   ]
 })

@@ -5,7 +5,12 @@
 
 const { UnrecoverableError } = require('bullmq')
 
-/** 本 attempt 失败后 BullMQ 是否还会自动重试（与 Job#shouldRetryJob 一致） */
+/**
+ * 判断当前失败后是否还会被 BullMQ 自动重试。
+ * @param {import('bullmq').Job|undefined} job - BullMQ 任务对象。
+ * @param {Error|undefined} err - 当前失败错误。
+ * @returns {boolean} 是否会继续重试。
+ */
 function bullMqWillRetryAfterThisFailure(job, err) {
   if (!job) return false
   if (err && (err instanceof UnrecoverableError || err.name === 'UnrecoverableError')) return false

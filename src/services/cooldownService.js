@@ -55,6 +55,7 @@ class CooldownManager {
    * @param {string} type
    * @param {string} identifier
    * @param {number} [duration] - 可选自定义冷却时间
+   * @returns {Promise<void>} 无返回值。
    */
   async setCooldown(type, identifier, duration = this.defaultCooldown) {
     const key = this.getKey(type, identifier)
@@ -92,6 +93,7 @@ class CooldownManager {
    * 可选方法：清除冷却（通常很少用）
    * @param {string} type
    * @param {string} identifier
+   * @returns {Promise<void>} 无返回值。
    */
   async clearCooldown(type, identifier) {
     const key = this.getKey(type, identifier)

@@ -4,14 +4,19 @@
  * 启用方式：USE_MEDIA_ANALYSIS_QUEUE=true 时由 imageMetaIngestor 入队
  */
 const { createBullQueue } = require('../utils/bullmq/createBullQueue')
+const logger = require('../utils/logger')
+const { closeBullResources } = require('../utils/bullmq/closeBullResources')
 
 const QUEUE_NAME = process.env.MEDIA_ANALYSIS_QUEUE_NAME || 'mediaAnalysisQueue'
 
 const { queue: mediaAnalysisQueue, connection } = createBullQueue({ name: QUEUE_NAME })
 
+/**
+ * 关闭媒体分析队列及其 Redis 连接。
+ * @returns {Promise<void>} 无返回值。
+ */
 async function closeMediaAnalysisQueue() {
-  await mediaAnalysisQueue.close()
-  await connection.quit()
+  await closeBullResources({ queue: mediaAnalysisQueue, connection, logger, label: 'mediaAnalysisQueue' })
 }
 
 module.exports = {

@@ -4,20 +4,22 @@
  * @Description: 搜索功能API控制器
  */
 
-const CustomError = require('../errors/customError')
-const { SUCCESS_CODES, ERROR_CODES } = require('../constants/messageCodes')
+const { SUCCESS_CODES } = require('../constants/messageCodes')
 const searchService = require('../services/search')
 const { addFullUrlToMedia } = require('../services/mediaService')
 const faceClusterService = require('../services/faceCluster')
 const logger = require('../utils/logger')
 const asyncHandler = require('../utils/asyncHandler')
-const { parsePagination } = require('../utils/requestParams')
+const { parsePagination, parsePositiveIntParam, throwInvalidParametersError } = require('../utils/requestParams')
 
 /**
  * 搜索/列表图片（统一接口）
  * POST /search/media
  * body: query?, filters?, pageNo, pageSize, clusterId?
  *       可选 scope：source?, type?, albumId?（传了 source 且不为 search 时在范围内列表/搜索；未传或 source=search 为全局搜索）
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function handleSearchMedias(req, res) {
   const { userId } = req.user
@@ -27,8 +29,7 @@ async function handleSearchMedias(req, res) {
     { pageNo: 1, pageSize: 20 }
   )
 
-  const clusterId = clusterIdRaw != null && clusterIdRaw !== '' ? parseInt(clusterIdRaw, 10) : null
-  const validClusterId = Number.isNaN(clusterId) ? null : clusterId
+  const validClusterId = clusterIdRaw != null && clusterIdRaw !== '' ? parsePositiveIntParam(clusterIdRaw) : null
 
   const validSources = ['search', 'favorites', 'timeline', 'album', 'location', 'people']
   const hasScope = source && source !== 'search' && validSources.includes(source)
@@ -50,42 +51,29 @@ async function handleSearchMedias(req, res) {
     }
   })
 
-  let searchResult
+  const scope = hasScope ? { source, type, albumId, clusterId: validClusterId } : null
+  const searchResult = await runSearchMediaFlow({
+    userId,
+    query: searchQuery,
+    hasQuery,
+    filters,
+    filterOptions,
+    scope,
+    pageNo,
+    pageSize
+  })
+
+  let resultsWithUrls = await addFullUrlToMedia(searchResult.list)
+  if (hasScope && source === 'people' && validClusterId != null && resultsWithUrls.length > 0) {
+    const mediaIds = resultsWithUrls.map((item) => item.mediaId).filter((id) => id != null)
+    const faceEmbeddingIdMap = faceClusterService.getFaceEmbeddingIdByMediaIdInCluster(userId, validClusterId, mediaIds)
+    resultsWithUrls = resultsWithUrls.map((item) => ({
+      ...item,
+      faceEmbeddingId: faceEmbeddingIdMap.get(item.mediaId) ?? null
+    }))
+  }
 
   if (hasScope) {
-    const scope = { source, type, albumId, clusterId: validClusterId }
-    const { scopeConditions, scopeParams } = searchService.buildScopeConditions(scope, userId)
-    if (hasQuery) {
-      searchResult = await searchService.searchMediaResults({
-        userId,
-        query: searchQuery,
-        baseFilters: filters,
-        filterOptions,
-        scopeConditions,
-        scopeParams,
-        pageNo,
-        pageSize
-      })
-    } else {
-      const filterBuilt = searchService.buildFilterQueryParts(filters, filterOptions)
-      searchResult = await searchService.searchMediaResults({
-        userId,
-        query: '',
-        whereConditions: [...scopeConditions, ...filterBuilt.whereConditions],
-        whereParams: [...scopeParams, ...filterBuilt.whereParams],
-        pageNo,
-        pageSize
-      })
-    }
-    let resultsWithUrls = await addFullUrlToMedia(searchResult.list)
-    if (source === 'people' && validClusterId != null && resultsWithUrls.length > 0) {
-      const mediaIds = resultsWithUrls.map((item) => item.mediaId).filter((id) => id != null)
-      const faceEmbeddingIdMap = faceClusterService.getFaceEmbeddingIdByMediaIdInCluster(userId, validClusterId, mediaIds)
-      resultsWithUrls = resultsWithUrls.map((item) => ({
-        ...item,
-        faceEmbeddingId: faceEmbeddingIdMap.get(item.mediaId) ?? null
-      }))
-    }
     logger.info({
       message: `范围列表/搜索完成: ${userId}`,
       details: { source, resultCount: resultsWithUrls.length, total: searchResult.total }
@@ -96,31 +84,6 @@ async function handleSearchMedias(req, res) {
     })
   }
 
-  if (hasQuery) {
-    searchResult = await searchService.searchMediaResults({
-      userId,
-      query: searchQuery,
-      baseFilters: filters,
-      filterOptions,
-      scopeConditions: [],
-      scopeParams: [],
-      pageNo,
-      pageSize
-    })
-  } else {
-    const built = searchService.buildFilterQueryParts(filters, filterOptions)
-    searchResult = await searchService.searchMediaResults({
-      userId,
-      query: '',
-      whereConditions: built.whereConditions,
-      whereParams: built.whereParams,
-      pageNo,
-      pageSize
-    })
-  }
-
-  const resultsWithUrls = await addFullUrlToMedia(searchResult.list)
-
   logger.info({
     message: `搜索完成: ${userId}`,
     details: {
@@ -129,11 +92,7 @@ async function handleSearchMedias(req, res) {
       totalCount: searchResult.total,
       termCount: searchResult.stats?.termCount || 0,
       ftsCount: searchResult.stats?.ftsCount || 0,
-      appliedFilters: Object.keys(filters).filter((key) => {
-        const value = filters[key]
-        if (Array.isArray(value)) return value.length > 0
-        return value && value !== '' && value !== 'all'
-      })
+      appliedFilters: extractAppliedFilters(filters)
     }
   })
 
@@ -146,10 +105,49 @@ async function handleSearchMedias(req, res) {
   })
 }
 
+async function runSearchMediaFlow({ userId, query, hasQuery, filters, filterOptions, scope, pageNo, pageSize }) {
+  const builtScope = scope ? searchService.buildScopeConditions(scope, userId) : { scopeConditions: [], scopeParams: [] }
+  const { scopeConditions, scopeParams } = builtScope
+
+  if (hasQuery) {
+    return searchService.searchMediaResults({
+      userId,
+      query,
+      baseFilters: filters,
+      filterOptions,
+      scopeConditions,
+      scopeParams,
+      pageNo,
+      pageSize
+    })
+  }
+
+  const builtFilters = searchService.buildFilterQueryParts(filters, filterOptions)
+  return searchService.searchMediaResults({
+    userId,
+    query: '',
+    whereConditions: [...scopeConditions, ...builtFilters.whereConditions],
+    whereParams: [...scopeParams, ...builtFilters.whereParams],
+    pageNo,
+    pageSize
+  })
+}
+
+function extractAppliedFilters(filters = {}) {
+  return Object.keys(filters).filter((key) => {
+    const value = filters[key]
+    if (Array.isArray(value)) return value.length > 0
+    return value && value !== '' && value !== 'all'
+  })
+}
+
 /**
  * 分页获取筛选选项（用于滚动加载）
  * GET /search/filters?type=city&pageNo=1&pageSize=20
  * 可选 scope：scopeSource, scopeType, scopeAlbumId, scopeClusterId（与统一列表的 source/scope 一致，用于在当前维度下获取选项）
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function handleGetFilterOptionsPaginated(req, res) {
   const { userId } = req.user
@@ -164,9 +162,7 @@ async function handleGetFilterOptionsPaginated(req, res) {
   const { pageNo, pageSize } = parsePagination(req.query, { pageNo: 1, pageSize: 20 })
 
   if (!type || !['city', 'year', 'month', 'weekday'].includes(type)) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+    throwInvalidParametersError({
       messageType: 'error',
       message: 'type 参数必须是 city、year、month 或 weekday'
     })
@@ -209,14 +205,16 @@ async function handleGetFilterOptionsPaginated(req, res) {
 
 module.exports = {
   handleSearchMedias: asyncHandler(handleSearchMedias),
-  handleGetFilterOptionsPaginated: (req, res, next) => {
-    Promise.resolve(handleGetFilterOptionsPaginated(req, res)).catch((err) => {
+  handleGetFilterOptionsPaginated: asyncHandler(async (req, res) => {
+    try {
+      await handleGetFilterOptionsPaginated(req, res)
+    } catch (err) {
       logger.error({
         message: '分页获取筛选选项失败',
         error: err.message,
         stack: err.stack
       })
-      next(err)
-    })
-  }
+      throw err
+    }
+  })
 }

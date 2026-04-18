@@ -4,7 +4,7 @@
  */
 const { db } = require("../db");
 
-/** 创建 users 表：用户账号、验证状态等 */
+/** 创建 users 表：用户账号、验证状态等。@returns {void} */
 function createTableUsers() {
   const createtablestmt = `
     CREATE TABLE IF NOT EXISTS users (
@@ -19,7 +19,7 @@ function createTableUsers() {
   db.prepare(createtablestmt).run();
 }
 
-/** 创建 app_config：id 自增；按 (user_id, key_type) 存云模型/高德配置 */
+/** 创建 app_config：id 自增；按 (user_id, key_type) 存云模型/高德配置。@returns {void} */
 function createTableAppConfig() {
   const sql = `
     CREATE TABLE IF NOT EXISTS app_config (
@@ -37,7 +37,7 @@ function createTableAppConfig() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_app_config_user_id ON app_config(user_id);").run();
 }
 
-/** 创建 face_cluster_representatives：每人脸聚类一条代表向量，用于增量/全量人脸匹配 */
+/** 创建 face_cluster_representatives：每人脸聚类一条代表向量，用于增量/全量人脸匹配。@returns {void} */
 function createTableFaceClusterRepresentatives() {
   const sql = `
       CREATE TABLE IF NOT EXISTS face_cluster_representatives (
@@ -58,7 +58,7 @@ function createTableFaceClusterRepresentatives() {
   ).run();
 }
 
-/** 创建 face_cluster_meta：每人脸聚类一条，记录 last_used_at 供「最近使用人物」排序 */
+/** 创建 face_cluster_meta：每人脸聚类一条，记录 last_used_at 供「最近使用人物」排序。@returns {void} */
 function createTableFaceClusterMeta() {
   const sql = `
       CREATE TABLE IF NOT EXISTS face_cluster_meta (
@@ -78,7 +78,7 @@ function createTableFaceClusterMeta() {
   ).run();
 }
 
-/** 创建 media 表：图片/视频元数据、存储 key、时间/地理/尺寸等，唯一约束 (user_id, file_hash) */
+/** 创建 media 表：图片/视频元数据、存储 key、时间/地理/尺寸等，唯一约束 (user_id, file_hash)。@returns {void} */
 function createTableMedia() {
   const sql = `
     CREATE TABLE IF NOT EXISTS media (
@@ -159,7 +159,7 @@ function createTableMedia() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_user_person_count ON media(user_id, person_count);").run();
 }
 
-/** 创建 media_face_embeddings：单条人脸向量，关联 media，用于人脸聚类与检索 */
+/** 创建 media_face_embeddings：单条人脸向量，关联 media，用于人脸聚类与检索。@returns {void} */
 function createTableMediaFaceEmbeddings() {
   const sql = `
     CREATE TABLE IF NOT EXISTS media_face_embeddings (
@@ -190,7 +190,7 @@ function createTableMediaFaceEmbeddings() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_face_embeddings_ignored ON media_face_embeddings(ignored_for_clustering);").run();
 }
 
-/** 创建 media_embeddings：媒体级向量（非人脸），按 source_type 与 media 唯一一行 */
+/** 创建 media_embeddings：媒体级向量（非人脸），按 source_type 与 media 唯一一行。@returns {void} */
 function createTableMediaEmbeddings() {
   const sql = `
     CREATE TABLE IF NOT EXISTS media_embeddings (
@@ -209,7 +209,7 @@ function createTableMediaEmbeddings() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_embeddings_media_source ON media_embeddings(media_id, source_type);").run();
 }
 
-/** 创建 album_media：相册与媒体的多对多关联 */
+/** 创建 album_media：相册与媒体的多对多关联。@returns {void} */
 function createTableAlbumMedia() {
   const sql = `
     CREATE TABLE IF NOT EXISTS album_media (
@@ -226,7 +226,7 @@ function createTableAlbumMedia() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_album_media_media_id ON album_media(media_id);").run();
 }
 
-/** 创建 media_search：汇总 caption/OCR 等，供搜索与 FTS 同步（ocr_text 为 OCR 原文，检索走 LIKE；caption_search_terms 为图片理解 jieba） */
+/** 创建 media_search：汇总 caption/OCR 等，供搜索与 FTS 同步（ocr_text 为 OCR 原文，检索走 LIKE；caption_search_terms 为图片理解 jieba）。@returns {void} */
 function createTableMediaSearch() {
   const sql = `
     CREATE TABLE IF NOT EXISTS media_search (
@@ -247,7 +247,7 @@ function createTableMediaSearch() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_search_user_id ON media_search(user_id);").run();
 }
 
-/** 创建 media_search_fts：FTS5 虚拟表，与 media_search 内容同步，用于全文检索（会先 DROP 旧表以便列名变更后重建） */
+/** 创建 media_search_fts：FTS5 虚拟表，与 media_search 内容同步，用于全文检索（会先 DROP 旧表以便列名变更后重建）。@returns {void} */
 function createTableMediaSearchFts() {
   db.prepare("DROP TRIGGER IF EXISTS media_search_fts_ai").run();
   db.prepare("DROP TRIGGER IF EXISTS media_search_fts_ad").run();
@@ -270,7 +270,7 @@ function createTableMediaSearchFts() {
   db.prepare(sql).run();
 }
 
-/** 创建 media_search_terms：中文 term 索引，用于单字/双字稳定召回 */
+/** 创建 media_search_terms：中文 term 索引，用于单字/双字稳定召回。@returns {void} */
 function createTableMediaSearchTerms() {
   const sql = `
     CREATE TABLE IF NOT EXISTS media_search_terms (
@@ -290,7 +290,7 @@ function createTableMediaSearchTerms() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_search_terms_user_field_term ON media_search_terms(user_id, field_type, term);").run();
 }
 
-/** 创建 albums 表（media 版）：相册名、封面 cover_media_id、软删除、last_used_at */
+/** 创建 albums 表（media 版）：相册名、封面 cover_media_id、软删除、last_used_at。@returns {void} */
 function createTableAlbumsMediaVersion() {
   const sql = `
     CREATE TABLE IF NOT EXISTS albums (
@@ -316,7 +316,7 @@ function createTableAlbumsMediaVersion() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_albums_user_last_used ON albums(user_id, last_used_at DESC) WHERE deleted_at IS NULL;").run();
 }
 
-/** 创建 face_clusters：用户人脸聚类，关联 media_face_embeddings，含代表向量与名称 */
+/** 创建 face_clusters：用户人脸聚类，关联 media_face_embeddings，含代表向量与名称。@returns {void} */
 function createTableFaceClustersMediaVersion() {
   const sql = `
     CREATE TABLE IF NOT EXISTS face_clusters (
@@ -344,7 +344,7 @@ function createTableFaceClustersMediaVersion() {
   ).run();
 }
 
-/** 创建 similar_groups：相似图分组，primary_media_id 指向 media */
+/** 创建 similar_groups：相似图分组，primary_media_id 指向 media。@returns {void} */
 function createTableSimilarGroupsMediaVersion() {
   const sql = `
     CREATE TABLE IF NOT EXISTS similar_groups (
@@ -363,7 +363,7 @@ function createTableSimilarGroupsMediaVersion() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_similar_groups_user_updated ON similar_groups(user_id, updated_at DESC);").run();
 }
 
-/** 创建 similar_group_members：相似组成员，group_id + media_id */
+/** 创建 similar_group_members：相似组成员，group_id + media_id。@returns {void} */
 function createTableSimilarGroupMembersMediaVersion() {
   const sql = `
     CREATE TABLE IF NOT EXISTS similar_group_members (

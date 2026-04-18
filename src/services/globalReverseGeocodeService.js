@@ -44,7 +44,7 @@ function ensureIndex() {
 
 /**
  * @param {{ name?: string, nameZh?: string|null }} props
- * @returns {string|null}
+ * @returns {string|null} 展示用国家名。
  */
 function displayCountryName(props) {
   if (!props) return null

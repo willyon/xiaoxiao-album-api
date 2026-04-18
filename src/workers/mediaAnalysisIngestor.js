@@ -8,7 +8,6 @@ const logger = require('../utils/logger')
 const storageService = require('../services/storageService')
 const {
   insertFaceEmbeddings,
-  normalizeTextArray,
   updateAnalysisStatusPrimary,
   finalizeMediaAnalysis: finalizeMediaAnalysisInModel,
   upsertMediaEmbedding
@@ -22,6 +21,7 @@ const { withAiSlot } = require('../services/aiConcurrencyLimiter')
 const { bullMqWillRetryAfterThisFailure } = require('../utils/bullmq/queuePipelineLifecycle')
 const { scheduleUserRebuild } = require('../services/cleanupGroupingScheduler')
 const { scheduleUserClustering } = require('../services/faceCluster')
+const { buildCaptionForDb, mapCaptionModuleStatus } = require('../utils/caption/captionNormalization')
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL
 // 图片分析超时：仅认 ANALYZE_IMAGE_TIMEOUT_MS，默认 120 秒
 const ANALYZE_IMAGE_TIMEOUT_MS = Number(process.env.ANALYZE_IMAGE_TIMEOUT_MS || 120000)
@@ -33,6 +33,11 @@ const ANALYZE_IMAGE_USE_LOCAL_PATH = process.env.ANALYZE_IMAGE_USE_LOCAL_PATH !=
 // 最新设计：Node 侧不再决定「开启哪些能力」，一律视为参与分析；是否真正可用由 Python 端模型加载结果与降级逻辑决定
 // 图中可读文字由 Python body.data.caption.data.ocr 写入 media.ai_ocr
 
+/**
+ * 媒体智能分析主流程（图片/视频）。
+ * @param {import('bullmq').Job} job - BullMQ 任务对象。
+ * @returns {Promise<void>} 无返回值。
+ */
 async function processMediaAnalysis(job) {
   const { mediaId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType = 'image', fileName } = job.data || {}
 
@@ -132,6 +137,11 @@ async function processMediaAnalysis(job) {
   }
 }
 
+/**
+ * 读取图片输入（优先本地路径，否则读取 Buffer）。
+ * @param {{highResStorageKey?:string|null,originalStorageKey?:string|null,mediaId:number,userId:number|string,fileName?:string}} params - 加载参数。
+ * @returns {Promise<{imageData:Buffer|null,localPath:string|null}>} 图片数据或本地路径。
+ */
 async function _loadMediaBuffer({ highResStorageKey, originalStorageKey, mediaId, userId, fileName }) {
   if (ANALYZE_IMAGE_USE_LOCAL_PATH) {
     if (highResStorageKey) {
@@ -170,6 +180,8 @@ async function _loadMediaBuffer({ highResStorageKey, originalStorageKey, mediaId
 
 /**
  * 视频原片本地路径（与 /analyze_video 设计方案一致：需 Python 与 Node 同卷可读）
+ * @param {{highResStorageKey?:string|null,originalStorageKey?:string|null,mediaId:number,userId:number|string,fileName?:string}} params - 解析参数。
+ * @returns {Promise<string|null>} 视频本地路径。
  */
 async function _resolveVideoLocalPath({ highResStorageKey, originalStorageKey, mediaId, userId, fileName }) {
   if (ANALYZE_IMAGE_USE_LOCAL_PATH) {
@@ -189,6 +201,11 @@ async function _resolveVideoLocalPath({ highResStorageKey, originalStorageKey, m
   return null
 }
 
+/**
+ * 调用 Python `/analyze_video` 并将结果写入 stepResults。
+ * @param {{mediaId:number,userId:number|string,videoPath:string,stepResults:Object}} params - 调用参数。
+ * @returns {Promise<void>} 无返回值。
+ */
 async function _runAnalyzeVideo({ mediaId, userId, videoPath, stepResults }) {
   const device = process.env.AI_DEVICE || 'auto'
   const cloudConfig = getCloudConfigForAnalysis(userId)
@@ -213,6 +230,14 @@ async function _runAnalyzeVideo({ mediaId, userId, videoPath, stepResults }) {
   _applyAdapterFromModules(mediaId, userId, body, stepResults, { mediaType: 'video', cloudEnabled })
 }
 
+/**
+ * 处理 AI 分析失败后的状态落库与进度标记。
+ * @param {number} mediaId - 媒体 ID。
+ * @param {unknown} error - 失败错误。
+ * @param {string|undefined} sessionId - 会话 ID。
+ * @param {import('bullmq').Job|undefined} job - BullMQ 任务对象。
+ * @returns {Promise<void>} 无返回值。
+ */
 async function _markMediaAnalysisFailed(mediaId, error, sessionId, job) {
   if (!mediaId) {
     logger.error({
@@ -238,6 +263,11 @@ async function _markMediaAnalysisFailed(mediaId, error, sessionId, job) {
   }
 }
 
+/**
+ * 调用 Python `/analyze_image` 并将结果写入 stepResults。
+ * @param {{mediaId:number,userId:number|string,imageData:Buffer|null,localPath:string|null,stepResults:Object}} params - 调用参数。
+ * @returns {Promise<void>} 无返回值。
+ */
 async function _runAnalyzeImage({ mediaId, userId, imageData, localPath, stepResults }) {
   const { FormData, Blob } = globalThis
   if (!localPath && !imageData) {
@@ -271,11 +301,45 @@ async function _runAnalyzeImage({ mediaId, userId, imageData, localPath, stepRes
   _applyAdapterFromModules(mediaId, userId, body, stepResults, { mediaType: 'image', cloudEnabled })
 }
 
+/**
+ * 将 Python 模块化输出映射到业务 stepResults。
+ * @param {number} mediaId - 媒体 ID。
+ * @param {number|string} userId - 用户 ID。
+ * @param {Object} body - Python 返回体。
+ * @param {Object} stepResults - 步骤结果对象。
+ * @param {{mediaType?:'image'|'video',cloudEnabled?:boolean}} [options] - 映射选项。
+ * @returns {void} 无返回值。
+ */
+function _roundTo2OrNull(value) {
+  if (typeof value !== 'number') return null
+  return Number(value.toFixed(2))
+}
+
+/**
+ * 计算人脸数组中的最大 quality_score。
+ * @param {Array<{quality_score?:number}>} faces - 人脸数组。
+ * @returns {number} 最大质量分，若无有效值返回 `Number.NEGATIVE_INFINITY`。
+ */
+function _maxFaceQuality(faces) {
+  return faces.reduce((acc, face) => {
+    const q = Number(face?.quality_score)
+    return Number.isFinite(q) ? Math.max(acc, q) : acc
+  }, Number.NEGATIVE_INFINITY)
+}
+
+/**
+ * 将 Python 模块化输出映射到业务 stepResults。
+ * @param {number} mediaId - 媒体 ID。
+ * @param {number|string} userId - 用户 ID。
+ * @param {Object} body - Python 返回体。
+ * @param {Object} stepResults - 步骤结果对象。
+ * @param {{mediaType?:'image'|'video',cloudEnabled?:boolean}} [options] - 映射选项。
+ * @returns {void} 无返回值。
+ */
 function _applyAdapterFromModules(mediaId, userId, body, stepResults, options = {}) {
   const mediaType = options.mediaType === 'video' ? 'video' : 'image'
   const cloudEnabled = options.cloudEnabled !== false
   const modules = body.data || {}
-  const round2 = (v) => (typeof v === 'number' ? Number(v.toFixed(2)) : null)
 
   const captionModule = modules.caption
   const capStatus = captionModule?.status
@@ -284,7 +348,7 @@ function _applyAdapterFromModules(mediaId, userId, body, stepResults, options = 
   let captionForDb = null
   if (capStatus === 'success') {
     if (capData) {
-      captionForDb = _pickCaptionFieldsForDb(capData)
+      captionForDb = buildCaptionForDb(capData)
       if (captionForDb) {
         const d = capData
         const descriptionText = typeof d.description === 'string' ? d.description : ''
@@ -314,15 +378,7 @@ function _applyAdapterFromModules(mediaId, userId, body, stepResults, options = 
   }
 
   // 云阶段状态与 caption 文本：与 primary / 人脸 / 质量 同在 finalizeMediaAnalysis 一次 UPDATE
-  if (!cloudEnabled) {
-    stepResults.analysisCloudStatus = 'skipped'
-  } else if (capStatus === 'success') {
-    stepResults.analysisCloudStatus = 'success'
-  } else if (capStatus === 'failed') {
-    stepResults.analysisCloudStatus = 'failed'
-  } else {
-    stepResults.analysisCloudStatus = 'failed'
-  }
+  stepResults.analysisCloudStatus = mapCaptionModuleStatus(capStatus, { cloudEnabled })
   stepResults.captionForFinalize = captionForDb
 
   if (mediaType === 'video') {
@@ -337,8 +393,8 @@ function _applyAdapterFromModules(mediaId, userId, body, stepResults, options = 
         data: {
           phash: d.hashes?.phash ?? null,
           dhash: d.hashes?.dhash ?? null,
-          aestheticScore: round2(d.aesthetic_score),
-          sharpnessScore: round2(d.sharpness_score)
+          aestheticScore: _roundTo2OrNull(d.aesthetic_score),
+          sharpnessScore: _roundTo2OrNull(d.sharpness_score)
         }
       }
     } else {
@@ -376,13 +432,8 @@ function _applyAdapterFromModules(mediaId, userId, body, stepResults, options = 
         const e = typeof f?.expression === 'string' ? f.expression.trim().toLowerCase() : ''
         return e === 'happy' || e === 'neutral'
       })
-      const maxFaceQuality = (arr) =>
-        arr.reduce((acc, f) => {
-          const q = Number(f?.quality_score)
-          return Number.isFinite(q) ? Math.max(acc, q) : acc
-        }, Number.NEGATIVE_INFINITY)
-      const preferredQuality = maxFaceQuality(preferredFaces)
-      const fallbackQuality = maxFaceQuality(faces)
+      const preferredQuality = _maxFaceQuality(preferredFaces)
+      const fallbackQuality = _maxFaceQuality(faces)
       const preferredFaceQuality = Number.isFinite(preferredQuality) ? preferredQuality : Number.isFinite(fallbackQuality) ? fallbackQuality : null
       const ageTagsText = ages.length > 0 ? ages.join(',') : null
       const genderTagsText = genders.length > 0 ? genders.join(',') : null
@@ -436,31 +487,11 @@ function _applyAdapterFromModules(mediaId, userId, body, stepResults, options = 
   }
 }
 
-/** Python caption.data 中非空字段才落库（finalize 中文本列与 upsertMediaAiFieldsForAnalysis 规则一致；人数由 faceData 合并后写入） */
-function _pickCaptionFieldsForDb(capData) {
-  if (!capData || typeof capData !== 'object') return null
-  const out = {}
-  const desc = typeof capData.description === 'string' ? capData.description.trim() : ''
-  if (desc) out.description = desc
-  const kw = normalizeTextArray(capData.keywords)
-  if (kw.length > 0) out.keywords = kw
-  const st = normalizeTextArray(capData.subject_tags)
-  if (st.length > 0) out.subjectTags = st
-  const at = normalizeTextArray(capData.action_tags)
-  if (at.length > 0) out.actionTags = at
-  const sc = normalizeTextArray(capData.scene_tags)
-  if (sc.length > 0) out.sceneTags = sc
-  const ocr = typeof capData.ocr === 'string' ? capData.ocr.trim() : ''
-  if (ocr) out.ocr = ocr
-  if (typeof capData.face_count === 'number' && Number.isFinite(capData.face_count)) {
-    out.faceCount = Math.max(0, Math.floor(capData.face_count))
-  }
-  if (typeof capData.person_count === 'number' && Number.isFinite(capData.person_count)) {
-    out.personCount = Math.max(0, Math.floor(capData.person_count))
-  }
-  return Object.keys(out).length > 0 ? out : null
-}
-
+/**
+ * 汇总 stepResults 并完成媒体分析落库。
+ * @param {{mediaId:number,stepResults:Object}} params - 汇总参数。
+ * @returns {Promise<void>} 无返回值。
+ */
 async function finalizeMediaAnalysis({ mediaId, stepResults }) {
   const faceData = stepResults.face?.data || {}
   const cleanupData = stepResults.cleanup?.data || {}

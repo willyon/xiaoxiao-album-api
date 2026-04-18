@@ -8,6 +8,10 @@ const { SEARCH_LEXICAL_SYNONYMS } = require('../config/searchLexicalSynonyms')
 /** @type {Map<string, Set<string>> | null} */
 let reverseSynonymIndex = null
 
+/**
+ * 构建反向同义词索引：value -> key 集合。
+ * @returns {Map<string, Set<string>>} 反向索引。
+ */
 function buildReverseSynonymIndex() {
   const rev = new Map()
   for (const [key, syns] of Object.entries(SEARCH_LEXICAL_SYNONYMS)) {
@@ -22,6 +26,10 @@ function buildReverseSynonymIndex() {
   return rev
 }
 
+/**
+ * 获取（或惰性初始化）反向同义词索引。
+ * @returns {Map<string, Set<string>>} 反向索引。
+ */
 function getReverseSynonymIndex() {
   if (!reverseSynonymIndex) {
     reverseSynonymIndex = buildReverseSynonymIndex()
@@ -29,6 +37,11 @@ function getReverseSynonymIndex() {
   return reverseSynonymIndex
 }
 
+/**
+ * 为单个种子词构建同义词组（含正向与反向桥接）。
+ * @param {string} seed - 种子词。
+ * @returns {string[]} 同义词组。
+ */
 function buildSynonymGroupForSeed(seed) {
   const base = String(seed || '').trim()
   if (!base) return []
@@ -43,7 +56,7 @@ function buildSynonymGroupForSeed(seed) {
     })
   }
   const keys = reverse.get(base)
-  if (keys) {
+  if (keys && keys.size > 0) {
     for (const k of keys) {
       const kk = String(k || '').trim()
       if (!kk) continue
@@ -60,6 +73,11 @@ function buildSynonymGroupForSeed(seed) {
   return Array.from(out)
 }
 
+/**
+ * 为多种子词构建同义词分组。
+ * @param {string[]} seedTerms - 种子词列表。
+ * @returns {string[][]} 同义词分组列表。
+ */
 function buildSynonymGroups(seedTerms) {
   const seeds = [...new Set((seedTerms || []).map((t) => String(t || '').trim()).filter(Boolean))]
   return seeds.map((seed) => buildSynonymGroupForSeed(seed)).filter((g) => g.length > 0)
@@ -67,8 +85,8 @@ function buildSynonymGroups(seedTerms) {
 
 /**
  * 由种子词展开：种子 ∪ 正向同义词 ∪（种子命中某 value 时并入对应 key 及其同义词）
- * @param {string[]} seedTerms
- * @returns {string[]}
+ * @param {string[]} seedTerms - 种子词列表。
+ * @returns {string[]} 去重后的扩展词列表。
  */
 function expandTermsWithSynonyms(seedTerms) {
   const seeds = [...new Set(seedTerms.map((t) => String(t || '').trim()).filter(Boolean))]
@@ -85,7 +103,7 @@ function expandTermsWithSynonyms(seedTerms) {
       })
     }
     const keys = reverse.get(seed)
-    if (keys) {
+    if (keys && keys.size > 0) {
       for (const k of keys) {
         if (k) out.add(k)
         const syns = forward[k]

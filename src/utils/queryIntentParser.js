@@ -8,8 +8,8 @@ const { parseQuerySemanticSignals } = require('./querySemanticParser')
 
 /**
  * 解析查询意图，提取时间、地点等结构化信息
- * @param {string} query - 用户输入的查询文本
- * @returns {{ filters: Object, residualQuery: string }} 结构化筛选 + 去掉时间/地点后的剩余查询文本
+ * @param {string} query - 用户输入的查询文本。
+ * @returns {{ filters: Record<string, unknown>, residualQuery: string }} 结构化筛选与剩余查询文本。
  */
 function parseQueryIntent(query) {
   if (!query || !query.trim()) {
@@ -34,9 +34,9 @@ function parseQueryIntent(query) {
 
 /**
  * 将解析结果合并到现有 filters（不覆盖用户已设置的筛选）
- * @param {Object} existingFilters - 现有的筛选条件
- * @param {Object} parsedFilters - 解析出的筛选条件
- * @returns {Object} 合并后的筛选条件
+ * @param {Record<string, unknown>} existingFilters - 现有筛选条件。
+ * @param {Record<string, unknown>} parsedFilters - 解析出的筛选条件。
+ * @returns {Record<string, unknown>} 合并后的筛选条件。
  */
 function mergeFilters(existingFilters, parsedFilters) {
   const merged = { ...existingFilters }

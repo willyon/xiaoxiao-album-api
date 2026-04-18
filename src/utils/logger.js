@@ -27,9 +27,9 @@ const LOG_FILE_PATH = path.join(LOG_DIR, LOG_FILE_NAME)
  * - function、symbol、undefined 等类型如果直接作为对象属性 JSON.stringify，会被忽略（键值对消失），
  *   但如果直接传入 JSON.stringify(undefined) 会返回 undefined（不是字符串），需要兜底。
  * - 如果序列化失败（如循环引用对象），最终兜底返回 "[unstringifiable]"，保证日志系统健壮性。
- * @param {*} v 任意待序列化的值
- * @param {number} max 截断最大长度
- * @returns {string}
+ * @param {unknown} v - 任意待序列化的值。
+ * @param {number} [max=4000] - 截断最大长度。
+ * @returns {string} 安全字符串。
  */
 function toSafeString(v, max = 4000) {
   if (v == null) return '' // null或undefined时返回空字符串
@@ -54,8 +54,8 @@ function toSafeString(v, max = 4000) {
 /**
  * 日志脱敏函数，防止敏感信息如 token、cookie、api key 等泄漏到日志中。
  * 典型用例：记录 requestInfo 时将 headers 中的敏感字段替换为 "[redacted]"。
- * @param {Object} obj
- * @returns {Object} 脱敏后的副本
+ * @param {Record<string, any>} [obj={}] - 原始对象。
+ * @returns {Record<string, any>} 脱敏后的副本。
  */
 function redact(obj = {}) {
   try {
@@ -97,6 +97,7 @@ let currentLogDate = null
 /**
  * 获取固定日志文件写入流。
  * 首次初始化时先清空旧日志，确保文件仅保留当前进程周期日志。
+ * @returns {fs.WriteStream} 日志写入流。
  */
 function getLogStream() {
   const today = DateTime.now().toFormat('yyyy-MM-dd')
@@ -124,6 +125,11 @@ function getLogStream() {
 }
 
 // 格式化日志信息（首行携带 code / requestId）
+/**
+ * 格式化日志输出文本。
+ * @param {{timestamp:string,level:string,code?:string,requestId?:string,message:string,details?:unknown,userMessage?:string,stack?:string,requestInfo?:object}} payload - 格式化参数。
+ * @returns {string} 日志文本。
+ */
 function formatLogMessage({ timestamp, level, code, requestId, message, details, userMessage, stack, requestInfo }) {
   return [
     `[${timestamp}] [${level.toUpperCase()}]${code ? ' [' + code + ']' : ''}${requestId ? ' [rid:' + requestId + ']' : ''} ${message}`,
@@ -142,6 +148,8 @@ function formatLogMessage({ timestamp, level, code, requestId, message, details,
  * - 若写入流缓冲区满（backpressured），日志进入队列等待
  * - 队列超长时丢弃最旧日志并计数（droppedCount）
  * - 只有当缓冲区 drain 事件触发时才 flush 队列，避免递归写爆内存
+ * @param {string} logMessage - 日志文本。
+ * @returns {void} 无返回值。
  */
 function logToFile(logMessage) {
   try {
@@ -177,6 +185,7 @@ function logToFile(logMessage) {
  * - 只在 drain 事件中触发（stream.once），避免多次并发写入导致递归爆栈。
  * - 如果写入流再次被背压，则再次等待 drain。
  * - 若期间有日志被丢弃（droppedCount > 0），写一条告警日志。
+ * @returns {Promise<void>} 刷盘完成 Promise。
  */
 function flushQueue() {
   return new Promise((resolve) => {
@@ -225,6 +234,8 @@ function flushQueue() {
 
 /**
  * 供优雅退出流程调用：尽量把队列刷盘，并关闭写流
+ * @param {number} [timeoutMs=3000] - 超时时间毫秒。
+ * @returns {Promise<void>} 关闭完成 Promise。
  */
 function closeLogger(timeoutMs = 3000) {
   return new Promise((resolve) => {
@@ -269,7 +280,7 @@ function closeLogger(timeoutMs = 3000) {
 const logger = {
   /**
    * 错误日志
-   * @param {Object} param0
+   * @param {{message:unknown,code?:string,requestId?:string,details?:unknown,messageToUserI18n?:unknown,stack?:string,requestInfo?:Record<string, any>}} param0 - 错误日志参数。
    */
   error({ message, code, requestId, details, messageToUserI18n, stack, requestInfo }) {
     const timestamp = DateTime.now().toFormat('yyyy-MM-dd HH:mm:ss')
@@ -289,7 +300,7 @@ const logger = {
   },
   /**
    * 警告日志
-   * @param {Object} param0
+   * @param {{message:unknown,code?:string,requestId?:string,details?:unknown}} param0 - 警告日志参数。
    */
   warn({ message, code, requestId, details }) {
     const timestamp = DateTime.now().toFormat('yyyy-MM-dd HH:mm:ss')
@@ -306,7 +317,7 @@ const logger = {
   },
   /**
    * 信息日志
-   * @param {Object} param0
+   * @param {{message:unknown,code?:string,requestId?:string,details?:unknown}} param0 - 信息日志参数。
    */
   info({ message, code, requestId, details }) {
     const timestamp = DateTime.now().toFormat('yyyy-MM-dd HH:mm:ss')

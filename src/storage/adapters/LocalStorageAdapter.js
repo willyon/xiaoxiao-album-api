@@ -41,45 +41,30 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    * @returns {string} 存储键名
    */
   generateStorageKey(type, fileName, extension) {
-    // 如果没有传extension，直接使用fileName本身
-    if (!extension) {
-      switch (type) {
-        case process.env.MEDIA_STORAGE_KEY_THUMBNAIL || 'thumbnail':
-          const thumbnailDir = process.env.PROCESSED_THUMBNAIL_MEDIA_DIR || 'storage-local/processed/thumbnails'
-          return `${thumbnailDir}/${fileName}`
-        case process.env.MEDIA_STORAGE_KEY_HIGHRES || 'highres':
-          const highResDir = process.env.PROCESSED_HIGH_RES_MEDIA_DIR || 'storage-local/processed/highres'
-          return `${highResDir}/${fileName}`
-        case process.env.MEDIA_STORAGE_KEY_ORIGINAL || 'original':
-          const originalDir = process.env.PROCESSED_ORIGINAL_MEDIA_DIR || 'storage-local/processed/original'
-          return `${originalDir}/${fileName}`
-        case process.env.MEDIA_STORAGE_KEY_FAILED || 'failed':
-          const failedDir = process.env.FAILED_MEDIA_DIR || 'storage-local/processing/failed'
-          return `${failedDir}/${fileName}`
-        default:
-          throw new Error(`Unknown media type: ${type}`)
-      }
-    }
+    const targetDir = this.resolveMediaDirByType(type)
+    const storedFileName = this.buildStoredFileName(fileName, extension)
+    return `${targetDir}/${storedFileName}`
+  }
 
-    // 传了extension，则使用原来的逻辑
-    const baseName = path.basename(fileName, path.extname(fileName))
-
+  resolveMediaDirByType(type) {
     switch (type) {
       case process.env.MEDIA_STORAGE_KEY_THUMBNAIL || 'thumbnail':
-        const thumbnailDir = process.env.PROCESSED_THUMBNAIL_MEDIA_DIR || 'storage-local/processed/thumbnails'
-        return `${thumbnailDir}/${baseName}.${extension}`
+        return process.env.PROCESSED_THUMBNAIL_MEDIA_DIR || 'storage-local/processed/thumbnails'
       case process.env.MEDIA_STORAGE_KEY_HIGHRES || 'highres':
-        const highResDir = process.env.PROCESSED_HIGH_RES_MEDIA_DIR || 'storage-local/processed/highres'
-        return `${highResDir}/${baseName}.${extension}`
+        return process.env.PROCESSED_HIGH_RES_MEDIA_DIR || 'storage-local/processed/highres'
       case process.env.MEDIA_STORAGE_KEY_ORIGINAL || 'original':
-        const originalDir = process.env.PROCESSED_ORIGINAL_MEDIA_DIR || 'storage-local/processed/original'
-        return `${originalDir}/${baseName}.${extension}`
+        return process.env.PROCESSED_ORIGINAL_MEDIA_DIR || 'storage-local/processed/original'
       case process.env.MEDIA_STORAGE_KEY_FAILED || 'failed':
-        const failedDir = process.env.FAILED_MEDIA_DIR || 'storage-local/processing/failed'
-        return `${failedDir}/${baseName}.${extension}`
+        return process.env.FAILED_MEDIA_DIR || 'storage-local/processing/failed'
       default:
         throw new Error(`Unknown media type: ${type}`)
     }
+  }
+
+  buildStoredFileName(fileName, extension) {
+    if (!extension) return fileName
+    const baseName = path.basename(fileName, path.extname(fileName))
+    return `${baseName}.${extension}`
   }
 
   // ========== 基础文件操作实现 ==========

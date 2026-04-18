@@ -7,8 +7,8 @@ const searchModel = require('../../models/mediaModel')
  * 分页获取筛选项（城市/年份/月份/星期），支持 mediaType 与 scope 条件。
  * 这里作为服务层薄封装，便于后续追加参数校验、缓存与监控埋点。
  *
- * @param {Object} params 查询参数
- * @returns {{list:any[], total:number}} 分页筛选项结果
+ * @param {object} params - 查询参数。
+ * @returns {{list:any[], total:number}} 分页筛选项结果。
  */
 function getFilterOptionsPaginated(params) {
   return searchModel.getFilterOptionsPaginated(params)

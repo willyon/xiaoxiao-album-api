@@ -3,51 +3,42 @@
  * @Date: 2025-08-15
  * @Description: meta 阶段的 BullMQ Worker（调用 imageMetaIngestor）
  */
-const { Worker } = require('bullmq')
-const IORedis = require('ioredis')
 const logger = require('../utils/logger')
-const { attachStandardFailedLogging } = require('../utils/bullmq/bullmqWorkerTelemetry')
-const initGracefulShutdown = require('../utils/gracefulShutdown')
 const { bullMqWillRetryAfterThisFailure } = require('../utils/bullmq/queuePipelineLifecycle')
 const { setMetaPipelineStatus } = require('../services/mediaService')
 const { processMediaMeta } = require('./mediaMetaIngestor')
-
-const connection = new IORedis({ maxRetriesPerRequest: null })
+const { createStandardWorker } = require('../utils/bullmq/createStandardWorker')
 
 const QUEUE_NAME = process.env.MEDIA_META_QUEUE_NAME || 'media-meta'
 const CONCURRENCY = Number(process.env.MEDIA_META_WORKER_CONCURRENCY || 1)
 
-const worker = new Worker(
-  QUEUE_NAME,
-  async (job) => {
-    try {
-      await processMediaMeta(job)
-    } catch (err) {
-      const { userId, imageHash } = job.data || {}
-      // meta 终局 failed 仅此一处落库（与 mediaMetaIngestor 解耦，避免与 _handleMetaRetryFailure 重复 UPDATE）
-      if (userId && imageHash && !bullMqWillRetryAfterThisFailure(job, err)) {
-        await setMetaPipelineStatus({ userId, imageHash, metaPipelineStatus: 'failed' })
-      }
-      throw err
+/**
+ * Meta Worker 单任务处理入口：执行元数据处理并在终局失败时写入 failed 状态。
+ * @param {import('bullmq').Job} job - BullMQ 任务对象。
+ * @returns {Promise<void>} 无返回值。
+ */
+const processMediaMetaJob = async (job) => {
+  try {
+    await processMediaMeta(job)
+  } catch (err) {
+    const { userId, imageHash } = job.data || {}
+    // meta 终局 failed 仅此一处落库（与 mediaMetaIngestor 解耦，避免与 _handleMetaRetryFailure 重复 UPDATE）
+    if (userId && imageHash && !bullMqWillRetryAfterThisFailure(job, err)) {
+      await setMetaPipelineStatus({ userId, imageHash, metaPipelineStatus: 'failed' })
     }
-  },
-  { connection, concurrency: CONCURRENCY }
-)
-logger.info({ message: `mediaMetaWorker 已启动，队列名=${QUEUE_NAME}，并发数=${CONCURRENCY}` })
+    throw err
+  }
+}
 
-worker.on('completed', (job) => {
-  logger.info({
-    message: `mediaMetaWorker completed job.id: ${job.id}`,
-    details: { data: job.data }
-  })
-})
-
-attachStandardFailedLogging(worker, QUEUE_NAME, { logPrefix: 'mediaMetaWorker' })
-
-worker.on('stalled', (jobId) => {
-  logger.warn({ message: 'mediaMetaWorker.stalled', details: { jobId } })
-})
-
-initGracefulShutdown({
-  extraClosers: [async () => worker.close(), async () => connection.quit()]
+createStandardWorker({
+  queueName: QUEUE_NAME,
+  processor: processMediaMetaJob,
+  concurrency: CONCURRENCY,
+  logPrefix: 'mediaMetaWorker',
+  onCompleted: (job) => {
+    logger.info({
+      message: `mediaMetaWorker completed job.id: ${job.id}`,
+      details: { data: job.data }
+    })
+  }
 })

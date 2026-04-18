@@ -15,6 +15,9 @@ const {
 
 /**
  * 创建相册
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function createAlbum(req, res) {
   const userId = req.user.userId
@@ -31,13 +34,16 @@ async function createAlbum(req, res) {
 
 /**
  * 获取相册详情
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function getAlbumById(req, res) {
   const userId = req.user.userId
-  const { albumId } = req.params
+  const albumId = parsePositiveIntParam(req.params.albumId)
 
   const album = await albumService.getAlbumById({
-    albumId: parseInt(albumId),
+    albumId,
     userId
   })
 
@@ -54,18 +60,21 @@ async function getAlbumById(req, res) {
 
 /**
  * 更新相册
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function updateAlbum(req, res) {
   const userId = req.user.userId
-  const { albumId } = req.params
+  const albumId = parsePositiveIntParam(req.params.albumId)
   const { name, description, coverImageId } = req.body
 
   const album = await albumService.updateAlbum({
     userId,
-    albumId: parseInt(albumId),
+    albumId,
     name,
     description,
-    coverImageId: coverImageId ? parseInt(coverImageId) : undefined
+    coverImageId: coverImageId ? parsePositiveIntParam(coverImageId) : undefined
   })
 
   res.sendResponse({ data: album })
@@ -73,14 +82,17 @@ async function updateAlbum(req, res) {
 
 /**
  * 删除相册
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function deleteAlbum(req, res) {
   const userId = req.user.userId
-  const { albumId } = req.params
+  const albumId = parsePositiveIntParam(req.params.albumId)
 
   await albumService.deleteAlbum({
     userId,
-    albumId: parseInt(albumId)
+    albumId
   })
 
   res.sendResponse({ data: { success: true } })
@@ -89,19 +101,22 @@ async function deleteAlbum(req, res) {
 /**
  * 获取自定义相册列表
  * GET /api/albums?pageNo=1&pageSize=20&search=xxx&excludeAlbumId=123
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function getCustomAlbums(req, res) {
   const userId = req.user.userId
   const { search, excludeAlbumId } = req.query
   const { pageNo, pageSize } = parsePagination(req.query, { pageNo: 1, pageSize: 20 })
-  const excludeId = excludeAlbumId ? parseInt(excludeAlbumId, 10) : null
+  const excludeId = excludeAlbumId ? parsePositiveIntParam(excludeAlbumId) : null
 
   const result = await albumService.getAlbumsList({
     userId,
     pageNo,
     pageSize,
     search: search || null,
-    excludeAlbumId: Number.isNaN(excludeId) ? null : excludeId
+    excludeAlbumId: excludeId
   })
 
   res.sendResponse({ data: result })
@@ -110,16 +125,20 @@ async function getCustomAlbums(req, res) {
 /**
  * 获取最近使用的相册（前 limit 个，用于「添加到相册」递进式弹窗第一屏）
  * GET /api/albums/recent?limit=8&excludeAlbumId=123
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function getRecentAlbums(req, res) {
   const userId = req.user.userId
-  const limit = Math.min(parseInt(req.query.limit, 10) || 8, 20)
-  const excludeAlbumId = req.query.excludeAlbumId ? parseInt(req.query.excludeAlbumId, 10) : null
+  const limitRaw = req.query.limit
+  const limit = Math.min(limitRaw ? parsePositiveIntParam(limitRaw) : 8, 20)
+  const excludeAlbumId = req.query.excludeAlbumId ? parsePositiveIntParam(req.query.excludeAlbumId) : null
 
   const result = await albumService.getRecentAlbumsList({
     userId,
     limit,
-    excludeAlbumId: Number.isNaN(excludeAlbumId) ? null : excludeAlbumId
+    excludeAlbumId
   })
   res.sendResponse({ data: result })
 }
@@ -127,29 +146,26 @@ async function getRecentAlbums(req, res) {
 /**
  * 添加图片到相册（albumId 为数字相册 ID）
  * Body: { mediaIds: number[] }
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function addMediasToAlbum(req, res) {
-  const userId = req.user.userId
-  const { albumId } = req.params
-  const { mediaIds } = req.body
-
-  const albumIdNum = parsePositiveIntParam(albumId)
-  const ids = requireNonEmptyIdArray(mediaIds)
-
-  const result = await albumService.addMediasToAlbum({
-    userId,
-    albumId: albumIdNum,
-    mediaIds: ids
-  })
-
-  res.sendResponse({ data: result })
+  await handleAlbumMediaMutation(req, res, albumService.addMediasToAlbum)
 }
 
 /**
  * 从相册中移除图片（albumId 为数字相册 ID）
  * Body: { mediaIds: number[] }
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function removeMediasFromAlbum(req, res) {
+  await handleAlbumMediaMutation(req, res, albumService.removeMediasFromAlbum)
+}
+
+async function handleAlbumMediaMutation(req, res, action) {
   const userId = req.user.userId
   const { albumId } = req.params
   const { mediaIds } = req.body
@@ -157,7 +173,7 @@ async function removeMediasFromAlbum(req, res) {
   const albumIdNum = parsePositiveIntParam(albumId)
   const ids = requireNonEmptyIdArray(mediaIds)
 
-  const result = await albumService.removeMediasFromAlbum({
+  const result = await action({
     userId,
     albumId: albumIdNum,
     mediaIds: ids
@@ -168,6 +184,9 @@ async function removeMediasFromAlbum(req, res) {
 
 /**
  * 设置相册封面图片
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function setAlbumCover(req, res) {
   const userId = req.user.userId
@@ -187,6 +206,9 @@ async function setAlbumCover(req, res) {
 /**
  * 恢复相册默认封面（最近加入的一张图/视频，与系统自动封面规则一致）
  * DELETE /api/albums/:albumId/cover
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function restoreAlbumCover(req, res) {
   const userId = req.user.userId

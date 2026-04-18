@@ -19,10 +19,10 @@ const NO_ZONETIME = 'yyyy:MM:dd HH:mm:ss' // 不包含时区信息
  * - 带时区的EXIF时间：按实际时区解析，显示时可能与拍摄地时间不一致
  * - 不带时区的EXIF时间：按服务器时区解释，显示时间与拍摄时间保持一致
  *
- * @param {string} timeStr - 时间字符串
+ * @param {string} timeStr - 时间字符串。
  *   - 带时区格式：'yyyy:MM:dd HH:mm:ssZZ' 如 '2024:08:15 14:30:25+08:00'（直接解析时区信息）
  *   - 不带时区格式：'yyyy:MM:dd HH:mm:ss' 如 '2024:08:15 14:30:25'（按系统默认时区解释）
- * @returns {number|null} UTC时间戳（毫秒），解析失败时返回 null
+ * @returns {number|null} UTC 时间戳（毫秒），解析失败时返回 null。
  *
  * @example
  * stringToTimestamp('2024:08:15 14:30:25+08:00'); // 带时区，按UTC解析
@@ -58,8 +58,8 @@ function stringToTimestamp(timeStr) {
 
 /**
  * 将时间戳转换为年月格式字符串（YYYY-MM格式）
- * @param {number|null} timestamp - 时间戳（毫秒）
- * @returns {string} 年月字符串，如 "2024-08" 或 "unknown"
+ * @param {number|null} timestamp - 时间戳（毫秒）。
+ * @returns {string} 年月字符串，如 "2024-08" 或 "unknown"。
  */
 function timestampToYearMonth(timestamp) {
   if (timestamp == null) return 'unknown' // timestamp为null或undefined
@@ -69,8 +69,8 @@ function timestampToYearMonth(timestamp) {
 
 /**
  * 将时间戳转换为年份格式字符串（YYYY格式）
- * @param {number|null} timestamp - 时间戳（毫秒）
- * @returns {string} 年份字符串，如 "2024" 或 "unknown"
+ * @param {number|null} timestamp - 时间戳（毫秒）。
+ * @returns {string} 年份字符串，如 "2024" 或 "unknown"。
  */
 function timestampToYear(timestamp) {
   if (timestamp == null) return 'unknown'
@@ -80,8 +80,8 @@ function timestampToYear(timestamp) {
 
 /**
  * 将时间戳转换为日期格式字符串（YYYY-MM-DD格式）
- * @param {number|null} timestamp - 时间戳（毫秒）
- * @returns {string} 日期字符串，如 "2024-08-15" 或 "unknown"
+ * @param {number|null} timestamp - 时间戳（毫秒）。
+ * @returns {string} 日期字符串，如 "2024-08-15" 或 "unknown"。
  */
 function timestampToDate(timestamp) {
   if (timestamp == null) return 'unknown'
@@ -91,8 +91,8 @@ function timestampToDate(timestamp) {
 
 /**
  * 将时间戳转换为星期几格式字符串（Monday, Tuesday等格式）
- * @param {number|null} timestamp - 时间戳（毫秒）
- * @returns {string} 星期几字符串，如 "Monday" 或 "unknown"
+ * @param {number|null} timestamp - 时间戳（毫秒）。
+ * @returns {string} 星期几字符串，如 "Monday" 或 "unknown"。
  */
 function timestampToDayOfWeek(timestamp) {
   if (timestamp == null) return 'unknown'

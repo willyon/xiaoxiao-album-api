@@ -5,34 +5,93 @@
  */
 const albumModel = require('../models/albumModel')
 const mediaModel = require('../models/mediaModel')
-const storageService = require('../services/storageService')
 const CustomError = require('../errors/customError')
 const { ERROR_CODES } = require('../constants/messageCodes')
+const { resolveStorageKeyUrl } = require('../utils/mediaUrlHydrator')
+
+function _throwAlbumNotFound() {
+  throw new CustomError({
+    httpStatus: 404,
+    messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
+    messageType: 'error',
+    message: '相册不存在'
+  })
+}
+
+function _assertAlbumOwned(userId, albumId) {
+  const album = albumModel.getAlbumById({ albumId, userId })
+  if (!album) _throwAlbumNotFound()
+  return album
+}
+
+function _validateAlbumName(name) {
+  if (!name || name.trim().length === 0) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: 'warning',
+      message: '相册名称不能为空'
+    })
+  }
+  if (name.length > 50) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      messageType: 'warning',
+      message: '相册名称不能超过50个字符'
+    })
+  }
+}
+
+function _assertAlbumNameUnique(userId, normalizedName, excludeAlbumId = null) {
+  const existingAlbums = albumModel.getAlbumsByUserId({ userId })
+  const nameExists = existingAlbums.some((album) => {
+    if (excludeAlbumId != null && String(album.albumId) === String(excludeAlbumId)) return false
+    return album.name === normalizedName
+  })
+  if (nameExists) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.DUPLICATE_ENTRY,
+      messageType: 'warning',
+      message: '相册名称已存在'
+    })
+  }
+}
+
+async function _withAlbumCoverAndTimeRange(album) {
+  const coverImageUrl = await _getAlbumCoverImageUrl(album.coverImageId)
+  const timeRange = albumModel.getAlbumTimeRange(album.albumId)
+  return {
+    ...album,
+    coverImageUrl,
+    timeRange: timeRange || undefined
+  }
+}
+
+/**
+ * 根据封面图片 ID 获取封面 URL。
+ * @param {number|string|null|undefined} coverImageId - 封面媒体 ID。
+ * @returns {Promise<string|null>} 封面 URL。
+ */
+async function _getAlbumCoverImageUrl(coverImageId) {
+  if (!coverImageId) return null
+  const coverImage = await _getMediaById(coverImageId)
+  return resolveStorageKeyUrl(coverImage?.thumbnailStorageKey, '获取相册封面 URL 失败')
+}
 
 /**
  * 获取最近使用的相册列表（前 limit 个，按 max(created_at, last_used_at) 倒序，含封面 URL）
  * excludeAlbumId 可选，排除该相册（如当前相册）；返回 total 为排除后的相册总数，用于前端判断是否显示「选择其他相册」
+ * @param {{userId:number|string,limit?:number,excludeAlbumId?:number|string|null}} params - 查询参数。
+ * @returns {Promise<{list:Array<object>,total:number}>} 最近相册列表与总数。
  */
 async function getRecentAlbumsList({ userId, limit = 8, excludeAlbumId = null }) {
   const albums = albumModel.getRecentAlbumsByUserId({ userId, limit, excludeAlbumId })
   const total = albumModel.getAlbumsCountByUserId({ userId, excludeAlbumId })
 
   const albumsWithCover = await Promise.all(
-    albums.map(async (album) => {
-      let coverImageUrl = null
-      if (album.coverImageId) {
-        const coverImage = await _getMediaById(album.coverImageId)
-        if (coverImage && coverImage.thumbnailStorageKey) {
-          coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey)
-        }
-      }
-      const timeRange = albumModel.getAlbumTimeRange(album.albumId)
-      return {
-        ...album,
-        coverImageUrl,
-        timeRange: timeRange || undefined
-      }
-    })
+    albums.map((album) => _withAlbumCoverAndTimeRange(album))
   )
 
   return { list: albumsWithCover, total }
@@ -41,6 +100,8 @@ async function getRecentAlbumsList({ userId, limit = 8, excludeAlbumId = null })
 /**
  * 获取用户的自定义相册列表（包含封面图片URL）
  * excludeAlbumId 可选，排除该相册（如当前相册）
+ * @param {{userId:number|string,pageNo?:number,pageSize?:number,search?:string|null,excludeAlbumId?:number|string|null}} params - 查询参数。
+ * @returns {Promise<{list:Array<object>,total:number}>} 相册列表与总数。
  */
 async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null, excludeAlbumId = null }) {
   const allAlbums = albumModel.getAlbumsByUserId({ userId, search, excludeAlbumId })
@@ -62,25 +123,7 @@ async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null,
 
   // 为每个相册添加封面图片URL与整本相册时间范围
   const albumsWithCover = await Promise.all(
-    albums.map(async (album) => {
-      let coverImageUrl = null
-
-      if (album.coverImageId) {
-        // 查询封面图片的存储信息
-        const coverImage = await _getMediaById(album.coverImageId)
-        if (coverImage && coverImage.thumbnailStorageKey) {
-          coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey)
-        }
-      }
-
-      const timeRange = albumModel.getAlbumTimeRange(album.albumId)
-
-      return {
-        ...album,
-        coverImageUrl,
-        timeRange: timeRange || undefined
-      }
-    })
+    albums.map((album) => _withAlbumCoverAndTimeRange(album))
   )
 
   return {
@@ -91,39 +134,12 @@ async function getAlbumsList({ userId, pageNo = 1, pageSize = 20, search = null,
 
 /**
  * 创建相册
+ * @param {{userId:number|string,name:string,description?:string}} params - 创建参数。
+ * @returns {Promise<object>} 创建后的相册对象。
  */
 async function createAlbum({ userId, name, description }) {
-  // 验证相册名称
-  if (!name || name.trim().length === 0) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: 'warning',
-      message: '相册名称不能为空'
-    })
-  }
-
-  if (name.length > 50) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: 'warning',
-      message: '相册名称不能超过50个字符'
-    })
-  }
-
-  // 检查相册名称是否已存在
-  const existingAlbums = albumModel.getAlbumsByUserId({ userId })
-  const nameExists = existingAlbums.some((album) => album.name === name.trim())
-
-  if (nameExists) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.DUPLICATE_ENTRY,
-      messageType: 'warning',
-      message: '相册名称已存在'
-    })
-  }
+  _validateAlbumName(name)
+  _assertAlbumNameUnique(userId, name.trim())
 
   const result = albumModel.createAlbum({
     userId,
@@ -139,50 +155,16 @@ async function createAlbum({ userId, name, description }) {
 
 /**
  * 更新相册
+ * @param {{userId:number|string,albumId:number|string,name?:string,description?:string,coverImageId?:number|string}} params - 更新参数。
+ * @returns {Promise<object>} 更新后的相册对象。
  */
 async function updateAlbum({ userId, albumId, name, description, coverImageId }) {
-  // 验证相册存在且属于当前用户
-  const album = albumModel.getAlbumById({ albumId, userId })
-  if (!album) {
-    throw new CustomError({
-      httpStatus: 404,
-      messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
-      messageType: 'error',
-      message: '相册不存在'
-    })
-  }
+  const album = _assertAlbumOwned(userId, albumId)
 
   // 如果更新名称，检查名称是否已存在
   if (name !== undefined && name !== album.name) {
-    if (!name || name.trim().length === 0) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'warning',
-        message: '相册名称不能为空'
-      })
-    }
-
-    if (name.length > 50) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'warning',
-        message: '相册名称不能超过50个字符'
-      })
-    }
-
-    const existingAlbums = albumModel.getAlbumsByUserId({ userId })
-    const nameExists = existingAlbums.some((a) => a.albumId !== albumId && a.name === name.trim())
-
-    if (nameExists) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.DUPLICATE_ENTRY,
-        messageType: 'warning',
-        message: '相册名称已存在'
-      })
-    }
+    _validateAlbumName(name)
+    _assertAlbumNameUnique(userId, name.trim(), albumId)
   }
 
   // 如果设置封面，验证图片是否在相册中
@@ -216,13 +198,7 @@ async function updateAlbum({ userId, albumId, name, description, coverImageId })
 
   // 返回更新后的相册信息（包含封面图片URL）
   const updatedAlbum = albumModel.getAlbumById({ albumId, userId })
-  let coverImageUrl = null
-  if (updatedAlbum.coverImageId) {
-    const coverImage = _getMediaById(updatedAlbum.coverImageId)
-    if (coverImage) {
-      coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey)
-    }
-  }
+  const coverImageUrl = await _getAlbumCoverImageUrl(updatedAlbum.coverImageId)
 
   return {
     ...updatedAlbum,
@@ -232,18 +208,11 @@ async function updateAlbum({ userId, albumId, name, description, coverImageId })
 
 /**
  * 删除相册
+ * @param {{userId:number|string,albumId:number|string}} params - 删除参数。
+ * @returns {Promise<{success:true}>} 删除结果。
  */
 async function deleteAlbum({ userId, albumId }) {
-  // 验证相册存在且属于当前用户
-  const album = albumModel.getAlbumById({ albumId, userId })
-  if (!album) {
-    throw new CustomError({
-      httpStatus: 404,
-      messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
-      messageType: 'error',
-      message: '相册不存在'
-    })
-  }
+  _assertAlbumOwned(userId, albumId)
 
   const result = albumModel.deleteAlbum({ albumId, userId })
 
@@ -260,18 +229,11 @@ async function deleteAlbum({ userId, albumId }) {
 
 /**
  * 添加图片到相册
+ * @param {{userId:number|string,albumId:number|string,mediaIds:Array<number|string>}} params - 添加参数。
+ * @returns {Promise<any>} model 返回结果。
  */
 async function addMediasToAlbum({ userId, albumId, mediaIds }) {
-  // 验证相册存在且属于当前用户
-  const album = albumModel.getAlbumById({ albumId, userId })
-  if (!album) {
-    throw new CustomError({
-      httpStatus: 404,
-      messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
-      messageType: 'error',
-      message: '相册不存在'
-    })
-  }
+  _assertAlbumOwned(userId, albumId)
 
   // 验证图片存在且属于当前用户
   // TODO: 添加图片验证逻辑（可以调用 mediaModel 检查）
@@ -283,18 +245,11 @@ async function addMediasToAlbum({ userId, albumId, mediaIds }) {
 
 /**
  * 从相册中移除图片
+ * @param {{userId:number|string,albumId:number|string,mediaIds:Array<number|string>}} params - 移除参数。
+ * @returns {Promise<any>} model 返回结果。
  */
 async function removeMediasFromAlbum({ userId, albumId, mediaIds }) {
-  // 验证相册存在且属于当前用户
-  const album = albumModel.getAlbumById({ albumId, userId })
-  if (!album) {
-    throw new CustomError({
-      httpStatus: 404,
-      messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
-      messageType: 'error',
-      message: '相册不存在'
-    })
-  }
+  _assertAlbumOwned(userId, albumId)
 
   const result = albumModel.removeMediasFromAlbum({ albumId, mediaIds })
 
@@ -303,18 +258,11 @@ async function removeMediasFromAlbum({ userId, albumId, mediaIds }) {
 
 /**
  * 设置相册封面图片
+ * @param {{userId:number|string,albumId:number|string,mediaId:number|string}} params - 设置参数。
+ * @returns {Promise<{albumId:number,coverImageId:number|null,coverImageUrl:string|null}>} 封面设置结果。
  */
 async function setAlbumCover({ userId, albumId, mediaId }) {
-  // 验证相册存在且属于当前用户
-  const album = albumModel.getAlbumById({ albumId, userId })
-  if (!album) {
-    throw new CustomError({
-      httpStatus: 404,
-      messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
-      messageType: 'error',
-      message: '相册不存在'
-    })
-  }
+  _assertAlbumOwned(userId, albumId)
 
   // 验证媒体是否在相册中（media 主键 id）
   const isInAlbum = albumModel.isMediaInAlbum({ albumId, mediaId })
@@ -339,14 +287,7 @@ async function setAlbumCover({ userId, albumId, mediaId }) {
 
   // 获取更新后的相册信息
   const updatedAlbum = albumModel.getAlbumById({ albumId, userId })
-  let coverImageUrl = null
-
-  if (updatedAlbum.coverImageId) {
-    const coverImage = await _getMediaById(updatedAlbum.coverImageId)
-    if (coverImage && coverImage.thumbnailStorageKey) {
-      coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey)
-    }
-  }
+  const coverImageUrl = await _getAlbumCoverImageUrl(updatedAlbum.coverImageId)
 
   return {
     albumId: updatedAlbum.albumId,
@@ -357,28 +298,16 @@ async function setAlbumCover({ userId, albumId, mediaId }) {
 
 /**
  * 恢复相册默认封面：与「添加/移除媒体后」一致，取相册内最近加入的一张图片或视频（见 albumModel.updateAlbumCover）
+ * @param {{userId:number|string,albumId:number|string}} params - 恢复参数。
+ * @returns {Promise<{albumId:number,coverImageId:number|null,coverImageUrl:string|null}>} 恢复结果。
  */
 async function restoreAlbumCover({ userId, albumId }) {
-  const album = albumModel.getAlbumById({ albumId, userId })
-  if (!album) {
-    throw new CustomError({
-      httpStatus: 404,
-      messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
-      messageType: 'error',
-      message: '相册不存在'
-    })
-  }
+  _assertAlbumOwned(userId, albumId)
 
   albumModel.updateAlbumCover(albumId)
 
   const updatedAlbum = albumModel.getAlbumById({ albumId, userId })
-  let coverImageUrl = null
-  if (updatedAlbum.coverImageId) {
-    const coverImage = await _getMediaById(updatedAlbum.coverImageId)
-    if (coverImage && coverImage.thumbnailStorageKey) {
-      coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey)
-    }
-  }
+  const coverImageUrl = await _getAlbumCoverImageUrl(updatedAlbum.coverImageId)
 
   return {
     albumId: updatedAlbum.albumId,
@@ -389,33 +318,21 @@ async function restoreAlbumCover({ userId, albumId }) {
 
 /**
  * 获取相册详情（包含封面图片URL）
+ * @param {{userId:number|string,albumId:number|string}} params - 查询参数。
+ * @returns {Promise<object|null>} 相册详情或 null。
  */
 async function getAlbumById({ userId, albumId }) {
   const album = albumModel.getAlbumById({ albumId, userId })
   if (!album) {
     return null
   }
-
-  // 添加封面图片URL与整本相册时间范围
-  let coverImageUrl = null
-  if (album.coverImageId) {
-    const coverImage = _getMediaById(album.coverImageId)
-    if (coverImage && coverImage.thumbnailStorageKey) {
-      coverImageUrl = await storageService.getFileUrl(coverImage.thumbnailStorageKey)
-    }
-  }
-
-  const timeRange = albumModel.getAlbumTimeRange(albumId)
-
-  return {
-    ...album,
-    coverImageUrl,
-    timeRange: timeRange || undefined
-  }
+  return _withAlbumCoverAndTimeRange(album)
 }
 
 /**
  * 内部方法：根据ID获取图片存储信息
+ * @param {number|string} mediaId - 媒体 ID。
+ * @returns {{thumbnailStorageKey?:string,highResStorageKey?:string}|null} 存储信息或 null。
  */
 function _getMediaById(mediaId) {
   const image = mediaModel.getMediaStorageInfo(mediaId)

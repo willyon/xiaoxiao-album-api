@@ -4,11 +4,13 @@
 
 const logger = require('../../../utils/logger')
 const { generatePolicySignature, buildOSSCallbackUrl } = require('../../../utils/ossUtils')
-const { OSS_AUTH_TYPES } = require('../../../constants/StorageTypes')
+const { OSS_AUTH_TYPES } = require('../../../constants/storageTypes')
 const { getBucketPublicHost } = require('./ossClientFactory')
 
 /**
  * @param {object} adapter - AliyunOSSAdapter 实例（需已具备 config、credential、accessKeyId 等字段）
+ * @param {{storageKey:string,contentType:string,contentLength:number,userId:number|string,sessionId?:string}} params - 签名参数。
+ * @returns {Promise<{storageKey:string,policy:string,signature:string,accessKeyId:string,successActionStatus:string,contentType:string,callback:string,host:string,securityToken?:string}>} 直传签名数据。
  */
 async function getUploadSignature(adapter, { storageKey, contentType, contentLength, userId, sessionId }) {
   try {

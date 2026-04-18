@@ -14,7 +14,11 @@ const { getLocationFromCoordinatesGlobal } = require('./globalReverseGeocodeServ
 
 /**
  * 先中国本地行政区划（GCJ），未命中再全球国家/地区（WGS）
+ * @param {number} latitude - 原始 WGS-84 纬度。
+ * @param {number} longitude - 原始 WGS-84 经度。
+ * @param {{lat:number,lng:number}} gcj02Coords - 转换后的 GCJ-02 坐标。
  * @param {string|null} [fallbackReason] 非空表示高德已失败，写入日志
+ * @returns {{formattedAddress:string|null,country:string|null,province:string|null,city:string|null,district:string|null}|null} 位置结果。
  */
 function fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, fallbackReason) {
   if (fallbackReason) {
@@ -57,6 +61,9 @@ function fallbackLocalThenGlobal(latitude, longitude, gcj02Coords, fallbackReaso
 
 /**
  * 照片 EXIF 经纬度为 WGS-84；返回结构化位置（与本地/全球服务字段对齐）及线上地图逆地理终态。
+ * @param {number} latitude - WGS-84 纬度。
+ * @param {number} longitude - WGS-84 经度。
+ * @param {number|string} userId - 用户 ID。
  * @returns {Promise<{
  *   location: {
  *     formattedAddress: string|null,

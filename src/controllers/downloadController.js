@@ -8,6 +8,7 @@ const { ERROR_CODES } = require('../constants/messageCodes')
 const logger = require('../utils/logger')
 const downloadService = require('../services/downloadService')
 const asyncHandler = require('../utils/asyncHandler')
+const { parsePositiveIntParam, requireNonEmptyIdArray, throwInvalidParametersError } = require('../utils/requestParams')
 
 const {
   DOWNLOAD_BATCH_MAX,
@@ -19,24 +20,19 @@ const {
 /**
  * 单张图片下载
  * GET /images/download/:mediaId
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function handleDownloadSingleMedia(req, res) {
   const { userId } = req?.user
-  const { mediaId } = req.params
-
-  if (!mediaId) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: 'error'
-    })
-  }
+  const mediaId = parsePositiveIntParam(req.params.mediaId)
 
   let buffer
   let fileName
   let contentType
   try {
-    const data = await getSingleMediaDownloadData(userId, parseInt(mediaId, 10))
+    const data = await getSingleMediaDownloadData(userId, mediaId)
     buffer = data.buffer
     fileName = data.fileName
     contentType = data.contentType
@@ -60,17 +56,17 @@ async function handleDownloadSingleMedia(req, res) {
 /**
  * 批量图片下载（ZIP）
  * POST /images/download/batch
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @param {import('express').NextFunction} next - 错误传递函数。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function runDownloadBatchMedias(req, res, next) {
   const { userId } = req?.user
   const { mediaIds } = req.body
 
   if (!mediaIds || !Array.isArray(mediaIds) || mediaIds.length === 0) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: 'error'
-    })
+    throwInvalidParametersError({ messageType: 'error' })
   }
 
   if (mediaIds.length > DOWNLOAD_BATCH_MAX) {
@@ -84,10 +80,7 @@ async function runDownloadBatchMedias(req, res, next) {
 
   let archive
   try {
-    archive = await createBatchMediaZipArchive(
-      userId,
-      mediaIds.map((id) => parseInt(id, 10))
-    )
+    archive = await createBatchMediaZipArchive(userId, requireNonEmptyIdArray(mediaIds))
   } catch (error) {
     if (error.message === '未找到任何图片' || error.message === '图片ID列表为空') {
       throw new CustomError({
@@ -127,7 +120,5 @@ async function runDownloadBatchMedias(req, res, next) {
 
 module.exports = {
   handleDownloadSingleMedia: asyncHandler(handleDownloadSingleMedia),
-  handleDownloadBatchMedias: (req, res, next) => {
-    Promise.resolve(runDownloadBatchMedias(req, res, next)).catch(next)
-  }
+  handleDownloadBatchMedias: asyncHandler(runDownloadBatchMedias)
 }

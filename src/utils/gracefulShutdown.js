@@ -23,13 +23,42 @@
  */
 
 const logger = require('./logger')
+const SHUTDOWN_STATE_KEY = '__XX_GRACEFUL_SHUTDOWN_STATE__'
 
+/**
+ * 初始化进程优雅退出处理器。
+ * @param {{server?:{close?:(cb:Function)=>void},getRedisClient?:Function,extraClosers?:Array<Function>,timeoutMs?:number}} [options={}] - 优雅退出配置。
+ * @returns {void} 无返回值。
+ */
 module.exports = function initGracefulShutdown({ server, getRedisClient, extraClosers = [], timeoutMs = 10000 } = {}) {
-  let shuttingDown = false
+  if (!globalThis[SHUTDOWN_STATE_KEY]) {
+    globalThis[SHUTDOWN_STATE_KEY] = {
+      initialized: false,
+      shuttingDown: false,
+      server: null,
+      getRedisClient: null,
+      extraClosers: new Set(),
+      timeoutMs
+    }
+  }
+  const state = globalThis[SHUTDOWN_STATE_KEY]
+  if (server) state.server = server
+  if (typeof getRedisClient === 'function') state.getRedisClient = getRedisClient
+  if (Array.isArray(extraClosers)) {
+    for (const closer of extraClosers) {
+      if (typeof closer === 'function') state.extraClosers.add(closer)
+    }
+  }
+  state.timeoutMs = Number(timeoutMs) > 0 ? Number(timeoutMs) : state.timeoutMs
 
+  /**
+   * 执行一次完整的优雅退出流程。
+   * @param {string} signal - 触发退出的信号名。
+   * @returns {Promise<void>} 无返回值。
+   */
   async function shutdown(signal) {
-    if (shuttingDown) return
-    shuttingDown = true
+    if (state.shuttingDown) return
+    state.shuttingDown = true
 
     const start = Date.now()
     const tag = `[graceful-shutdown:${signal}]`
@@ -40,19 +69,19 @@ module.exports = function initGracefulShutdown({ server, getRedisClient, extraCl
     const forceTimer = setTimeout(() => {
       try {
         logger.error({
-          message: `${tag} force exit after timeout ${timeoutMs}ms`,
+          message: `${tag} force exit after timeout ${state.timeoutMs}ms`,
           details: { elapsed: Date.now() - start } //真实的超时时长
         })
       } catch {}
       process.exit(1) //0表示正常退出 1表示一般性错误，异常退出
-    }, timeoutMs).unref?.()
+    }, state.timeoutMs).unref?.()
 
     try {
       // 1) 停止接收新的 HTTP 连接
-      if (server && typeof server.close === 'function') {
+      if (state.server && typeof state.server.close === 'function') {
         await new Promise((resolve) => {
           try {
-            server.close(() => resolve())
+            state.server.close(() => resolve())
           } catch {
             resolve()
           }
@@ -60,9 +89,9 @@ module.exports = function initGracefulShutdown({ server, getRedisClient, extraCl
       }
 
       // 2) 关闭 Redis（如果提供了 getRedisClient）
-      if (typeof getRedisClient === 'function') {
+      if (typeof state.getRedisClient === 'function') {
         try {
-          const redis = getRedisClient()
+          const redis = state.getRedisClient()
           if (redis && typeof redis.quit === 'function') {
             await redis.quit()
           } else if (redis && typeof redis.disconnect === 'function') {
@@ -74,7 +103,7 @@ module.exports = function initGracefulShutdown({ server, getRedisClient, extraCl
       }
 
       // 3) 执行额外的清理动作（可选）
-      for (const closer of extraClosers) {
+      for (const closer of state.extraClosers) {
         try {
           const ret = closer?.()
           if (ret && typeof ret.then === 'function') await ret
@@ -108,7 +137,9 @@ module.exports = function initGracefulShutdown({ server, getRedisClient, extraCl
     }
   }
 
-  // 仅注册一次信号 系统级 退出应用进程的信号
+  if (state.initialized) return
+  state.initialized = true
+
   ;['SIGINT', 'SIGTERM'].forEach((sig) => {
     process.on(sig, () => shutdown(sig))
   })

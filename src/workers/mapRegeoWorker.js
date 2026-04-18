@@ -1,28 +1,9 @@
-const { Worker } = require('bullmq')
-const IORedis = require('ioredis')
-
-const logger = require('../utils/logger')
-const { attachStandardFailedLogging } = require('../utils/bullmq/bullmqWorkerTelemetry')
-const initGracefulShutdown = require('../utils/gracefulShutdown')
 const { processMapRegeoJob } = require('./mapRegeoIngestor')
 const { MAP_REGEO_QUEUE_NAME } = require('../queues/mapRegeoQueue')
-
-const connection = new IORedis({ maxRetriesPerRequest: null })
+const { createStandardWorker } = require('../utils/bullmq/createStandardWorker')
 const QUEUE_NAME = MAP_REGEO_QUEUE_NAME
-
-const worker = new Worker(QUEUE_NAME, processMapRegeoJob, {
-  connection,
+createStandardWorker({
+  queueName: QUEUE_NAME,
+  processor: processMapRegeoJob,
   concurrency: Math.max(1, Math.min(Number(process.env.MAP_REGEO_WORKER_CONCURRENCY || 3), 20))
-})
-
-logger.info({ message: `mapRegeoWorker 已启动，队列名=${QUEUE_NAME}` })
-
-attachStandardFailedLogging(worker, QUEUE_NAME, { logPrefix: 'mapRegeoWorker' })
-
-worker.on('stalled', (jobId) => {
-  logger.warn({ message: 'mapRegeoWorker.stalled', details: { jobId } })
-})
-
-initGracefulShutdown({
-  extraClosers: [async () => worker.close(), async () => connection.quit()]
 })

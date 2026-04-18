@@ -6,7 +6,7 @@
 
 const fs = require('fs-extra')
 const StorageAdapterFactory = require('../storage/factory/StorageAdapterFactory')
-const { STORAGE_TYPES } = require('../constants/StorageTypes')
+const { STORAGE_TYPES } = require('../constants/storageTypes')
 const logger = require('../utils/logger')
 const sharp = require('sharp')
 
@@ -138,6 +138,11 @@ function _applyEncoderByExt(pipeline, ext, quality = 80, fileSize = FILE_SIZE_TH
 }
 
 /** libvips 无法确定 interpretation / 色彩空间时可能抛出，可经 PNG 栅格化再编码 */
+/**
+ * 判断错误是否属于可恢复的色彩空间异常。
+ * @param {Error|unknown} err - 处理错误对象。
+ * @returns {boolean} 是否可通过回退策略恢复。
+ */
 function _isColourspaceRecoverableError(err) {
   const msg = err && err.message ? String(err.message) : ''
   return msg.includes('colourspace') || msg.includes('parameter space not set')
@@ -145,7 +150,10 @@ function _isColourspaceRecoverableError(err) {
 
 /**
  * 管线与输出均固定在 sRGB；开头 pipelineColourspace 可处理部分异常 ICC。
- * @param {boolean} alreadyRotated 为 true 时跳过 rotate（用于 PNG 回退后的二次管线）
+ * @param {Buffer|string} inputData - 输入图片数据（Buffer 或路径）。
+ * @param {{alreadyRotated:boolean}} options - 管线选项。
+ * @param {boolean} options.alreadyRotated - 为 true 时跳过 rotate（用于 PNG 回退后的二次管线）。
+ * @returns {sharp.Sharp} Sharp 管线对象。
  */
 function _sharpPipelineSrgb(inputData, { alreadyRotated }) {
   let p = sharp(inputData, SHARP_CONFIG).pipelineColourspace('srgb')
@@ -156,12 +164,30 @@ function _sharpPipelineSrgb(inputData, { alreadyRotated }) {
 }
 
 /** 无调色板 PNG 强制像素落到标准 interpretation，再交给 WebP/AVIF 等 */
+/**
+ * 将输入图像栅格化为无调色板 PNG。
+ * @param {Buffer|string} inputData - 输入图像数据。
+ * @returns {Promise<Buffer>} PNG Buffer。
+ */
 async function _rasterizeToPngBuffer(inputData) {
   return _sharpPipelineSrgb(inputData, { alreadyRotated: false }).png({ palette: false, compressionLevel: 6 }).toBuffer()
 }
 
 /**
  * 旋正、缩放、编码并 toBuffer；遇色彩空间类错误时先 PNG 栅格化再重试（不重做 rotate）
+ * @param {Buffer|string} inputData - 输入图像数据。
+ * @param {object} options - 编码参数。
+ * @param {boolean} options.alreadyRotated - 是否已执行 rotate。
+ * @param {number} [options.resizeWidth] - 目标宽度。
+ * @param {'cover'|'contain'|'fill'|'inside'|'outside'} options.fit - 缩放模式。
+ * @param {boolean} options.withoutEnlargement - 是否禁止放大。
+ * @param {boolean} options.fastShrinkOnLoad - 是否开启快速缩放。
+ * @param {string} options.extension - 目标扩展名。
+ * @param {number} options.quality - 目标质量。
+ * @param {number} options.fileSize - 原文件大小。
+ * @param {{enableAdaptiveQuality:boolean,enableDynamicEffort:boolean}} options.finalOptions - 优化选项。
+ * @param {object} logContext - 日志上下文。
+ * @returns {Promise<{data:Buffer,info:sharp.OutputInfo}>} 编码结果与图像信息。
  */
 async function _encodeImageToBuffer(inputData, options, logContext) {
   const { alreadyRotated, resizeWidth, fit, withoutEnlargement, fastShrinkOnLoad, extension, quality, fileSize, finalOptions } = options
@@ -213,12 +239,8 @@ class StorageService {
 
   /**
    * 获取OSS上传签名（用于直传）
-   * @param {Object} options - 签名选项
-   * @param {string} options.storageKey - OSS存储键
-   * @param {string} options.contentType - 内容类型
-   * @param {number} options.contentLength - 内容长度
-   * @param {string} options.userId - 用户ID
-   * @returns {Promise<Object>} 上传签名信息
+   * @param {{storageKey:string,contentType:string,contentLength:number,userId:string|number,sessionId?:string}} options - 签名选项。
+   * @returns {Promise<object>} 上传签名信息。
    */
   async getUploadSignature({ storageKey, contentType, contentLength, userId, sessionId }) {
     try {
@@ -261,9 +283,9 @@ class StorageService {
 
   /**
    * 获取文件完整 URL（始终使用当前环境配置的存储适配器）
-   * @param {string} storageKey - 存储键名
-   * @param {Object} [options={}] - 选项（如签名 URL）
-   * @returns {Promise<string|null>} 完整的文件访问URL
+   * @param {string} storageKey - 存储键名。
+   * @param {object} [options={}] - 选项（如签名 URL）。
+   * @returns {Promise<string|null>} 完整的文件访问 URL。
    */
   async getFileUrl(storageKey, options = {}) {
     try {
@@ -283,6 +305,8 @@ class StorageService {
   /**
    * 本地存储时：若文件存在，返回绝对路径（供 Python 等通过路径读盘，避免整文件经 HTTP 再传一遍）。
    * 非本地存储或文件不存在时返回 null，调用方应回退 getFileBuffer。
+   * @param {string} storageKey - 存储键。
+   * @returns {Promise<string|null>} 本地绝对路径或 null。
    */
   async getLocalFilePath(storageKey) {
     if (this._currentStorageType !== STORAGE_TYPES.LOCAL || !storageKey) {
@@ -308,7 +332,7 @@ class StorageService {
 
   /**
    * 处理图片并存储（通过适配器自动处理不同存储类型）
-   * @param {Object} options - 处理选项
+   * @param {object} options - 处理选项。
    * @param {number} [options.fileSize] - 文件大小（字节），如果提供则跳过文件大小计算以提升性能
    * @param {string} options.sourceStorageKey - 源文件存储键名（本地存储为绝对路径，OSS为对象键名）
    * @param {string} options.targetStorageKey - 目标文件存储键名（本地存储为绝对路径，OSS为对象键名）
@@ -323,12 +347,10 @@ class StorageService {
    *   - 'inside': 缩放到区域内，保持比例
    *   - 'outside': 缩放到覆盖区域，保持比例
    * @param {boolean} [options.fastShrinkOnLoad=true] - 是否启用快速缩放加载优化，可提升大图缩放性能
-   * @param {Object} [options.optimizationOptions={}] - 图片优化选项配置
+   * @param {{enableAdaptiveQuality?:boolean,enableDynamicEffort?:boolean}} [options.optimizationOptions={}] - 图片优化选项配置。
    * @param {boolean} [options.optimizationOptions.enableAdaptiveQuality=false] - 是否启用自适应质量调整，根据文件大小自动调整质量参数
    * @param {boolean} [options.optimizationOptions.enableDynamicEffort=true] - 是否启用动态effort调整，根据文件大小自动调整压缩努力程度
-   * @returns {Promise<Object>} 处理完成后的Promise，返回包含尺寸信息的对象
-   * @returns {number} result.width - 处理后图片的宽度
-   * @returns {number} result.height - 处理后图片的高度
+   * @returns {Promise<{width:number,height:number}>} 处理完成后的尺寸信息。
    * @throws {Error} 当源文件不存在、格式不支持或存储失败时抛出错误
    *
    * @example
@@ -411,7 +433,7 @@ class StorageService {
    * @param {boolean} [options.withoutEnlargement=true]
    * @param {string} [options.fit="inside"]
    * @param {boolean} [options.fastShrinkOnLoad=true]
-   * @param {Object} [options.optimizationOptions={}]
+   * @param {{enableAdaptiveQuality?:boolean,enableDynamicEffort?:boolean}} [options.optimizationOptions={}]
    * @returns {Promise<{ data: Buffer, width: number, height: number }>}
    */
   async processImageBuffer({
@@ -452,10 +474,10 @@ class StorageService {
 
   /**
    * 删除文件并记录日志
-   * @param {Object} fileInfo - 文件信息
+   * @param {{fileName:string,storageKey:string}} fileInfo - 文件信息。
    * @param {string} fileInfo.fileName - 文件名
    * @param {string} fileInfo.storageKey - 存储键名
-   * @returns {Promise<void>}
+   * @returns {Promise<void>} 无返回值。
    */
   async deleteFile({ fileName, storageKey }) {
     try {
@@ -493,7 +515,7 @@ let storageServiceInstance = null
 
 /**
  * 获取StorageService单例实例
- * @returns {StorageService} StorageService实例
+ * @returns {StorageService} StorageService 实例。
  */
 function getStorageService() {
   if (!storageServiceInstance) {

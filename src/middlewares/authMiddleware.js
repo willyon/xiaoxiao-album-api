@@ -9,6 +9,13 @@ const jwt = require('jsonwebtoken')
 const CustomError = require('../errors/customError')
 const { ERROR_CODES } = require('../constants/messageCodes')
 
+/**
+ * JWT 鉴权中间件：校验 Bearer Token 并挂载 `req.user`。
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} _res - 响应对象（未使用）。
+ * @param {import('express').NextFunction} next - 下一中间件。
+ * @returns {Promise<void>} 无返回值。
+ */
 const authMiddleware = async (req, _res, next) => {
   const authHeader = req.headers.authorization
 

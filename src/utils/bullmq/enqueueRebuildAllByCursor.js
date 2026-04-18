@@ -1,17 +1,17 @@
 /**
  * 通用「按 id 游标分页 + addBulk 入队 + 迭代封顶日志」执行器。
  *
- * @param {Object} options
- * @param {number} options.limitPerBatch
- * @param {number|string} options.userId
- * @param {(limitPerBatch:number, userId:number|string, cursorBeforeId:number|null)=>any[]} options.selectBatch
- * @param {(row:any)=>{name:string,data:Object,opts?:Object}} options.buildJob
- * @param {(jobs:any[])=>Promise<any>} options.addBulk
- * @param {(userId:number|string)=>number} options.countPending
- * @param {string} options.logLabel
- * @param {string} options.maxIterEnvKey
- * @param {import('../logger')} options.logger
- * @returns {Promise<number>}
+ * @param {object} options - 入队执行参数。
+ * @param {number} options.limitPerBatch - 单批处理上限。
+ * @param {number|string} options.userId - 用户 ID。
+ * @param {(limitPerBatch:number, userId:number|string, cursorBeforeId:number|null)=>any[]} options.selectBatch - 批量查询函数。
+ * @param {(row:any)=>{name:string,data:object,opts?:object}} options.buildJob - Job 构建函数。
+ * @param {(jobs:any[])=>Promise<any>} options.addBulk - 批量入队函数。
+ * @param {(userId:number|string)=>number} options.countPending - 统计待处理数量函数。
+ * @param {string} options.logLabel - 日志标签。
+ * @param {string} options.maxIterEnvKey - 最大迭代环境变量名。
+ * @param {import('../logger')} options.logger - 日志器。
+ * @returns {Promise<number>} 实际入队数量。
  */
 async function enqueueRebuildAllByCursor({
   limitPerBatch = 500,

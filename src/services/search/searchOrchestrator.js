@@ -12,18 +12,84 @@ const { fetchMediasByIdsChunked, buildOrderedPageMedias } = require('./searchMed
 const { buildFilterQueryParts, mergeScopeWhere } = require('./searchScopeAndFilters')
 
 /**
+ * 将媒体列表转为 `mediaId => row` 的映射。
+ * @param {Array<{mediaId:number|string}>} mediaRows - 媒体数据列表。
+ * @returns {Map<number, any>} 媒体映射。
+ */
+function buildMediaMapByMediaId(mediaRows) {
+  return new Map((mediaRows || []).map((item) => [item.mediaId, item]))
+}
+
+/**
+ * 从分页候选中提取媒体 ID 列表。
+ * @param {Array<{mediaId:number}>} rankedPage - 分页候选。
+ * @returns {number[]} 媒体 ID 列表。
+ */
+function pickMediaIdsFromRankedPage(rankedPage) {
+  return (rankedPage || []).map((item) => item.mediaId)
+}
+
+/**
+ * 执行关键词召回管线（意图解析 -> 过滤合并 -> OCR/视觉召回）。
+ * @param {{segment:string,userId:number|string,baseFilters:object,filterOptions:object,scopeConditions:string[],scopeParams:any[]}} params - 管线参数。
+ * @param {Map<number, any>} globalCandidates - 全局候选集合。
+ * @returns {Promise<{termCount:number,ftsCount:number,ocrCount:number,semanticCount:number}>} 召回统计。
+ */
+async function runKeywordSearchPipeline(params, globalCandidates) {
+  const { segment, userId, baseFilters, filterOptions, scopeConditions, scopeParams } = params
+  const parsedIntent = parseQueryIntent(segment)
+  const mergedFilters = mergeFilters(baseFilters, parsedIntent)
+  const built = buildFilterQueryParts(mergedFilters, filterOptions)
+  const { whereConditions: wc, whereParams: wp } = mergeScopeWhere(scopeConditions, scopeParams, built)
+
+  const residual = (parsedIntent.residualQuery || '').trim()
+  const hasStructured = Boolean(
+    parsedIntent.filters?.timeDimension || parsedIntent.filters?.customDateRange || parsedIntent.filters?.location?.length
+  )
+
+  const ocrStats = applyOcrRecallForSegment(
+    {
+      segment,
+      userId,
+      whereConditions: wc,
+      whereParams: wp
+    },
+    globalCandidates
+  )
+
+  const visualStats = await applyVisualRecallForSegment(
+    {
+      segment,
+      residual,
+      hasStructured,
+      userId,
+      whereConditions: wc,
+      whereParams: wp
+    },
+    globalCandidates
+  )
+
+  return {
+    termCount: visualStats.termRows,
+    ftsCount: visualStats.ftsRows,
+    ocrCount: ocrStats.likeRows,
+    semanticCount: visualStats.semanticRows
+  }
+}
+
+/**
  * 执行搜索主流程，返回分页结果与召回统计。
- * @param {Object} params
- * @param {number} params.userId 用户 ID
- * @param {string} [params.query] 搜索关键词；空字符串或 `*` 视为仅筛选列表
- * @param {string[]} [params.whereConditions=[]] 预构建 WHERE 条件（无关键词场景）
- * @param {any[]} [params.whereParams=[]] 预构建 WHERE 参数（无关键词场景）
- * @param {Object} [params.baseFilters] 原始筛选条件（关键词搜索时必传）
- * @param {Object} [params.filterOptions] 筛选构造参数（关键词搜索时必传）
- * @param {string[]} [params.scopeConditions=[]] scope 条件
- * @param {any[]} [params.scopeParams=[]] scope 参数
- * @param {number} [params.pageNo=1] 页码（从 1 开始）
- * @param {number} [params.pageSize=20] 每页数量
+ * @param {object} params - 搜索参数。
+ * @param {number|string} params.userId - 用户 ID。
+ * @param {string} [params.query] - 搜索关键词；空字符串或 `*` 视为仅筛选列表。
+ * @param {string[]} [params.whereConditions=[]] - 预构建 WHERE 条件（无关键词场景）。
+ * @param {any[]} [params.whereParams=[]] - 预构建 WHERE 参数（无关键词场景）。
+ * @param {object} [params.baseFilters] - 原始筛选条件（关键词搜索时必传）。
+ * @param {object} [params.filterOptions] - 筛选构造参数（关键词搜索时必传）。
+ * @param {string[]} [params.scopeConditions=[]] - scope 条件。
+ * @param {any[]} [params.scopeParams=[]] - scope 参数。
+ * @param {number} [params.pageNo=1] - 页码（从 1 开始）。
+ * @param {number} [params.pageSize=20] - 每页数量。
  * @returns {Promise<{list: any[], total: number, stats: {termCount:number, ftsCount:number, ocrCount:number, semanticCount:number}}>}
  */
 async function searchMediaResults({
@@ -97,42 +163,17 @@ async function searchMediaResults({
 
   const globalCandidates = new Map()
 
-  const parsedIntent = parseQueryIntent(segment)
-  const mergedFilters = mergeFilters(baseFilters, parsedIntent)
-  const built = buildFilterQueryParts(mergedFilters, filterOptions)
-  const { whereConditions: wc, whereParams: wp } = mergeScopeWhere(scopeConditions, scopeParams, built)
-
-  const residual = (parsedIntent.residualQuery || '').trim()
-  const hasStructured = Boolean(
-    parsedIntent.filters?.timeDimension || parsedIntent.filters?.customDateRange || parsedIntent.filters?.location?.length
-  )
-
-  // 先 segment 按空白拆段各自 ocr_text LIKE（并集去重），再以 residual 做视觉 FTS + 向量；≤2 单位另加 term+同义词。
-  const ocrStats = applyOcrRecallForSegment(
+  const pipelineStats = await runKeywordSearchPipeline(
     {
       segment,
       userId,
-      whereConditions: wc,
-      whereParams: wp
+      baseFilters,
+      filterOptions,
+      scopeConditions,
+      scopeParams
     },
     globalCandidates
   )
-  const totalOcrRows = ocrStats.likeRows
-
-  const visualStats = await applyVisualRecallForSegment(
-    {
-      segment,
-      residual,
-      hasStructured,
-      userId,
-      whereConditions: wc,
-      whereParams: wp
-    },
-    globalCandidates
-  )
-  const totalTermRows = visualStats.termRows
-  const totalFtsRows = visualStats.ftsRows
-  const totalSemanticRows = visualStats.semanticRows
 
   const mergedIds = Array.from(globalCandidates.keys())
   if (mergedIds.length === 0) {
@@ -140,25 +181,25 @@ async function searchMediaResults({
       list: [],
       total: 0,
       stats: {
-        termCount: totalTermRows,
-        ftsCount: totalFtsRows,
-        ocrCount: totalOcrRows,
-        semanticCount: totalSemanticRows
+        termCount: pipelineStats.termCount,
+        ftsCount: pipelineStats.ftsCount,
+        ocrCount: pipelineStats.ocrCount,
+        semanticCount: pipelineStats.semanticCount
       }
     }
   }
 
   const mediaRows = fetchMediasByIdsChunked(userId, mergedIds)
-  const mediaMap = new Map(mediaRows.map((item) => [item.mediaId, item]))
+  const mediaMap = buildMediaMapByMediaId(mediaRows)
   const ranked = sortCandidates(globalCandidates, mediaMap).filter((item) => mediaMap.has(item.mediaId))
-  const pagedIds = ranked.slice(offset, offset + pageSize).map((item) => item.mediaId)
+  const pagedIds = pickMediaIdsFromRankedPage(ranked.slice(offset, offset + pageSize))
   const list = pagedIds.map((mediaId) => mediaMap.get(mediaId)).filter(Boolean)
   const total = ranked.length
   const stats = {
-    termCount: totalTermRows,
-    ftsCount: totalFtsRows,
-    ocrCount: totalOcrRows,
-    semanticCount: totalSemanticRows
+    termCount: pipelineStats.termCount,
+    ftsCount: pipelineStats.ftsCount,
+    ocrCount: pipelineStats.ocrCount,
+    semanticCount: pipelineStats.semanticCount
   }
 
   if (rankCacheKey && ranked.length > 0) {

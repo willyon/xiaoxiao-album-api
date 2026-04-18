@@ -7,7 +7,6 @@
 const logger = require('../utils/logger')
 const { saveProcessedMediaMetadata } = require('../services/mediaService')
 const { timestampToYearMonth, timestampToYear, timestampToDate, timestampToDayOfWeek } = require('../utils/formatTime')
-const timeIt = require('../utils/timeIt')
 const storageService = require('../services/storageService')
 const videoProcessingService = require('../services/videoProcessingService')
 const { updateProgress, updateProgressOnce } = require('../services/mediaProcessingProgressService')
@@ -28,6 +27,7 @@ const { getVideoMimeTypeFromFileName } = require('../utils/fileUtils')
  * @param {string} params.userId - 用户ID
  * @param {string} [params.highResStorageKey] - 高清图存储键（可选）
  * @param {unknown} [params.err] - 本次失败错误（与 BullMQ 重试策略对齐，如 UnrecoverableError）
+ * @returns {Promise<void>} 无返回值。
  */
 async function _handleMetaRetryFailure({ job, err, reason, fileName, imageHash, userId, highResStorageKey }) {
   const maxAttempts = job?.opts?.attempts || QUEUE_JOB_ATTEMPTS
@@ -108,6 +108,9 @@ async function _handleMetaRetryFailure({ job, err, reason, fileName, imageHash, 
 
 /**
  * 处理视频的 meta 阶段：ffprobe 元数据、移动原片、入队 AI 阶段
+ * @param {Object} job - BullMQ job 对象。
+ * @param {{userId:number|string,imageHash:string,fileName:string,originalStorageKey:string,sessionId?:string}} params - 视频处理参数。
+ * @returns {Promise<void>} 无返回值。
  */
 async function processVideoMeta(job, { userId, imageHash, fileName, originalStorageKey, sessionId }) {
   let videoPath
@@ -229,6 +232,11 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
   }
 }
 
+/**
+ * 入队 AI 分析并更新会话可分析计数。
+ * @param {{mediaId:number,userId:number|string,highResStorageKey:string|null,originalStorageKey:string,sessionId?:string,mediaType?:'image'|'video',fileName?:string,imageHash:string}} params - 入队参数。
+ * @returns {Promise<void>} 无返回值。
+ */
 async function _enqueueAiAndCleanup({ mediaId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType, fileName, imageHash }) {
   if (!mediaId) {
     logger.warn({
@@ -275,6 +283,7 @@ async function _enqueueAiAndCleanup({ mediaId, userId, highResStorageKey, origin
  * 4) 将原图移动至 original 存储位置
  *
  * @param {Object} job - BullMQ job对象
+ * @returns {Promise<void>} 无返回值。
  */
 async function processMediaMeta(job) {
   const { userId, imageHash, fileName, originalStorageKey, extension, fileSize, sessionId, mediaType = 'image' } = job.data
@@ -341,20 +350,14 @@ async function processMediaMeta(job) {
   const highResStorageKey = storageService.storage.generateStorageKey(highResType, fileName, extension)
 
   try {
-    const hdResult = await timeIt(
-      'processAndStoreImage',
-      async () => {
-        return await storageService.processAndStoreImage({
-          fileSize,
-          sourceStorageKey: originalStorageKey,
-          targetStorageKey: highResStorageKey,
-          extension,
-          quality: 65,
-          resizeWidth: 2048
-        })
-      },
-      imageHash
-    )
+    const hdResult = await storageService.processAndStoreImage({
+      fileSize,
+      sourceStorageKey: originalStorageKey,
+      targetStorageKey: highResStorageKey,
+      extension,
+      quality: 65,
+      resizeWidth: 2048
+    })
 
     highResStorageKeyResult = highResStorageKey
     hdWidthPx = hdResult.width

@@ -9,7 +9,7 @@ const { QUEUE_JOB_ATTEMPTS, QUEUE_JOB_BACKOFF_DELAY } = require('../../config/qu
  * 失败任务：业务侧不消费 failed 集合，故统一 removeOnFail: true，避免 Redis 堆积失败记录。
  * （若省略 removeOnFail，BullMQ 默认往往会长期保留失败 job。）
  *
- * @param {{ name: string }} options
+ * @param {{ name: string }} options - 队列创建参数。
  * @returns {{ queue: import('bullmq').Queue, connection: import('ioredis').default }}
  */
 function createBullQueue({ name }) {

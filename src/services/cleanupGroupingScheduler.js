@@ -5,6 +5,11 @@ const cleanupGroupingService = require('./cleanupGroupingService')
 // 去抖间隔（毫秒），默认 1 分钟；批量导入场景更希望在「导入结束后」再重建
 const DEBOUNCE_MS = Number(process.env.CLEANUP_GROUPING_DEBOUNCE_MS || 1 * 60 * 1000)
 
+/**
+ * 调度用户清理分组重建（去抖执行）。
+ * @param {number|string} userId - 用户 ID。
+ * @returns {void} 无返回值。
+ */
 const { schedule: scheduleUserRebuild } = createDebouncedUserScheduler({
   debounceMs: DEBOUNCE_MS,
   execute(userId) {

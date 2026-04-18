@@ -21,11 +21,14 @@ const logger = require('../utils/logger')
 const CustomError = require('../errors/customError')
 const { ERROR_CODES } = require('../constants/messageCodes')
 const asyncHandler = require('../utils/asyncHandler')
-const { parsePositiveIntParam, parsePagination } = require('../utils/requestParams')
+const { parsePositiveIntParam, parsePagination, throwInvalidParametersError } = require('../utils/requestParams')
 
 /**
  * 获取指定人物（cluster）下所有 face_embedding_id（用于前端「合并到其他人」时一次性移整人）
  * GET /face-clusters/:clusterId/face-embedding-ids
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function getClusterFaceEmbeddingIds(req, res) {
   const { userId } = req.user
@@ -43,6 +46,9 @@ async function getClusterFaceEmbeddingIds(req, res) {
 /**
  * 获取用户的聚类列表（带分页、封面、时间范围）
  * GET /face-clusters?pageNo=1&pageSize=20
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function getClusters(req, res) {
   const { userId } = req.user
@@ -79,15 +85,19 @@ async function getClusters(req, res) {
 /**
  * 获取最近使用的人物列表（用于 popover 第一屏，排序：最近使用 > 有名字 > 图片数量）
  * GET /face-clusters/recent?limit=5&excludeClusterId=123
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function getRecentClusters(req, res) {
   const { userId } = req.user
-  const limit = Math.min(parseInt(req.query.limit, 10) || 5, 20)
-  const excludeClusterId = req.query.excludeClusterId ? parseInt(req.query.excludeClusterId, 10) : null
+  const limitRaw = req.query.limit
+  const limit = Math.min(limitRaw ? parsePositiveIntParam(limitRaw) : 5, 20)
+  const excludeClusterId = req.query.excludeClusterId ? parsePositiveIntParam(req.query.excludeClusterId) : null
 
   const result = getRecentClustersByUserId(userId, {
     limit,
-    excludeClusterId: Number.isNaN(excludeClusterId) ? null : excludeClusterId
+    excludeClusterId
   })
 
   const listWithUrls = await attachClusterCoverUrls(result.list)
@@ -98,6 +108,9 @@ async function getRecentClusters(req, res) {
 /**
  * 更新聚类名称
  * PATCH /face-clusters/:clusterId
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function updateCluster(req, res) {
   const { userId } = req.user
@@ -105,14 +118,10 @@ async function updateCluster(req, res) {
   const { name } = req.body
 
   if (name !== undefined && typeof name !== 'string' && name !== null) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: 'error'
-    })
+    throwInvalidParametersError({ messageType: 'error' })
   }
 
-  const clusterIdNum = parseInt(clusterId)
+  const clusterIdNum = parsePositiveIntParam(clusterId)
   if (name != null && String(name).trim() !== '') {
     const existingNames = getExistingPersonNames(userId, clusterIdNum)
     if (existingNames.includes(String(name).trim())) {
@@ -136,7 +145,7 @@ async function updateCluster(req, res) {
 
   res.sendResponse({
     data: {
-      clusterId: parseInt(clusterId),
+      clusterId: clusterIdNum,
       name: name || null
     }
   })
@@ -145,6 +154,9 @@ async function updateCluster(req, res) {
 /**
  * 将照片从一个聚类移动到另一个聚类（或创建新聚类）
  * POST /face-clusters/:clusterId/move-faces
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function moveFaces(req, res) {
   const { userId } = req.user
@@ -152,29 +164,17 @@ async function moveFaces(req, res) {
   const { faceEmbeddingIds, targetClusterId, newClusterName } = req.body
 
   if (!Array.isArray(faceEmbeddingIds) || faceEmbeddingIds.length === 0) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: 'error'
-    })
+    throwInvalidParametersError({ messageType: 'error' })
   }
 
   const invalidIds = faceEmbeddingIds.filter((id) => typeof id !== 'number' && !Number.isInteger(Number(id)))
   if (invalidIds.length > 0) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: 'error'
-    })
+    throwInvalidParametersError({ messageType: 'error' })
   }
 
   if (targetClusterId !== null && targetClusterId !== undefined) {
     if (typeof targetClusterId !== 'number' && !Number.isInteger(Number(targetClusterId))) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
-        messageType: 'error'
-      })
+      throwInvalidParametersError({ messageType: 'error' })
     }
   }
 
@@ -192,9 +192,9 @@ async function moveFaces(req, res) {
 
   const result = moveFacesToCluster(
     userId,
-    parseInt(clusterId),
-    faceEmbeddingIds.map((id) => parseInt(id)),
-    targetClusterId ? parseInt(targetClusterId) : null,
+    parsePositiveIntParam(clusterId),
+    faceEmbeddingIds.map((id) => parsePositiveIntParam(id)),
+    targetClusterId ? parsePositiveIntParam(targetClusterId) : null,
     newClusterName || null
   )
 
@@ -209,6 +209,9 @@ async function moveFaces(req, res) {
 /**
  * 恢复人物聚类默认封面
  * DELETE /face-clusters/:clusterId/cover
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function restoreClusterCoverImage(req, res) {
   const { userId } = req.user
@@ -226,17 +229,7 @@ async function restoreClusterCoverImage(req, res) {
     })
   }
 
-  let coverImageUrl = null
-  if (result.thumbnailStorageKey) {
-    try {
-      coverImageUrl = await storageService.getFileUrl(result.thumbnailStorageKey)
-    } catch (error) {
-      logger.error({
-        message: `获取封面URL失败: faceEmbeddingId=${result.faceEmbeddingId}`,
-        details: { error: error.message }
-      })
-    }
-  }
+  const coverImageUrl = await resolveClusterCoverUrl(result.thumbnailStorageKey, result.faceEmbeddingId)
 
   res.sendResponse({
     data: {
@@ -250,6 +243,9 @@ async function restoreClusterCoverImage(req, res) {
 /**
  * 设置人物聚类封面
  * PATCH /face-clusters/:clusterId/cover
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function setClusterCoverImage(req, res) {
   const { userId } = req.user
@@ -261,11 +257,7 @@ async function setClusterCoverImage(req, res) {
   const clusterIdNum = parsePositiveIntParam(clusterId)
 
   if (!verifyFaceEmbeddingInCluster(userId, clusterIdNum, faceEmbeddingIdNum)) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: 'error'
-    })
+    throwInvalidParametersError({ messageType: 'error' })
   }
 
   const thumbnailStorageKey = await faceClusterService.generateThumbnailForFaceEmbedding(faceEmbeddingIdNum)
@@ -284,12 +276,7 @@ async function setClusterCoverImage(req, res) {
   const result = setClusterCover(userId, clusterIdNum, faceEmbeddingIdNum)
 
   if (result.error) {
-    throw new CustomError({
-      httpStatus: 400,
-      messageCode: ERROR_CODES.INVALID_PARAMETERS,
-      messageType: 'error',
-      message: result.error
-    })
+    throwInvalidParametersError({ messageType: 'error', message: result.error })
   }
 
   if (result.affectedRows === 0 && !result.isDefaultCover) {
@@ -300,17 +287,7 @@ async function setClusterCoverImage(req, res) {
     })
   }
 
-  let coverImageUrl = null
-  if (thumbnailStorageKey) {
-    try {
-      coverImageUrl = await storageService.getFileUrl(thumbnailStorageKey)
-    } catch (error) {
-      logger.error({
-        message: `获取封面URL失败: faceEmbeddingId=${faceEmbeddingIdNum}`,
-        details: { error: error.message }
-      })
-    }
-  }
+  const coverImageUrl = await resolveClusterCoverUrl(thumbnailStorageKey, faceEmbeddingIdNum)
 
   res.sendResponse({
     data: {
@@ -319,6 +296,19 @@ async function setClusterCoverImage(req, res) {
       coverImageUrl
     }
   })
+}
+
+async function resolveClusterCoverUrl(thumbnailStorageKey, faceEmbeddingId) {
+  if (!thumbnailStorageKey) return null
+  try {
+    return await storageService.getFileUrl(thumbnailStorageKey)
+  } catch (error) {
+    logger.error({
+      message: `获取封面URL失败: faceEmbeddingId=${faceEmbeddingId}`,
+      details: { error: error.message }
+    })
+    return null
+  }
 }
 
 module.exports = {

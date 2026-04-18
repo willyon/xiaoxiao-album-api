@@ -36,9 +36,8 @@ class MediaMetadataService {
   /**
    * 综合分析媒体元数据
    * @param {Buffer|string} fileData - 媒体文件数据（Buffer 或文件路径字符串）
-   * @param {Object} options - 分析选项
-   * @param {boolean} options.includeLocation - 是否包含位置描述（默认 false，避免网络请求）
-   * @returns {Promise<Object>} 完整的元数据分析结果
+   * @param {{includeLocation?:boolean,userId?:number|string}} [options={}] - 分析选项。
+   * @returns {Promise<object>} 完整的元数据分析结果。
    */
   async analyzeMediaMetadata(fileData, options = {}) {
     try {
@@ -68,7 +67,7 @@ class MediaMetadataService {
   /**
    * 图片元数据提取 - 兼容本地文件路径和Buffer
    * @param {string|Buffer} input - 文件路径（本地存储）或文件Buffer（OSS存储）
-   * @returns {Promise<Object>} 标准化的元数据对象，包含以下字段：
+   * @returns {Promise<object>} 标准化的元数据对象，包含以下字段：
    *   - captureTime: 拍摄时间戳 (如 1692087025000)
    *   - latitude: GPS纬度 (如 39.9042)
    *   - longitude: GPS经度 (如 116.4074)
@@ -175,8 +174,8 @@ class MediaMetadataService {
 
   /**
    * 标准化元数据格式
-   * @param {Object} rawData - 原始元数据
-   * @returns {Object} 标准化的元数据对象
+   * @param {Record<string, any>} rawData - 原始元数据。
+   * @returns {object} 标准化的元数据对象。
    *
    * 两个依赖库(exifr和exiftool)的字段差异：
    * - 经纬度: exifr提供latitude/longitude（数字），exiftool提供GPSLatitude/GPSLongitude（数字）
@@ -253,7 +252,7 @@ class MediaMetadataService {
    *   6: 旋转90° (90°)
    *   7: 旋转270° + 水平翻转 (270° + 水平翻转)
    *   8: 旋转270° (270°)
-   * @returns {Object} 包含方向分类、宽高比和旋正后尺寸的对象
+   * @returns {{layoutType:'panorama'|'landscape'|'portrait'|'square'|null,aspectRatio:number|null,displayWidth:number|null,displayHeight:number|null}} 包含方向分类、宽高比和旋正后尺寸的对象。
    */
   calculateOrientationInfo(width, height, rawOrientation = 1) {
     if (!width || !height) {
@@ -302,7 +301,8 @@ class MediaMetadataService {
    * 分析地理位置信息
    * @param {number} latitude - 纬度
    * @param {number} longitude - 经度
-   * @returns {Promise<Object>} 位置信息
+   * @param {number|string} userId - 用户 ID。
+   * @returns {Promise<{gpsLocation:string|null,country:string|null,province:string|null,city:string|null,mapRegeoStatus?:string}>} 位置信息。
    */
   async analyzeLocationInfo(latitude, longitude, userId) {
     try {

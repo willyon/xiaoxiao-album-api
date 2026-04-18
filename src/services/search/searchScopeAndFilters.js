@@ -6,9 +6,9 @@ const { buildSearchQueryParts } = require('../../utils/buildSearchQueryParts')
 
 /**
  * 根据 source + scope 构建列表/筛选用的 WHERE 片段（表别名 i.），供搜索与筛选项 scope 共用。
- * @param {Object} scope - { source, type?, albumId?, clusterId? }
- * @param {number} userId
- * @returns {{ scopeConditions: string[], scopeParams: any[] }}
+ * @param {{source?:string,type?:string,albumId?:string|number,clusterId?:string|number}} scope - scope 条件。
+ * @param {number|string} userId - 用户 ID。
+ * @returns {{ scopeConditions: string[], scopeParams: any[] }} scope 条件与参数。
  */
 function buildScopeConditions(scope, userId) {
   const scopeConditions = []
@@ -71,9 +71,9 @@ function buildScopeConditions(scope, userId) {
 
 /**
  * 构建筛选 WHERE；注入 media 表地点键表达式（经 model），供 controller 仅调 service 时使用。
- * @param {Object} filters 筛选条件对象
- * @param {Object} filterOptions 筛选构造配置
- * @returns {{whereConditions: string[], whereParams: any[]}}
+ * @param {object} filters - 筛选条件对象。
+ * @param {object} filterOptions - 筛选构造配置。
+ * @returns {{whereConditions: string[], whereParams: any[]}} 条件与参数。
  */
 function buildFilterQueryParts(filters, filterOptions) {
   return buildSearchQueryParts(filters, {

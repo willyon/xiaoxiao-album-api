@@ -5,7 +5,8 @@ const fs = require('fs')
 const path = require('path')
 
 const logger = require('./logger')
-const { HAS_CHINESE_REGEX, WORD_OR_CJK_REGEX } = require('./cjkRegex')
+const { HAS_CHINESE_REGEX } = require('./cjkRegex')
+const { isOnlyPunctOrSpace } = require('./textTokenUtils')
 const SEARCH_TERMS_SPLIT_REGEX = /[\s\u3000,.;:!?、，。；：！？/\\|'"()[\]{}]+/u
 
 const USER_DICT_PATH = path.join(__dirname, '../config/search-user-dict.txt')
@@ -15,6 +16,22 @@ let jiebaLoadFailed = false
 /** @type {{ mtimeMs: number | null, exists: boolean } | null } */
 let userDictRecordedSnapshot = null
 
+function normalizeSearchToken(token) {
+  return /^[\x00-\x7f]+$/.test(token) ? token.toLowerCase() : token
+}
+
+function splitAndNormalizeBySearchDelimiters(text) {
+  return String(text || '')
+    .split(SEARCH_TERMS_SPLIT_REGEX)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => normalizeSearchToken(t))
+}
+
+/**
+ * 获取用户词典文件快照，用于判断是否变更。
+ * @returns {{mtimeMs:number|null,exists:boolean}} 词典快照。
+ */
 function getUserDictSnapshot() {
   try {
     if (!fs.existsSync(USER_DICT_PATH)) {
@@ -27,6 +44,12 @@ function getUserDictSnapshot() {
   }
 }
 
+/**
+ * 判断两个词典快照是否一致。
+ * @param {{mtimeMs:number|null,exists:boolean}|null} a - 快照 A。
+ * @param {{mtimeMs:number|null,exists:boolean}|null} b - 快照 B。
+ * @returns {boolean} 是否一致。
+ */
 function userDictSnapshotEquals(a, b) {
   if (!a || !b) return false
   return a.mtimeMs === b.mtimeMs && a.exists === b.exists
@@ -34,6 +57,7 @@ function userDictSnapshotEquals(a, b) {
 
 /**
  * 用户词表文件变更后自动重建 jieba（无需重启进程）；加载失败时保留旧快照，避免对同一坏文件刷屏重试。
+ * @returns {import('@node-rs/jieba').Jieba|null} jieba 实例或 null。
  */
 function tryCreateJieba() {
   const cur = getUserDictSnapshot()
@@ -82,12 +106,10 @@ function tryCreateJieba() {
   }
 }
 
-function isOnlyPunctOrSpace(s) {
-  return !s || !WORD_OR_CJK_REGEX.test(s)
-}
-
 /**
  * 单段文本 → 检索用 token（无中文时按空白/标点切；有中文时用 jieba 搜索模式，失败则回退标点切）
+ * @param {string} text - 原始文本。
+ * @returns {string[]} 分词结果。
  */
 function segmentFieldForSearchTerms(text) {
   if (!text || typeof text !== 'string') {
@@ -98,11 +120,7 @@ function segmentFieldForSearchTerms(text) {
     return []
   }
   if (!HAS_CHINESE_REGEX.test(trimmed)) {
-    return trimmed
-      .split(SEARCH_TERMS_SPLIT_REGEX)
-      .map((t) => t.trim())
-      .filter(Boolean)
-      .map((t) => (/^[\x00-\x7f]+$/.test(t) ? t.toLowerCase() : t))
+    return splitAndNormalizeBySearchDelimiters(trimmed)
   }
   const jieba = tryCreateJieba()
   if (jieba) {
@@ -111,17 +129,13 @@ function segmentFieldForSearchTerms(text) {
     for (const w of parts) {
       const t = w.trim()
       if (!t || isOnlyPunctOrSpace(t)) continue
-      out.push(/^[\x00-\x7f]+$/.test(t) ? t.toLowerCase() : t)
+      out.push(normalizeSearchToken(t))
     }
     if (out.length > 0) {
       return out
     }
   }
-  return trimmed
-    .split(SEARCH_TERMS_SPLIT_REGEX)
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .map((t) => (/^[\x00-\x7f]+$/.test(t) ? t.toLowerCase() : t))
+  return splitAndNormalizeBySearchDelimiters(trimmed)
 }
 
 module.exports = {

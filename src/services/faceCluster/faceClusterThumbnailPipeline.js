@@ -23,8 +23,8 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL
 
 /**
  * 聚类后检查当前封面（representative_type=1/2）缩略图是否缺失，缺失则同步重建。
- * @param {number} userId 用户 ID
- * @returns {Promise<{checked:number, regenerated:number, failed:number}>}
+ * @param {number|string} userId - 用户 ID。
+ * @returns {Promise<{checked:number, regenerated:number, failed:number}>} 自愈统计。
  */
 async function ensureRepresentativeCoverThumbnails(userId) {
   const faceEmbeddingIds = getRepresentativeFaceEmbeddingIdsByUserId(userId)
@@ -60,10 +60,10 @@ async function ensureRepresentativeCoverThumbnails(userId) {
 
 /**
  * 为每个 cluster 选择最佳人脸并生成缩略图。
- * @param {number} userId 用户 ID
- * @param {Array<{cluster_id:number, face_indices:number[]}>} clusters 聚类结果
- * @param {Array<{id:number}>} faceEmbeddings 人脸 embedding 列表
- * @returns {Promise<string[]>} 生成的缩略图路径列表
+ * @param {number|string} userId - 用户 ID。
+ * @param {Array<{cluster_id:number, face_indices:number[]}>} clusters - 聚类结果。
+ * @param {Array<{id:number}>} faceEmbeddings - 人脸 embedding 列表。
+ * @returns {Promise<string[]>} 生成的缩略图路径列表。
  */
 async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
   let successCount = 0
@@ -135,19 +135,10 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
         continue
       }
 
-      let imageData = null
-      const storageKey = imageInfo.highResStorageKey || imageInfo.originalStorageKey
-      if (storageKey) {
-        try {
-          imageData = await storageService.storage.getFileBuffer(storageKey)
-        } catch (error) {
-          logger.error({
-            message: `获取图片数据失败: storageKey=${storageKey}`,
-            details: { error: error.message, userId, clusterId }
-          })
-          continue
-        }
-      }
+      const imageData = await _readImageBufferByMediaInfo(imageInfo, {
+        failMessage: `获取图片数据失败: mediaId=${bestFace.image_id}`,
+        details: { userId, clusterId }
+      })
 
       if (!imageData) {
         logger.warn({
@@ -242,8 +233,8 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
 
 /**
  * 标准化 face.bbox 字段，返回合法四元组。
- * @param {{bbox:number[]|string}} face 人脸记录
- * @returns {number[]|null} 合法 bbox 或 null
+ * @param {{bbox:number[]|string}} face - 人脸记录。
+ * @returns {number[]|null} 合法 bbox 或 null。
  */
 function normalizeBboxFromFace(face) {
   let bbox = face.bbox
@@ -260,12 +251,26 @@ function normalizeBboxFromFace(face) {
   return bbox
 }
 
+async function _readImageBufferByMediaInfo(imageInfo, { failMessage, details = {} } = {}) {
+  const storageKey = imageInfo?.highResStorageKey || imageInfo?.originalStorageKey
+  if (!storageKey) return null
+  try {
+    return await storageService.storage.getFileBuffer(storageKey)
+  } catch (error) {
+    logger.error({
+      message: failMessage || `获取图片数据失败: storageKey=${storageKey}`,
+      details: { error: error.message, ...details }
+    })
+    return null
+  }
+}
+
 /**
  * 按封面策略排序人脸（前者更优），可选优先图片媒体。
- * @param {Array<any>} faces 人脸列表
- * @param {Map<number, any>} [imagesMap=new Map()] media id -> 图片信息
- * @param {Map<number, string>|null} [mediaTypeByMediaId=null] media id -> mediaType
- * @returns {Array<any>} 已排序人脸列表
+ * @param {Array<any>} faces - 人脸列表。
+ * @param {Map<number, any>} [imagesMap=new Map()] - media id -> 图片信息。
+ * @param {Map<number, string>|null} [mediaTypeByMediaId=null] - media id -> mediaType。
+ * @returns {Array<any>} 已排序人脸列表。
  */
 function rankFacesForCover(faces, imagesMap = new Map(), mediaTypeByMediaId = null) {
   if (!faces || faces.length === 0) {
@@ -353,9 +358,9 @@ function rankFacesForCover(faces, imagesMap = new Map(), mediaTypeByMediaId = nu
 
 /**
  * 确保 cluster 至少有一个默认封面代表（representative_type=1）。
- * @param {number} userId 用户 ID
- * @param {number} clusterId 聚类 ID
- * @returns {Promise<number|null>} 选中的 face_embedding_id
+ * @param {number|string} userId - 用户 ID。
+ * @param {number|string} clusterId - 聚类 ID。
+ * @returns {Promise<number|null>} 选中的 face_embedding_id。
  */
 async function ensureDefaultCoverRepresentative(userId, clusterId) {
   const ids = getFaceEmbeddingIdsByClusterId(userId, clusterId)
@@ -401,9 +406,9 @@ async function ensureDefaultCoverRepresentative(userId, clusterId) {
 
 /**
  * 恢复聚类默认封面：清除手动封面（2）并恢复默认封面（1）。
- * @param {number} userId 用户 ID
- * @param {number} clusterId 聚类 ID
- * @returns {Promise<{faceEmbeddingId:number, thumbnailStorageKey:string|null}|null>}
+ * @param {number|string} userId - 用户 ID。
+ * @param {number|string} clusterId - 聚类 ID。
+ * @returns {Promise<{faceEmbeddingId:number, thumbnailStorageKey:string|null}|null>} 恢复结果。
  */
 async function restoreDefaultCover(userId, clusterId) {
   try {
@@ -475,9 +480,9 @@ async function restoreDefaultCover(userId, clusterId) {
 
 /**
  * 为单个 face_embedding 生成缩略图（可选强制重建）。
- * @param {number} faceEmbeddingId face_embedding ID
- * @param {boolean} [forceRegenerate=false] 是否强制重建
- * @returns {Promise<string|null>} 缩略图存储键
+ * @param {number|string} faceEmbeddingId - face_embedding ID。
+ * @param {boolean} [forceRegenerate=false] - 是否强制重建。
+ * @returns {Promise<string|null>} 缩略图存储键。
  */
 async function generateThumbnailForFaceEmbedding(faceEmbeddingId, forceRegenerate = false) {
   try {
@@ -524,19 +529,10 @@ async function generateThumbnailForFaceEmbedding(faceEmbeddingId, forceRegenerat
       return null
     }
 
-    let imageData = null
-    const storageKey = imageInfo.highResStorageKey || imageInfo.originalStorageKey
-    if (storageKey) {
-      try {
-        imageData = await storageService.storage.getFileBuffer(storageKey)
-      } catch (error) {
-        logger.error({
-          message: `获取图片数据失败: storageKey=${storageKey}`,
-          details: { error: error.message, faceEmbeddingId }
-        })
-        return null
-      }
-    }
+    const imageData = await _readImageBufferByMediaInfo(imageInfo, {
+      failMessage: `获取图片数据失败: mediaId=${faceEmbedding.image_id}`,
+      details: { faceEmbeddingId }
+    })
 
     if (!imageData) {
       logger.warn({
@@ -546,19 +542,8 @@ async function generateThumbnailForFaceEmbedding(faceEmbeddingId, forceRegenerat
       return null
     }
 
-    let bbox = faceEmbedding.bbox
-    if (typeof bbox === 'string') {
-      try {
-        bbox = JSON.parse(bbox)
-      } catch {
-        logger.error({
-          message: `bbox JSON解析失败: faceEmbeddingId=${faceEmbeddingId}`
-        })
-        return null
-      }
-    }
-
-    if (!bbox || !Array.isArray(bbox) || bbox.length !== 4) {
+    const bbox = normalizeBboxFromFace(faceEmbedding)
+    if (!bbox) {
       logger.warn({
         message: `bbox格式无效: faceEmbeddingId=${faceEmbeddingId}`
       })
@@ -620,11 +605,119 @@ async function generateThumbnailForFaceEmbedding(faceEmbeddingId, forceRegenerat
   }
 }
 
+/**
+ * 处理重聚类后的封面缩略图维护（自愈、手动封面重建、旧缩略图清理）。
+ * @param {{
+ * userId:number|string,
+ * generatedThumbnailPaths:string[],
+ * oldThumbnailPaths:string[],
+ * oldCoverMapping:Map<number, number>|null
+ * }} params - 维护参数。
+ * @returns {Promise<void>} 无返回值。
+ */
+async function handleReclusterThumbnailMaintenance({
+  userId,
+  generatedThumbnailPaths,
+  oldThumbnailPaths,
+  oldCoverMapping
+}) {
+  const coverCheckStats = await ensureRepresentativeCoverThumbnails(userId)
+  if (coverCheckStats.regenerated > 0 || coverCheckStats.failed > 0) {
+    logger.info({
+      message: '聚类后封面缩略图自愈完成',
+      details: {
+        userId,
+        checked: coverCheckStats.checked,
+        regenerated: coverCheckStats.regenerated,
+        failed: coverCheckStats.failed
+      }
+    })
+  }
+
+  if (oldCoverMapping && oldCoverMapping.size > 0) {
+    const manualCoverFaceIds = Array.from(oldCoverMapping.keys())
+    const faces = getFaceEmbeddingsByIds(manualCoverFaceIds)
+    let regeneratedCount = 0
+    for (const faceEmbedding of faces) {
+      if (!faceEmbedding.face_thumbnail_storage_key) continue
+      try {
+        const thumbnailKey = await generateThumbnailForFaceEmbedding(faceEmbedding.id, false)
+        if (thumbnailKey && thumbnailKey !== faceEmbedding.face_thumbnail_storage_key) {
+          regeneratedCount++
+        }
+      } catch (error) {
+        logger.warn({
+          message: `验证/生成手动封面缩略图失败: faceEmbeddingId=${faceEmbedding.id}`,
+          details: { userId, faceEmbeddingId: faceEmbedding.id, error: error.message }
+        })
+      }
+    }
+    if (regeneratedCount > 0) {
+      logger.info({
+        message: `为手动设置的封面重新生成了 ${regeneratedCount} 个缩略图`,
+        details: { userId }
+      })
+    }
+  }
+
+  if (!oldThumbnailPaths || oldThumbnailPaths.length === 0) return
+
+  const representativeStatusMap = getRepresentativeStatusByThumbnailKeys(userId, oldThumbnailPaths)
+  const newThumbnailPathsSet = new Set(generatedThumbnailPaths)
+  const thumbnailsToDelete = oldThumbnailPaths.filter((path) => {
+    if (newThumbnailPathsSet.has(path)) return false
+    const isRepresentative = representativeStatusMap.get(path)
+    if (isRepresentative === 1 || isRepresentative === 2) return false
+    return true
+  })
+
+  if (thumbnailsToDelete.length === 0) {
+    logger.info({
+      message: '所有旧缩略图仍在使用中或为手动设置的封面，无需清理',
+      details: { userId, totalOld: oldThumbnailPaths.length }
+    })
+    return
+  }
+
+  logger.info({
+    message: `开始清理 ${thumbnailsToDelete.length} 个不再使用的缩略图文件（另有 ${oldThumbnailPaths.length - thumbnailsToDelete.length} 个旧路径因仍被引用而保留，含手动封面与新默认封面）`,
+    details: {
+      userId,
+      totalOld: oldThumbnailPaths.length,
+      toDelete: thumbnailsToDelete.length,
+      preserved: oldThumbnailPaths.length - thumbnailsToDelete.length,
+      newDefaultCovers: generatedThumbnailPaths.length
+    }
+  })
+
+  let deletedCount = 0
+  let failedCount = 0
+  for (const thumbnailPath of thumbnailsToDelete) {
+    try {
+      await storageService.storage.deleteFile(thumbnailPath)
+      deletedCount++
+    } catch (error) {
+      failedCount++
+      if (error.code !== 'ENOENT' && error.status !== 404) {
+        logger.warn({
+          message: `删除不再使用的缩略图失败: ${thumbnailPath}`,
+          details: { userId, error: error.message }
+        })
+      }
+    }
+  }
+  logger.info({
+    message: `清理不再使用的缩略图完成: 成功 ${deletedCount} 个，失败 ${failedCount} 个`,
+    details: { userId, total: thumbnailsToDelete.length }
+  })
+}
+
 module.exports = {
   ensureRepresentativeCoverThumbnails,
   generateThumbnailsForClusters,
   restoreDefaultCover,
   generateThumbnailForFaceEmbedding,
+  handleReclusterThumbnailMaintenance,
   getRepresentativeStatusByThumbnailKeys,
   getFaceEmbeddingsByIds
 }

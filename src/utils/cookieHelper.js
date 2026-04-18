@@ -5,6 +5,14 @@
  * @LastEditTime: 2025-07-25 12:29:34
  * @Description: File description
  */
+/**
+ * 设置响应 Cookie，并合并默认安全选项。
+ * @param {import('express').Response} res - Express 响应对象。
+ * @param {string} name - Cookie 名称。
+ * @param {string} value - Cookie 值。
+ * @param {object} [options={}] - 自定义 Cookie 选项。
+ * @returns {void} 无返回值。
+ */
 function setCookie(res, name, value, options = {}) {
   const defaultOptions = {
     httpOnly: true,

@@ -6,14 +6,19 @@
  * @Description: File description
  */
 const { createBullQueue } = require('../utils/bullmq/createBullQueue')
+const logger = require('../utils/logger')
+const { closeBullResources } = require('../utils/bullmq/closeBullResources')
 
 const { queue: mediaMetaQueue, connection } = createBullQueue({
   name: process.env.MEDIA_META_QUEUE_NAME || 'media-meta'
 })
 
+/**
+ * 关闭 meta 队列及其 Redis 连接。
+ * @returns {Promise<void>} 无返回值。
+ */
 async function closeMediaMetaQueue() {
-  await mediaMetaQueue.close()
-  await connection.quit()
+  await closeBullResources({ queue: mediaMetaQueue, connection, logger, label: 'mediaMetaQueue' })
 }
 
 module.exports = { mediaMetaQueue, closeMediaMetaQueue }

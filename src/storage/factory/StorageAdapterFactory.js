@@ -6,9 +6,9 @@
 
 const LocalStorageAdapter = require('../adapters/LocalStorageAdapter')
 const AliyunOSSAdapter = require('../adapters/aliyun-oss-adapter')
-const { STORAGE_TYPES, getStorageConfig } = require('../../constants/StorageTypes')
+const { STORAGE_TYPES, getStorageConfig } = require('../../constants/storageTypes')
 
-let adapterContainer = {
+const ADAPTER_MAP = {
   [STORAGE_TYPES.LOCAL]: LocalStorageAdapter,
   [STORAGE_TYPES.ALIYUN_OSS]: AliyunOSSAdapter
 }
@@ -56,10 +56,13 @@ class StorageAdapterFactory {
     }
 
     const storageConfig = getStorageConfig()
-    let Adapter = adapterContainer[storageConfig.storageType]
-    let options = storageConfig[storageConfig.storageType]
+    const Adapter = ADAPTER_MAP[storageConfig.storageType]
+    if (!Adapter) {
+      throw new Error(`Unsupported storage type: ${storageConfig.storageType}`)
+    }
+    const options = storageConfig[storageConfig.storageType]
 
-    let adapter = new Adapter(options || {})
+    const adapter = new Adapter(options || {})
 
     // 根据配置对象创建存储适配器
     StorageAdapterFactory.currentAdapter = adapter

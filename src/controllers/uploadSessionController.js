@@ -11,6 +11,9 @@ const asyncHandler = require('../utils/asyncHandler')
 
 /**
  * 处理创建上传会话请求
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function handleCreateSession(req, res) {
   const userId = req.user.userId
@@ -27,6 +30,9 @@ async function handleCreateSession(req, res) {
  * 获取当前「进行中」的上传会话（与历史 `?active=true` 行为一致）。
  * 全量会话列表需额外 Redis 结构，未实现前不再保留无意义的 if/else 分支。
  * GET /upload-sessions
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function handleGetActiveSession(req, res) {
   const userId = req.user.userId
@@ -40,6 +46,9 @@ async function handleGetActiveSession(req, res) {
 /**
  * 获取当前会话快照
  * GET /upload-sessions/current-progress
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function handleGetCurrentProgress(req, res) {
   const userId = req.user.userId

@@ -8,9 +8,9 @@ const SQLITE_IN_CLAUSE_CHUNK = 900
 
 /**
  * 按 SQLite IN 子句上限分块查询媒体详情。
- * @param {number} userId 用户 ID
- * @param {number[]} mediaIds 媒体 ID 列表
- * @returns {any[]} 媒体详情数组
+ * @param {number|string} userId - 用户 ID。
+ * @param {number[]} mediaIds - 媒体 ID 列表。
+ * @returns {any[]} 媒体详情数组。
  */
 function fetchMediasByIdsChunked(userId, mediaIds) {
   if (!mediaIds.length) return []
@@ -27,12 +27,21 @@ function fetchMediasByIdsChunked(userId, mediaIds) {
 }
 
 /**
+ * 将媒体列表转为 `mediaId => mediaRow` 映射。
+ * @param {Array<{mediaId:number|string}>} mediaRows - 媒体列表。
+ * @returns {Map<number|string, any>} 媒体映射。
+ */
+function buildMediaMap(mediaRows) {
+  return new Map((mediaRows || []).map((item) => [item.mediaId, item]))
+}
+
+/**
  * 按 rankedIds 顺序从 offset 起凑满一页；跳过已删除/不可见的媒体，避免缓存命中后出现空洞。
- * @param {number} userId 用户 ID
- * @param {number[]} rankedIds 已排序媒体 ID 列表
- * @param {number} offset 偏移量
- * @param {number} pageSize 页大小
- * @returns {any[]} 当前页媒体数组
+ * @param {number|string} userId - 用户 ID。
+ * @param {number[]} rankedIds - 已排序媒体 ID 列表。
+ * @param {number} offset - 偏移量。
+ * @param {number} pageSize - 页大小。
+ * @returns {any[]} 当前页媒体数组。
  */
 function buildOrderedPageMedias(userId, rankedIds, offset, pageSize) {
   const list = []
@@ -43,7 +52,7 @@ function buildOrderedPageMedias(userId, rankedIds, offset, pageSize) {
     const batchIds = rankedIds.slice(readHead, readHead + batchLen)
     readHead += batchLen
     const rows = fetchMediasByIdsChunked(userId, batchIds)
-    const map = new Map(rows.map((item) => [item.mediaId, item]))
+    const map = buildMediaMap(rows)
     for (const id of batchIds) {
       const row = map.get(id)
       if (row) {

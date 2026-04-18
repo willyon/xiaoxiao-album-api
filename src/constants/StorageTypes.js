@@ -38,19 +38,32 @@ const OSS_BASE_CONFIG = {
 
 /**
  * 根据环境自动选择存储类型
+ * @returns {string} 默认存储类型。
  */
 function getDefaultStorageType() {
   return process.env.STORAGE_TYPE || STORAGE_TYPES.ALIYUN_OSS
 }
 
+/**
+ * 解析 OSS 认证方式。
+ * @returns {string} OSS 认证类型。
+ */
 function _getOSSAuthType() {
   return process.env.NODE_ENV === 'development' ? OSS_AUTH_TYPES.ACCESS_KEY : process.env.ALIYUN_OSS_AUTH_TYPE || OSS_AUTH_TYPES.ROLE
 }
 
+/**
+ * 是否优先使用 OSS 内网地址。
+ * @returns {boolean} 是否启用内网地址。
+ */
 function _useOSSInternal() {
   return process.env.NODE_ENV === 'development' ? false : process.env.OSS_BUCKET_URL_PREFER_INTERNAL !== 'false'
 }
 
+/**
+ * 获取本地存储访问 Base URL。
+ * @returns {string} Base URL。
+ */
 function _getLocalBaseUrl() {
   return process.env.NODE_ENV === 'production'
     ? process.env.API_BASE_URL_ALIYUN_ECS
@@ -61,6 +74,7 @@ function _getLocalBaseUrl() {
 
 /**
  * 获取存储配置（动态计算，确保环境变量已加载）
+ * @returns {object} 存储配置对象。
  */
 function getStorageConfig() {
   return {

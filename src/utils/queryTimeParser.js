@@ -4,18 +4,43 @@
 const { TIME_SIGNAL_TERMS } = require('../config/searchSemanticDictionary')
 const { collectMatches, isOverlapping } = require('./querySemanticMatcher')
 
+/**
+ * 将数字补齐为两位字符串。
+ * @param {number|string} value - 原始数值。
+ * @returns {string} 两位字符串。
+ */
 function pad2(value) {
   return String(value).padStart(2, '0')
 }
 
+/**
+ * 组装 date_key（YYYY-MM-DD）。
+ * @param {number} year - 年。
+ * @param {number} month - 月。
+ * @param {number} day - 日。
+ * @returns {string} date_key。
+ */
 function formatDateKey(year, month, day) {
   return `${year}-${pad2(month)}-${pad2(day)}`
 }
 
+/**
+ * 组装 month_key（YYYY-MM）。
+ * @param {number} year - 年。
+ * @param {number} month - 月。
+ * @returns {string} month_key。
+ */
 function formatMonthKey(year, month) {
   return `${year}-${pad2(month)}`
 }
 
+/**
+ * 按月份偏移计算目标年月。
+ * @param {number} year - 起始年。
+ * @param {number} month - 起始月（1-12）。
+ * @param {number} offset - 偏移月数。
+ * @returns {{year:number,month:number}} 偏移后的年月。
+ */
 function shiftMonth(year, month, offset) {
   const date = new Date(year, month - 1 + offset, 1)
   return {
@@ -24,6 +49,11 @@ function shiftMonth(year, month, offset) {
   }
 }
 
+/**
+ * 获取所在周的周一零点时间。
+ * @param {Date} date - 参考日期。
+ * @returns {Date} 周起始时间。
+ */
 function startOfWeek(date) {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
   // 以周一为一周开始
@@ -34,6 +64,11 @@ function startOfWeek(date) {
   return d
 }
 
+/**
+ * 获取所在周的周日结束时间。
+ * @param {Date} date - 参考日期。
+ * @returns {Date} 周结束时间。
+ */
 function endOfWeek(date) {
   const start = startOfWeek(date)
   const end = new Date(start)
@@ -42,6 +77,11 @@ function endOfWeek(date) {
   return end
 }
 
+/**
+ * 解析中文月份文本。
+ * @param {string} fragment - 月份片段。
+ * @returns {number|null} 月份数字或 null。
+ */
 function parseChineseMonthToken(fragment) {
   const t = String(fragment || '')
     .replace(/份/g, '')
@@ -54,6 +94,12 @@ function parseChineseMonthToken(fragment) {
   return null
 }
 
+/**
+ * 将时间信号类型与参数转换为筛选条件。
+ * @param {string} type - 时间信号类型。
+ * @param {object} payload - 时间信号参数。
+ * @returns {object|null} 筛选条件或 null。
+ */
 function buildTimeFilter(type, payload) {
   switch (type) {
     case 'absolute_year':
@@ -141,6 +187,11 @@ function buildTimeFilter(type, payload) {
   }
 }
 
+/**
+ * 构建统一时间信号结构。
+ * @param {{label:string,type:string,matchedText:string,start:number,end:number,payload:object}} input - 信号输入。
+ * @returns {object} 时间信号对象。
+ */
 function createTimeSignal({ label, type, matchedText, start, end, payload }) {
   return {
     label,
@@ -153,6 +204,12 @@ function createTimeSignal({ label, type, matchedText, start, end, payload }) {
   }
 }
 
+/**
+ * 通过正则模式收集时间匹配结果。
+ * @param {string} normalizedQuery - 归一化查询。
+ * @param {Array<{regex:RegExp,mapMatch:(match:RegExpExecArray)=>object|null}>} patterns - 正则与映射规则。
+ * @returns {object[]} 匹配信号列表。
+ */
 function collectRegexMatches(normalizedQuery, patterns) {
   const matches = []
   for (const { regex, mapMatch } of patterns) {
@@ -166,6 +223,11 @@ function collectRegexMatches(normalizedQuery, patterns) {
   return matches
 }
 
+/**
+ * 收集显式时间表达式（日期、年月、相对年月等）。
+ * @param {string} normalizedQuery - 归一化查询。
+ * @returns {object[]} 显式时间信号列表。
+ */
 function collectExplicitTimeSignals(normalizedQuery) {
   const cnMonthWithOptionalFen = '(?:十二|十一|十|[一二三四五六七八九])月(?:份)?'
   const relativeYearPatterns = [
@@ -291,6 +353,11 @@ function collectExplicitTimeSignals(normalizedQuery) {
   return [...collectRegexMatches(normalizedQuery, relativeYearPatterns), ...collectRegexMatches(normalizedQuery, absolutePatterns)]
 }
 
+/**
+ * 收集关键词时间信号（今天、本周、春天等）。
+ * @param {string} normalizedQuery - 归一化查询。
+ * @returns {object[]} 关键词时间信号列表。
+ */
 function collectKeywordTimeSignals(normalizedQuery) {
   const groups = collectMatches(normalizedQuery, TIME_SIGNAL_TERMS)
   return groups.map((group) => ({
@@ -338,6 +405,11 @@ function collectKeywordTimeSignals(normalizedQuery) {
   }))
 }
 
+/**
+ * 聚合并去重时间信号。
+ * @param {string} normalizedQuery - 归一化查询。
+ * @returns {object[]} 时间信号列表。
+ */
 function collectTimeSignals(normalizedQuery) {
   const occupiedRanges = []
   const accepted = []
@@ -367,6 +439,11 @@ function collectTimeSignals(normalizedQuery) {
   })
 }
 
+/**
+ * 从多个时间信号中选取优先级最高的筛选条件。
+ * @param {object[]} timeSignals - 时间信号列表。
+ * @returns {object|null} 主时间筛选条件。
+ */
 function pickPrimaryTimeFilter(timeSignals) {
   const ranked = [...(timeSignals || [])].sort((a, b) => {
     const rank = (signal) => {

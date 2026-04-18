@@ -1,5 +1,10 @@
 const { db } = require("../db");
 
+/**
+ * 查询用户可参与清理分组的媒体候选。
+ * @param {number|string} userId - 用户 ID。
+ * @returns {Array<object>} 候选媒体列表。
+ */
 function selectCleanupCandidatesByUser(userId) {
   const stmt = db.prepare(`
     SELECT
@@ -19,6 +24,11 @@ function selectCleanupCandidatesByUser(userId) {
   return stmt.all(userId);
 }
 
+/**
+ * 删除用户所有相似图分组。
+ * @param {number|string} userId - 用户 ID。
+ * @returns {void} 无返回值。
+ */
 function deleteGroupsByUser(userId) {
   const stmt = db.prepare(`
     DELETE FROM similar_groups
@@ -27,6 +37,11 @@ function deleteGroupsByUser(userId) {
   stmt.run(userId);
 }
 
+/**
+ * 新建相似图分组。
+ * @param {{userId:number|string,primaryMediaId?:number|null,memberCount?:number,createdAt?:number,updatedAt?:number}} params - 分组参数。
+ * @returns {number|bigint} 新分组 ID。
+ */
 function insertSimilarGroup({ userId, primaryMediaId, memberCount, createdAt, updatedAt }) {
   const stmt = db.prepare(`
     INSERT INTO similar_groups (
@@ -42,6 +57,12 @@ function insertSimilarGroup({ userId, primaryMediaId, memberCount, createdAt, up
   return result.lastInsertRowid;
 }
 
+/**
+ * 添加相似图分组成员。
+ * @param {number|string} groupId - 分组 ID。
+ * @param {{mediaId:number,rankScore?:number,similarity?:number,aestheticScore?:number}} member - 成员数据。
+ * @returns {void} 无返回值。
+ */
 function insertSimilarGroupMember(groupId, { mediaId, rankScore, similarity, aestheticScore }) {
   const stmt = db.prepare(`
     INSERT INTO similar_group_members (
@@ -59,7 +80,41 @@ function insertSimilarGroupMember(groupId, { mediaId, rankScore, similarity, aes
 }
 
 /**
+ * 事务化替换用户相似图分组：先删旧分组，再写入新分组及成员。
+ * @param {{userId:number|string,groups:Array<{primaryMediaId:number,members:Array<{mediaId:number,rankScore?:number,similarity?:number,aestheticScore?:number}>}>}} params
+ * @returns {{groupCount:number}} 创建分组数量。
+ */
+function replaceGroupsByUser({ userId, groups }) {
+  const runInTransaction = db.transaction((targetUserId, targetGroups) => {
+    deleteGroupsByUser(targetUserId);
+    if (!targetGroups || targetGroups.length === 0) {
+      return { groupCount: 0 };
+    }
+
+    const now = Date.now();
+    let createdGroups = 0;
+    for (const group of targetGroups) {
+      const groupId = insertSimilarGroup({
+        userId: targetUserId,
+        primaryMediaId: group.primaryMediaId,
+        memberCount: group.members.length,
+        updatedAt: now,
+      });
+      createdGroups += 1;
+      for (const member of group.members) {
+        insertSimilarGroupMember(groupId, member);
+      }
+    }
+    return { groupCount: createdGroups };
+  });
+
+  return runInTransaction(userId, groups);
+}
+
+/**
  * 统计「可展示」的相似图分组数量：至少有 2 个未删除成员的分组（与列表过滤逻辑一致，避免 total 与 list 不一致）
+ * @param {number|string} userId - 用户 ID。
+ * @returns {number} 可展示分组数量。
  */
 function countDisplayableSimilarGroups(userId) {
   const stmt = db.prepare(`
@@ -79,6 +134,8 @@ function countDisplayableSimilarGroups(userId) {
 
 /**
  * 分页查询「可展示」的相似图分组：至少有 2 个未删除成员，按 updated_at、id 倒序
+ * @param {{userId:number|string,limit:number,offset:number}} params - 查询参数。
+ * @returns {Array<object>} 分组列表。
  */
 function selectDisplayableSimilarGroups({ userId, limit, offset }) {
   const stmt = db.prepare(`
@@ -106,6 +163,8 @@ function selectDisplayableSimilarGroups({ userId, limit, offset }) {
 /**
  * 查询分组成员及关联的图片信息
  * 过滤已删除的图片（deleted_at IS NULL）
+ * @param {Array<number|string>} groupIds - 分组 ID 列表。
+ * @returns {Array<object>} 成员列表。
  */
 function selectMembersByGroupIds(groupIds) {
   if (!groupIds || groupIds.length === 0) return [];
@@ -152,6 +211,8 @@ function selectMembersByGroupIds(groupIds) {
 
 /**
  * 删除整个分组
+ * @param {number|string} groupId - 分组 ID。
+ * @returns {import('better-sqlite3').RunResult} 执行结果。
  */
 function deleteGroup(groupId) {
   const stmt = db.prepare(`DELETE FROM similar_groups WHERE id = ?`);
@@ -161,6 +222,9 @@ function deleteGroup(groupId) {
 /**
  * 更新分组统计信息
  * member_count 统计所有未删除的成员（包含推荐图片）
+ * @param {number|string} groupId - 分组 ID。
+ * @param {{updatedAt:number}} params - 更新时间参数。
+ * @returns {{deleted:true}|{deleted:false,memberCount:number}} 更新结果。
  */
 function refreshGroupStats(groupId, { updatedAt }) {
   // 统计所有未删除的成员（包含推荐图片）
@@ -211,6 +275,8 @@ function refreshGroupStats(groupId, { updatedAt }) {
 
 /**
  * 查询指定分组信息
+ * @param {number|string} groupId - 分组 ID。
+ * @returns {object|undefined} 分组信息。
  */
 function selectGroupById(groupId) {
   const stmt = db.prepare(`
@@ -223,6 +289,8 @@ function selectGroupById(groupId) {
 
 /**
  * 查询图片的存储信息
+ * @param {Array<number|string>} mediaIds - 媒体 ID 列表。
+ * @returns {Array<object>} 媒体信息列表。
  */
 function selectMediasByIds(mediaIds) {
   if (!mediaIds || mediaIds.length === 0) return [];
@@ -243,6 +311,12 @@ function selectMediasByIds(mediaIds) {
   return stmt.all(...mediaIds);
 }
 
+/**
+ * 批量软删除媒体。
+ * @param {Array<number|string>} mediaIds - 媒体 ID 列表。
+ * @param {number} deletedAt - 删除时间戳。
+ * @returns {{changes:number}} 影响行数。
+ */
 function markMediasDeleted(mediaIds = [], deletedAt) {
   if (!mediaIds || mediaIds.length === 0) return { changes: 0 };
   const placeholders = mediaIds.map(() => "?").join(", ");
@@ -254,6 +328,11 @@ function markMediasDeleted(mediaIds = [], deletedAt) {
   return stmt.run(deletedAt, ...mediaIds);
 }
 
+/**
+ * 按媒体 ID 批量删除分组成员关系。
+ * @param {Array<number|string>} mediaIds - 媒体 ID 列表。
+ * @returns {{changes:number}} 影响行数。
+ */
 function deleteGroupMembersByMediaIds(mediaIds = []) {
   if (!mediaIds || mediaIds.length === 0) return { changes: 0 };
   const placeholders = mediaIds.map(() => "?").join(", ");
@@ -266,6 +345,8 @@ function deleteGroupMembersByMediaIds(mediaIds = []) {
 
 /**
  * 获取包含指定图片的所有分组ID
+ * @param {Array<number|string>} mediaIds - 媒体 ID 列表。
+ * @returns {number[]} 分组 ID 列表。
  */
 function getGroupsContainingMedias(mediaIds) {
   if (!mediaIds || mediaIds.length === 0) return [];
@@ -284,6 +365,8 @@ function getGroupsContainingMedias(mediaIds) {
 
 /**
  * 批量更新包含指定图片的所有分组统计
+ * @param {Array<number|string>} mediaIds - 媒体 ID 列表。
+ * @returns {void} 无返回值。
  */
 function refreshGroupsStatsForMedias(mediaIds) {
   if (!mediaIds || mediaIds.length === 0) return;
@@ -320,4 +403,5 @@ module.exports = {
   deleteGroupsByUser,
   insertSimilarGroup,
   insertSimilarGroupMember,
+  replaceGroupsByUser,
 };

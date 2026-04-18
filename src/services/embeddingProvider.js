@@ -10,6 +10,10 @@ const DEFAULT_LOCAL_MODEL_DIR = path.join(__dirname, '..', '..', 'models', 'mult
  */
 const LOCAL_ONNX_MODEL_BASENAME = process.env.TEXT_EMBEDDING_ONNX_BASENAME || 'model_uint8'
 
+/**
+ * 解析文本向量模型目录。
+ * @returns {string} 模型目录绝对路径。
+ */
 function resolveModelDir() {
   if (process.env.TEXT_EMBEDDING_LOCAL_PATH) {
     return path.resolve(process.env.TEXT_EMBEDDING_LOCAL_PATH)
@@ -22,6 +26,11 @@ function resolveModelDir() {
   return DEFAULT_LOCAL_MODEL_DIR
 }
 
+/**
+ * 检查本地模型目录是否具备最小可用文件。
+ * @param {string} dir - 模型目录绝对路径。
+ * @returns {boolean} 是否可用。
+ */
 function isLocalModelDirReady(dir) {
   if (!fs.existsSync(dir)) return false
   if (!fs.existsSync(path.join(dir, 'config.json'))) return false
@@ -29,6 +38,11 @@ function isLocalModelDirReady(dir) {
   return fs.existsSync(onnxFile)
 }
 
+/**
+ * 断言本地模型可用，不可用时抛错。
+ * @param {string} dir - 模型目录绝对路径。
+ * @returns {void} 无返回值。
+ */
 function assertLocalModelReady(dir) {
   if (isLocalModelDirReady(dir)) return
   const onnxRel = path.join('onnx', `${LOCAL_ONNX_MODEL_BASENAME}.onnx`)
@@ -40,6 +54,10 @@ function assertLocalModelReady(dir) {
 
 let extractorPromise = null
 
+/**
+ * 构建 transformers pipeline 初始化参数。
+ * @returns {{subfolder:string,model_file_name:string,local_files_only:true}} pipeline 选项。
+ */
 function getPipelineOptions() {
   return {
     subfolder: 'onnx',
@@ -48,6 +66,10 @@ function getPipelineOptions() {
   }
 }
 
+/**
+ * 懒加载文本向量 extractor。
+ * @returns {Promise<any>} extractor 实例。
+ */
 async function getExtractor() {
   if (!extractorPromise) {
     extractorPromise = import('@huggingface/transformers').then(async ({ pipeline, env }) => {
@@ -61,12 +83,24 @@ async function getExtractor() {
   return extractorPromise
 }
 
+/**
+ * 构建 E5 输入文本前缀。
+ * @param {'query'|'passage'} kind - 文本类型。
+ * @param {string} text - 原始文本。
+ * @returns {string} 带前缀输入文本。
+ */
 function buildEmbeddingInput(kind, text) {
   const raw = String(text || '').trim()
   if (!raw) return ''
   return kind === 'query' ? `query: ${raw}` : `passage: ${raw}`
 }
 
+/**
+ * 生成文本向量。
+ * @param {'query'|'passage'} kind - 文本类型。
+ * @param {string} text - 原始文本。
+ * @returns {Promise<number[]>} 单精度向量数组。
+ */
 async function generateTextEmbedding(kind, text) {
   const input = buildEmbeddingInput(kind, text)
   if (!input) return []
@@ -82,10 +116,20 @@ async function generateTextEmbedding(kind, text) {
   return vector.map((v) => Number(v) || 0)
 }
 
+/**
+ * 生成查询文本向量。
+ * @param {string} text - 查询文本。
+ * @returns {Promise<number[]>} 查询向量。
+ */
 async function generateTextEmbeddingForQuery(text) {
   return generateTextEmbedding('query', text)
 }
 
+/**
+ * 生成文档文本向量。
+ * @param {string} text - 文档文本。
+ * @returns {Promise<number[]>} 文档向量。
+ */
 async function generateTextEmbeddingForDocument(text) {
   return generateTextEmbedding('passage', text)
 }

@@ -6,17 +6,19 @@
  * @Description: 创建上传队列
  */
 const { createBullQueue } = require('../utils/bullmq/createBullQueue')
+const logger = require('../utils/logger')
+const { closeBullResources } = require('../utils/bullmq/closeBullResources')
 
 const { queue: mediaUploadQueue, connection } = createBullQueue({
   name: process.env.MEDIA_UPLOAD_QUEUE_NAME || 'media-upload'
 })
 
-function closeMediaUploadQueue() {
-  return Promise.resolve()
-    .then(() => mediaUploadQueue.close())
-    .catch(() => {})
-    .then(() => connection.quit?.())
-    .catch(() => {})
+/**
+ * 关闭上传队列及 Redis 连接（记录失败日志，不抛出）。
+ * @returns {Promise<void>} 无返回值。
+ */
+async function closeMediaUploadQueue() {
+  await closeBullResources({ queue: mediaUploadQueue, connection, logger, label: 'mediaUploadQueue' })
 }
 
 module.exports = { mediaUploadQueue, closeMediaUploadQueue }

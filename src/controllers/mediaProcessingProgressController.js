@@ -10,6 +10,7 @@ const { ERROR_CODES } = require('../constants/messageCodes')
 const { getRedisClient } = require('../services/redisClient')
 const { setupProgressStream } = require('../services/mediaProcessingProgressService')
 const logger = require('../utils/logger')
+const { throwInvalidParametersError } = require('../utils/requestParams')
 
 // 获取Redis客户端实例
 const redisClient = getRedisClient()
@@ -17,15 +18,17 @@ const redisClient = getRedisClient()
 /**
  * 图片处理进度推送流（SSE）
  * GET /progress/stream?sessionId=xxx
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @param {import('express').NextFunction} next - 错误传递函数。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 const progressStream = async (req, res, next) => {
   try {
     const { sessionId } = req.query
 
     if (!sessionId) {
-      throw new CustomError({
-        httpStatus: 400,
-        messageCode: ERROR_CODES.INVALID_PARAMETERS,
+      throwInvalidParametersError({
         messageType: 'error',
         details: 'sessionId is required'
       })

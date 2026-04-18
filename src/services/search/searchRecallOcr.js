@@ -3,6 +3,7 @@
  */
 const searchModel = require('../../models/mediaModel')
 const { scoreOcrTextLikeHits } = require('./searchCandidateScoring')
+const { splitByWhitespace } = require('../../utils/searchLexicalPipeline')
 
 /** 用户输入 → LOWER 后对 SQLite LIKE 转义 % _ \\，再包前后 %（与 recallMediaIdsByOcrTextLike 的 ESCAPE '\\\\' 配合）。 */
 /**
@@ -30,7 +31,7 @@ function applyOcrRecallForSegment({ segment, userId, whereConditions, whereParam
   if (!trimmed) {
     return { likeRows: 0 }
   }
-  const chunks = trimmed.split(/\s+/).filter(Boolean)
+  const chunks = splitByWhitespace(trimmed)
   const byId = new Map()
   for (const chunk of chunks) {
     const likePattern = buildOcrTextLikePattern(chunk)

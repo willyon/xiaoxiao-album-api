@@ -11,6 +11,9 @@ const { requireUserId, requireNonEmptyMediaIds, parseBoundedPagination } = requi
 /**
  * 分页获取已删除媒体列表
  * GET /api/trash?pageNo=1&pageSize=20
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function handleGetDeletedMedias(req, res) {
   const userId = requireUserId(req)
@@ -36,6 +39,9 @@ async function handleGetDeletedMedias(req, res) {
  * 恢复媒体
  * POST /images/trash/restore
  * Body: { mediaIds: number[] }
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function handleRestoreMedias(req, res) {
   const userId = requireUserId(req)
@@ -52,6 +58,9 @@ async function handleRestoreMedias(req, res) {
  * 彻底删除媒体
  * POST /images/trash/permanently-delete
  * Body: { mediaIds: number[] }
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function handlePermanentlyDeleteMedias(req, res) {
   const userId = requireUserId(req)
@@ -67,6 +76,9 @@ async function handlePermanentlyDeleteMedias(req, res) {
 /**
  * 清空回收站
  * POST /images/trash/clear
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>} 处理完成后无返回值。
  */
 async function handleClearTrash(req, res) {
   const userId = requireUserId(req)

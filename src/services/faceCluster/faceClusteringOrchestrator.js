@@ -5,10 +5,8 @@ const logger = require('../../utils/logger')
 const {
   getFaceEmbeddingsByUserId,
   getOldThumbnailPathsByUserId,
-  deleteFaceClustersByUserId,
   insertFaceClusters,
   getClusterStatsByUserId,
-  getFaceEmbeddingsByIds,
   getOldClusterNameMapping,
   getOldCoverMapping,
   restoreClusterNames,
@@ -18,13 +16,10 @@ const {
   getAllClusterRepresentativesByUserId,
   getMaxClusterIdForUser
 } = require('../../models/faceClusterModel')
-const storageService = require('../../services/storageService')
 const { checkPythonServiceHealth, clusterFaceEmbeddings } = require('./faceClusterPythonClient')
 const {
-  ensureRepresentativeCoverThumbnails,
   generateThumbnailsForClusters,
-  generateThumbnailForFaceEmbedding,
-  getRepresentativeStatusByThumbnailKeys
+  handleReclusterThumbnailMaintenance
 } = require('./faceClusterThumbnailPipeline')
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL
@@ -32,9 +27,9 @@ const INCREMENTAL_ASSIGN_MIN_SIMILARITY = Number(process.env.FACE_INCREMENTAL_AS
 
 /**
  * 计算余弦相似度。
- * @param {number[]} a 向量 A
- * @param {number[]} b 向量 B
- * @returns {number} 余弦相似度
+ * @param {number[]} a - 向量 A。
+ * @param {number[]} b - 向量 B。
+ * @returns {number} 余弦相似度。
  */
 function cosineSimilarity(a, b) {
   if (!a?.length || !b?.length || a.length !== b.length) return 0
@@ -52,8 +47,8 @@ function cosineSimilarity(a, b) {
 
 /**
  * 将未归属人脸增量分配给已有 cluster。
- * @param {number} userId 用户 ID
- * @returns {{assigned:number, skipped:number}}
+ * @param {number|string} userId - 用户 ID。
+ * @returns {{assigned:number, skipped:number}} 分配统计。
  */
 function incrementalAssignFacesToExistingClusters(userId) {
   const representatives = getAllClusterRepresentativesByUserId(userId)
@@ -97,11 +92,11 @@ function incrementalAssignFacesToExistingClusters(userId) {
 
 /**
  * 将 Python DBSCAN 结果映射为落库数据与缩略图输入。
- * @param {Array<{cluster_id:number, face_indices:number[]}>} clusters Python 聚类结果
- * @param {Array<{id:number}>} faceEmbeddings 人脸 embedding 列表
- * @param {number} newClusterIdStart 新簇起始 ID
- * @param {number} userId 用户 ID
- * @returns {{clusterData:any[], clustersForThumbnails:any[], noiseSingletonCount:number}}
+ * @param {Array<{cluster_id:number, face_indices:number[]}>} clusters - Python 聚类结果。
+ * @param {Array<{id:number}>} faceEmbeddings - 人脸 embedding 列表。
+ * @param {number} newClusterIdStart - 新簇起始 ID。
+ * @param {number|string} userId - 用户 ID。
+ * @returns {{clusterData:any[], clustersForThumbnails:any[], noiseSingletonCount:number}} 映射结果。
  */
 function buildClusterAssignmentsFromPython(clusters, faceEmbeddings, newClusterIdStart, userId) {
   const clusterData = []
@@ -174,6 +169,18 @@ function buildClusterAssignmentsFromPython(clusters, faceEmbeddings, newClusterI
   return { clusterData, clustersForThumbnails, noiseSingletonCount }
 }
 
+async function _assertPythonServiceHealthy() {
+  const healthCheckData = await checkPythonServiceHealth(PYTHON_SERVICE_URL)
+  if (!healthCheckData?.status || healthCheckData.status !== 'healthy') {
+    throw new Error(`Python 服务健康检查失败: ${JSON.stringify(healthCheckData)}`)
+  }
+  logger.info({ message: 'Python 服务健康检查通过', details: { serviceUrl: PYTHON_SERVICE_URL } })
+}
+
+async function _requestPythonClusters(requestBody) {
+  return clusterFaceEmbeddings(PYTHON_SERVICE_URL, requestBody)
+}
+
 /**
  * 执行人脸聚类主流程。
  * @param {{userId:number, threshold?:number, recluster?:boolean}} params 参数
@@ -206,11 +213,7 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
     }
 
     try {
-      const healthCheckData = await checkPythonServiceHealth(PYTHON_SERVICE_URL)
-      if (!healthCheckData?.status || healthCheckData.status !== 'healthy') {
-        throw new Error(`Python 服务健康检查失败: ${JSON.stringify(healthCheckData)}`)
-      }
-      logger.info({ message: 'Python 服务健康检查通过', details: { serviceUrl: PYTHON_SERVICE_URL } })
+      await _assertPythonServiceHealthy()
     } catch (error) {
       const errorMsg =
         error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT'
@@ -233,7 +236,7 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
 
     let responseData
     try {
-      responseData = await clusterFaceEmbeddings(PYTHON_SERVICE_URL, requestBody)
+      responseData = await _requestPythonClusters(requestBody)
     } catch (error) {
       if (error.code === 'ECONNREFUSED') {
         throw new Error(
@@ -271,11 +274,6 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       logger.info({ message: `找到 ${oldClusterNameMapping.size} 个有名称的旧聚类`, details: { userId } })
       oldCoverMapping = getOldCoverMapping(userId)
       logger.info({ message: `找到 ${oldCoverMapping.size} 个手动设置的封面`, details: { userId } })
-      const deleteResult = deleteFaceClustersByUserId(userId, { excludeUserAssigned: true })
-      logger.info({
-        message: `删除旧聚类数据: ${deleteResult.affectedRows} 条（已排除用户手动分配的记录）`,
-        details: { userId }
-      })
     }
 
     const nextClusterIdStart = getMaxClusterIdForUser(userId) + 1
@@ -291,7 +289,13 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       details: { userId, nextClusterIdStart, pythonClusterGroupCount: clusters.length, noiseSingletonClusters: noiseSingletonCount }
     })
 
-    const insertResult = insertFaceClusters(userId, clusterData)
+    const insertResult = insertFaceClusters(userId, clusterData, { replaceAutoExisting: recluster })
+    if (recluster) {
+      logger.info({
+        message: '已在同一事务内完成自动聚类替换（先删后插）',
+        details: { userId }
+      })
+    }
     const distinctClusterIds = [...new Set(clusterData.map((d) => d.clusterId))]
     for (const cid of distinctClusterIds) {
       computeAndUpsertClusterRepresentative(userId, cid)
@@ -345,95 +349,12 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
     })
 
     const generatedThumbnailPaths = await generateThumbnailsForClusters(userId, clustersForThumbnails, faceEmbeddings)
-    const coverCheckStats = await ensureRepresentativeCoverThumbnails(userId)
-    if (coverCheckStats.regenerated > 0 || coverCheckStats.failed > 0) {
-      logger.info({
-        message: '聚类后封面缩略图自愈完成',
-        details: {
-          userId,
-          checked: coverCheckStats.checked,
-          regenerated: coverCheckStats.regenerated,
-          failed: coverCheckStats.failed
-        }
-      })
-    }
-
-    if (recluster && oldCoverMapping && oldCoverMapping.size > 0) {
-      const manualCoverFaceIds = Array.from(oldCoverMapping.keys())
-      const faces = getFaceEmbeddingsByIds(manualCoverFaceIds)
-      let regeneratedCount = 0
-      for (const faceEmbedding of faces) {
-        if (faceEmbedding.face_thumbnail_storage_key) {
-          try {
-            const thumbnailKey = await generateThumbnailForFaceEmbedding(faceEmbedding.id, false)
-            if (thumbnailKey && thumbnailKey !== faceEmbedding.face_thumbnail_storage_key) {
-              regeneratedCount++
-            }
-          } catch (error) {
-            logger.warn({
-              message: `验证/生成手动封面缩略图失败: faceEmbeddingId=${faceEmbedding.id}`,
-              details: { userId, faceEmbeddingId: faceEmbedding.id, error: error.message }
-            })
-          }
-        }
-      }
-      if (regeneratedCount > 0) {
-        logger.info({
-          message: `为手动设置的封面重新生成了 ${regeneratedCount} 个缩略图`,
-          details: { userId }
-        })
-      }
-    }
-
-    if (recluster && oldThumbnailPaths.length > 0) {
-      const representativeStatusMap = getRepresentativeStatusByThumbnailKeys(userId, oldThumbnailPaths)
-      const newThumbnailPathsSet = new Set(generatedThumbnailPaths)
-      const thumbnailsToDelete = oldThumbnailPaths.filter((path) => {
-        if (newThumbnailPathsSet.has(path)) return false
-        const isRepresentative = representativeStatusMap.get(path)
-        if (isRepresentative === 1 || isRepresentative === 2) return false
-        return true
-      })
-
-      if (thumbnailsToDelete.length > 0) {
-        logger.info({
-          message: `开始清理 ${thumbnailsToDelete.length} 个不再使用的缩略图文件（另有 ${oldThumbnailPaths.length - thumbnailsToDelete.length} 个旧路径因仍被引用而保留，含手动封面与新默认封面）`,
-          details: {
-            userId,
-            totalOld: oldThumbnailPaths.length,
-            toDelete: thumbnailsToDelete.length,
-            preserved: oldThumbnailPaths.length - thumbnailsToDelete.length,
-            newDefaultCovers: generatedThumbnailPaths.length
-          }
-        })
-
-        let deletedCount = 0
-        let failedCount = 0
-        for (const thumbnailPath of thumbnailsToDelete) {
-          try {
-            await storageService.storage.deleteFile(thumbnailPath)
-            deletedCount++
-          } catch (error) {
-            failedCount++
-            if (error.code !== 'ENOENT' && error.status !== 404) {
-              logger.warn({
-                message: `删除不再使用的缩略图失败: ${thumbnailPath}`,
-                details: { userId, error: error.message }
-              })
-            }
-          }
-        }
-        logger.info({
-          message: `清理不再使用的缩略图完成: 成功 ${deletedCount} 个，失败 ${failedCount} 个`,
-          details: { userId, total: thumbnailsToDelete.length }
-        })
-      } else {
-        logger.info({
-          message: '所有旧缩略图仍在使用中或为手动设置的封面，无需清理',
-          details: { userId, totalOld: oldThumbnailPaths.length }
-        })
-      }
-    }
+    await handleReclusterThumbnailMaintenance({
+      userId,
+      generatedThumbnailPaths,
+      oldThumbnailPaths: recluster ? oldThumbnailPaths : [],
+      oldCoverMapping: recluster ? oldCoverMapping : null
+    })
 
     const stats = getClusterStatsByUserId(userId)
     return {

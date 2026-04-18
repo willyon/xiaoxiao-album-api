@@ -11,21 +11,33 @@ const { SEARCH_NOISE_TERMS } = require('../config/searchNoiseTerms')
 
 const ACTION_TERMS = new Set((SEARCH_ACTION_TERMS || []).map((t) => normalizeStopWordLookupKey(t)).filter(Boolean))
 
-/** 与 SEARCH_NOISE_TERMS 比对用的 key：纯 ASCII 整段则小写，否则原样（trim 后）。 */
+/**
+ * 规范化停用词匹配键。
+ * @param {string} s - 原始词项。
+ * @returns {string} 规范化匹配键。
+ */
 function normalizeStopWordLookupKey(s) {
   const t = String(s || '').trim()
   if (!t) return ''
   return /^[\x00-\x7f]+$/.test(t) ? t.toLowerCase() : t
 }
 
-/** 整段是否应视为噪声词：空/空白视为是；否则按 key 命中 SEARCH_NOISE_TERMS（短句 terms 切段丢弃、向量门闩 CJK 种子等可复用）。 */
+/**
+ * 判断整段文本是否为停用词。
+ * @param {string} segment - 待判断文本。
+ * @returns {boolean} 是否为停用词。
+ */
 function isStopWordWholeSegment(segment) {
   const t = String(segment || '').trim()
   if (!t) return true
   return SEARCH_NOISE_TERMS.has(normalizeStopWordLookupKey(t))
 }
 
-/** 仅剔除 SEARCH_NOISE_TERMS；供视觉 FTS MATCH 拼串 */
+/**
+ * 从 tokens 中移除停用词。
+ * @param {string[]} tokens - 词项列表。
+ * @returns {string[]} 过滤后的词项列表。
+ */
 function filterStopWordsFromTokens(tokens) {
   return (tokens || []).filter((t) => {
     if (!t) return false
@@ -35,7 +47,11 @@ function filterStopWordsFromTokens(tokens) {
   })
 }
 
-/** residual → 分词 → 仅剔除 SEARCH_NOISE_TERMS → 供视觉 FTS 拼串（不含同义词）；若为空则不做 FTS */
+/**
+ * 从 residual 文本提取核心词项。
+ * @param {string} residual - residual 查询文本。
+ * @returns {string[]} 核心词项列表。
+ */
 function getCoreTokensOnlyForResidual(residual) {
   const raw = String(residual || '').trim()
   if (!raw) {
@@ -44,6 +60,11 @@ function getCoreTokensOnlyForResidual(residual) {
   return filterStopWordsFromTokens(segmentFieldForSearchTerms(raw))
 }
 
+/**
+ * 提取包含动作词的同义词组。
+ * @param {Array<string[]>} groups - 同义词分组。
+ * @returns {Array<string[]>} 动作相关分组。
+ */
 function extractActionGroups(groups) {
   const out = []
   for (const group of groups || []) {
@@ -56,6 +77,11 @@ function extractActionGroups(groups) {
   return out
 }
 
+/**
+ * 计算同义词分组最小命中数要求。
+ * @param {number} groupCount - 分组总数。
+ * @returns {number} 最小命中分组数。
+ */
 function calcRequiredGroupHits(groupCount) {
   const n = Number(groupCount) || 0
   if (n <= 0) return 0
@@ -63,6 +89,12 @@ function calcRequiredGroupHits(groupCount) {
   return Math.min(n - 1, 3)
 }
 
+/**
+ * 判断文本是否命中某个词组。
+ * @param {string} text - 待匹配文本。
+ * @param {string[]} group - 词组。
+ * @returns {boolean} 是否命中。
+ */
 function groupMatched(text, group) {
   for (const token of group || []) {
     const t = String(token || '').toLowerCase()
@@ -75,7 +107,8 @@ function groupMatched(text, group) {
 /**
  * @param {string} descriptionText - media_search.description_text
  * @param {string[]} tokens - 扩展后的字面词表（如 `buildVisualEmbeddingGateLexicalSpec(residual).tokens`）
- * @returns {boolean}
+ * @param {{minHits?:number,actionTokens?:string[],synonymGroups?:Array<string[]>,requiredGroupHits?:number|null,actionGroups?:Array<string[]>}} [options={}] - 门闩选项。
+ * @returns {boolean} 是否通过字面门闩。
  */
 function passLexicalGate(descriptionText, tokens, options = {}) {
   const { minHits = 1, actionTokens = [], synonymGroups = [], requiredGroupHits = null, actionGroups = [] } = options || {}

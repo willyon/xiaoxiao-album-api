@@ -1,17 +1,16 @@
 /*
  * @Description: 媒体智能分析 Worker（消费 mediaAnalysisQueue）
  */
-const { Worker } = require('bullmq')
-const IORedis = require('ioredis')
 const logger = require('../utils/logger')
-const { attachStandardFailedLogging } = require('../utils/bullmq/bullmqWorkerTelemetry')
-const initGracefulShutdown = require('../utils/gracefulShutdown')
 const { processMediaAnalysis } = require('./mediaAnalysisIngestor')
-
-const connection = new IORedis({ maxRetriesPerRequest: null })
+const { createStandardWorker } = require('../utils/bullmq/createStandardWorker')
 
 const QUEUE_NAME = process.env.MEDIA_ANALYSIS_QUEUE_NAME || 'mediaAnalysisQueue'
 
+/**
+ * 解析媒体分析 Worker 并发度配置。
+ * @returns {number} 并发数。
+ */
 function resolveWorkerConcurrency() {
   const envValue = Number(process.env.MEDIA_ANALYSIS_WORKER_CONCURRENCY)
   if (!Number.isNaN(envValue) && envValue > 0) return envValue
@@ -20,29 +19,24 @@ function resolveWorkerConcurrency() {
 
 const CONCURRENCY = resolveWorkerConcurrency()
 
-const worker = new Worker(
-  QUEUE_NAME,
-  async (job) => {
-    await processMediaAnalysis(job)
-  },
-  { connection, concurrency: CONCURRENCY }
-)
+/**
+ * 处理单个媒体分析任务。
+ * @param {import('bullmq').Job} job - BullMQ 任务对象。
+ * @returns {Promise<void>} 无返回值。
+ */
+const processMediaAnalysisJob = async (job) => {
+  await processMediaAnalysis(job)
+}
 
-logger.info({ message: `mediaAnalysisWorker 已启动，队列名=${QUEUE_NAME}，并发数=${CONCURRENCY}` })
-
-worker.on('completed', (job) => {
-  logger.info({
-    message: 'mediaAnalysisWorker.completed',
-    details: { jobId: job.id, data: job.data }
-  })
-})
-
-attachStandardFailedLogging(worker, QUEUE_NAME, { logPrefix: 'mediaAnalysisWorker' })
-
-worker.on('stalled', (jobId) => {
-  logger.warn({ message: 'mediaAnalysisWorker.stalled', details: { jobId } })
-})
-
-initGracefulShutdown({
-  extraClosers: [async () => worker.close(), async () => connection.quit()]
+createStandardWorker({
+  queueName: QUEUE_NAME,
+  processor: processMediaAnalysisJob,
+  concurrency: CONCURRENCY,
+  logPrefix: 'mediaAnalysisWorker',
+  onCompleted: (job) => {
+    logger.info({
+      message: 'mediaAnalysisWorker.completed',
+      details: { jobId: job.id, data: job.data }
+    })
+  }
 })

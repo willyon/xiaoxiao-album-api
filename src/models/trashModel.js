@@ -9,12 +9,12 @@ const { mapFields } = require("../utils/fieldMapper");
 
 /**
  * 分页查询用户已删除的图片
- * @param {Object} params
- * @param {number} params.userId - 用户ID
+ * @param {Object} params - 查询参数。
+ * @param {number|string} params.userId - 用户ID
  * @param {number} params.pageNo - 页码（从1开始）
  * @param {number} params.pageSize - 每页数量
- * @param {string} [params.mediaType] - 媒体类型：'all' | 'image' | 'video'
- * @returns {Object} { data: Array, total: number }
+ * @param {'all'|'image'|'video'} [params.mediaType] - 媒体类型：'all' | 'image' | 'video'
+ * @returns {{data:Array<object>,total:number}} { data: Array, total: number }
  */
 function selectDeletedMediasByPage({ userId, pageNo, pageSize, mediaType }) {
   const offset = (pageNo - 1) * pageSize;
@@ -56,24 +56,20 @@ function selectDeletedMediasByPage({ userId, pageNo, pageSize, mediaType }) {
       ${mediaCondition}
   `);
 
-  try {
-    const data = dataQuery.all(userId, ...mediaParam, pageSize, offset);
-    const { total } = countQuery.get(userId, ...mediaParam);
+  const data = dataQuery.all(userId, ...mediaParam, pageSize, offset);
+  const { total } = countQuery.get(userId, ...mediaParam);
 
-    return {
-      data: mapFields("media", data),
-      total: total || 0,
-    };
-  } catch (error) {
-    throw error;
-  }
+  return {
+    data: mapFields("media", data),
+    total: total || 0,
+  };
 }
 
 /**
  * 查询指定ID的已删除图片（用于权限验证）
- * @param {number} userId - 用户ID
- * @param {Array<number>} mediaIds - 图片ID数组
- * @returns {Array} 图片信息数组
+ * @param {number|string} userId - 用户ID
+ * @param {Array<number|string>} mediaIds - 图片ID数组
+ * @returns {Array<object>} 图片信息数组
  */
 function selectDeletedMediasByIds(userId, mediaIds) {
   if (!mediaIds || mediaIds.length === 0) return [];
@@ -96,8 +92,8 @@ function selectDeletedMediasByIds(userId, mediaIds) {
 
 /**
  * 恢复图片（将 deleted_at 设为 NULL）
- * @param {Array<number>} mediaIds - 图片ID数组
- * @returns {Object} { changes: number }
+ * @param {Array<number|string>} mediaIds - 图片ID数组
+ * @returns {{changes:number}} { changes: number }
  */
 function restoreMedias(mediaIds) {
   if (!mediaIds || mediaIds.length === 0) return { changes: 0 };
@@ -113,8 +109,8 @@ function restoreMedias(mediaIds) {
 
 /**
  * 彻底删除图片（物理删除数据库记录，仅限回收站内 deleted_at IS NOT NULL）
- * @param {Array<number>} mediaIds - 图片ID数组（必须已在回收站）
- * @returns {Object} { changes: number }
+ * @param {Array<number|string>} mediaIds - 图片ID数组（必须已在回收站）
+ * @returns {{changes:number}} { changes: number }
  */
 function permanentlyDeleteMedias(mediaIds) {
   if (!mediaIds || mediaIds.length === 0) return { changes: 0 };
@@ -129,8 +125,8 @@ function permanentlyDeleteMedias(mediaIds) {
 
 /**
  * 清空用户的回收站（物理删除所有已删除图片）
- * @param {number} userId - 用户ID
- * @returns {Object} { changes: number }
+ * @param {number|string} userId - 用户ID
+ * @returns {{changes:number}} { changes: number }
  */
 function clearTrash(userId) {
   const stmt = db.prepare(`
@@ -143,9 +139,9 @@ function clearTrash(userId) {
 
 /**
  * 获取需要删除文件的图片信息（仅回收站内 deleted_at IS NOT NULL）
- * @param {number} userId - 用户ID
- * @param {Array<number>} mediaIds - 图片ID数组
- * @returns {Array} 图片信息数组
+ * @param {number|string} userId - 用户ID
+ * @param {Array<number|string>} mediaIds - 图片ID数组
+ * @returns {Array<object>} 图片信息数组
  */
 function selectMediasForFileDeletion(userId, mediaIds) {
   if (!mediaIds || mediaIds.length === 0) return [];
@@ -168,8 +164,8 @@ function selectMediasForFileDeletion(userId, mediaIds) {
 
 /**
  * 获取清空回收站时需要删除文件的图片信息
- * @param {number} userId - 用户ID
- * @returns {Array} 图片信息数组
+ * @param {number|string} userId - 用户ID
+ * @returns {Array<object>} 图片信息数组
  */
 function selectTrashMediasForFileDeletion(userId) {
   const stmt = db.prepare(`

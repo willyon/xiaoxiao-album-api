@@ -5,6 +5,12 @@
 const RBush = require('rbush')
 const { booleanPointInPolygon } = require('@turf/boolean-point-in-polygon')
 
+/**
+ * 递归遍历 GeoJSON 坐标并回调每个点。
+ * @param {any} coords - GeoJSON coordinates。
+ * @param {(x:number,y:number)=>void} cb - 点回调。
+ * @returns {void} 无返回值。
+ */
 function walkCoords(coords, cb) {
   if (!coords || typeof coords !== 'object') return
   if (typeof coords[0] === 'number' && typeof coords[1] === 'number') {
@@ -36,6 +42,11 @@ function geometryBBox(geometry) {
   return { minX, minY, maxX, maxY }
 }
 
+/**
+ * 计算包围盒面积。
+ * @param {{minX:number,minY:number,maxX:number,maxY:number}} b - 包围盒。
+ * @returns {number} 面积值。
+ */
 function bboxArea(b) {
   return (b.maxX - b.minX) * (b.maxY - b.minY)
 }

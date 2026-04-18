@@ -22,7 +22,6 @@ const crypto = require('crypto')
  * @param {string|Buffer} input - 文件路径（string）或Buffer数据
  * @param {('sha256'|'md5'|'sha1')} [algo='sha256'] - 哈希算法；默认更安全的 sha256
  * @returns {Promise<string>} 以十六进制（hex）字符串形式返回的哈希值
- *
  */
 function computeFileHash(input, algo = 'sha256') {
   return new Promise((resolve, reject) => {

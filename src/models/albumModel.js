@@ -8,7 +8,20 @@ const { db } = require("../db");
 const { mapFields } = require("../utils/fieldMapper");
 
 /**
+ * 规范化可选相册 ID 参数（空值返回 null）。
+ * @param {number|string|null|undefined} raw - 原始相册 ID。
+ * @returns {number|null} 规范化后的相册 ID。
+ */
+function normalizeOptionalAlbumId(raw) {
+  if (raw == null || raw === "") return null;
+  const n = parseInt(raw, 10);
+  return Number.isNaN(n) ? null : n;
+}
+
+/**
  * 创建相册
+ * @param {{userId:number|string,name:string,description?:string|null}} params - 创建参数。
+ * @returns {{albumId:number|bigint,affectedRows:number}} 创建结果。
  */
 function createAlbum({ userId, name, description }) {
   const sql = `
@@ -27,6 +40,8 @@ function createAlbum({ userId, name, description }) {
 
 /**
  * 获取用户的相册列表
+ * @param {{userId:number|string,includeDeleted?:boolean,search?:string|null,excludeAlbumId?:number|string|null}} params - 查询参数。
+ * @returns {Array<object>} 相册列表。
  */
 function getAlbumsByUserId({ userId, includeDeleted = false, search = null, excludeAlbumId = null }) {
   let sql = `
@@ -55,9 +70,10 @@ function getAlbumsByUserId({ userId, includeDeleted = false, search = null, excl
     params.push(searchPattern, searchPattern);
   }
 
-  if (excludeAlbumId != null && excludeAlbumId !== "") {
+  const normalizedExcludeAlbumId = normalizeOptionalAlbumId(excludeAlbumId);
+  if (normalizedExcludeAlbumId != null) {
     sql += " AND id != ?";
-    params.push(parseInt(excludeAlbumId, 10));
+    params.push(normalizedExcludeAlbumId);
   }
 
   sql += " ORDER BY COALESCE(last_used_at, created_at) DESC";
@@ -72,6 +88,8 @@ function getAlbumsByUserId({ userId, includeDeleted = false, search = null, excl
 /**
  * 获取最近使用的相册（创建时间与上次添加/删除图片时间取较晚者倒序，取前 limit 个）
  * excludeAlbumId 可选，排除指定相册（如当前相册）
+ * @param {{userId:number|string,limit?:number,excludeAlbumId?:number|string|null}} params - 查询参数。
+ * @returns {Array<object>} 最近相册列表。
  */
 function getRecentAlbumsByUserId({ userId, limit = 8, excludeAlbumId = null }) {
   let sql = `
@@ -88,9 +106,10 @@ function getRecentAlbumsByUserId({ userId, limit = 8, excludeAlbumId = null }) {
     WHERE user_id = ? AND deleted_at IS NULL
   `;
   const params = [userId];
-  if (excludeAlbumId != null && excludeAlbumId !== "") {
+  const normalizedExcludeAlbumId = normalizeOptionalAlbumId(excludeAlbumId);
+  if (normalizedExcludeAlbumId != null) {
     sql += " AND id != ?";
-    params.push(parseInt(excludeAlbumId, 10));
+    params.push(normalizedExcludeAlbumId);
   }
   sql += " ORDER BY COALESCE(last_used_at, created_at) DESC LIMIT ?";
   params.push(limit);
@@ -101,13 +120,16 @@ function getRecentAlbumsByUserId({ userId, limit = 8, excludeAlbumId = null }) {
 
 /**
  * 获取用户相册总数（用于判断是否显示「选择其他相册」，与 getAlbumsByUserId 条件一致）
+ * @param {{userId:number|string,excludeAlbumId?:number|string|null}} params - 统计参数。
+ * @returns {number} 相册总数。
  */
 function getAlbumsCountByUserId({ userId, excludeAlbumId = null }) {
   let sql = "SELECT COUNT(*) AS total FROM albums WHERE user_id = ? AND deleted_at IS NULL";
   const params = [userId];
-  if (excludeAlbumId != null && excludeAlbumId !== "") {
+  const normalizedExcludeAlbumId = normalizeOptionalAlbumId(excludeAlbumId);
+  if (normalizedExcludeAlbumId != null) {
     sql += " AND id != ?";
-    params.push(parseInt(excludeAlbumId, 10));
+    params.push(normalizedExcludeAlbumId);
   }
   const stmt = db.prepare(sql);
   const row = stmt.get(...params);
@@ -116,6 +138,8 @@ function getAlbumsCountByUserId({ userId, excludeAlbumId = null }) {
 
 /**
  * 获取相册详情
+ * @param {{albumId:number|string,userId:number|string}} params - 查询参数。
+ * @returns {object|null} 相册详情或 null。
  */
 function getAlbumById({ albumId, userId }) {
   const sql = `
@@ -141,6 +165,8 @@ function getAlbumById({ albumId, userId }) {
 
 /**
  * 更新相册信息
+ * @param {{albumId:number|string,userId:number|string,name?:string,description?:string,coverImageId?:number|string}} params - 更新参数。
+ * @returns {{affectedRows:number}} 更新结果。
  */
 function updateAlbum({ albumId, userId, name, description, coverImageId }) {
   const updates = [];
@@ -182,6 +208,8 @@ function updateAlbum({ albumId, userId, name, description, coverImageId }) {
 /**
  * 删除相册（物理删除相册记录，并删除与之关联的 album_media 关系）
  * 注意：不会删除 media 表中的任何媒体，只是移除了相册分类关系
+ * @param {{albumId:number|string,userId:number|string}} params - 删除参数。
+ * @returns {{affectedRows:number}} 删除结果。
  */
 function deleteAlbum({ albumId, userId }) {
   // 先删除相册与图片的关联关系
@@ -204,6 +232,8 @@ function deleteAlbum({ albumId, userId }) {
 
 /**
  * 更新相册的「上次使用时间」（添加/删除图片时调用）
+ * @param {number|string} albumId - 相册 ID。
+ * @returns {void} 无返回值。
  */
 function updateAlbumLastUsedAt(albumId) {
   const now = Date.now();
@@ -212,6 +242,8 @@ function updateAlbumLastUsedAt(albumId) {
 
 /**
  * 添加图片到相册
+ * @param {{albumId:number|string,mediaIds:Array<number|string>}} params - 添加参数。
+ * @returns {{addedCount:number,skippedCount:number}} 添加结果。
  */
 function addMediasToAlbum({ albumId, mediaIds }) {
   const insertSql = `
@@ -231,9 +263,7 @@ function addMediasToAlbum({ albumId, mediaIds }) {
   }
 
   if (addedCount > 0) {
-    updateAlbumMediaCount(albumId);
-    updateAlbumCover(albumId);
-    updateAlbumLastUsedAt(albumId);
+    refreshAlbumStats(albumId, { touchLastUsedAt: true });
   }
 
   return {
@@ -244,6 +274,8 @@ function addMediasToAlbum({ albumId, mediaIds }) {
 
 /**
  * 从相册中移除图片
+ * @param {{albumId:number|string,mediaIds:Array<number|string>}} params - 移除参数。
+ * @returns {{affectedRows:number}} 删除结果。
  */
 function removeMediasFromAlbum({ albumId, mediaIds }) {
   const deleteSql = `
@@ -255,9 +287,7 @@ function removeMediasFromAlbum({ albumId, mediaIds }) {
   const result = stmt.run(albumId, ...mediaIds);
 
   if (result.changes > 0) {
-    updateAlbumMediaCount(albumId);
-    updateAlbumCover(albumId);
-    updateAlbumLastUsedAt(albumId);
+    refreshAlbumStats(albumId, { touchLastUsedAt: true });
   }
 
   return { affectedRows: result.changes };
@@ -265,6 +295,7 @@ function removeMediasFromAlbum({ albumId, mediaIds }) {
 
 /**
  * 获取相册内全部图片的时间范围（用于展示「整个相册」时间范围）
+ * @param {number|string} albumId - 相册 ID。
  * @returns {{ earliest: number, latest: number } | null} 毫秒时间戳，无图片时返回 null
  */
 function getAlbumTimeRange(albumId) {
@@ -283,6 +314,8 @@ function getAlbumTimeRange(albumId) {
 
 /**
  * 检查媒体是否在相册中
+ * @param {{albumId:number|string,mediaId:number|string}} params - 查询参数。
+ * @returns {boolean} 是否在相册中。
  */
 function isMediaInAlbum({ albumId, mediaId }) {
   const sql = `
@@ -301,6 +334,8 @@ function isMediaInAlbum({ albumId, mediaId }) {
 /**
  * 更新相册的图片数量（物化字段）
  * 注意：只统计未删除的图片（i.deleted_at IS NULL）
+ * @param {number|string} albumId - 相册 ID。
+ * @returns {void} 无返回值。
  */
 function updateAlbumMediaCount(albumId) {
   const sql = `
@@ -321,6 +356,8 @@ function updateAlbumMediaCount(albumId) {
 
 /**
  * 更新相册封面（选择最新添加的媒体，排除音频）
+ * @param {number|string} albumId - 相册 ID。
+ * @returns {void} 无返回值。
  */
 function updateAlbumCover(albumId) {
   const sql = `
@@ -343,6 +380,8 @@ function updateAlbumCover(albumId) {
 
 /**
  * 设置相册封面图片
+ * @param {{albumId:number|string,mediaId:number|string}} params - 设置参数。
+ * @returns {{affectedRows:number}} 设置结果。
  */
 function setAlbumCover({ albumId, mediaId }) {
   const exists = isMediaInAlbum({ albumId, mediaId });
@@ -365,6 +404,8 @@ function setAlbumCover({ albumId, mediaId }) {
 
 /**
  * 获取相册的封面媒体ID
+ * @param {number|string} albumId - 相册 ID。
+ * @returns {number|null} 封面媒体 ID。
  */
 function getAlbumCoverMediaId(albumId) {
   const sql = `
@@ -379,6 +420,8 @@ function getAlbumCoverMediaId(albumId) {
 
 /**
  * 切换媒体的喜欢状态（仅更新 media.is_favorite）
+ * @param {{userId:number|string,mediaId:number|string,isFavorite:boolean}} params - 更新参数。
+ * @returns {{mediaId:number|string,isFavorite:boolean,affectedRows:number}} 更新结果。
  */
 function toggleFavoriteMedia({ userId, mediaId, isFavorite }) {
   const updateImageSql = `
@@ -397,6 +440,8 @@ function toggleFavoriteMedia({ userId, mediaId, isFavorite }) {
 
 /**
  * 获取包含指定图片的所有相册ID（仅未删除的相册）
+ * @param {Array<number|string>} mediaIds - 媒体 ID 列表。
+ * @returns {number[]} 相册 ID 列表。
  */
 function getAlbumsContainingMedias(mediaIds) {
   if (!mediaIds || mediaIds.length === 0) return [];
@@ -417,6 +462,8 @@ function getAlbumsContainingMedias(mediaIds) {
 
 /**
  * 批量更新相册的图片数量和封面（仅统计未删除的图片）
+ * @param {Array<number|string>} mediaIds - 媒体 ID 列表。
+ * @returns {void} 无返回值。
  */
 function updateAlbumsStatsForMedias(mediaIds) {
   if (!mediaIds || mediaIds.length === 0) return;
@@ -425,41 +472,24 @@ function updateAlbumsStatsForMedias(mediaIds) {
   const albumIds = getAlbumsContainingMedias(mediaIds);
   if (albumIds.length === 0) return;
 
-  const now = Date.now();
-
   // 批量更新每个相册的统计信息
   albumIds.forEach((albumId) => {
-    // 更新图片数量（只统计未删除的图片）
-    const updateCountSql = `
-      UPDATE albums
-      SET media_count = (
-        SELECT COUNT(*)
-        FROM album_media ai
-        INNER JOIN media i ON ai.media_id = i.id
-        WHERE ai.album_id = ?
-          AND i.deleted_at IS NULL
-      ),
-      updated_at = ?
-      WHERE id = ?
-    `;
-    db.prepare(updateCountSql).run(albumId, now, albumId);
-
-    // 更新封面（选择最新添加的未删除图片）
-    const updateCoverSql = `
-      UPDATE albums
-      SET cover_media_id = (
-        SELECT ai.media_id
-        FROM album_media ai
-        INNER JOIN media i ON ai.media_id = i.id
-        WHERE ai.album_id = ?
-          AND i.deleted_at IS NULL
-        ORDER BY ai.added_at DESC, ai.media_id DESC
-        LIMIT 1
-      )
-      WHERE id = ?
-    `;
-    db.prepare(updateCoverSql).run(albumId, albumId);
+    refreshAlbumStats(albumId);
   });
+}
+
+/**
+ * 刷新相册统计信息（图片数量、封面、更新时间，可选更新上次使用时间）。
+ * @param {number|string} albumId - 相册 ID。
+ * @param {{touchLastUsedAt?:boolean}} [options] - 刷新选项。
+ * @returns {void} 无返回值。
+ */
+function refreshAlbumStats(albumId, { touchLastUsedAt = false } = {}) {
+  updateAlbumMediaCount(albumId);
+  updateAlbumCover(albumId);
+  if (touchLastUsedAt) {
+    updateAlbumLastUsedAt(albumId);
+  }
 }
 
 module.exports = {
@@ -477,6 +507,7 @@ module.exports = {
   setAlbumCover,
   updateAlbumMediaCount,
   updateAlbumCover,
+  refreshAlbumStats,
   getAlbumsContainingMedias,
   updateAlbumsStatsForMedias,
   getAlbumCoverMediaId,
