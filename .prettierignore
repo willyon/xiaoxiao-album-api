@@ -9,5 +9,4 @@ database/
 *.db-wal
 *.db-shm
 .env
-python-ai-service/
 models/

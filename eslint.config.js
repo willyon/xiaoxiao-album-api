@@ -5,7 +5,7 @@ const eslintConfigPrettier = require('eslint-config-prettier')
 module.exports = [
   // 全局忽略：依赖目录、构建产物、运行时数据目录、Python 子项目
   {
-    ignores: ['node_modules/**', 'backend-dist/**', 'logs/**', 'storage-local/**', 'python-ai-service/**']
+    ignores: ['node_modules/**', 'backend-dist/**', 'logs/**', 'storage-local/**']
   },
   // ESLint 官方推荐规则（JS 基础问题）
   js.configs.recommended,

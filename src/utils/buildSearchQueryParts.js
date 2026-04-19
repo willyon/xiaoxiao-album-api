@@ -78,13 +78,16 @@ function buildSearchQueryParts(filters, options = {}) {
   }
 
   if (filters.aiAnalysisStatus && filters.aiAnalysisStatus !== '' && filters.aiAnalysisStatus !== 'all') {
-    // 旧逻辑依赖 media.analysis_status（已废弃），这里改为使用 analysis_status_primary：
-    // - analyzed: 主分析成功（success）
-    // - notAnalyzed: 主分析未完成 / 失败 / 未开始
-    if (filters.aiAnalysisStatus === 'analyzed') {
-      whereConditions.push("i.analysis_status_primary = 'success'")
-    } else if (filters.aiAnalysisStatus === 'notAnalyzed') {
-      whereConditions.push("(i.analysis_status_primary IS NULL OR i.analysis_status_primary != 'success')")
+    // analysis_status_primary：NULL=尚无终态（排队/进行中/未写库）| 'success' | 'failed'（见 initTableModel）
+    // - completed：主分析已结束（成功或失败均算「已完成」）
+    // - incomplete：尚未写入终态（含未开始、队列中等）
+    const s = filters.aiAnalysisStatus
+    if (s === 'completed') {
+      whereConditions.push("i.analysis_status_primary IN ('success', 'failed')")
+    } else if (s === 'incomplete') {
+      whereConditions.push(
+        "(i.analysis_status_primary IS NULL OR i.analysis_status_primary NOT IN ('success', 'failed'))"
+      )
     }
   }
 
@@ -163,10 +166,11 @@ function buildSearchQueryParts(filters, options = {}) {
   }
 
   if (filters.ageGroup && Array.isArray(filters.ageGroup) && filters.ageGroup.length > 0) {
+    // 键须与 `constants/filterMappings.js` 中 AGE_GROUP_FRONTEND_TO_BACKEND 的值及 FairFace 桶一致（如 3-9、10-19）
     const ageRangeMap = {
       '0-2': [0, 2],
-      '3-12': [3, 12],
-      '13-19': [13, 19],
+      '3-9': [3, 9],
+      '10-19': [10, 19],
       '20-29': [20, 29],
       '30-39': [30, 39],
       '40-49': [40, 49],

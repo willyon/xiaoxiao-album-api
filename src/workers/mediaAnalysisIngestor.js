@@ -22,11 +22,8 @@ const { bullMqWillRetryAfterThisFailure } = require('../utils/bullmq/queuePipeli
 const { scheduleUserRebuild } = require('../services/cleanupGroupingScheduler')
 const { scheduleUserClustering } = require('../services/faceCluster')
 const { buildCaptionForDb, mapCaptionModuleStatus } = require('../utils/caption/captionNormalization')
+const { ANALYZE_IMAGE_TIMEOUT_MS, ANALYZE_VIDEO_TIMEOUT_MS } = require('../utils/pythonServiceAnalyze')
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL
-// 图片分析超时：仅认 ANALYZE_IMAGE_TIMEOUT_MS，默认 120 秒
-const ANALYZE_IMAGE_TIMEOUT_MS = Number(process.env.ANALYZE_IMAGE_TIMEOUT_MS || 120000)
-/** 视频多帧分析，默认 10 分钟；可通过 ANALYZE_VIDEO_TIMEOUT_MS 覆盖 */
-const ANALYZE_VIDEO_TIMEOUT_MS = Number(process.env.ANALYZE_VIDEO_TIMEOUT_MS || 600000)
 // 与 .env 的 ANALYZE_IMAGE_USE_LOCAL_PATH 对应：未设置或 true → 本地存储时优先传 image_path；为 false 时强制 multipart
 const ANALYZE_IMAGE_USE_LOCAL_PATH = process.env.ANALYZE_IMAGE_USE_LOCAL_PATH !== 'false'
 

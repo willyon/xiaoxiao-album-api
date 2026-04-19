@@ -1,8 +1,12 @@
 /**
  * 视觉召回层：负责 residual 相关的视觉 FTS、短词 terms、向量召回与词法门闩。
  */
-const searchModel = require('../../models/mediaModel')
-const { listVisualTextEmbeddingRowsForRecall } = require('../../models/mediaModel')
+const {
+  listVisualTextEmbeddingRowsForRecall,
+  recallMediaIdsByFiltersOnly,
+  recallMediaIdsByChineseTerms,
+  recallMediaIdsByFts
+} = require('../../models/mediaModel')
 const { CHINESE_QUERY_TERM_BOOST } = require('../../config/searchRankingWeights')
 const { containsChinese, segmentLengthUnits } = require('../../utils/searchTermUtils')
 const { SANITIZE_FTS_TOKEN_CHAR_PATTERN } = require('../../utils/cjkRegex')
@@ -209,7 +213,7 @@ async function applyVisualRecallForSegment({ segment, residual, hasStructured, u
   let semanticRows = 0
 
   if (!residual && hasStructured) {
-    const filterRows = searchModel.recallMediaIdsByFiltersOnly({
+    const filterRows = recallMediaIdsByFiltersOnly({
       userId,
       whereConditions,
       whereParams
@@ -230,7 +234,7 @@ async function applyVisualRecallForSegment({ segment, residual, hasStructured, u
       if (groups.length > 0) {
         let allowedIds = null
         for (const terms of groups) {
-          const rows = searchModel.recallMediaIdsByChineseTerms({
+          const rows = recallMediaIdsByChineseTerms({
             userId,
             terms,
             whereConditions,
@@ -251,7 +255,7 @@ async function applyVisualRecallForSegment({ segment, residual, hasStructured, u
           .sort(compareChineseQueryTermMeta)
 
         if (queryTerms.length > 0 && allowedIds && allowedIds.size > 0) {
-          const termRowsDataAll = searchModel.recallMediaIdsByChineseTerms({
+          const termRowsDataAll = recallMediaIdsByChineseTerms({
             userId,
             terms: queryTerms.map((item) => item.term),
             whereConditions,
@@ -269,7 +273,7 @@ async function applyVisualRecallForSegment({ segment, residual, hasStructured, u
     const wrapped = inner ? wrapFtsQueryForVisualColumnsOnly(inner) : null
     const visualFtsIds = new Set()
     if (wrapped) {
-      const rows = searchModel.recallMediaIdsByFts({
+      const rows = recallMediaIdsByFts({
         userId,
         ftsQuery: wrapped,
         whereConditions,

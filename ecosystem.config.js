@@ -8,6 +8,9 @@
  * • Node.js Workers (图片上传、元数据处理、云模型字幕、搜索索引)
  * • Python AI 服务 (人脸识别、图片理解等)
  */
+const path = require('path')
+const APP_ROOT = path.resolve(__dirname)
+
 module.exports = {
   apps: [
     // ========== Node.js 服务 ==========
@@ -16,7 +19,7 @@ module.exports = {
       script: 'server.js',
       node_args: '-r dotenv/config',
       // cwd: "/var/www/photos.bingbingcloud.com/backend", // 绝对路径
-      cwd: '.', // 相对路径
+      cwd: APP_ROOT,
       watch: false,
       max_restarts: 5,
       env: {
@@ -28,7 +31,7 @@ module.exports = {
       script: 'src/workers/mediaUploadWorker.js',
       node_args: '-r dotenv/config',
       // cwd: "/var/www/photos.bingbingcloud.com/backend", // 绝对路径
-      cwd: '.', // 相对路径
+      cwd: APP_ROOT,
       watch: false,
       max_restarts: 5,
       env: {
@@ -40,7 +43,7 @@ module.exports = {
       script: 'src/workers/mediaMetaWorker.js',
       node_args: '-r dotenv/config',
       // cwd: "/var/www/photos.bingbingcloud.com/backend", // 绝对路径
-      cwd: '.', // 相对路径
+      cwd: APP_ROOT,
       watch: false,
       max_restarts: 5,
       env: {
@@ -51,7 +54,7 @@ module.exports = {
       name: 'cloud-caption-worker',
       script: 'src/workers/cloudCaptionWorker.js',
       node_args: '-r dotenv/config',
-      cwd: '.',
+      cwd: APP_ROOT,
       watch: false,
       max_restarts: 5,
       env: {
@@ -62,7 +65,7 @@ module.exports = {
       name: 'map-regeo-worker',
       script: 'src/workers/mapRegeoWorker.js',
       node_args: '-r dotenv/config',
-      cwd: '.',
+      cwd: APP_ROOT,
       watch: false,
       max_restarts: 5,
       env: {
@@ -74,7 +77,7 @@ module.exports = {
       name: 'cleanup-rebuild-all',
       script: 'scripts/development/rebuild-similar-groups.js',
       node_args: '-r dotenv/config',
-      cwd: '.',
+      cwd: APP_ROOT,
       // 定时执行：每天凌晨 3 点执行一次
       cron: '0 3 * * *',
       // 执行完成后自动退出，不常驻

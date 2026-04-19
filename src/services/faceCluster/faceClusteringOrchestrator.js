@@ -217,7 +217,7 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
     } catch (error) {
       const errorMsg =
         error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT'
-          ? `无法连接到 Python 服务 (${PYTHON_SERVICE_URL})。请确保服务正在运行。\n提示: 可以运行 "cd python-ai-service && python3 start.py" 启动服务`
+          ? `无法连接到 Python 服务 (${PYTHON_SERVICE_URL})。请确保服务正在运行。\n提示: 在与本服务并列的 xiaoxiao-album-ai 目录执行 python3 start.py`
           : `Python 服务健康检查失败: ${error.message}`
       logger.error({
         message: errorMsg,
@@ -240,7 +240,7 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
     } catch (error) {
       if (error.code === 'ECONNREFUSED') {
         throw new Error(
-          `无法连接到 Python 服务 (${PYTHON_SERVICE_URL})。请确保服务正在运行。\n提示: 可以运行 "cd python-ai-service && python3 start.py" 启动服务`
+          `无法连接到 Python 服务 (${PYTHON_SERVICE_URL})。请确保服务正在运行。\n提示: 在与本服务并列的 xiaoxiao-album-ai 目录执行 python3 start.py`
         )
       } else if (error.code === 'ETIMEDOUT') {
         throw new Error(`Python 服务请求超时 (${PYTHON_SERVICE_URL})。可能是数据量太大或服务响应慢。`)

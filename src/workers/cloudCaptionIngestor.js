@@ -12,27 +12,13 @@ const { rebuildMediaSearchDoc } = require('../services/mediaService')
 const { withAiSlot } = require('../services/aiConcurrencyLimiter')
 const { getCloudConfigForAnalysis } = require('../services/cloudModelService')
 const { buildCaptionForDb } = require('../utils/caption/captionNormalization')
+const {
+  ANALYZE_IMAGE_TIMEOUT_MS,
+  ANALYZE_VIDEO_TIMEOUT_MS,
+  makePythonServiceNon2xxError
+} = require('../utils/pythonServiceAnalyze')
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL
-
-const ANALYZE_IMAGE_TIMEOUT_MS = Number(process.env.ANALYZE_IMAGE_TIMEOUT_MS || 120000)
-const ANALYZE_VIDEO_TIMEOUT_MS = Number(process.env.ANALYZE_VIDEO_TIMEOUT_MS || 600000)
-
-/**
- * 构造非 2xx HTTP 的错误对象（按状态码区分是否可重试）。
- * @param {string} prefix - 错误前缀。
- * @param {number} status - HTTP 状态码。
- * @param {unknown} bodyText - 响应体文本。
- * @returns {Error} 可重试或不可重试错误对象。
- */
-function makeNon2xxError(prefix, status, bodyText) {
-  const text = String(bodyText || '').slice(0, 200)
-  const message = `${prefix}_${status}: ${text}`
-  if (status >= 500 || status === 429) {
-    return new Error(message)
-  }
-  return new UnrecoverableError(message)
-}
 
 /**
  * @param {import("bullmq").Job} job
@@ -82,7 +68,7 @@ async function processCloudCaptionJob(job) {
       )
 
       if (response.status < 200 || response.status >= 300) {
-        throw makeNon2xxError('CLOUD_CAPTION_VIDEO_HTTP', response.status, response.data)
+        throw makePythonServiceNon2xxError('CLOUD_CAPTION_VIDEO_HTTP', response.status, response.data)
       }
 
       const body = response.data || {}
@@ -155,7 +141,7 @@ async function processCloudCaptionJob(job) {
       )
 
       if (response.status < 200 || response.status >= 300) {
-        throw makeNon2xxError('CLOUD_CAPTION_HTTP', response.status, response.data)
+        throw makePythonServiceNon2xxError('CLOUD_CAPTION_HTTP', response.status, response.data)
       }
 
       const body = response.data || {}

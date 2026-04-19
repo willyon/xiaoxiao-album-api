@@ -17,6 +17,20 @@ function parseIntOrNaN(raw) {
   return Number.isNaN(n) ? Number.NaN : n
 }
 
+/**
+ * 将分页参数解析为大于等于 1 的整数；非法或小于 1 时回退 default。
+ * @param {unknown} raw - query/body 中的原始值。
+ * @param {number} defaultValue - 回退值（须 ≥1）。
+ * @returns {number}
+ */
+function parsePositivePageIntOrDefault(raw, defaultValue) {
+  const n = parseIntOrNaN(raw)
+  if (Number.isNaN(n) || n < 1) {
+    return defaultValue
+  }
+  return n
+}
+
 function parseIdList(ids) {
   return ids.map((id) => parseIntOrNaN(id))
 }
@@ -89,8 +103,8 @@ function requireUserId(req) {
  * @returns {{pageNo:number,pageSize:number}} 分页参数。
  */
 function parsePagination(query = {}, defaults = { pageNo: 1, pageSize: 20 }) {
-  const pageNo = parseIntOrNaN(query.pageNo ?? defaults.pageNo) || defaults.pageNo
-  const pageSize = parseIntOrNaN(query.pageSize ?? defaults.pageSize) || defaults.pageSize
+  const pageNo = parsePositivePageIntOrDefault(query.pageNo, defaults.pageNo)
+  const pageSize = parsePositivePageIntOrDefault(query.pageSize, defaults.pageSize)
   return { pageNo, pageSize }
 }
 
@@ -102,9 +116,9 @@ function parsePagination(query = {}, defaults = { pageNo: 1, pageSize: 20 }) {
  * @returns {{pageNo:number,pageSize:number}} 通过校验的分页参数。
  */
 function parseBoundedPagination(query, defaults = { pageNo: 1, pageSize: 20 }, { maxPageSize = 100 } = {}) {
-  const pageNo = Number(query.pageNo) || defaults.pageNo
-  const pageSize = Number(query.pageSize) || defaults.pageSize
-  if (pageNo < 1 || pageSize < 1 || pageSize > maxPageSize) {
+  const pageNo = parsePositivePageIntOrDefault(query?.pageNo, defaults.pageNo)
+  const pageSize = parsePositivePageIntOrDefault(query?.pageSize, defaults.pageSize)
+  if (pageSize > maxPageSize) {
     throwParamError({ messageType: 'warning' })
   }
   return { pageNo, pageSize }

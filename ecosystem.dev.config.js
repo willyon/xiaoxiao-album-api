@@ -8,6 +8,10 @@
  * • Node.js Workers (开发版，含云模型字幕 Worker)
  * • Python AI 服务 (开发版 - 人脸识别、图片理解等)
  */
+const path = require('path')
+// 固定为「本配置文件所在目录」，避免仅改文件夹名后 cwd 仍为旧路径或相对 '.' 解析错误
+const APP_ROOT = path.resolve(__dirname)
+
 module.exports = {
   apps: [
     // ========== Node.js 服务 (开发版) ==========
@@ -15,8 +19,8 @@ module.exports = {
       name: 'app-service-dev',
       script: 'server.js',
       node_args: '-r dotenv/config',
-      // cwd: 未设置，使用 PM2 启动目录
-      cwd: '.', // 相对路径
+      // cwd: 与 ecosystem 文件同目录（APP_ROOT），保证改名/从任意目录 pm2 start 仍正确
+      cwd: APP_ROOT,
       watch: false,
       max_restarts: 5,
       env: {
@@ -27,8 +31,8 @@ module.exports = {
       name: 'media-upload-worker-dev',
       script: 'src/workers/mediaUploadWorker.js',
       node_args: '-r dotenv/config',
-      // cwd: 未设置，使用 PM2 启动目录
-      cwd: '.', // 相对路径
+      // cwd: 与 ecosystem 文件同目录（APP_ROOT），保证改名/从任意目录 pm2 start 仍正确
+      cwd: APP_ROOT,
       watch: false,
       max_restarts: 5,
       env: {
@@ -39,8 +43,8 @@ module.exports = {
       name: 'media-meta-worker-dev',
       script: 'src/workers/mediaMetaWorker.js',
       node_args: '-r dotenv/config',
-      // cwd: 未设置，使用 PM2 启动目录
-      cwd: '.', // 相对路径
+      // cwd: 与 ecosystem 文件同目录（APP_ROOT），保证改名/从任意目录 pm2 start 仍正确
+      cwd: APP_ROOT,
       watch: false,
       max_restarts: 5,
       env: {
@@ -51,8 +55,8 @@ module.exports = {
       name: 'media-analysis-worker-dev',
       script: 'src/workers/mediaAnalysisWorker.js',
       node_args: '-r dotenv/config',
-      // cwd: 未设置，使用 PM2 启动目录
-      cwd: '.', // 相对路径
+      // cwd: 与 ecosystem 文件同目录（APP_ROOT），保证改名/从任意目录 pm2 start 仍正确
+      cwd: APP_ROOT,
       watch: false,
       max_restarts: 5,
       env: {
@@ -63,7 +67,7 @@ module.exports = {
       name: 'cloud-caption-worker-dev',
       script: 'src/workers/cloudCaptionWorker.js',
       node_args: '-r dotenv/config',
-      cwd: '.',
+      cwd: APP_ROOT,
       watch: false,
       max_restarts: 5,
       env: {
@@ -74,7 +78,7 @@ module.exports = {
       name: 'map-regeo-worker-dev',
       script: 'src/workers/mapRegeoWorker.js',
       node_args: '-r dotenv/config',
-      cwd: '.',
+      cwd: APP_ROOT,
       watch: false,
       max_restarts: 5,
       env: {
@@ -91,7 +95,7 @@ module.exports = {
 pm2 start ecosystem.dev.config.js
 
 📋 本地开发 (如果需要指定 Python 路径):
-export PYTHON_SERVICE_PATH="/System/Volumes/Data/Volumes/Personal-Files/projects/xiaoxiao-album/xiaoxiao-project-service/python-face-service"
+export PYTHON_SERVICE_PATH="/System/Volumes/Data/Volumes/Personal-Files/projects/xiaoxiao-album/xiaoxiao-album-ai"
 pm2 start ecosystem.dev.config.js
 
 📋 常用命令:
