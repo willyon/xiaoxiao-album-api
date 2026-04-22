@@ -295,7 +295,7 @@ class AliyunOSSAdapter extends BaseStorageAdapter {
   }
 
   /**
-   * 生成 OSS 签名下载 URL。
+   * 生成 OSS 签名 URL（GET，用于客户端拉取/导出对象）。
    * @param {string} ossKey - OSS 对象键名。
    * @param {number} [expiresIn=3600] - 过期秒数。
    * @returns {Promise<string>} 签名 URL。

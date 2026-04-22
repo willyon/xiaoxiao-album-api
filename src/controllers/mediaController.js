@@ -17,7 +17,7 @@ const logger = require('../utils/logger')
 const asyncHandler = require('../utils/asyncHandler')
 const { parsePagination, parsePositiveIntParam } = require('../utils/requestParams')
 const {
-  getMediaDownloadInfo,
+  getMediaExportInfo,
   selectMediaRowByHashForUser,
   listFailedMedias,
   listAllFailedCloudMedias,
@@ -357,7 +357,7 @@ async function retryNonCloudFailures({ userId, rows }) {
 }
 
 async function retryPrimaryFailure({ userId, media }) {
-  const mediaInfo = await getMediaDownloadInfo({ userId, mediaId: media.mediaId })
+  const mediaInfo = await getMediaExportInfo({ userId, mediaId: media.mediaId })
   if (!mediaInfo) return false
   await mediaAnalysisQueue.add(
     'media-analysis',
@@ -399,7 +399,7 @@ async function retryCloudFailures({ userId, rows }) {
   for (let i = 0; i < rows.length; i += CLOUD_RETRY_BATCH_SIZE) {
     const batch = rows.slice(i, i + CLOUD_RETRY_BATCH_SIZE)
     for (const row of batch) {
-      const mediaInfo = await getMediaDownloadInfo({ userId, mediaId: row.mediaId })
+      const mediaInfo = await getMediaExportInfo({ userId, mediaId: row.mediaId })
       if (!mediaInfo) continue
       const enqueued = await enqueueCloudCaptionRetryJob(userId, mediaInfo)
       if (!enqueued) continue

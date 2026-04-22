@@ -111,7 +111,7 @@ async function _addFullUrls(items, type = 'image') {
 // 为图片数据添加完整URL的方法
 // 注意：isFavorite 字段现在直接从数据库查询返回，无需额外处理
 /**
- * 为媒体列表补齐下载 URL 字段。
+ * 为媒体列表补齐可访问/导出用的完整 URL 字段。
  * @param {Array<object>} data - 媒体数据列表。
  * @returns {Promise<Array<object>|undefined>} 补齐后的数据列表。
  */
@@ -450,12 +450,12 @@ async function deleteMedias({ userId, mediaIds }) {
 }
 
 /**
- * 获取单张图片的下载信息
+ * 获取单张图片的导出用信息
  * @param {{userId:number|string,mediaId:number|string}} params - 查询参数。
- * @returns {Promise<object|null>} 下载信息或 null。
+ * @returns {Promise<object|null>} 导出用信息或 null。
  */
-async function getMediaDownloadInfo({ userId, mediaId }) {
-  const image = mediaModel.getMediaDownloadInfo({ userId, mediaId })
+async function getMediaExportInfo({ userId, mediaId }) {
+  const image = mediaModel.getMediaExportInfo({ userId, mediaId })
   if (!image) {
     return null
   }
@@ -463,12 +463,12 @@ async function getMediaDownloadInfo({ userId, mediaId }) {
 }
 
 /**
- * 批量获取图片的下载信息
+ * 批量获取图片的导出用信息
  * @param {{userId:number|string,mediaIds:Array<number|string>}} params - 查询参数。
- * @returns {Promise<Array<object>>} 下载信息列表。
+ * @returns {Promise<Array<object>>} 导出用信息列表。
  */
-async function getMediasDownloadInfo({ userId, mediaIds }) {
-  const images = mediaModel.getMediasDownloadInfo({ userId, mediaIds })
+async function getMediasExportInfo({ userId, mediaIds }) {
+  const images = mediaModel.getMediasExportInfo({ userId, mediaIds })
   return images
 }
 
@@ -495,7 +495,7 @@ module.exports = {
   // ========== 媒体 CRUD 服务函数 ==========
   patchMedia, // 仅用于 favorite 字段更新
   deleteMedias,
-  // ========== 媒体下载服务函数 ==========
-  getMediaDownloadInfo,
-  getMediasDownloadInfo
+  // ========== 媒体导出服务函数 ==========
+  getMediaExportInfo,
+  getMediasExportInfo
 }

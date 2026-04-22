@@ -1,30 +1,30 @@
 /*
  * @Author: zhangshouchang
  * @Date: 2025-01-23
- * @Description: 图片下载 HTTP 控制器（业务逻辑见 downloadService）
+ * @Description: 图片导出 HTTP 控制器（业务逻辑见 exportService）
  */
 const CustomError = require('../errors/customError')
 const { ERROR_CODES } = require('../constants/messageCodes')
 const logger = require('../utils/logger')
-const downloadService = require('../services/downloadService')
+const exportService = require('../services/exportService')
 const asyncHandler = require('../utils/asyncHandler')
 const { parsePositiveIntParam, requireNonEmptyIdArray, throwInvalidParametersError } = require('../utils/requestParams')
 
 const {
-  DOWNLOAD_BATCH_MAX,
-  getSingleMediaDownloadData,
+  EXPORT_BATCH_MAX,
+  getSingleMediaExportData,
   createBatchMediaZipArchive,
-  buildBatchZipDownloadFileName
-} = downloadService
+  buildBatchZipExportFileName
+} = exportService
 
 /**
- * 单张图片下载
- * GET /images/download/:mediaId
+ * 单张图片导出
+ * GET /:mediaId/export（见 mediaRoutes）
  * @param {import('express').Request} req - 请求对象。
  * @param {import('express').Response} res - 响应对象。
  * @returns {Promise<void>} 处理完成后无返回值。
  */
-async function handleDownloadSingleMedia(req, res) {
+async function handleExportSingleMedia(req, res) {
   const { userId } = req?.user
   const mediaId = parsePositiveIntParam(req.params.mediaId)
 
@@ -32,7 +32,7 @@ async function handleDownloadSingleMedia(req, res) {
   let fileName
   let contentType
   try {
-    const data = await getSingleMediaDownloadData(userId, mediaId)
+    const data = await getSingleMediaExportData(userId, mediaId)
     buffer = data.buffer
     fileName = data.fileName
     contentType = data.contentType
@@ -54,14 +54,14 @@ async function handleDownloadSingleMedia(req, res) {
 }
 
 /**
- * 批量图片下载（ZIP）
- * POST /images/download/batch
+ * 批量图片导出（ZIP）
+ * POST /export（见 mediaRoutes）
  * @param {import('express').Request} req - 请求对象。
  * @param {import('express').Response} res - 响应对象。
  * @param {import('express').NextFunction} next - 错误传递函数。
  * @returns {Promise<void>} 处理完成后无返回值。
  */
-async function runDownloadBatchMedias(req, res, next) {
+async function runExportBatchMedias(req, res, next) {
   const { userId } = req?.user
   const { mediaIds } = req.body
 
@@ -69,12 +69,12 @@ async function runDownloadBatchMedias(req, res, next) {
     throwInvalidParametersError({ messageType: 'error' })
   }
 
-  if (mediaIds.length > DOWNLOAD_BATCH_MAX) {
+  if (mediaIds.length > EXPORT_BATCH_MAX) {
     throw new CustomError({
       httpStatus: 400,
-      messageCode: ERROR_CODES.DOWNLOAD_BATCH_LIMIT_EXCEEDED,
+      messageCode: ERROR_CODES.EXPORT_BATCH_LIMIT_EXCEEDED,
       messageType: 'warning',
-      details: { max: DOWNLOAD_BATCH_MAX }
+      details: { max: EXPORT_BATCH_MAX }
     })
   }
 
@@ -92,7 +92,7 @@ async function runDownloadBatchMedias(req, res, next) {
     throw error
   }
 
-  const zipFileName = buildBatchZipDownloadFileName()
+  const zipFileName = buildBatchZipExportFileName()
 
   res.setHeader('Content-Type', 'application/zip')
   res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(zipFileName)}"`)
@@ -119,6 +119,6 @@ async function runDownloadBatchMedias(req, res, next) {
 }
 
 module.exports = {
-  handleDownloadSingleMedia: asyncHandler(handleDownloadSingleMedia),
-  handleDownloadBatchMedias: asyncHandler(runDownloadBatchMedias)
+  handleExportSingleMedia: asyncHandler(handleExportSingleMedia),
+  handleExportBatchMedias: asyncHandler(runExportBatchMedias)
 }

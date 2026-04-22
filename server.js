@@ -70,12 +70,23 @@ app.use((req, res, next) => {
 // ========================== 基础中间件 ========================== //
 
 // CORS跨域配置 - 允许前端访问后端API
+// 开发环境：前端统一 http://127.0.0.1:5173（Vite dev / preview 与 Electron）；直连 :3000 的 EventSource 等依赖此白名单
+// 生产环境：禁止跨域反射，同源或网关反代场景不受影响
+const DEV_CORS_ORIGINS = new Set(['http://127.0.0.1:5173'])
+
 app.use(
   cors({
-    // 设置允许跨域访问的源域名
-    // 开发环境：允许localhost:5173（前端）访问localhost:3000（后端）
-    // 生产环境：禁止所有跨域访问，提高安全性
-    origin: process.env.NODE_ENV === 'development' ? 'http://localhost:5173' : false,
+    // 开发环境：仅放行上列 Origin；勿用 http://localhost:5173 打开前端以免与 Cookie/CORS 不一致
+    origin:
+      process.env.NODE_ENV === 'development'
+        ? (origin, callback) => {
+            if (!origin || DEV_CORS_ORIGINS.has(origin)) {
+              callback(null, true)
+            } else {
+              callback(null, false)
+            }
+          }
+        : false,
 
     // 允许跨域请求携带认证信息（cookies、Authorization头等）
     credentials: true,

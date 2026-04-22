@@ -17,7 +17,7 @@ const {
   handleGetProcessingFailureSummary,
   handleRetryProcessingFailures
 } = require('../controllers/mediaController')
-const { handleDownloadSingleMedia, handleDownloadBatchMedias } = require('../controllers/downloadController')
+const { handleExportSingleMedia, handleExportBatchMedias } = require('../controllers/exportController')
 const { handlePostMedias } = require('../controllers/uploadController')
 const { handleGetUploadSignature } = require('../controllers/ossUploadController')
 
@@ -48,11 +48,11 @@ router.post('/check-exists', handleCheckFileExists)
 // 获取上传签名（OSS直传）
 router.post('/upload/signature', handleGetUploadSignature)
 
-// ========== 图片下载相关接口 ========== //
-// 单条媒体下载
-router.get('/:mediaId/download', handleDownloadSingleMedia)
+// ========== 图片导出相关接口 ========== //
+// 单条媒体导出
+router.get('/:mediaId/export', handleExportSingleMedia)
 
-// 批量图片下载（ZIP）
-router.post('/download', handleDownloadBatchMedias)
+// 批量图片导出（ZIP）
+router.post('/export', handleExportBatchMedias)
 
 module.exports = router

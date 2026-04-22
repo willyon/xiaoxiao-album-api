@@ -1,5 +1,5 @@
 /*
- * @Description: 媒体下载（单文件 buffer、批量 ZIP）业务逻辑
+ * @Description: 媒体导出（单文件 buffer、批量 ZIP）业务逻辑
  */
 const path = require('path')
 const archiver = require('archiver')
@@ -9,17 +9,17 @@ const mediaService = require('./mediaService')
 const logger = require('../utils/logger')
 
 /** 未配置环境变量时的默认批量上限（面向本地 Electron：同机无公网滥用，主要受本机内存与压缩耗时约束） */
-const DEFAULT_DOWNLOAD_BATCH_MAX = 5000
+const DEFAULT_EXPORT_BATCH_MAX = 5000
 /** 硬上限：防止误填极大数字导致 OOM；需要更大可再调此常量或改为可配置 */
-const ABSOLUTE_DOWNLOAD_BATCH_MAX = 50000
+const ABSOLUTE_EXPORT_BATCH_MAX = 50000
 
 /**
- * 批量下载单次最多张数。
- * 环境变量 DOWNLOAD_BATCH_MAX；未设置或无效时用默认；最终限制在 [1, ABSOLUTE_DOWNLOAD_BATCH_MAX]。
+ * 批量导出单次最多张数。
+ * 环境变量 EXPORT_BATCH_MAX；未设置或无效时用默认；最终限制在 [1, ABSOLUTE_EXPORT_BATCH_MAX]。
  */
-const DOWNLOAD_BATCH_MAX = Math.max(
+const EXPORT_BATCH_MAX = Math.max(
   1,
-  Math.min(Number(process.env.DOWNLOAD_BATCH_MAX) || DEFAULT_DOWNLOAD_BATCH_MAX, ABSOLUTE_DOWNLOAD_BATCH_MAX)
+  Math.min(Number(process.env.EXPORT_BATCH_MAX) || DEFAULT_EXPORT_BATCH_MAX, ABSOLUTE_EXPORT_BATCH_MAX)
 )
 
 /**
@@ -58,15 +58,14 @@ function getContentTypeFromFileName(fileName) {
 }
 
 /**
- * 选择下载优先使用的存储键。
+ * 选择导出时优先使用的存储键。
  * @param {{originalStorageKey?:string|null,highResStorageKey?:string|null}} payload - 存储键集合。
  * @returns {string|null} 选中的存储键或 null。
  */
-function pickStorageKeyForDownload({ originalStorageKey, highResStorageKey }) {
+function pickStorageKeyForExport({ originalStorageKey, highResStorageKey }) {
   return originalStorageKey || highResStorageKey || null
 }
 
-/** ZIP 内文件名冲突时加序号（与历史 controller 行为一致） */
 /**
  * 为 ZIP 内重复文件名追加序号避免冲突。
  * @param {string} fileName - 原始文件名。
@@ -88,20 +87,20 @@ function applyZipFileNameDedup(fileName, fileNameMap) {
 }
 
 /**
- * 单张媒体下载：buffer + 文件名 + Content-Type
+ * 单张媒体导出：buffer + 文件名 + Content-Type
  * @param {number|string} userId - 用户 ID。
  * @param {number|string} mediaId - 媒体 ID。
- * @returns {Promise<{buffer:Buffer,fileName:string,contentType:string}>} 下载数据。
+ * @returns {Promise<{buffer:Buffer,fileName:string,contentType:string}>} 导出用数据。
  * @throws {Error} message 为「图片不存在」「图片文件不存在」「获取图片文件失败」等与 controller 约定一致
  */
-async function getSingleMediaDownloadData(userId, mediaId) {
+async function getSingleMediaExportData(userId, mediaId) {
   try {
-    const image = await mediaService.getMediaDownloadInfo({ userId, mediaId })
+    const image = await mediaService.getMediaExportInfo({ userId, mediaId })
     if (!image) {
       throw new Error('图片不存在')
     }
 
-    const storageKey = pickStorageKeyForDownload(image)
+    const storageKey = pickStorageKeyForExport(image)
     if (!storageKey) {
       throw new Error('图片文件不存在')
     }
@@ -117,7 +116,7 @@ async function getSingleMediaDownloadData(userId, mediaId) {
     return { buffer, fileName, contentType }
   } catch (error) {
     logger.error({
-      message: '获取单张图片下载失败',
+      message: '获取单张图片导出失败',
       details: { mediaId, userId, error: error.message }
     })
     throw error
@@ -137,7 +136,7 @@ async function createBatchMediaZipArchive(userId, mediaIds) {
   }
 
   try {
-    const images = await mediaService.getMediasDownloadInfo({ userId, mediaIds })
+    const images = await mediaService.getMediasExportInfo({ userId, mediaIds })
     if (!images || images.length === 0) {
       throw new Error('未找到任何图片')
     }
@@ -147,7 +146,7 @@ async function createBatchMediaZipArchive(userId, mediaIds) {
 
     for (const image of images) {
       const { id: mediaId, originalStorageKey, highResStorageKey } = image
-      const storageKey = pickStorageKeyForDownload({ originalStorageKey, highResStorageKey })
+      const storageKey = pickStorageKeyForExport({ originalStorageKey, highResStorageKey })
       if (!storageKey) {
         logger.warn({
           message: '图片文件不存在，跳过',
@@ -180,7 +179,7 @@ async function createBatchMediaZipArchive(userId, mediaIds) {
     return archive
   } catch (error) {
     logger.error({
-      message: '获取批量图片下载失败',
+      message: '获取批量图片导出失败',
       details: { mediaIds, userId, error: error.message }
     })
     throw error
@@ -188,17 +187,17 @@ async function createBatchMediaZipArchive(userId, mediaIds) {
 }
 
 /**
- * 构建批量下载 ZIP 文件名。
+ * 构建批量导出 ZIP 文件名。
  * @returns {string} ZIP 文件名。
  */
-function buildBatchZipDownloadFileName() {
+function buildBatchZipExportFileName() {
   const timestamp = DateTime.local().toFormat('yyyy-MM-dd HH:mm:ss').replace(/ /g, '_').replace(/:/g, '-')
   return `photos_${timestamp}.zip`
 }
 
 module.exports = {
-  DOWNLOAD_BATCH_MAX,
-  getSingleMediaDownloadData,
+  EXPORT_BATCH_MAX,
+  getSingleMediaExportData,
   createBatchMediaZipArchive,
-  buildBatchZipDownloadFileName
+  buildBatchZipExportFileName
 }

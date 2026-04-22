@@ -31,7 +31,7 @@ const authMiddleware = async (req, _res, next) => {
 
   const jwtToken = authHeader.split(' ')[1]
   try {
-    // 验证token的有效性（签名、过期时间）
+    // 验证 token 签名；带 `exp` 的 Web JWT 会校验过期，桌面 bootstrap 签发的无 `exp` access 仅校验签名
     const decoded = jwt.verify(jwtToken, process.env.JWT_SECRET)
 
     req.user = decoded // req.user格式为{userId:userId}

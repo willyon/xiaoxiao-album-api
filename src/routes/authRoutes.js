@@ -18,7 +18,10 @@ const {
   handleRequestPasswordReset,
   handleConfirmPasswordReset
 } = require('../controllers/authController')
+const { handleDesktopBootstrap } = require('../controllers/desktopAuthController')
 
+// Electron 静默登录（闸门见 utils/desktopBootstrapGuard）
+router.post('/desktop-bootstrap', handleDesktopBootstrap)
 // 创建会话（登录/注册统一接口）
 router.post('/session', handleLoginOrRegister)
 // 获取当前登录用户信息（需要鉴权）

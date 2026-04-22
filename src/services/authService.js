@@ -18,14 +18,19 @@ const { ERROR_CODES } = require('../constants/messageCodes')
 /**
  * 生成访问令牌（JWT）。
  * @param {number|string} userId - 用户 ID。
+ * @param {{ expiresIn?: string, noExpiry?: boolean }} [options] - `noExpiry: true` 时不带 `exp`（仅 `POST /api/auth/desktop-bootstrap` 使用）；否则使用 `expiresIn` 或环境变量默认。
  * @returns {string} JWT 字符串。
  */
-const generateJWTToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '1h' })
+const generateJWTToken = (userId, options = {}) => {
+  if (options.noExpiry === true) {
+    return jwt.sign({ userId }, process.env.JWT_SECRET)
+  }
+  const expiresIn = options.expiresIn ?? (process.env.JWT_EXPIRES_IN || '1h')
+  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn })
 }
 
 /**
- * 生成并缓存刷新令牌。
+ * 生成并缓存刷新令牌（Web 登录 / 刷新链路；桌面 bootstrap 不调用）。
  * @param {number|string} userId - 用户 ID。
  * @returns {Promise<string>} 刷新令牌。
  */
@@ -294,8 +299,7 @@ const sendVerificationEmail = async ({ email, JWTToken, language }) => {
  * @returns {{mailName:string,subject:string,html:string}} 邮件内容。
  */
 const _getEmailContent = (language, JWTToken) => {
-  // 根据环境变量确定域名
-  const baseUrl = process.env.NODE_ENV === 'development' ? 'http://localhost:5173' : 'https://photos.bingbingcloud.com'
+  const baseUrl = process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:5173' : 'https://photos.bingbingcloud.com'
 
   // 这里定义多语言的标题和正文内容
   const content = {
@@ -413,7 +417,7 @@ const sendPasswordResetEmail = async ({ email, token, language }) => {
  * @returns {{mailName:string,subject:string,html:string}} 邮件内容。
  */
 const _getPasswordResetEmailContent = (language, token) => {
-  const baseUrl = process.env.NODE_ENV === 'development' ? 'http://localhost:5173' : 'https://photos.bingbingcloud.com'
+  const baseUrl = process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:5173' : 'https://photos.bingbingcloud.com'
   const content = {
     en: {
       mailName: 'Bingbing Cloud Photos',
