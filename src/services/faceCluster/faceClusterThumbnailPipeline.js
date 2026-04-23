@@ -10,6 +10,8 @@ const {
   clearOtherDefaultCoverRepresentative,
   restoreClusterDefaultCover,
   getFaceEmbeddingRepresentativeValue,
+  getManualCoverFaceEmbeddingIds,
+  clearFaceThumbnailStorageKeyForEmbeddingId,
   getRepresentativeStatusByThumbnailKeys,
   getDefaultCoverFaceEmbeddingId,
   getRepresentativeFaceEmbeddingIdsByUserId,
@@ -86,7 +88,7 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
       const clusterFaces = getFaceEmbeddingsByIds(clusterFaceIds)
       if (clusterFaces.length === 0) continue
 
-      const mediaIds = [...new Set(clusterFaces.map((f) => f.image_id))]
+      const mediaIds = [...new Set(clusterFaces.map((f) => f.media_id))]
       const imagesMap = getMediasSharpnessByIds(mediaIds)
       const mediaTypeByMediaId = new Map()
       for (const iid of mediaIds) {
@@ -106,7 +108,7 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
       let bestFace = null
       let bbox = null
       for (const face of ranked) {
-        if (mediaTypeByMediaId.get(face.image_id) === 'video') continue
+        if (mediaTypeByMediaId.get(face.media_id) === 'video') continue
         const normalizedBbox = normalizeBboxFromFace(face)
         if (normalizedBbox) {
           bestFace = face
@@ -116,7 +118,7 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
       }
 
       if (!bestFace) {
-        const repFace = ranked.find((f) => mediaTypeByMediaId.get(f.image_id) !== 'video') || ranked[0]
+        const repFace = ranked.find((f) => mediaTypeByMediaId.get(f.media_id) !== 'video') || ranked[0]
         clearOtherDefaultCoverRepresentative(userId, clusterId, repFace.id)
         updateFaceClusterRepresentative(userId, clusterId, repFace.id)
         logger.info({
@@ -126,23 +128,23 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
         continue
       }
 
-      const imageInfo = getMediaStorageInfo(bestFace.image_id)
+      const imageInfo = getMediaStorageInfo(bestFace.media_id)
       if (!imageInfo) {
         logger.warn({
-          message: `图片不存在: mediaId=${bestFace.image_id}`,
+          message: `图片不存在: mediaId=${bestFace.media_id}`,
           details: { userId, clusterId }
         })
         continue
       }
 
       const imageData = await _readImageBufferByMediaInfo(imageInfo, {
-        failMessage: `获取图片数据失败: mediaId=${bestFace.image_id}`,
+        failMessage: `获取图片数据失败: mediaId=${bestFace.media_id}`,
         details: { userId, clusterId }
       })
 
       if (!imageData) {
         logger.warn({
-          message: `无法获取图片数据: mediaId=${bestFace.image_id}`,
+          message: `无法获取图片数据: mediaId=${bestFace.media_id}`,
           details: { userId, clusterId }
         })
         continue
@@ -151,7 +153,7 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
       if (!Buffer.isBuffer(imageData)) {
         logger.error({
           message: `图片数据格式错误: clusterId=${clusterId}`,
-          details: { userId, clusterId, mediaId: bestFace.image_id }
+          details: { userId, clusterId, mediaId: bestFace.media_id }
         })
         continue
       }
@@ -168,7 +170,7 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
             status: error.response?.status,
             userId,
             clusterId,
-            mediaId: bestFace.image_id
+            mediaId: bestFace.media_id
           }
         })
 
@@ -199,7 +201,7 @@ async function generateThumbnailsForClusters(userId, clusters, faceEmbeddings) {
 
       const base64Data = thumbnailBase64.replace(/^data:image\/\w+;base64,/, '')
       const imageBuffer = Buffer.from(base64Data, 'base64')
-      const thumbnailStorageKey = `storage-local/face-thumbnails/${bestFace.image_id}-${bestFace.face_index}.jpg`
+      const thumbnailStorageKey = `storage-local/face-thumbnails/${bestFace.media_id}-${bestFace.face_index}.jpg`
 
       await storageService.storage.storeFile(imageBuffer, thumbnailStorageKey, {
         contentType: 'image/jpeg'
@@ -308,7 +310,7 @@ function rankFacesForCover(faces, imagesMap = new Map(), mediaTypeByMediaId = nu
     }
     const expressionScore = expressionPriority[face.expression] || 0
 
-    const imageInfo = imagesMap.get(face.image_id)
+    const imageInfo = imagesMap.get(face.media_id)
     const sharpnessScore = imageInfo?.sharpness_score || 0
 
     return {
@@ -325,8 +327,8 @@ function rankFacesForCover(faces, imagesMap = new Map(), mediaTypeByMediaId = nu
 
   facesWithMetrics.sort((a, b) => {
     if (mediaTypeByMediaId) {
-      const aV = mediaTypeByMediaId.get(a.image_id) === 'video' ? 1 : 0
-      const bV = mediaTypeByMediaId.get(b.image_id) === 'video' ? 1 : 0
+      const aV = mediaTypeByMediaId.get(a.media_id) === 'video' ? 1 : 0
+      const bV = mediaTypeByMediaId.get(b.media_id) === 'video' ? 1 : 0
       if (aV !== bV) return aV - bV
     }
 
@@ -369,7 +371,7 @@ async function ensureDefaultCoverRepresentative(userId, clusterId) {
   const faces = getFaceEmbeddingsByIds(ids)
   if (faces.length === 0) return null
 
-  const mediaIds = [...new Set(faces.map((f) => f.image_id))]
+  const mediaIds = [...new Set(faces.map((f) => f.media_id))]
   const imagesMap = getMediasSharpnessByIds(mediaIds)
   const mediaTypeByMediaId = new Map()
   for (const iid of mediaIds) {
@@ -512,10 +514,10 @@ async function generateThumbnailForFaceEmbedding(faceEmbeddingId, forceRegenerat
       }
     }
 
-    const imageInfo = getMediaStorageInfo(faceEmbedding.image_id)
+    const imageInfo = getMediaStorageInfo(faceEmbedding.media_id)
     if (!imageInfo) {
       logger.warn({
-        message: `图片不存在: mediaId=${faceEmbedding.image_id}`,
+        message: `图片不存在: mediaId=${faceEmbedding.media_id}`,
         details: { faceEmbeddingId }
       })
       return null
@@ -524,19 +526,19 @@ async function generateThumbnailForFaceEmbedding(faceEmbeddingId, forceRegenerat
     if (imageInfo.mediaType && imageInfo.mediaType !== 'image') {
       logger.warn({
         message: '跳过非图片媒体的聚类封面缩略图生成',
-        details: { faceEmbeddingId, mediaId: faceEmbedding.image_id, mediaType: imageInfo.mediaType }
+        details: { faceEmbeddingId, mediaId: faceEmbedding.media_id, mediaType: imageInfo.mediaType }
       })
       return null
     }
 
     const imageData = await _readImageBufferByMediaInfo(imageInfo, {
-      failMessage: `获取图片数据失败: mediaId=${faceEmbedding.image_id}`,
+      failMessage: `获取图片数据失败: mediaId=${faceEmbedding.media_id}`,
       details: { faceEmbeddingId }
     })
 
     if (!imageData) {
       logger.warn({
-        message: `无法获取图片数据: mediaId=${faceEmbedding.image_id}`,
+        message: `无法获取图片数据: mediaId=${faceEmbedding.media_id}`,
         details: { faceEmbeddingId }
       })
       return null
@@ -581,7 +583,7 @@ async function generateThumbnailForFaceEmbedding(faceEmbeddingId, forceRegenerat
 
     const base64Data = thumbnailBase64.replace(/^data:image\/\w+;base64,/, '')
     const imageBuffer = Buffer.from(base64Data, 'base64')
-    const thumbnailStorageKey = `storage-local/face-thumbnails/${faceEmbedding.image_id}-${faceEmbedding.face_index}.jpg`
+    const thumbnailStorageKey = `storage-local/face-thumbnails/${faceEmbedding.media_id}-${faceEmbedding.face_index}.jpg`
 
     await storageService.storage.storeFile(imageBuffer, thumbnailStorageKey, {
       contentType: 'image/jpeg'
@@ -662,12 +664,12 @@ async function handleReclusterThumbnailMaintenance({
 
   if (!oldThumbnailPaths || oldThumbnailPaths.length === 0) return
 
-  const representativeStatusMap = getRepresentativeStatusByThumbnailKeys(userId, oldThumbnailPaths)
   const newThumbnailPathsSet = new Set(generatedThumbnailPaths)
+  const representativeStatusMap = getRepresentativeStatusByThumbnailKeys(userId, oldThumbnailPaths)
   const thumbnailsToDelete = oldThumbnailPaths.filter((path) => {
     if (newThumbnailPathsSet.has(path)) return false
-    const isRepresentative = representativeStatusMap.get(path)
-    if (isRepresentative === 1 || isRepresentative === 2) return false
+    const rep = representativeStatusMap.get(path)
+    if (rep === 1 || rep === 2) return false
     return true
   })
 
@@ -712,12 +714,57 @@ async function handleReclusterThumbnailMaintenance({
   })
 }
 
+/**
+ * 删除单条人脸的人像缩略图文件并将 face_thumbnail_storage_key 置为 NULL
+ * @param {number|string} faceEmbeddingId - face_embedding id
+ * @returns {Promise<void>}
+ */
+async function stripOneFaceThumbnailFileAndKey(faceEmbeddingId) {
+  const rows = getFaceEmbeddingsByIds([faceEmbeddingId])
+  const fe = rows[0]
+  if (!fe) return
+  const key = fe.face_thumbnail_storage_key
+  if (key) {
+    try {
+      await storageService.storage.deleteFile(key)
+    } catch (error) {
+      if (error?.code !== 'ENOENT' && error?.status !== 404) {
+        logger.warn({
+          message: `删旧手动封面对象文件失败(仍清除库中 key): faceEmbeddingId=${faceEmbeddingId}`,
+          details: { key, error: error?.message }
+        })
+      }
+    }
+  }
+  clearFaceThumbnailStorageKeyForEmbeddingId(faceEmbeddingId)
+}
+
+/**
+ * 在设新的手动封面前，撤销被替换掉的原手动封面对应：删存储文件 + 将 media_face_embeddings.face_thumbnail_storage_key 置 NULL。
+ * 仅处理 representative_type=2 的「前手动」行；1 默认封面不参与（也不应出现在原手动列表中）。
+ * - 新封面脸当前已是默认(1)且操作为清手动时：清掉所有原手动的存图与 key。
+ * - 否则：对原手动中「不是本次入选脸」的 id 做撤销；本次入选脸在下方会重新 setCluster+generate 写回。
+ * @param {{userId:number|string, clusterId:number|string, incomingFaceEmbeddingId:number|string}} p - 参数
+ * @returns {Promise<void>}
+ */
+async function revokePreviousManualCoverAssets(p) {
+  const { userId, clusterId, incomingFaceEmbeddingId } = p
+  const prevIds = getManualCoverFaceEmbeddingIds(userId, clusterId)
+  if (prevIds.length === 0) return
+
+  const current = getFaceEmbeddingRepresentativeValue(userId, clusterId, incomingFaceEmbeddingId)
+  const toStrip = current === 1 ? prevIds : prevIds.filter((id) => id !== incomingFaceEmbeddingId)
+
+  for (const id of toStrip) {
+    await stripOneFaceThumbnailFileAndKey(id)
+  }
+}
+
 module.exports = {
   ensureRepresentativeCoverThumbnails,
   generateThumbnailsForClusters,
   restoreDefaultCover,
   generateThumbnailForFaceEmbedding,
   handleReclusterThumbnailMaintenance,
-  getRepresentativeStatusByThumbnailKeys,
-  getFaceEmbeddingsByIds
+  revokePreviousManualCoverAssets
 }

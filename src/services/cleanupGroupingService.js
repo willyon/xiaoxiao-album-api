@@ -61,7 +61,7 @@ function _replaceGroups({ userId, groups }) {
  * 优化策略：按哈希前缀分组，只比较同组或相邻组的图片，大幅减少比较次数
  * 时间复杂度：从 O(n²) 优化到 O(n × k)，k 为平均组大小（通常远小于 n）
  * @param {Array<object>} images - 候选图片列表。
- * @returns {Array<{primaryMediaId:number,members:Array<object>}>} 相似图分组结果。
+ * @returns {Array<{members:Array<object>}>} 相似图分组结果。
  */
 function _buildSimilarGroups(images) {
   const candidates = images
@@ -191,42 +191,81 @@ function _buildSimilarGroups(images) {
  * 由成员列表构建单个分组结构。
  * @param {Array<object>} members - 分组成员。
  * @param {{similarityResolver:(primary:any,member:any)=>number}} options - 计算选项。
- * @returns {{primaryMediaId:number,members:Array<object>}} 分组对象。
+ * @returns {{members:Array<object>}} 分组对象。
  */
 function _createGroupFromMembers(members, { similarityResolver }) {
-  const sorted = [...members].sort((a, b) => {
-    const aRank = _computeRankScore(a)
-    const bRank = _computeRankScore(b)
-    if (aRank !== bRank) return bRank - aRank
-    return (b.image_created_at ?? 0) - (a.image_created_at ?? 0)
-  })
+  const sorted = [...members].sort((a, b) => _compareCleanupRecommendation(a, b))
 
   const primary = sorted[0]
   const groupMembers = sorted.map((image) => {
     const similarity = similarityResolver(primary, image)
     return {
       mediaId: image.id,
-      rankScore: _computeRankScore(image),
-      similarity,
-      aestheticScore: image.aesthetic_score ?? null
+      rankScore: _encodeCleanupRankScore(image),
+      similarity
     }
   })
 
   return {
-    primaryMediaId: primary.id,
     members: groupMembers
   }
 }
 
+/** 分层推荐：收藏优先；其余按清晰度 → 分辨率 → 笑脸 → 人脸数 → 人物数，最后时间与 id。 */
+function _compareCleanupRecommendation(a, b) {
+  const sa = _encodeCleanupRankScore(a)
+  const sb = _encodeCleanupRankScore(b)
+  if (Math.abs(sb - sa) > 1e-6) return sb - sa
+  const ca = Number(a.image_created_at) || 0
+  const cb = Number(b.image_created_at) || 0
+  if (cb !== ca) return cb - ca
+  return (Number(b.id) || 0) - (Number(a.id) || 0)
+}
+
 /**
- * 计算成员排序分值。
- * @param {{aesthetic_score?:number}} image - 图片对象。
- * @returns {number} 排序分值。
+ * 将分层规则压入单一 rank_score，供库内 ORDER BY 与删图后排序一致（任意收藏分高于非收藏分）。
+ * @param {object} image - 候选媒体行（含清理查询字段）。
+ * @returns {number}
  */
-function _computeRankScore(image) {
-  const aesthetic = typeof image.aesthetic_score === 'number' ? image.aesthetic_score : 0
-  // 相似组推荐仅按美学分排序
-  return Number(aesthetic.toFixed(6))
+function _encodeCleanupRankScore(image) {
+  const fav = _cleanupIsFavorite(image) ? 1 : 0
+  const sharpInt = Math.round(_cleanupSharpnessNorm(image) * 1000)
+  const areaInt = Math.round(_cleanupAreaNorm(image) * 1000)
+  const happy = _cleanupTagsHasHappy(image.expression_tags) ? 1 : 0
+  const fc = Math.min(Math.max(Number(image.face_count) || 0, 0), 99)
+  const pc = Math.min(Math.max(Number(image.person_count) || 0, 0), 99)
+  return fav * 1e13 + sharpInt * 1e9 + areaInt * 1e6 + happy * 1e5 + fc * 1e3 + pc
+}
+
+function _cleanupIsFavorite(image) {
+  return image.is_favorite === 1 || image.is_favorite === true
+}
+
+/** @param {{sharpness_score?:number}} image */
+function _cleanupSharpnessNorm(image) {
+  const s = Number(image.sharpness_score)
+  if (!Number.isFinite(s)) return 0
+  return Math.min(Math.max(s, 0), 1)
+}
+
+const CLEANUP_AREA_NORM_CAP = 40_000_000
+
+/** @param {{width_px?:number,height_px?:number,hd_width_px?:number,hd_height_px?:number}} image */
+function _cleanupAreaNorm(image) {
+  const w = Number(image.width_px) || 0
+  const h = Number(image.height_px) || 0
+  const hdw = Number(image.hd_width_px) || 0
+  const hdh = Number(image.hd_height_px) || 0
+  const area = Math.max(w * h, hdw * hdh, 0)
+  if (area <= 0) return 0
+  return Math.min(Math.log1p(area) / Math.log1p(CLEANUP_AREA_NORM_CAP), 1)
+}
+
+/** 与封面排序一致：expression_tags 去空白后按逗号包裹匹配 happy。 */
+function _cleanupTagsHasHappy(expressionTags) {
+  if (expressionTags == null) return false
+  const normalized = String(expressionTags).replace(/\s+/g, '')
+  return `,${normalized},`.includes(',happy,')
 }
 
 /**

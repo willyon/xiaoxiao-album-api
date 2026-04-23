@@ -70,7 +70,6 @@ const FIELD_MAPPING = {
     age_tags: 'ageTags',
     gender_tags: 'genderTags',
     is_blurry: 'isBlurry',
-    aesthetic_score: 'aestheticScore',
     sharpness_score: 'sharpnessScore',
     preferred_face_quality: 'preferredFaceQuality',
     ai_description: 'aiDescription',

@@ -94,8 +94,7 @@ async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
         return null
       }
 
-      // 后端已经按照 rankScore 和 image_created_at 排序好了，并且第一个就是推荐图片
-      // 前端直接使用后端返回的顺序，第一个成员就是推荐图片
+      // 后端已按 rank_score（收藏/清晰度/分辨率/笑脸/人脸与人物数量）与拍摄时间排序，第一个为推荐保留
       return {
         id: group.id,
         updatedAt: _formatTimestamp(group.updated_at),

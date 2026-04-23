@@ -12,7 +12,11 @@ const {
   verifyFaceEmbeddingInCluster,
   getFaceEmbeddingIdByMediaIdInCluster
 } = require('../../models/faceClusterModel')
-const { restoreDefaultCover, generateThumbnailForFaceEmbedding } = require('./faceClusterThumbnailPipeline')
+const {
+  restoreDefaultCover,
+  generateThumbnailForFaceEmbedding,
+  revokePreviousManualCoverAssets
+} = require('./faceClusterThumbnailPipeline')
 const { scheduleUserClustering } = require('./faceClusterScheduler')
 const { attachClusterCoverUrls } = require('./attachClusterCoverUrls')
 
@@ -21,6 +25,7 @@ module.exports = {
   attachClusterCoverUrls,
   restoreDefaultCover,
   generateThumbnailForFaceEmbedding,
+  revokePreviousManualCoverAssets,
   getFaceEmbeddingIdsByClusterId,
   getClustersByUserId,
   getRecentClustersByUserId,

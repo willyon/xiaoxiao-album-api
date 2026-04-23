@@ -1,20 +1,8 @@
 /**
- * 人脸聚类 Python 客户端：统一封装健康检查、聚类请求与人脸缩略图裁剪请求。
+ * 人脸聚类 Python 客户端：统一封装聚类请求与人脸缩略图裁剪请求。
  */
 const axios = require('axios')
 const FormData = require('form-data')
-
-/**
- * 检查 Python 服务健康状态。
- * @param {string} serviceUrl - Python 服务基地址。
- * @returns {Promise<any>} 健康检查响应体。
- */
-async function checkPythonServiceHealth(serviceUrl) {
-  const response = await axios.get(`${serviceUrl}/health`, {
-    timeout: 30000
-  })
-  return response.data
-}
 
 /**
  * 调用 Python 聚类接口。
@@ -51,7 +39,6 @@ async function cropFaceThumbnail(serviceUrl, imageData, bbox) {
 }
 
 module.exports = {
-  checkPythonServiceHealth,
   clusterFaceEmbeddings,
   cropFaceThumbnail
 }

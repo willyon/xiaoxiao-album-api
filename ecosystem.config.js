@@ -71,33 +71,6 @@ module.exports = {
       env: {
         NODE_ENV: 'production'
       }
-    },
-    // ========== 定时任务 ==========
-    {
-      name: 'cleanup-rebuild-all',
-      script: 'scripts/development/rebuild-similar-groups.js',
-      node_args: '-r dotenv/config',
-      cwd: APP_ROOT,
-      // 定时执行：每天凌晨 3 点执行一次
-      cron: '0 3 * * *',
-      // 执行完成后自动退出，不常驻
-      autorestart: false,
-      watch: false,
-      // 实例数：只运行一个实例
-      instances: 1,
-      // 执行模式：fork 模式（适合一次性脚本）
-      exec_mode: 'fork',
-      env: {
-        NODE_ENV: 'production'
-      },
-      // 日志配置（如果 logs 目录不存在，PM2 会自动创建）
-      error_file: './logs/cleanup-rebuild-all-error.log',
-      out_file: './logs/cleanup-rebuild-all-out.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      merge_logs: true,
-      // 保留最近 10 天的日志
-      log_file: './logs/cleanup-rebuild-all-combined.log',
-      time: true
     }
   ]
 }
@@ -121,14 +94,7 @@ pm2 start ecosystem.config.js
 - 重启 Python AI 服务: pm2 restart python-ai-service
 - 重启所有 Workers: pm2 restart media-upload-worker media-meta-worker cloud-caption-worker media-analysis-worker
 
-📋 定时任务管理:
-- 查看定时任务状态: pm2 list
-- 查看清理任务日志: pm2 logs cleanup-rebuild-all
-- 查看聚类任务日志: pm2 logs face-cluster-rebuild-all
-- 手动执行清理任务: pm2 start cleanup-rebuild-all --no-autorestart
-- 手动执行聚类任务: pm2 start face-cluster-rebuild-all --no-autorestart
-- 停止定时任务: pm2 stop cleanup-rebuild-all face-cluster-rebuild-all
-- 删除定时任务: pm2 delete cleanup-rebuild-all face-cluster-rebuild-all
+说明：相似分组重建（rebuildCleanupGroups）与人脸聚类（performFaceClustering）在媒体分析成功路径中已由 mediaAnalysisIngestor 去抖调度（scheduleUserRebuild / scheduleUserClustering），无需 PM2 重复定时跑。
 
 📋 监控命令:
 - 实时监控: pm2 monit

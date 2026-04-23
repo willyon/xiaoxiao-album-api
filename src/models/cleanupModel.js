@@ -14,9 +14,16 @@ function selectCleanupCandidatesByUser(userId) {
       m.file_hash AS image_hash,
       m.phash AS image_phash,
       m.dhash AS image_dhash,
-      m.aesthetic_score,
       m.sharpness_score,
-      m.captured_at AS image_created_at
+      m.captured_at AS image_created_at,
+      m.is_favorite,
+      m.width_px,
+      m.height_px,
+      m.hd_width_px,
+      m.hd_height_px,
+      COALESCE(m.face_count, 0) AS face_count,
+      COALESCE(m.person_count, 0) AS person_count,
+      m.expression_tags
     FROM media m
     WHERE m.user_id = ?
       AND (m.deleted_at IS NULL)
@@ -39,49 +46,47 @@ function deleteGroupsByUser(userId) {
 
 /**
  * 新建相似图分组。
- * @param {{userId:number|string,primaryMediaId?:number|null,memberCount?:number,createdAt?:number,updatedAt?:number}} params - 分组参数。
+ * @param {{userId:number|string,memberCount?:number,createdAt?:number,updatedAt?:number}} params - 分组参数。
  * @returns {number|bigint} 新分组 ID。
  */
-function insertSimilarGroup({ userId, primaryMediaId, memberCount, createdAt, updatedAt }) {
+function insertSimilarGroup({ userId, memberCount, createdAt, updatedAt }) {
   const stmt = db.prepare(`
     INSERT INTO similar_groups (
       user_id,
-      primary_media_id,
       member_count,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?)
   `);
   const now = Date.now();
-  const result = stmt.run(userId, primaryMediaId ?? null, memberCount ?? 0, createdAt ?? now, updatedAt ?? now);
+  const result = stmt.run(userId, memberCount ?? 0, createdAt ?? now, updatedAt ?? now);
   return result.lastInsertRowid;
 }
 
 /**
  * 添加相似图分组成员。
  * @param {number|string} groupId - 分组 ID。
- * @param {{mediaId:number,rankScore?:number,similarity?:number,aestheticScore?:number}} member - 成员数据。
+ * @param {{mediaId:number,rankScore?:number,similarity?:number}} member - 成员数据。
  * @returns {void} 无返回值。
  */
-function insertSimilarGroupMember(groupId, { mediaId, rankScore, similarity, aestheticScore }) {
+function insertSimilarGroupMember(groupId, { mediaId, rankScore, similarity }) {
   const stmt = db.prepare(`
     INSERT INTO similar_group_members (
       group_id,
       media_id,
       rank_score,
       similarity,
-      aesthetic_score,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?)
   `);
   const now = Date.now();
-  stmt.run(groupId, mediaId, rankScore ?? null, similarity ?? null, aestheticScore ?? null, now, now);
+  stmt.run(groupId, mediaId, rankScore ?? null, similarity ?? null, now, now);
 }
 
 /**
  * 事务化替换用户相似图分组：先删旧分组，再写入新分组及成员。
- * @param {{userId:number|string,groups:Array<{primaryMediaId:number,members:Array<{mediaId:number,rankScore?:number,similarity?:number,aestheticScore?:number}>}>}} params
+ * @param {{userId:number|string,groups:Array<{members:Array<{mediaId:number,rankScore?:number,similarity?:number}>}>}} params
  * @returns {{groupCount:number}} 创建分组数量。
  */
 function replaceGroupsByUser({ userId, groups }) {
@@ -96,7 +101,6 @@ function replaceGroupsByUser({ userId, groups }) {
     for (const group of targetGroups) {
       const groupId = insertSimilarGroup({
         userId: targetUserId,
-        primaryMediaId: group.primaryMediaId,
         memberCount: group.members.length,
         updatedAt: now,
       });
@@ -142,7 +146,6 @@ function selectDisplayableSimilarGroups({ userId, limit, offset }) {
     SELECT
       sg.id,
       sg.user_id,
-      sg.primary_media_id,
       sg.member_count,
       sg.created_at,
       sg.updated_at
@@ -176,14 +179,12 @@ function selectMembersByGroupIds(groupIds) {
       cgm.media_id,
       cgm.rank_score,
       cgm.similarity,
-      cgm.aesthetic_score,
       cgm.created_at,
       cgm.updated_at,
       i.user_id,
       i.thumbnail_storage_key,
       i.high_res_storage_key,
       i.file_size_bytes,
-      i.aesthetic_score AS image_aesthetic_score,
       i.captured_at,
       i.is_favorite,
       i.date_key,
@@ -203,7 +204,7 @@ function selectMembersByGroupIds(groupIds) {
     JOIN media i ON i.id = cgm.media_id
     WHERE cgm.group_id IN (${placeholders})
       AND i.deleted_at IS NULL
-    ORDER BY cgm.group_id, cgm.rank_score DESC, i.captured_at DESC, cgm.media_id
+    ORDER BY cgm.group_id, cgm.rank_score DESC, i.captured_at DESC, cgm.media_id DESC
   `);
 
   return stmt.all(...groupIds);
@@ -249,27 +250,14 @@ function refreshGroupStats(groupId, { updatedAt }) {
     return { deleted: true };
   }
 
-  // 选择 primary_media_id：选择 rank_score 最高的
-  const primaryStmt = db.prepare(`
-    SELECT cgm.media_id
-    FROM similar_group_members cgm
-    JOIN media i ON i.id = cgm.media_id
-    WHERE cgm.group_id = ?
-      AND i.deleted_at IS NULL
-    ORDER BY cgm.rank_score DESC, cgm.media_id
-    LIMIT 1
-  `);
-  const primary = primaryStmt.get(groupId);
-
   const updateStmt = db.prepare(`
     UPDATE similar_groups
     SET
       member_count = ?,
-      primary_media_id = ?,
       updated_at = ?
     WHERE id = ?
   `);
-  updateStmt.run(stats.member_count || 0, primary?.media_id || null, updatedAt, groupId);
+  updateStmt.run(stats.member_count || 0, updatedAt, groupId);
   return { deleted: false, memberCount: stats.member_count || 0 };
 }
 

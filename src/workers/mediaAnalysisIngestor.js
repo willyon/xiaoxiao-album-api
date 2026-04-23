@@ -9,8 +9,7 @@ const storageService = require('../services/storageService')
 const {
   insertFaceEmbeddings,
   updateAnalysisStatusPrimary,
-  finalizeMediaAnalysis: finalizeMediaAnalysisInModel,
-  upsertMediaEmbedding
+  finalizeMediaAnalysis: finalizeMediaAnalysisInModel
 } = require('../services/mediaAnalysisPipelineService')
 const { rebuildMediaSearchDoc } = require('../services/mediaService')
 const { getCloudConfigForAnalysis } = require('../services/cloudModelService')
@@ -390,7 +389,6 @@ function _applyAdapterFromModules(mediaId, userId, body, stepResults, options = 
         data: {
           phash: d.hashes?.phash ?? null,
           dhash: d.hashes?.dhash ?? null,
-          aestheticScore: _roundTo2OrNull(d.aesthetic_score),
           sharpnessScore: _roundTo2OrNull(d.sharpness_score)
         }
       }
@@ -401,14 +399,7 @@ function _applyAdapterFromModules(mediaId, userId, body, stepResults, options = 
     stepResults.cleanup = { status: modules.quality?.status || 'failed', errorCode: modules.quality?.error?.code || null, data: {} }
   }
 
-  if (mediaType === 'image' && modules.embedding?.status === 'success' && modules.embedding.data?.vector) {
-    try {
-      upsertMediaEmbedding({ mediaId, vector: modules.embedding.data.vector })
-    } catch (e) {
-      logger.warn({ message: 'analyze_image adapter: upsertMediaEmbedding failed', details: { mediaId, error: e.message } })
-    }
-  }
-  if (mediaType === 'image' && (modules.quality?.status === 'success' || modules.embedding?.status === 'success') && userId) {
+  if (mediaType === 'image' && modules.quality?.status === 'success' && userId) {
     scheduleUserRebuild(userId)
   }
 

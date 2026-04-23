@@ -125,7 +125,6 @@ function createTableMedia() {
       ai_action_tags_json TEXT,
       ai_scene_tags_json TEXT,
       ai_ocr TEXT,
-      aesthetic_score REAL,
       sharpness_score REAL,
       is_blurry INTEGER DEFAULT 0 NOT NULL,
       face_count INTEGER DEFAULT 0,
@@ -344,18 +343,16 @@ function createTableFaceClustersMediaVersion() {
   ).run();
 }
 
-/** 创建 similar_groups：相似图分组，primary_media_id 指向 media。@returns {void} */
+/** 创建 similar_groups：相似图分组（推荐主图由 similar_group_members.rank_score 与列表排序表达，不设冗余列）。@returns {void} */
 function createTableSimilarGroupsMediaVersion() {
   const sql = `
     CREATE TABLE IF NOT EXISTS similar_groups (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
-      primary_media_id INTEGER,
       member_count INTEGER DEFAULT 0,
       created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
       updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (primary_media_id) REFERENCES media(id) ON DELETE SET NULL
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
   `;
   db.prepare(sql).run();
@@ -371,7 +368,6 @@ function createTableSimilarGroupMembersMediaVersion() {
       media_id INTEGER NOT NULL,
       rank_score REAL,
       similarity REAL,
-      aesthetic_score REAL,
       created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
       updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
       PRIMARY KEY (group_id, media_id),

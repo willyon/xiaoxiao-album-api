@@ -14,7 +14,8 @@ const {
   setClusterCover,
   verifyFaceEmbeddingInCluster,
   getFaceEmbeddingIdsByClusterId,
-  attachClusterCoverUrls
+  attachClusterCoverUrls,
+  revokePreviousManualCoverAssets
 } = faceClusterService
 const storageService = require('../services/storageService')
 const logger = require('../utils/logger')
@@ -272,6 +273,12 @@ async function setClusterCoverImage(req, res) {
       messageType: 'error'
     })
   }
+
+  await revokePreviousManualCoverAssets({
+    userId,
+    clusterId: clusterIdNum,
+    incomingFaceEmbeddingId: faceEmbeddingIdNum
+  })
 
   const result = setClusterCover(userId, clusterIdNum, faceEmbeddingIdNum)
 

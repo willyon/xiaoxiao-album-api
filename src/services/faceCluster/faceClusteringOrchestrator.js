@@ -16,7 +16,7 @@ const {
   getAllClusterRepresentativesByUserId,
   getMaxClusterIdForUser
 } = require('../../models/faceClusterModel')
-const { checkPythonServiceHealth, clusterFaceEmbeddings } = require('./faceClusterPythonClient')
+const { clusterFaceEmbeddings } = require('./faceClusterPythonClient')
 const {
   generateThumbnailsForClusters,
   handleReclusterThumbnailMaintenance
@@ -169,14 +169,6 @@ function buildClusterAssignmentsFromPython(clusters, faceEmbeddings, newClusterI
   return { clusterData, clustersForThumbnails, noiseSingletonCount }
 }
 
-async function _assertPythonServiceHealthy() {
-  const healthCheckData = await checkPythonServiceHealth(PYTHON_SERVICE_URL)
-  if (!healthCheckData?.status || healthCheckData.status !== 'healthy') {
-    throw new Error(`Python 服务健康检查失败: ${JSON.stringify(healthCheckData)}`)
-  }
-  logger.info({ message: 'Python 服务健康检查通过', details: { serviceUrl: PYTHON_SERVICE_URL } })
-}
-
 async function _requestPythonClusters(requestBody) {
   return clusterFaceEmbeddings(PYTHON_SERVICE_URL, requestBody)
 }
@@ -210,20 +202,6 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
     const requestBody = { embeddings }
     if (threshold !== undefined && threshold !== null) {
       requestBody.threshold = threshold
-    }
-
-    try {
-      await _assertPythonServiceHealthy()
-    } catch (error) {
-      const errorMsg =
-        error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT'
-          ? `无法连接到 Python 服务 (${PYTHON_SERVICE_URL})。请确保服务正在运行。\n提示: 在与本服务并列的 xiaoxiao-album-ai 目录执行 python3 start.py`
-          : `Python 服务健康检查失败: ${error.message}`
-      logger.error({
-        message: errorMsg,
-        details: { serviceUrl: PYTHON_SERVICE_URL, error: error.message, code: error.code }
-      })
-      throw new Error(errorMsg)
     }
 
     logger.info({

@@ -116,13 +116,5 @@ pm2 start ecosystem.dev.config.js
 - 查看 Worker 日志: pm2 logs media-upload-worker-dev
 - 实时监控: pm2 monit
 
-📋 定时任务管理 (开发版):
-- 查看定时任务状态: pm2 list
-- 查看清理任务日志: pm2 logs cleanup-rebuild-all-dev
-- 查看聚类任务日志: pm2 logs face-cluster-rebuild-all-dev
-- 手动执行清理任务: pm2 start cleanup-rebuild-all-dev --no-autorestart
-- 手动执行聚类任务: pm2 start face-cluster-rebuild-all-dev --no-autorestart
-- 停止定时任务: pm2 stop cleanup-rebuild-all-dev face-cluster-rebuild-all-dev
-- 删除定时任务: pm2 delete cleanup-rebuild-all-dev face-cluster-rebuild-all-dev
-- 注意: 开发环境如需频繁测试，可修改 cron 时间或注释掉 cron 字段手动执行
+说明：本开发配置未挂 PM2 定时任务；相似分组 / 人脸聚类由媒体分析成功路径经 mediaAnalysisIngestor 去抖调度（与生产一致）。
 */
