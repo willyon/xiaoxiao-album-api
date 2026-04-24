@@ -246,18 +246,14 @@ function createTableMediaSearch() {
   db.prepare("CREATE INDEX IF NOT EXISTS idx_media_search_user_id ON media_search(user_id);").run();
 }
 
-/** 创建 media_search_fts：FTS5 虚拟表，与 media_search 内容同步，用于全文检索（会先 DROP 旧表以便列名变更后重建）。@returns {void} */
+/** 创建 media_search_fts：FTS5 虚拟表，与 media_search 内容同步，用于全文检索（幂等初始化，不执行重建）。@returns {void} */
 function createTableMediaSearchFts() {
-  db.prepare("DROP TRIGGER IF EXISTS media_search_fts_ai").run();
-  db.prepare("DROP TRIGGER IF EXISTS media_search_fts_ad").run();
-  db.prepare("DROP TRIGGER IF EXISTS media_search_fts_au").run();
-  db.prepare("DROP TABLE IF EXISTS media_search_fts").run();
   // 不使用 content=：与触发器组合易触发 SQLite 限制。
   // 不在此使用 AFTER INSERT/UPDATE/DELETE 触发器写入 FTS：对 media_search 的 UPDATE 会触发
   // unsafe use of virtual table "media_search_fts"（better-sqlite3 常报 database disk image is malformed）。
   // FTS 与 media_search 的同步在 rebuildMediaSearchDoc 中完成。
   const sql = `
-    CREATE VIRTUAL TABLE media_search_fts USING fts5(
+    CREATE VIRTUAL TABLE IF NOT EXISTS media_search_fts USING fts5(
       description_text,
       keywords_text,
       subject_tags_text,

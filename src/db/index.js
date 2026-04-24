@@ -8,8 +8,15 @@
 const Database = require('better-sqlite3')
 const path = require('path')
 
+// 优先使用外部注入的 DATABASE_PATH（由 xiaoxiao-album-app/electron/main.cjs 在 spawn API 时注入，
+// 打包态会指向 userData 下的可写库文件）；
+// 未注入时回退到项目根的 database.db（本地开发/脚本场景）。
+const dbFile = process.env.DATABASE_PATH
+  ? path.resolve(process.env.DATABASE_PATH)
+  : path.resolve(__dirname, '../../database.db')
+
 // 创建并导出数据库连接
-const db = new Database(path.resolve(__dirname, '../../database.db'))
+const db = new Database(dbFile)
 
 // 开启外键支持
 db.pragma('foreign_keys = ON')

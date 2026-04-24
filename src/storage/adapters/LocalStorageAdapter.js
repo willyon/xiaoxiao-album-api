@@ -20,8 +20,10 @@ class LocalStorageAdapter extends BaseStorageAdapter {
     const defaultPort = process.env.PORT || 3000
     this.baseUrl = config.baseUrl || process.env.API_BASE_URL_LOCAL || `http://localhost:${defaultPort}`
 
-    // 设置基础目录为项目根目录
-    this.baseDir = path.join(__dirname, '..', '..', '..')
+    // 项目根：开发为仓库根；Electron 等可设 API_WORKDIR 为可写目录（如 userData）
+    this.baseDir = process.env.API_WORKDIR
+      ? path.resolve(process.env.API_WORKDIR)
+      : path.join(__dirname, '..', '..', '..')
   }
 
   /**
@@ -84,7 +86,8 @@ class LocalStorageAdapter extends BaseStorageAdapter {
    * @returns {Object} Multer diskStorage配置
    */
   getMulterStorage(generateFilename) {
-    const uploadFolder = path.join(__dirname, '..', '..', '..', process.env.UPLOADS_DIR)
+    const uploadRel = process.env.UPLOADS_DIR || 'storage-local/upload'
+    const uploadFolder = path.join(this.baseDir, uploadRel)
 
     return multer.diskStorage({
       destination: function (req, file, cb) {

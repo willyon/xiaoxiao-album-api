@@ -2,6 +2,9 @@
   "name": "my-node-project",
   "version": "1.0.0",
   "main": "server.js",
+  "engines": {
+    "node": ">=22.5.1 <23"
+  },
   "scripts": {
     "dev": "NODE_ENV=development node server.js",
     "prod": "NODE_ENV=production node server.js",
@@ -36,6 +39,8 @@
     "jsonwebtoken": "^9.0.2",
     "luxon": "^3.5.0",
     "multer": "^2.0.2",
+    "node-gyp": "^10.3.1",
+    "node-addon-api": "^7.1.1",
     "nodemailer": "^6.9.16",
     "rbush": "^3.0.1",
     "sharp": "^0.33.5",
@@ -50,7 +55,6 @@
     "globals": "^17.5.0",
     "mocha": "^10.7.3",
     "nodemon": "^3.1.4",
-    "node-addon-api": "^7.1.1",
     "prettier": "^3.3.3"
   }
 }

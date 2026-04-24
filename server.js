@@ -15,6 +15,7 @@ const express = require('express')
 const cors = require('cors')
 const { getRedisClient } = require('./src/services/redisClient')
 const initGracefulShutdown = require('./src/utils/gracefulShutdown')
+const { ensureSchemaInitialized } = require('./src/db/ensureSchema')
 
 const { closeMediaUploadQueue } = require('./src/queues/mediaUploadQueue')
 const { closeMediaMetaQueue } = require('./src/queues/mediaMetaQueue')
@@ -48,6 +49,9 @@ const { progressStream } = require('./src/controllers/mediaProcessingProgressCon
 const { getLocations } = require('./src/controllers/locationsController')
 
 // ========================== 创建Express实例，设置端口号 ========================== //
+
+// 启动前确保表结构存在（首次安装会自动建表；失败则阻止服务启动）
+ensureSchemaInitialized()
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -111,13 +115,19 @@ app.use(cookieParser())
 // 注册表单解析 解析form-data或URL参数 { extended: true }表示使用第三方qs模块 以便解析嵌套对象
 app.use(express.urlencoded({ extended: true }))
 
+// 进程就绪探针（Electron 拉起子进程时轮询；不走鉴权 / sendResponse）
+app.get('/health', (_req, res) => {
+  res.status(200).send('ok')
+})
+
 // 注册自定义响应格式中间件 必须在所有路由之前挂载
 app.use(responseHandler)
 
 // ========================== 静态资源中间件 ========================== //
 
-// 提供静态文件访问服务
-app.use('/storage-local', express.static(path.join(__dirname, 'storage-local')))
+// 提供静态文件访问服务（Electron 打包时 API_WORKDIR 指向可写 userData）
+const apiProjectRoot = process.env.API_WORKDIR ? path.resolve(process.env.API_WORKDIR) : __dirname
+app.use('/storage-local', express.static(path.join(apiProjectRoot, 'storage-local')))
 
 // ========================== 业务路由注册 ========================== //
 
