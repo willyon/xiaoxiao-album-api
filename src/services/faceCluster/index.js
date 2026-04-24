@@ -4,6 +4,7 @@
 const {
   getFaceEmbeddingIdsByClusterId,
   getClustersByUserId,
+  getClusterCardByUserId,
   getRecentClustersByUserId,
   getExistingPersonNames,
   updateClusterName,
@@ -28,6 +29,7 @@ module.exports = {
   revokePreviousManualCoverAssets,
   getFaceEmbeddingIdsByClusterId,
   getClustersByUserId,
+  getClusterCardByUserId,
   getRecentClustersByUserId,
   getExistingPersonNames,
   updateClusterName,

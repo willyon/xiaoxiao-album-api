@@ -1,5 +1,6 @@
 /**
- * 人脸聚类编排层：负责增量分配、调用 Python 聚类、落库、恢复名称封面与后处理清理。
+ * 人脸聚类编排层：Python DBSCAN、跨簇「最近脸对」合并、落库、恢复名称封面与后处理。
+ * 全量重聚时不再做「先增量并标 is_user_assigned」，避免未进当次 DBSCAN 的人脸锁在子集外（同一人多簇）。
  */
 const logger = require('../../utils/logger')
 const {
@@ -12,8 +13,6 @@ const {
   restoreClusterNames,
   restoreCoverSettings,
   computeAndUpsertClusterRepresentative,
-  getUnassignedFaceEmbeddingsByUserId,
-  getAllClusterRepresentativesByUserId,
   getMaxClusterIdForUser
 } = require('../../models/faceClusterModel')
 const { clusterFaceEmbeddings } = require('./faceClusterPythonClient')
@@ -21,74 +20,13 @@ const {
   generateThumbnailsForClusters,
   handleReclusterThumbnailMaintenance
 } = require('./faceClusterThumbnailPipeline')
+const { mergeAutoClustersAfterDbscan } = require('./faceClusterPostMerge')
 
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL
-const INCREMENTAL_ASSIGN_MIN_SIMILARITY = Number(process.env.FACE_INCREMENTAL_ASSIGN_MIN_SIMILARITY) || 0.75
-
 /**
- * 计算余弦相似度。
- * @param {number[]} a - 向量 A。
- * @param {number[]} b - 向量 B。
- * @returns {number} 余弦相似度。
+ * 两簇间「跨簇脸对」余弦距离**最小值** ≤ 此值则合并为同一人物；≤0 关闭。默认 0.4（略严于 Python eps 0.45）。
  */
-function cosineSimilarity(a, b) {
-  if (!a?.length || !b?.length || a.length !== b.length) return 0
-  let dot = 0
-  let normA = 0
-  let normB = 0
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i]
-    normA += a[i] * a[i]
-    normB += b[i] * b[i]
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB)
-  return denom === 0 ? 0 : dot / denom
-}
-
-/**
- * 将未归属人脸增量分配给已有 cluster。
- * @param {number|string} userId - 用户 ID。
- * @returns {{assigned:number, skipped:number}} 分配统计。
- */
-function incrementalAssignFacesToExistingClusters(userId) {
-  const representatives = getAllClusterRepresentativesByUserId(userId)
-  if (representatives.length === 0) return { assigned: 0, skipped: 0 }
-
-  const unassigned = getUnassignedFaceEmbeddingsByUserId(userId)
-  if (unassigned.length === 0) return { assigned: 0, skipped: 0 }
-
-  let assigned = 0
-  for (const { id: faceEmbeddingId, embedding } of unassigned) {
-    let bestClusterId = null
-    let bestSim = -Infinity
-    for (const { clusterId, embedding: repEmb } of representatives) {
-      const sim = cosineSimilarity(embedding, repEmb)
-      if (sim < INCREMENTAL_ASSIGN_MIN_SIMILARITY) continue
-      if (sim > bestSim) {
-        bestSim = sim
-        bestClusterId = clusterId
-      }
-    }
-    if (bestClusterId == null) continue
-    try {
-      insertFaceClusters(userId, [{ clusterId: bestClusterId, faceEmbeddingId, isUserAssigned: true }])
-      assigned += 1
-      computeAndUpsertClusterRepresentative(userId, bestClusterId)
-    } catch (err) {
-      logger.warn({
-        message: `增量分配写入失败: faceEmbeddingId=${faceEmbeddingId}, clusterId=${bestClusterId}`,
-        details: { userId, error: err.message }
-      })
-    }
-  }
-  if (assigned > 0) {
-    logger.info({
-      message: `增量分配: ${assigned} 张人脸归入已有人物`,
-      details: { userId, assigned, skipped: unassigned.length - assigned }
-    })
-  }
-  return { assigned, skipped: unassigned.length - assigned }
-}
+const MERGE_MAX_MIN_PAIR_COSINE_DIST = Number(process.env.FACE_CLUSTER_MERGE_MAX_MIN_PAIR_COSINE_DISTANCE ?? 0.4)
 
 /**
  * 将 Python DBSCAN 结果映射为落库数据与缩略图输入。
@@ -185,7 +123,6 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
       details: { threshold, recluster }
     })
 
-    incrementalAssignFacesToExistingClusters(userId)
     const faceEmbeddings = getFaceEmbeddingsByUserId(userId)
 
     if (!faceEmbeddings || faceEmbeddings.length === 0) {
@@ -255,16 +192,34 @@ async function performFaceClustering({ userId, threshold, recluster = false }) {
     }
 
     const nextClusterIdStart = getMaxClusterIdForUser(userId) + 1
-    const { clusterData, clustersForThumbnails, noiseSingletonCount } = buildClusterAssignmentsFromPython(
+    let { clusterData, clustersForThumbnails, noiseSingletonCount } = buildClusterAssignmentsFromPython(
       clusters,
       faceEmbeddings,
       nextClusterIdStart,
       userId
     )
 
+    const merged = mergeAutoClustersAfterDbscan(clusterData, clustersForThumbnails, faceEmbeddings, {
+      maxMinPairCosineDistance: MERGE_MAX_MIN_PAIR_COSINE_DIST,
+      userId
+    })
+    clusterData = merged.clusterData
+    clustersForThumbnails = merged.clustersForThumbnails
+
     logger.info({
       message: `解析完成，准备插入 ${clusterData.length} 条聚类数据`,
-      details: { userId, nextClusterIdStart, pythonClusterGroupCount: clusters.length, noiseSingletonClusters: noiseSingletonCount }
+      details: {
+        userId,
+        nextClusterIdStart,
+        pythonClusterGroupCount: clusters.length,
+        noiseSingletonClusters: noiseSingletonCount,
+        postDbscanMerge: {
+          beforeClusterCount: merged.beforeClusterCount,
+          afterClusterCount: merged.afterClusterCount,
+          mergeGroupCount: merged.mergeGroupCount,
+          maxMinPairCosineDistance: MERGE_MAX_MIN_PAIR_COSINE_DIST
+        }
+      }
     })
 
     const insertResult = insertFaceClusters(userId, clusterData, { replaceAutoExisting: recluster })

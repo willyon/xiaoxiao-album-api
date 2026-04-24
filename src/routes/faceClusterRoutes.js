@@ -9,6 +9,7 @@ const router = express.Router()
 const {
   getClusters,
   getRecentClusters,
+  getClusterById,
   getClusterFaceEmbeddingIds,
   updateCluster,
   moveFaces,
@@ -22,8 +23,11 @@ router.get('/', getClusters)
 // 获取最近使用的人物（用于 popover 第一屏，必须在 /:clusterId 之前）
 router.get('/recent', getRecentClusters)
 
-// 获取指定人物的 face_embedding_id 列表（用于合并到其他人，必须在 /:clusterId 之前）
+// 获取指定人物的 face_embedding_id 列表（用于合并到其他人，必须在裸 /:clusterId 之前）
 router.get('/:clusterId/face-embedding-ids', getClusterFaceEmbeddingIds)
+
+// 单个人物卡片（与列表项同形）
+router.get('/:clusterId', getClusterById)
 
 // 设置人物聚类封面（必须在 /:clusterId 之前）
 router.patch('/:clusterId/cover', setClusterCoverImage)

@@ -7,6 +7,7 @@
 const faceClusterService = require('../services/faceCluster')
 const {
   getClustersByUserId,
+  getClusterCardByUserId,
   getRecentClustersByUserId,
   getExistingPersonNames,
   updateClusterName,
@@ -42,6 +43,28 @@ async function getClusterFaceEmbeddingIds(req, res) {
   res.sendResponse({
     data: { faceEmbeddingIds }
   })
+}
+
+/**
+ * 单个人物聚类卡片（与列表项同形，供详情页补封面等，避免全表分页拉取）
+ * GET /face-clusters/:clusterId
+ * @param {import('express').Request} req - 请求对象。
+ * @param {import('express').Response} res - 响应对象。
+ * @returns {Promise<void>}
+ */
+async function getClusterById(req, res) {
+  const { userId } = req.user
+  const clusterIdNum = parsePositiveIntParam(req.params.clusterId)
+  const row = getClusterCardByUserId(userId, clusterIdNum)
+  if (!row) {
+    throw new CustomError({
+      httpStatus: 404,
+      messageCode: ERROR_CODES.RESOURCE_NOT_FOUND,
+      messageType: 'error',
+    })
+  }
+  const [item] = await attachClusterCoverUrls([row])
+  res.sendResponse({ data: item })
 }
 
 /**
@@ -321,6 +344,7 @@ async function resolveClusterCoverUrl(thumbnailStorageKey, faceEmbeddingId) {
 module.exports = {
   getClusters: asyncHandler(getClusters),
   getRecentClusters: asyncHandler(getRecentClusters),
+  getClusterById: asyncHandler(getClusterById),
   getClusterFaceEmbeddingIds: asyncHandler(getClusterFaceEmbeddingIds),
   updateCluster: asyncHandler(updateCluster),
   moveFaces: asyncHandler(moveFaces),
