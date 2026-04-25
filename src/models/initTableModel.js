@@ -320,6 +320,7 @@ function createTableFaceClustersMediaVersion() {
       cluster_id INTEGER NOT NULL,
       face_embedding_id INTEGER NOT NULL,
       similarity_score REAL,
+      is_user_assigned INTEGER DEFAULT 0,
       representative_type INTEGER DEFAULT 0,
       name TEXT,
       created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),

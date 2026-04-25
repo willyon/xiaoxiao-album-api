@@ -246,7 +246,36 @@ async function _enqueueAiAndCleanup({ mediaId, userId, highResStorageKey, origin
     return
   }
 
+  // DEBUG_TMP_REMOVE: 冷启动竞态定位日志（确认入队前本地文件可见性）
   try {
+    const [highResLocalPath, originalLocalPath] = await Promise.all([
+      highResStorageKey ? storageService.getLocalFilePath(highResStorageKey) : Promise.resolve(null),
+      originalStorageKey ? storageService.getLocalFilePath(originalStorageKey) : Promise.resolve(null)
+    ])
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.meta.enqueue_ai.local_file_snapshot',
+      details: {
+        mediaId,
+        userId,
+        mediaType: mediaType || 'image',
+        fileName: fileName || '',
+        highResStorageKey: highResStorageKey || null,
+        originalStorageKey: originalStorageKey || null,
+        highResExists: !!highResLocalPath,
+        originalExists: !!originalLocalPath,
+        highResLocalPath,
+        originalLocalPath
+      }
+    })
+  } catch (e) {
+    logger.warn({
+      message: 'DEBUG_TMP_REMOVE.meta.enqueue_ai.local_file_snapshot_failed',
+      details: { mediaId, userId, error: e.message }
+    })
+  }
+
+  try {
+    const analysisJobId = `analysis:${userId}:${mediaId}`
     await mediaAnalysisQueue.add(
       'media-analysis',
       {
@@ -258,8 +287,21 @@ async function _enqueueAiAndCleanup({ mediaId, userId, highResStorageKey, origin
         mediaType: mediaType || 'image',
         fileName: fileName || ''
       },
-      { jobId: `analysis:${userId}:${mediaId}` }
+      { jobId: analysisJobId }
     )
+    logger.info({
+      // DEBUG_TMP_REMOVE: 定位“是否成功入 analysis 队列”
+      message: 'DEBUG_TMP_REMOVE.meta.enqueue_ai.queue_add_success',
+      details: {
+        mediaId,
+        userId,
+        imageHash,
+        sessionId: sessionId || null,
+        mediaType: mediaType || 'image',
+        queueName: process.env.MEDIA_ANALYSIS_QUEUE_NAME || 'mediaAnalysisQueue',
+        analysisJobId
+      }
+    })
     if (sessionId) {
       await updateProgressOnce({
         sessionId,
@@ -269,8 +311,18 @@ async function _enqueueAiAndCleanup({ mediaId, userId, highResStorageKey, origin
     }
   } catch (err) {
     logger.warn({
-      message: 'Failed to add media to mediaAnalysisQueue',
-      details: { imageHash, userId, error: err.message }
+      message: 'DEBUG_TMP_REMOVE.meta.enqueue_ai.queue_add_failed',
+      details: {
+        mediaId,
+        userId,
+        imageHash,
+        sessionId: sessionId || null,
+        mediaType: mediaType || 'image',
+        queueName: process.env.MEDIA_ANALYSIS_QUEUE_NAME || 'mediaAnalysisQueue',
+        highResStorageKey: highResStorageKey || null,
+        originalStorageKey: originalStorageKey || null,
+        error: err.message
+      }
     })
   }
 }

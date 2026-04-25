@@ -19,6 +19,7 @@ const {
   createTableMediaSearchTerms
 } = require('../models/initTableModel')
 
+
 function shouldSeedDesktopLocalUser() {
   return String(process.env.DESKTOP_LOCAL_MODE ?? '').trim().toLowerCase() === 'true'
 }

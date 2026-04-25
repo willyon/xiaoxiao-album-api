@@ -36,6 +36,7 @@ const ANALYZE_IMAGE_USE_LOCAL_PATH = process.env.ANALYZE_IMAGE_USE_LOCAL_PATH !=
  */
 async function processMediaAnalysis(job) {
   const { mediaId, userId, highResStorageKey, originalStorageKey, sessionId, mediaType = 'image', fileName } = job.data || {}
+  const analysisJobId = job?.id != null ? String(job.id) : null
 
   if (!mediaId) {
     logger.warn({
@@ -43,6 +44,35 @@ async function processMediaAnalysis(job) {
       details: { jobId: job.id, data: job.data }
     })
     return
+  }
+
+  // DEBUG_TMP_REMOVE: 冷启动竞态定位日志（分析阶段启动时文件可见性快照）
+  try {
+    const [highResLocalPath, originalLocalPath] = await Promise.all([
+      highResStorageKey ? storageService.getLocalFilePath(highResStorageKey) : Promise.resolve(null),
+      originalStorageKey ? storageService.getLocalFilePath(originalStorageKey) : Promise.resolve(null)
+    ])
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.analysis.start.local_file_snapshot',
+      details: {
+        analysisJobId,
+        mediaId,
+        userId,
+        mediaType,
+        fileName: fileName || '',
+        highResStorageKey: highResStorageKey || null,
+        originalStorageKey: originalStorageKey || null,
+        highResExists: !!highResLocalPath,
+        originalExists: !!originalLocalPath,
+        highResLocalPath,
+        originalLocalPath
+      }
+    })
+  } catch (e) {
+    logger.warn({
+      message: 'DEBUG_TMP_REMOVE.analysis.start.local_file_snapshot_failed',
+      details: { analysisJobId, mediaId, userId, error: e.message }
+    })
   }
 
   try {
@@ -139,6 +169,33 @@ async function processMediaAnalysis(job) {
  * @returns {Promise<{imageData:Buffer|null,localPath:string|null}>} 图片数据或本地路径。
  */
 async function _loadMediaBuffer({ highResStorageKey, originalStorageKey, mediaId, userId, fileName }) {
+  // DEBUG_TMP_REMOVE: 关键读取前再记一次，判断是否“入队时存在、读取时消失”
+  try {
+    const [highResLocalPath, originalLocalPath] = await Promise.all([
+      highResStorageKey ? storageService.getLocalFilePath(highResStorageKey) : Promise.resolve(null),
+      originalStorageKey ? storageService.getLocalFilePath(originalStorageKey) : Promise.resolve(null)
+    ])
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.analysis.load_buffer.pre_read_snapshot',
+      details: {
+        mediaId,
+        userId,
+        fileName: fileName || '',
+        highResStorageKey: highResStorageKey || null,
+        originalStorageKey: originalStorageKey || null,
+        highResExists: !!highResLocalPath,
+        originalExists: !!originalLocalPath,
+        highResLocalPath,
+        originalLocalPath
+      }
+    })
+  } catch (e) {
+    logger.warn({
+      message: 'DEBUG_TMP_REMOVE.analysis.load_buffer.pre_read_snapshot_failed',
+      details: { mediaId, userId, error: e.message }
+    })
+  }
+
   if (ANALYZE_IMAGE_USE_LOCAL_PATH) {
     if (highResStorageKey) {
       const p = await storageService.getLocalFilePath(highResStorageKey)
