@@ -34,8 +34,24 @@ async function handlePostMedias(req, res) {
   const userId = req?.user?.userId
 
   const mediaType = getMediaTypeFromFile(file)
+  logger.info({
+    message: 'DEBUG_TMP_REMOVE.upload.controller.request_received',
+    details: {
+      userId,
+      fileName,
+      fileSize,
+      mediaType,
+      hasBuffer: !!file.buffer,
+      storageKeyFromMulter: file.path || null,
+      sessionId: req.body.sessionId || null
+    }
+  })
 
   const imageHash = await computeFileHash(file.buffer || file.path)
+  logger.info({
+    message: 'DEBUG_TMP_REMOVE.upload.controller.hash_computed',
+    details: { userId, fileName, imageHash, mediaType, fileSize }
+  })
 
   const sessionId = req.body.sessionId
   const dedupeCheck = await enqueueMediaUploadIfNeeded({
@@ -50,6 +66,10 @@ async function handlePostMedias(req, res) {
     duplicateDetails: { source: 'uploadController' },
     checkOnly: true
   })
+  logger.info({
+    message: 'DEBUG_TMP_REMOVE.upload.controller.pre_storage_dedupe_result',
+    details: { userId, fileName, imageHash, duplicate: !!dedupeCheck.duplicate, sessionId: sessionId || null }
+  })
   if (dedupeCheck.duplicate) {
     if (file.path) {
       await storageService.deleteFile({ fileName, storageKey: file.path })
@@ -62,6 +82,10 @@ async function handlePostMedias(req, res) {
     const uploadStorageKey = `upload/${fileName}`
     await storageService.storage.storeFile(file.buffer, uploadStorageKey)
     storageKey = uploadStorageKey
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.upload.controller.store_file_success',
+      details: { userId, fileName, imageHash, uploadStorageKey, fileSize, sessionId: sessionId || null }
+    })
 
     logger.info({
       message: 'File uploaded to storage service',
@@ -69,6 +93,10 @@ async function handlePostMedias(req, res) {
     })
   } else {
     storageKey = file.path
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.upload.controller.local_file_path_received',
+      details: { userId, fileName, imageHash, storageKey, fileSize, sessionId: sessionId || null }
+    })
 
     logger.info({
       message: 'File uploaded to local storage',
@@ -88,10 +116,31 @@ async function handlePostMedias(req, res) {
     duplicateNote: 'file already stored before queue check',
     duplicateDetails: { source: 'uploadController' }
   })
+  logger.info({
+    message: 'DEBUG_TMP_REMOVE.upload.controller.enqueue_result',
+    details: {
+      userId,
+      fileName,
+      imageHash,
+      sessionId: sessionId || null,
+      storageKey,
+      enqueued: !!enqueueResult.enqueued,
+      duplicate: !!enqueueResult.duplicate,
+      jobId: enqueueResult.jobId || null
+    }
+  })
   if (enqueueResult.duplicate) {
     await storageService.deleteFile({ fileName, storageKey })
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.upload.controller.duplicate_cleanup_success',
+      details: { userId, fileName, imageHash, storageKey, sessionId: sessionId || null }
+    })
   }
 
+  logger.info({
+    message: 'DEBUG_TMP_REMOVE.upload.controller.response_success',
+    details: { userId, fileName, imageHash, sessionId: sessionId || null }
+  })
   res.sendResponse({ messageCode: SUCCESS_CODES.FILE_UPLOADED_SUCCESSFULLY })
 }
 

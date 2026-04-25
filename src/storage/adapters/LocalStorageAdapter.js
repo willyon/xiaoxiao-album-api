@@ -20,10 +20,16 @@ class LocalStorageAdapter extends BaseStorageAdapter {
     const defaultPort = process.env.PORT || 3000
     this.baseUrl = config.baseUrl || process.env.API_BASE_URL_LOCAL || `http://localhost:${defaultPort}`
 
-    // 项目根：开发为仓库根；Electron 等可设 API_WORKDIR 为可写目录（如 userData）
-    this.baseDir = process.env.API_WORKDIR
-      ? path.resolve(process.env.API_WORKDIR)
-      : path.join(__dirname, '..', '..', '..')
+    // 媒体根目录优先级（从高到低）：
+    // 1) MEDIA_STORAGE_ROOT：用户在桌面端设置页配置的媒体目录（可指向外接磁盘）
+    // 2) API_WORKDIR：Electron 默认的 userData 工作目录（未自定义媒体目录时生效）
+    // 3) 项目根目录：开发环境兜底（避免未注入环境变量时本地调试不可用）
+    const mediaStorageRoot = process.env.MEDIA_STORAGE_ROOT
+    this.baseDir = mediaStorageRoot
+      ? path.resolve(mediaStorageRoot)
+      : process.env.API_WORKDIR
+        ? path.resolve(process.env.API_WORKDIR)
+        : path.join(__dirname, '..', '..', '..')
   }
 
   /**

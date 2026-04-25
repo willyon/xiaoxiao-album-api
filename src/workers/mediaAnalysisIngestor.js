@@ -200,12 +200,20 @@ async function _loadMediaBuffer({ highResStorageKey, originalStorageKey, mediaId
     if (highResStorageKey) {
       const p = await storageService.getLocalFilePath(highResStorageKey)
       if (p) {
+        logger.info({
+          message: 'DEBUG_TMP_REMOVE.analysis.load_buffer.use_local_highres_path',
+          details: { mediaId, userId, fileName: fileName || '', highResStorageKey, localPath: p }
+        })
         return { imageData: null, localPath: p }
       }
     }
     if (originalStorageKey) {
       const p = await storageService.getLocalFilePath(originalStorageKey)
       if (p) {
+        logger.info({
+          message: 'DEBUG_TMP_REMOVE.analysis.load_buffer.use_local_original_path',
+          details: { mediaId, userId, fileName: fileName || '', originalStorageKey, localPath: p }
+        })
         return { imageData: null, localPath: p }
       }
     }
@@ -215,10 +223,22 @@ async function _loadMediaBuffer({ highResStorageKey, originalStorageKey, mediaId
 
   if (highResStorageKey) {
     imageData = await storageService.storage.getFileBuffer(highResStorageKey)
+    if (imageData) {
+      logger.info({
+        message: 'DEBUG_TMP_REMOVE.analysis.load_buffer.use_highres_buffer',
+        details: { mediaId, userId, fileName: fileName || '', highResStorageKey, bufferBytes: imageData.length }
+      })
+    }
   }
 
   if (!imageData && originalStorageKey) {
     imageData = await storageService.storage.getFileBuffer(originalStorageKey)
+    if (imageData) {
+      logger.info({
+        message: 'DEBUG_TMP_REMOVE.analysis.load_buffer.use_original_buffer',
+        details: { mediaId, userId, fileName: fileName || '', originalStorageKey, bufferBytes: imageData.length }
+      })
+    }
   }
 
   if (!imageData) {
@@ -263,22 +283,35 @@ async function _runAnalyzeVideo({ mediaId, userId, videoPath, stepResults }) {
   const device = process.env.AI_DEVICE || 'auto'
   const cloudConfig = getCloudConfigForAnalysis(userId)
   const cloudEnabled = !!cloudConfig
-  const response = await withAiSlot(() =>
-    axios.post(
-      `${PYTHON_SERVICE_URL}/analyze_video`,
-      {
-        video_path: videoPath,
-        device,
-        image_id: String(mediaId),
-        cloud_config: cloudConfig
-      },
-      {
-        timeout: ANALYZE_VIDEO_TIMEOUT_MS,
-        maxBodyLength: Infinity,
-        headers: { 'Content-Type': 'application/json' }
-      }
+  let response
+  try {
+    response = await withAiSlot(() =>
+      axios.post(
+        `${PYTHON_SERVICE_URL}/analyze_video`,
+        {
+          video_path: videoPath,
+          device,
+          image_id: String(mediaId),
+          cloud_config: cloudConfig
+        },
+        {
+          timeout: ANALYZE_VIDEO_TIMEOUT_MS,
+          maxBodyLength: Infinity,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      )
     )
-  )
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.analysis.video.python_call_success',
+      details: { mediaId, userId, videoPath, status: response?.status || null }
+    })
+  } catch (error) {
+    logger.error({
+      message: 'DEBUG_TMP_REMOVE.analysis.video.python_call_failed',
+      details: { mediaId, userId, videoPath, error: error.message }
+    })
+    throw error
+  }
   const body = response.data || {}
   _applyAdapterFromModules(mediaId, userId, body, stepResults, { mediaType: 'video', cloudEnabled })
 }
@@ -343,13 +376,26 @@ async function _runAnalyzeImage({ mediaId, userId, imageData, localPath, stepRes
     // cloud_config 作为 JSON 字符串透传给 Python
     formData.append('cloud_config', JSON.stringify(cloudConfig))
   }
-  const response = await withAiSlot(() =>
-    axios.post(`${PYTHON_SERVICE_URL}/analyze_image`, formData, {
-      timeout: ANALYZE_IMAGE_TIMEOUT_MS,
-      maxBodyLength: Infinity,
-      headers: typeof formData.getHeaders === 'function' ? formData.getHeaders() : undefined
+  let response
+  try {
+    response = await withAiSlot(() =>
+      axios.post(`${PYTHON_SERVICE_URL}/analyze_image`, formData, {
+        timeout: ANALYZE_IMAGE_TIMEOUT_MS,
+        maxBodyLength: Infinity,
+        headers: typeof formData.getHeaders === 'function' ? formData.getHeaders() : undefined
+      })
+    )
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.analysis.image.python_call_success',
+      details: { mediaId, userId, localPath: localPath || null, hasBuffer: !!imageData, status: response?.status || null }
     })
-  )
+  } catch (error) {
+    logger.error({
+      message: 'DEBUG_TMP_REMOVE.analysis.image.python_call_failed',
+      details: { mediaId, userId, localPath: localPath || null, hasBuffer: !!imageData, error: error.message }
+    })
+    throw error
+  }
   const body = response.data || {}
   _applyAdapterFromModules(mediaId, userId, body, stepResults, { mediaType: 'image', cloudEnabled })
 }

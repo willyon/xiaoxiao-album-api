@@ -228,7 +228,21 @@ async function _handleRetryFailure({ job, err, reason, storageKey, fileName, ima
 async function processAndSaveSingleMedia(job) {
   let fileInfo = job.data
   const { fileName, storageKey, userId, imageHash, fileSize, extension, mediaType = 'image' } = fileInfo
+  const uploadJobId = job?.id != null ? String(job.id) : null
   logger.info({ message: '处理文件', details: { fileName, mediaType } })
+  logger.info({
+    message: 'DEBUG_TMP_REMOVE.upload.worker.start',
+    details: {
+      uploadJobId,
+      userId,
+      imageHash,
+      fileName,
+      fileSize,
+      mediaType,
+      storageKey,
+      sessionId: fileInfo.sessionId || null
+    }
+  })
   const redisClient = getRedisClient()
   let lockKey
   let thumbnailStorageKey
@@ -238,6 +252,10 @@ async function processAndSaveSingleMedia(job) {
     const { proceed, lockKey: key } = await _ensureProcessRightOrShortCircuit(fileInfo, redisClient)
     if (!proceed) return
     lockKey = key
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.upload.worker.lock_acquired',
+      details: { uploadJobId, userId, imageHash, fileName, lockKey }
+    })
 
     // ======== 快路径：仅产出 preview 缩略图 ========
     // 使用适配器生成存储键名，避免硬编码路径
@@ -259,6 +277,18 @@ async function processAndSaveSingleMedia(job) {
           resizeWidth: 600
         })
       }
+      logger.info({
+        message: 'DEBUG_TMP_REMOVE.upload.worker.thumbnail_success',
+        details: {
+          uploadJobId,
+          userId,
+          imageHash,
+          fileName,
+          mediaType,
+          sourceStorageKey: storageKey,
+          thumbnailStorageKey
+        }
+      })
     } catch (error) {
       // 缩略图处理失败
       logger.error({
@@ -292,10 +322,18 @@ async function processAndSaveSingleMedia(job) {
     let originalStorageKey = storageService.storage.generateStorageKey(originalType, fileName)
     try {
       await storageService.storage.moveFile(storageKey, originalStorageKey)
+      logger.info({
+        message: 'DEBUG_TMP_REMOVE.upload.worker.move_original_success',
+        details: { uploadJobId, userId, imageHash, fileName, sourceStorageKey: storageKey, targetStorageKey: originalStorageKey }
+      })
     } catch (e) {
       logger.warn({
         message: 'Upload worker: move original file failed, fallback to temp storageKey',
         details: { imageHash, userId, sourceStorageKey: storageKey, targetStorageKey: originalStorageKey, error: e.message }
+      })
+      logger.warn({
+        message: 'DEBUG_TMP_REMOVE.upload.worker.move_original_failed',
+        details: { uploadJobId, userId, imageHash, fileName, sourceStorageKey: storageKey, targetStorageKey: originalStorageKey, error: e.message }
       })
       originalStorageKey = storageKey
     }
@@ -313,6 +351,10 @@ async function processAndSaveSingleMedia(job) {
     try {
       await saveNewMedia(imageData)
       await redisClient.sadd(userSetKey(userId), imageHash)
+      logger.info({
+        message: 'DEBUG_TMP_REMOVE.upload.worker.db_save_success',
+        details: { uploadJobId, userId, imageHash, fileName, thumbnailStorageKey, originalStorageKey }
+      })
     } catch (error) {
       // 数据库保存失败
       logger.error({
@@ -342,22 +384,57 @@ async function processAndSaveSingleMedia(job) {
     }
 
     // ======== 入 Meta 阶段队列做"慢活"（EXIF + 高清 AVIF + DB 更新）========
-    await mediaMetaQueue.add(
-      process.env.MEDIA_META_QUEUE_NAME || 'media-meta',
-      {
-        userId,
-        imageHash,
-        fileName,
-        originalStorageKey,
-        mediaType, // 透传，供 imageMetaIngestor 分支判断
-        extension: process.env.MEDIA_HIGHRES_EXTENSION || 'avif',
-        fileSize,
-        sessionId: fileInfo.sessionId
-      },
-      {
-        jobId: `${userId}:${imageHash}` // 添加 jobId 防止重复加入队列
-      }
-    )
+    const metaQueueName = process.env.MEDIA_META_QUEUE_NAME || 'media-meta'
+    const metaJobId = `${userId}:${imageHash}`
+    try {
+      await mediaMetaQueue.add(
+        metaQueueName,
+        {
+          userId,
+          imageHash,
+          fileName,
+          originalStorageKey,
+          mediaType, // 透传，供 imageMetaIngestor 分支判断
+          extension: process.env.MEDIA_HIGHRES_EXTENSION || 'avif',
+          fileSize,
+          sessionId: fileInfo.sessionId
+        },
+        {
+          jobId: metaJobId // 添加 jobId 防止重复加入队列
+        }
+      )
+      logger.info({
+        message: 'DEBUG_TMP_REMOVE.upload.worker.meta_queue_add_success',
+        details: {
+          uploadJobId,
+          metaQueueName,
+          metaJobId,
+          userId,
+          imageHash,
+          fileName,
+          mediaType,
+          originalStorageKey,
+          sessionId: fileInfo.sessionId || null
+        }
+      })
+    } catch (error) {
+      logger.error({
+        message: 'DEBUG_TMP_REMOVE.upload.worker.meta_queue_add_failed',
+        details: {
+          uploadJobId,
+          metaQueueName,
+          metaJobId,
+          userId,
+          imageHash,
+          fileName,
+          mediaType,
+          originalStorageKey,
+          sessionId: fileInfo.sessionId || null,
+          error: error.message
+        }
+      })
+      throw error
+    }
   } catch (error) {
     // 最外层错误处理 - 记录完整的失败信息
     // 注意：内层catch已经处理了重试逻辑，这里只记录日志

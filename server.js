@@ -125,9 +125,10 @@ app.use(responseHandler)
 
 // ========================== 静态资源中间件 ========================== //
 
-// 提供静态文件访问服务（Electron 打包时 API_WORKDIR 指向可写 userData）
+// 提供静态文件访问服务（Electron 打包时可由 MEDIA_STORAGE_ROOT 指向自定义媒体目录）
 const apiProjectRoot = process.env.API_WORKDIR ? path.resolve(process.env.API_WORKDIR) : __dirname
-app.use('/storage-local', express.static(path.join(apiProjectRoot, 'storage-local')))
+const mediaStorageRoot = process.env.MEDIA_STORAGE_ROOT ? path.resolve(process.env.MEDIA_STORAGE_ROOT) : apiProjectRoot
+app.use('/storage-local', express.static(path.join(mediaStorageRoot, 'storage-local')))
 
 // ========================== 业务路由注册 ========================== //
 

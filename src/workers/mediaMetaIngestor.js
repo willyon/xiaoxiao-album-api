@@ -113,9 +113,18 @@ async function _handleMetaRetryFailure({ job, err, reason, fileName, imageHash, 
  * @returns {Promise<void>} 无返回值。
  */
 async function processVideoMeta(job, { userId, imageHash, fileName, originalStorageKey, sessionId }) {
+  const metaJobId = job?.id != null ? String(job.id) : null
+  logger.info({
+    message: 'DEBUG_TMP_REMOVE.meta.video.start',
+    details: { metaJobId, userId, imageHash, fileName, originalStorageKey, sessionId: sessionId || null }
+  })
   let videoPath
   try {
     videoPath = await storageService.storage.getFileData(originalStorageKey)
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.meta.video.file_read_success',
+      details: { metaJobId, userId, imageHash, fileName, originalStorageKey }
+    })
   } catch (err) {
     await _handleMetaRetryFailure({ job, err, reason: 'file_read_failed', fileName, imageHash, userId })
     throw err
@@ -124,6 +133,10 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
   let meta
   try {
     meta = await videoProcessingService.getVideoMetadata(videoPath)
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.meta.video.metadata_success',
+      details: { metaJobId, userId, imageHash, fileName, width: meta?.width || null, height: meta?.height || null }
+    })
   } catch (err) {
     await _handleMetaRetryFailure({ job, err, reason: 'metadata_analysis_failed', fileName, imageHash, userId })
     throw err
@@ -191,6 +204,10 @@ async function processVideoMeta(job, { userId, imageHash, fileName, originalStor
       mapRegeoStatus: meta.gpsLatitude != null && meta.gpsLongitude != null ? mapRegeoStatus : undefined
     })
     mediaId = result.mediaId
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.meta.video.db_update_success',
+      details: { metaJobId, userId, imageHash, fileName, mediaId }
+    })
   } catch (e) {
     logger.error({
       message: 'Video metadata database update failed',
@@ -339,6 +356,21 @@ async function _enqueueAiAndCleanup({ mediaId, userId, highResStorageKey, origin
  */
 async function processMediaMeta(job) {
   const { userId, imageHash, fileName, originalStorageKey, extension, fileSize, sessionId, mediaType = 'image' } = job.data
+  const metaJobId = job?.id != null ? String(job.id) : null
+  logger.info({
+    message: 'DEBUG_TMP_REMOVE.meta.image.start',
+    details: {
+      metaJobId,
+      userId,
+      imageHash,
+      fileName,
+      originalStorageKey,
+      extension,
+      fileSize,
+      sessionId: sessionId || null,
+      mediaType
+    }
+  })
 
   // ========== 视频分支：ffprobe 元数据，不生成 highres；会入队 AI worker 做 analysis 完成态收敛 ==========
   if (mediaType === 'video') {
@@ -360,6 +392,10 @@ async function processMediaMeta(job) {
   let fileData = null
   try {
     fileData = await storageService.storage.getFileData(originalStorageKey)
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.meta.image.file_read_success',
+      details: { metaJobId, userId, imageHash, fileName, originalStorageKey }
+    })
   } catch (err) {
     await _handleMetaRetryFailure({ job, err, reason: 'file_read_failed', fileName, imageHash, userId })
     throw err
@@ -370,6 +406,18 @@ async function processMediaMeta(job) {
     metadata = await mediaMetadataService.analyzeMediaMetadata(fileData, {
       includeLocation: true,
       userId
+    })
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.meta.image.metadata_success',
+      details: {
+        metaJobId,
+        userId,
+        imageHash,
+        fileName,
+        width: metadata?.width || null,
+        height: metadata?.height || null,
+        captureTime: metadata?.captureTime || null
+      }
     })
   } catch (err) {
     await _handleMetaRetryFailure({ job, err, reason: 'metadata_analysis_failed', fileName, imageHash, userId })
@@ -414,6 +462,19 @@ async function processMediaMeta(job) {
     highResStorageKeyResult = highResStorageKey
     hdWidthPx = hdResult.width
     hdHeightPx = hdResult.height
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.meta.image.highres_success',
+      details: {
+        metaJobId,
+        userId,
+        imageHash,
+        fileName,
+        originalStorageKey,
+        highResStorageKey: highResStorageKeyResult,
+        hdWidthPx,
+        hdHeightPx
+      }
+    })
   } catch (e) {
     logger.error({
       message: 'Generate HQ image failed',
@@ -463,6 +524,18 @@ async function processMediaMeta(job) {
       mapRegeoStatus: latitude != null && longitude != null ? mapRegeoStatus : undefined
     })
     mediaId = result.mediaId
+    logger.info({
+      message: 'DEBUG_TMP_REMOVE.meta.image.db_update_success',
+      details: {
+        metaJobId,
+        userId,
+        imageHash,
+        fileName,
+        mediaId,
+        highResStorageKey: highResStorageKeyResult,
+        originalStorageKey
+      }
+    })
   } catch (e) {
     // 数据库更新失败
     logger.error({
