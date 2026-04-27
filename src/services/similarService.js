@@ -95,10 +95,11 @@ async function getSimilarGroups({ userId, pageNo = 1, pageSize = 12 }) {
       }
 
       // 后端已按 rank_score（收藏/清晰度/分辨率/笑脸/人脸与人物数量）与拍摄时间排序，第一个为推荐保留
+      const normalizedMembers = _normalizeRankScoreForDisplay(members)
       return {
         id: group.id,
         updatedAt: _formatTimestamp(group.updated_at),
-        members: members.map(({ thumbnailStorageKey: _thumbnailStorageKey, highResStorageKey: _highResStorageKey, ...member }) => member)
+        members: normalizedMembers.map(({ thumbnailStorageKey: _thumbnailStorageKey, highResStorageKey: _highResStorageKey, ...member }) => member)
       }
     })
     .filter((group) => group !== null) // 过滤掉 null（只有1张图片的分组）
@@ -196,6 +197,34 @@ function _mapMemberRow(row) {
     ageTags: row.age_tags,
     expressionTags: row.expression_tags
   }
+}
+
+/**
+ * 将组内 rankScore 归一化到 0-10（仅展示值），不影响 DB 与排序。
+ * @param {Array<{rankScore?: number}>} members - 分组成员列表。
+ * @returns {Array<object>} 映射后的成员列表。
+ */
+function _normalizeRankScoreForDisplay(members) {
+  if (!Array.isArray(members) || members.length === 0) return members || []
+  const numericScores = members.map((m) => Number(m?.rankScore)).filter((value) => Number.isFinite(value))
+  if (!numericScores.length) return members
+
+  const minScore = Math.min(...numericScores)
+  const maxScore = Math.max(...numericScores)
+  if (maxScore <= minScore) {
+    return members.map((member) => {
+      if (!Number.isFinite(Number(member?.rankScore))) return member
+      return { ...member, rankScore: 10 }
+    })
+  }
+
+  return members.map((member) => {
+    const raw = Number(member?.rankScore)
+    if (!Number.isFinite(raw)) return member
+    const normalized = ((raw - minScore) / (maxScore - minScore)) * 10
+    const clamped = Math.min(10, Math.max(0, normalized))
+    return { ...member, rankScore: Number(clamped.toFixed(2)) }
+  })
 }
 
 module.exports = {
