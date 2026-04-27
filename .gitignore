@@ -16,19 +16,7 @@ backend-dist/
 migrations
 docs
 
-# Python 基础文件
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-
-# 虚拟环境
-venv/
-.venv/
-env/
-models/
+/models/
 
 # 构建和分发
 dist/
