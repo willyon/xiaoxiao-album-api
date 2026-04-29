@@ -55,6 +55,7 @@ ensureSchemaInitialized()
 
 const app = express()
 const PORT = process.env.PORT || 3000
+const HOST = process.env.HOST || '127.0.0.1'
 
 // ========================== 安全中间件 ========================== //
 
@@ -175,8 +176,8 @@ app.use(errorHandler)
 
 // ========================== 启动服务器 ========================== //
 
-const server = app.listen(PORT, () => {
-  logger.info({ message: `服务已启用：http://localhost:${PORT}` })
+const server = app.listen(PORT, HOST, () => {
+  logger.info({ message: `服务已启用：http://${HOST}:${PORT}` })
 })
 
 // 应用服务进程退出前进行的操作

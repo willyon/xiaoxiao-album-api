@@ -13,7 +13,13 @@ const { QUEUE_JOB_ATTEMPTS, QUEUE_JOB_BACKOFF_DELAY } = require('../../config/qu
  * @returns {{ queue: import('bullmq').Queue, connection: import('ioredis').default }}
  */
 function createBullQueue({ name }) {
-  const connection = new IORedis({ maxRetriesPerRequest: null })
+  const connection = new IORedis({
+    host: process.env.REDIS_HOST || '127.0.0.1',
+    port: Number(process.env.REDIS_PORT || 6379),
+    password: process.env.REDIS_PASSWORD || undefined,
+    db: Number(process.env.REDIS_DB || 0),
+    maxRetriesPerRequest: null
+  })
   const queue = new Queue(name, {
     connection,
     defaultJobOptions: {
