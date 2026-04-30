@@ -224,8 +224,6 @@ function buildSearchQueryParts(filters, options = {}) {
       timeThreshold = now - 604800000
     } else if (filters.uploadTime === 'lastMonth') {
       timeThreshold = now - 2592000000
-    } else if (filters.uploadTime === 'lastYear') {
-      timeThreshold = now - 31536000000
     }
 
     if (timeThreshold) {
