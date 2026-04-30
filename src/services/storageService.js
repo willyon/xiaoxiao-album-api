@@ -495,10 +495,6 @@ class StorageService {
       // 通过适配器删除文件
       await this.storage.deleteFile(storageKey)
 
-      logger.info({
-        message: 'image file deleted successfully',
-        details: { fileName, storageKey }
-      })
     } catch (error) {
       logger.error({
         message: `Failed to delete image file: ${error?.message}`,

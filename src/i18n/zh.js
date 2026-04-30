@@ -45,6 +45,7 @@ module.exports = {
   INVALID_REFRESH_TOKEN: '刷新令牌无效或过期',
   NETWORK_TIMEOUT: '网络请求超时，请稍后重试',
   BAD_GATEWAY: '上游服务暂时不可用，请稍后重试',
+  DISK_SPACE_INSUFFICIENT: '磁盘空间不足，无法完成当前操作，请清理磁盘空间后重试',
   FILE_NOT_FOUND: '文件不存在或路径无效',
   RESOURCE_NOT_FOUND: '资源不存在',
   UNSUPPORTED_OPERATION: '不支持该操作',

@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "NODE_ENV=development node server.js",
     "prod": "NODE_ENV=production node server.js",
-    "build": "mkdir -p backend-dist && cp -r src backend-dist/ && cp server.js backend-dist/ && cp package.json backend-dist/ && cp package-lock.json backend-dist/ && cp ecosystem.config.js backend-dist/ && cp .npmrc backend-dist/ && cp README.md backend-dist/ && cp -r scripts backend-dist/ && node scripts/deployment/sanitize-env-for-dist.js && echo 'Package built in backend-dist/ directory'",
+    "build": "mkdir -p backend-dist && cp -r src backend-dist/ && cp server.js backend-dist/ && cp package.json backend-dist/ && cp package-lock.json backend-dist/ && cp ecosystem.config.js backend-dist/ && cp .npmrc backend-dist/ && cp README.md backend-dist/ && cp -r scripts backend-dist/ && node scripts/deployment/sanitize-js-for-bundle.cjs backend-dist && node scripts/deployment/sanitize-env-for-dist.js && echo 'Package built in backend-dist/ directory'",
     "test": "mocha",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -39,8 +39,8 @@
     "jsonwebtoken": "^9.0.2",
     "luxon": "^3.5.0",
     "multer": "^2.0.2",
-    "node-gyp": "^10.3.1",
     "node-addon-api": "^7.1.1",
+    "node-gyp": "^10.3.1",
     "nodemailer": "^6.9.16",
     "rbush": "^3.0.1",
     "sharp": "^0.33.5",
@@ -55,6 +55,7 @@
     "globals": "^17.5.0",
     "mocha": "^10.7.3",
     "nodemon": "^3.1.4",
-    "prettier": "^3.3.3"
+    "prettier": "^3.3.3",
+    "terser": "^5.46.2"
   }
 }

@@ -45,6 +45,7 @@ module.exports = {
   INVALID_REFRESH_TOKEN: 'Invalid or expired refresh token',
   NETWORK_TIMEOUT: 'Network request timed out. Please try again later.',
   BAD_GATEWAY: 'Upstream service is temporarily unavailable. Please try again later.',
+  DISK_SPACE_INSUFFICIENT: 'Insufficient disk space. Please free up space and try again.',
   FILE_NOT_FOUND: 'File does not exist or the path is invalid.',
   RESOURCE_NOT_FOUND: 'Resource not found',
   UNSUPPORTED_OPERATION: 'This operation is not supported',

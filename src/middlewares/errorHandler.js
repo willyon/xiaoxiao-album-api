@@ -105,6 +105,15 @@ const mapToKnownCustomError = (err) => {
       messageType: 'warning',
       details: { path: err.path }
     })
+  } else if (err && err.code === 'ENOSPC') {
+    // 磁盘空间不足（跨平台通用错误码：macOS / Linux / Windows）
+    return new CustomError({
+      message: err?.message,
+      httpStatus: 507,
+      messageCode: ERROR_CODES.DISK_SPACE_INSUFFICIENT,
+      messageType: 'error',
+      details: { reason: 'disk_full', path: err.path }
+    })
   } else if (err && (err.code === 'ETIMEDOUT' || err.code === 'ECONNRESET')) {
     // 网络超时 / 连接被重置   err.code === 'ETIMEDOUT' → 504；err.code === 'ECONNRESET' → 502
     const isTimeout = err.code === 'ETIMEDOUT'
