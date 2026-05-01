@@ -202,8 +202,29 @@ async function moveFaces(req, res) {
     }
   }
 
-  const newName = newClusterName != null ? String(newClusterName).trim() : ''
-  if (targetClusterId == null && newName !== '') {
+  if (newClusterName !== null && newClusterName !== undefined && typeof newClusterName !== 'string') {
+    throwInvalidParametersError({ messageType: 'error' })
+  }
+
+  const newName = newClusterName != null && typeof newClusterName === 'string' ? newClusterName.trim() : ''
+  const isNewCluster = targetClusterId == null || targetClusterId === ''
+
+  if (newName.length > 20) {
+    throw new CustomError({
+      httpStatus: 400,
+      messageCode: ERROR_CODES.PERSON_NAME_TOO_LONG,
+      messageType: 'error'
+    })
+  }
+
+  if (isNewCluster) {
+    if (!newName) {
+      throw new CustomError({
+        httpStatus: 400,
+        messageCode: ERROR_CODES.PERSON_NAME_REQUIRED,
+        messageType: 'error'
+      })
+    }
     const existingNames = getExistingPersonNames(userId, null)
     if (existingNames.includes(newName)) {
       throw new CustomError({
@@ -214,13 +235,20 @@ async function moveFaces(req, res) {
     }
   }
 
+  const nameForService = newName || null
+
+  const sourceClusterIdNum = parsePositiveIntParam(clusterId)
   const result = moveFacesToCluster(
     userId,
-    parsePositiveIntParam(clusterId),
+    sourceClusterIdNum,
     faceEmbeddingIds.map((id) => parsePositiveIntParam(id)),
     targetClusterId ? parsePositiveIntParam(targetClusterId) : null,
-    newClusterName || null
+    nameForService
   )
+
+  // 移脸后补齐默认封面与人脸缩略图（新建人物原无 representative_type=1；源人物可能迁走了原封面脸）
+  await faceClusterService.ensureClusterCoverAfterMove(userId, result.targetClusterId)
+  await faceClusterService.ensureClusterCoverAfterMove(userId, sourceClusterIdNum)
 
   res.sendResponse({
     data: {

@@ -53,6 +53,8 @@ module.exports = {
   EXPORT_BATCH_LIMIT_EXCEEDED: '单次最多导出 {max} 张，请减少选择数量',
   DUPLICATE_ENTRY: '相册名称已存在，请换一个名称',
   DUPLICATE_PERSON_NAME: '人物名称已存在，请换一个名称',
+  PERSON_NAME_REQUIRED: '新建人物时名称不能为空',
+  PERSON_NAME_TOO_LONG: '人物名称不能超过20个字符',
   DATA_UPDATE_FAILED: '数据更新失败',
   DATA_DELETE_FAILED: '数据删除失败'
 }

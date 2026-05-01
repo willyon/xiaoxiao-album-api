@@ -16,7 +16,8 @@ const {
 const {
   restoreDefaultCover,
   generateThumbnailForFaceEmbedding,
-  revokePreviousManualCoverAssets
+  revokePreviousManualCoverAssets,
+  ensureClusterCoverAfterMove
 } = require('./faceClusterThumbnailPipeline')
 const { scheduleUserClustering } = require('./faceClusterScheduler')
 const { attachClusterCoverUrls } = require('./attachClusterCoverUrls')
@@ -27,6 +28,7 @@ module.exports = {
   restoreDefaultCover,
   generateThumbnailForFaceEmbedding,
   revokePreviousManualCoverAssets,
+  ensureClusterCoverAfterMove,
   getFaceEmbeddingIdsByClusterId,
   getClustersByUserId,
   getClusterCardByUserId,

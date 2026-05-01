@@ -407,6 +407,22 @@ async function ensureDefaultCoverRepresentative(userId, clusterId) {
 }
 
 /**
+ * 移脸完成后补齐封面：与自动聚类后逻辑一致，优先沿用已有默认封面（1）仅补缩略图；若无则选举并生成。
+ * @param {number|string} userId - 用户 ID。
+ * @param {number|string|null|undefined} clusterId - 聚类 ID。
+ * @returns {Promise<void>}
+ */
+async function ensureClusterCoverAfterMove(userId, clusterId) {
+  if (clusterId == null) return
+  const defaultId = getDefaultCoverFaceEmbeddingId(userId, clusterId)
+  if (defaultId != null) {
+    await generateThumbnailForFaceEmbedding(defaultId, false)
+    return
+  }
+  await ensureDefaultCoverRepresentative(userId, clusterId)
+}
+
+/**
  * 恢复聚类默认封面：清除手动封面（2）并恢复默认封面（1）。
  * @param {number|string} userId - 用户 ID。
  * @param {number|string} clusterId - 聚类 ID。
@@ -766,5 +782,6 @@ module.exports = {
   restoreDefaultCover,
   generateThumbnailForFaceEmbedding,
   handleReclusterThumbnailMaintenance,
-  revokePreviousManualCoverAssets
+  revokePreviousManualCoverAssets,
+  ensureClusterCoverAfterMove
 }

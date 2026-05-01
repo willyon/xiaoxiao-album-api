@@ -53,6 +53,8 @@ module.exports = {
   EXPORT_BATCH_LIMIT_EXCEEDED: 'You can export at most {max} photos at a time. Please reduce the selection.',
   DUPLICATE_ENTRY: 'This album name already exists. Please choose a different name.',
   DUPLICATE_PERSON_NAME: 'This person name already exists. Please choose a different name.',
+  PERSON_NAME_REQUIRED: 'Person name is required when creating a new person.',
+  PERSON_NAME_TOO_LONG: 'Person name cannot exceed 20 characters.',
   DATA_UPDATE_FAILED: 'Failed to update data',
   DATA_DELETE_FAILED: 'Failed to delete data'
 }
