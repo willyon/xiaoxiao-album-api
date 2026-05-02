@@ -1,5 +1,5 @@
 /**
- * 本地行政区划逆地理编码（chinaGeoDataHierarchy.json）
+ * 本地行政区划逆地理编码（chinaGeoDataHierarchy.json 或打包后的 .json.gz）
  * 边界数据为 GCJ-02；入参须为 GCJ-02（由 geocodingService 对 EXIF 的 WGS-84 转换后再传入）。
  * 使用 RBush（bbox）粗筛 + Turf booleanPointInPolygon 精确判断。
  *
@@ -7,12 +7,13 @@
  * 命中时尽量返回区县；未命中则降级为市或省。
  */
 
-const fs = require('fs')
 const path = require('path')
 const logger = require('../utils/logger')
 const { buildTree, findHit } = require('../utils/geoRbushIndex')
+const { readGeoJsonParsed } = require('../utils/readGeoJsonFile')
 
-const HIERARCHY_PATH = path.join(__dirname, '..', 'data', 'geo', 'chinaGeoDataHierarchy.json')
+const GEO_DIR = path.join(__dirname, '..', 'data', 'geo')
+const HIERARCHY_FILE = 'chinaGeoDataHierarchy.json'
 
 const MUNICIPALITY_ADCODES = new Set([110000, 120000, 310000, 500000])
 
@@ -31,11 +32,7 @@ let adcodeToName = new Map()
 function ensureIndex() {
   if (indexReady || indexError) return
   try {
-    if (!fs.existsSync(HIERARCHY_PATH)) {
-      throw new Error(`文件不存在: ${HIERARCHY_PATH}`)
-    }
-    const raw = fs.readFileSync(HIERARCHY_PATH, 'utf8')
-    const data = JSON.parse(raw)
+    const { data, pathUsed } = readGeoJsonParsed(GEO_DIR, HIERARCHY_FILE)
 
     adcodeToName = new Map()
     for (const level of ['province', 'city', 'district']) {
@@ -57,7 +54,7 @@ function ensureIndex() {
     logger.info({
       message: '本地行政区划逆地理索引已构建',
       details: {
-        path: HIERARCHY_PATH,
+        path: pathUsed,
         provinces: data.province?.features?.length ?? 0,
         cities: data.city?.features?.length ?? 0,
         districts: data.district?.features?.length ?? 0
@@ -66,8 +63,8 @@ function ensureIndex() {
   } catch (e) {
     indexError = e
     logger.error({
-      message: '加载 chinaGeoDataHierarchy.json 失败，本地逆地理不可用',
-      details: { error: e.message, path: HIERARCHY_PATH }
+      message: '加载 chinaGeoDataHierarchy 失败，本地逆地理不可用',
+      details: { error: e.message, dir: GEO_DIR }
     })
   }
 }

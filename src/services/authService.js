@@ -420,7 +420,7 @@ const _getPasswordResetEmailContent = (language, token) => {
   const baseUrl = process.env.NODE_ENV === 'development' ? 'http://127.0.0.1:5173' : 'https://photos.bingbingcloud.com'
   const content = {
     en: {
-      mailName: 'Bingbing Cloud Photos',
+      mailName: 'Xiaoxiao Album',
       subject: 'Reset Your Password',
       html: `
         <h1>Reset Your Password</h1>
@@ -433,7 +433,7 @@ const _getPasswordResetEmailContent = (language, token) => {
       `
     },
     zh: {
-      mailName: '冰冰云相册',
+      mailName: '笑启相册',
       subject: '重置您的密码',
       html: `
         <h1>重置密码</h1>
